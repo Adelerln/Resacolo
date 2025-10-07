@@ -7,14 +7,15 @@ declare global {
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error(
-    'Variables NEXT_PUBLIC_SUPABASE_URL ou NEXT_PUBLIC_SUPABASE_ANON_KEY manquantes. Vérifie ton fichier .env.local.'
-  );
-}
+const isConfigured = Boolean(supabaseUrl && supabaseAnonKey);
 
 export function getSupabaseClient(): SupabaseClient {
+  if (!isConfigured) {
+    throw new Error(
+      'Supabase n’est pas configuré : définis NEXT_PUBLIC_SUPABASE_URL et NEXT_PUBLIC_SUPABASE_ANON_KEY pour activer le formulaire de contact.'
+    );
+  }
+
   if (globalThis.__supabaseClient) {
     return globalThis.__supabaseClient;
   }

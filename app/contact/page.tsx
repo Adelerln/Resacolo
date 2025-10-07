@@ -16,7 +16,14 @@ const initialState: ContactFormState = {
 };
 
 export default function ContactPage() {
-  const supabase = getSupabaseClient();
+  let supabase: ReturnType<typeof getSupabaseClient> | null = null;
+
+  try {
+    supabase = getSupabaseClient();
+  } catch (error) {
+    console.warn('Contact form désactivé :', error);
+  }
+
   const [form, setForm] = useState<ContactFormState>(initialState);
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -32,6 +39,10 @@ export default function ContactPage() {
     setErrorMessage(null);
 
     try {
+      if (!supabase) {
+        throw new Error('Le formulaire est momentanément indisponible.');
+      }
+
       const { error } = await supabase.from('Messages').insert({
         name: form.name,
         email: form.email,
@@ -98,10 +109,10 @@ export default function ContactPage() {
         </label>
         <button
           type="submit"
-          disabled={status === 'loading'}
+          disabled={status === 'loading' || !supabase}
           className="inline-flex justify-center rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {status === 'loading' ? 'Envoi en cours…' : 'Envoyer'}
+          {supabase ? (status === 'loading' ? 'Envoi en cours…' : 'Envoyer') : 'Formulaire indisponible'}
         </button>
         {status === 'success' && (
           <p className="rounded-md bg-green-50 px-3 py-2 text-sm text-green-700">
@@ -112,8 +123,9 @@ export default function ContactPage() {
           <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-600">{errorMessage}</p>
         )}
         <p className="text-xs text-slate-500">
-          Les messages sont stockés dans Supabase (table `contact_messages`). Assurez-vous d’avoir défini les bonnes
-          policies avant de passer en production.
+          {supabase
+            ? 'Les messages sont stockés dans Supabase (table `contact_messages`). Assurez-vous d’avoir défini les bonnes policies avant de passer en production.'
+            : 'Les variables Supabase ne sont pas configurées, le formulaire est désactivé sur cet environnement.'}
         </p>
       </form>
     </section>

@@ -1,0 +1,38 @@
+{
+  "stays": [
+    {
+      "id": "demo-ave-ete-aventure",
+      "title": "Aventures nature et sciences",
+      "slug": "aventures-nature-sciences",
+      "summary": "Une immersion nature pour créer, expérimenter et s’émerveiller.",
+      "description": "Au cœur d’un centre doté d’un fablab et d’un jardin pédagogique, les enfants alternent entre activités scientifiques, grands jeux nature et veillées thématiques.",
+      "organizer": {
+        "name": "Aventures Vacances Énergie",
+        "website": "https://www.aventures-vacances-energie.com/"
+      },
+      "location": "Bretagne, France",
+      "country": "France",
+      "ageRange": "10-12 ans",
+      "duration": "12 jours",
+      "priceFrom": 820,
+      "period": ["été"],
+      "categories": ["nature", "science"],
+      "highlights": [
+        "Laboratoires créatifs",
+        "Grands jeux en pleine nature",
+        "Veillées coopératives"
+      ],
+      "filters": {
+        "categories": ["nature", "science"],
+        "audiences": ["10-12"],
+        "durations": ["quinzaine"],
+        "periods": ["ete"],
+        "priceRange": [750, 900],
+        "transport": ["depart-region"]
+      },
+      "sourceUrl": "https://www.aventures-vacances-energie.com/",
+      "rawContext": {},
+      "updatedAt": "2024-06-01T00:00:00.000Z"
+    }
+  ]
+}

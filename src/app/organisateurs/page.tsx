@@ -21,8 +21,8 @@ export default function OrganisateursPage() {
       <div className="space-y-4">
         <h1 className="text-3xl font-semibold text-slate-900">Nos organisateurs partenaires</h1>
         <p className="text-lg text-slate-600">
-          Résacolo fédère les professionnels engagés de Résocolo. Chaque structure dispose d’un espace dédié et
-          d’une synchronisation automatique de ses séjours.
+          Le collectif fédère des professionnels engagés autour des colonies de vacances. Chaque structure dispose
+          d’un espace dédié et d’une synchronisation automatique de ses séjours.
         </p>
       </div>
       <ul className="grid gap-4 md:grid-cols-2">

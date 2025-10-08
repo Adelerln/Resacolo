@@ -26,7 +26,7 @@ export function MainNavigation() {
     <header className="border-b border-slate-200 bg-white/80 backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
         <Link href="/" className="text-xl font-semibold text-brand-700">
-          Resacolo
+          Colonies de vacances
         </Link>
         <nav className="hidden gap-6 text-sm font-medium text-slate-700 md:flex">
           {links.map((link) => (

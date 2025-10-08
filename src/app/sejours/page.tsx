@@ -4,9 +4,9 @@ import { StayExplorer } from '@/components/sejours/StayExplorer';
 import { getStays } from '@/lib/stays';
 
 export const metadata: Metadata = {
-  title: 'Séjours | Resacolo',
+  title: 'Séjours | Plateforme des colonies de vacances',
   description:
-    'Explorez toutes les colonies de vacances proposées par les membres Résocolo avec filtres intelligents et fiches détaillées.'
+    'Explorez toutes les colonies de vacances proposées par les organisateurs partenaires avec filtres intelligents et fiches détaillées.'
 };
 
 export default async function SejoursPage() {

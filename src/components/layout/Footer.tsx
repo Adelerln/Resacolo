@@ -5,10 +5,8 @@ export function Footer() {
     <footer className="border-t border-slate-200 bg-white">
       <div className="mx-auto flex max-w-6xl flex-col gap-6 px-6 py-10 text-sm text-slate-600 md:flex-row md:items-center md:justify-between">
         <div>
-          <p className="font-semibold text-slate-800">Resacolo</p>
-          <p className="mt-1 max-w-lg">
-            La plateforme de référence des colonies de vacances proposées par les membres de Résocolo.
-          </p>
+          <p className="font-semibold text-slate-800">Colonies de vacances</p>
+          <p className="mt-1 max-w-lg">La plateforme de référence pour explorer les colonies de vacances du collectif.</p>
         </div>
         <div className="flex gap-6">
           <Link href="/mentions-legales" className="hover:text-brand-600">
@@ -21,7 +19,7 @@ export function Footer() {
             Conditions générales
           </Link>
         </div>
-        <p className="text-xs text-slate-500">© {new Date().getFullYear()} Résacolo. Tous droits réservés.</p>
+        <p className="text-xs text-slate-500">© {new Date().getFullYear()} Tous droits réservés.</p>
       </div>
     </footer>
   );

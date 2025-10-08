@@ -11,7 +11,7 @@ const highlights = [
   {
     title: 'Toutes les colos au même endroit',
     description:
-      'Centralisez l’ensemble des offres des membres Résocolo pour proposer aux familles une expérience de recherche unifiée.'
+      'Centralisez l’ensemble des offres des organisateurs partenaires pour proposer aux familles une expérience de recherche unifiée.'
   },
   {
     title: 'Mise à jour automatique',
@@ -31,14 +31,14 @@ export default function HomePage() {
       <section className="mx-auto flex max-w-6xl flex-col gap-6 px-6 py-20 md:flex-row md:items-center md:justify-between">
         <div className="max-w-2xl space-y-6">
           <span className="rounded-full bg-brand-50 px-4 py-1 text-sm font-semibold text-brand-700">
-            Plateforme Résocolo
+            Plateforme colonies de vacances
           </span>
           <h1 className="text-4xl font-semibold tracking-tight text-slate-900 md:text-5xl">
-            Toutes les colonies de vacances Résocolo en un seul endroit.
+            Toutes les colonies de vacances partenaires en un seul endroit.
           </h1>
           <p className="text-lg text-slate-600">
-            Resacolo agrège automatiquement les séjours proposés par les organisateurs membres et
-            génère des fiches détaillées pour accompagner les familles et les collectivités.
+            Cette plateforme agrège automatiquement les séjours proposés par les organisateurs membres et génère des
+            fiches détaillées pour accompagner les familles et les collectivités.
           </p>
           <div className="flex flex-wrap gap-3">
             <Link

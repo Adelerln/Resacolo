@@ -7,10 +7,9 @@ import { Footer } from '@/components/layout/Footer';
 const rubik = Rubik({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'Resacolo | Plateforme des colonies de vacances',
+  title: 'Plateforme des colonies de vacances',
   description:
-    'Découvrez toutes les colonies de vacances proposées par les membres de Résocolo et trouvez le séjour idéal pour chaque enfant.',
-  metadataBase: new URL('https://resacolo.com')
+    'Découvrez toutes les colonies de vacances proposées par les organisateurs partenaires et trouvez le séjour idéal pour chaque enfant.'
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

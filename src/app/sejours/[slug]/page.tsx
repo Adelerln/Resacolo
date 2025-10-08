@@ -14,12 +14,12 @@ export async function generateMetadata({ params }: StayDetailPageProps): Promise
 
   if (!stay) {
     return {
-      title: 'Séjour introuvable | Resacolo'
+      title: 'Séjour introuvable | Plateforme des colonies de vacances'
     };
   }
 
   return {
-    title: `${stay.title} | Resacolo`,
+    title: `${stay.title} | Plateforme des colonies de vacances`,
     description: stay.summary
   };
 }

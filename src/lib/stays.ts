@@ -151,9 +151,9 @@ function normalisePayload(payload: StayPayload): Stay {
 async function extractStaysFromOrganizer(html: string, organizer: { name: string; website: string }) {
   const client = createOpenAIClient();
 
-  const instructions = `Analyse le contenu HTML suivant provenant du site de ${organizer.name} (${organizer.website}).
+const instructions = `Analyse le contenu HTML suivant provenant du site de ${organizer.name} (${organizer.website}).
 Identifie jusqu'à 8 offres de séjours destinés aux enfants et pré-adolescents.
-Pour chaque séjour, fournis une fiche structurée claire qui sera affichée sur resacolo.com.
+Pour chaque séjour, fournis une fiche structurée claire qui sera affichée sur la plateforme.
 Renseigne uniquement des informations présentes ou déductibles du site.
 Complète strictement la taxonomie fournie :
 - categories possibles: nature, sport, culture, langues, mer, montagne, multi-activites, solidarite, science, arts
@@ -171,7 +171,7 @@ Complète strictement la taxonomie fournie :
         content: [
           {
             type: 'input_text',
-            text: 'Tu es un assistant qui transforme du HTML en fiches de séjours structurées pour resacolo.com. Respecte scrupuleusement les schémas JSON fournis.'
+            text: 'Tu es un assistant qui transforme du HTML en fiches de séjours structurées pour la plateforme. Respecte scrupuleusement les schémas JSON fournis.'
           }
         ]
       },
@@ -223,7 +223,7 @@ Complète strictement la taxonomie fournie :
 async function fetchOrganizerHtml(url: string) {
   const response = await fetch(url, {
     headers: {
-      'User-Agent': 'ResacoloBot/1.0 (+https://resacolo.com)'
+      'User-Agent': 'StayAggregatorBot/1.0'
     },
     next: { revalidate: 60 * 60 * 6 }
   });

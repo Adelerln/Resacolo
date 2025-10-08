@@ -5,7 +5,7 @@ const resources = [
   },
   {
     title: 'Guide collectivités',
-    description: 'Tout savoir sur l’organisation d’un séjour collectif avec les membres Résocolo.'
+    description: 'Tout savoir sur l’organisation d’un séjour collectif avec les organisateurs partenaires.'
   },
   {
     title: 'Boîte à outils organisateurs',
@@ -19,7 +19,7 @@ export default function RessourcesPage() {
       <div className="space-y-4">
         <h1 className="text-3xl font-semibold text-slate-900">Ressources partagées</h1>
         <p className="text-lg text-slate-600">
-          Résacolo met à disposition des ressources mutualisées pour soutenir les équipes de terrain, les
+          Le collectif met à disposition des ressources mutualisées pour soutenir les équipes de terrain, les
           collectivités et les familles.
         </p>
       </div>

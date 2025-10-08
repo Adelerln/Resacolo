@@ -1,0 +1,20 @@
+{
+  "items": [
+    {
+      "question": "Can we import existing sections from our design system?",
+      "answer": "Yes. MosaicFlow ingests Figma tokens, JSON schema from your headless CMS, or raw HTML blocks. Drag them into the grid and assign motion presets on launch."
+    },
+    {
+      "question": "How does the mosaic shuffle work?",
+      "answer": "You can define weightings for each tile, constrain spans on mobile, and set the cadence for reshuffling. Prefer static? Toggle it off per page in the editor."
+    },
+    {
+      "question": "Is the platform accessible and performant?",
+      "answer": "We ship semantic markup, keyboard-friendly interactions, and optimized media by default. Run Lighthouse tests right inside MosaicFlow before publishing."
+    },
+    {
+      "question": "Do you support enterprise security requirements?",
+      "answer": "SAML SSO, SCIM provisioning, audit trails, and regional hosting are included in Enterprise plans. Our team runs SOC 2 Type II assessments annually."
+    }
+  ]
+}

@@ -1,0 +1,55 @@
+{
+  "productName": "MosaicFlow",
+  "tagline": "The next-generation mosaic builder launches soon.",
+  "valueProp": "MosaicFlow condense storytelling, motion, et personnalisation dans une plateforme unique. Rejoignez la waitlist pour accéder à la beta privée dès son ouverture.",
+  "accentHex": "#FF6A3D",
+  "contactEmail": "hello@mosaicflow.io",
+  "meta": {
+    "title": "MosaicFlow — Build striking mosaic layouts in minutes",
+    "description": "Design adaptive, animated marketing sites faster with MosaicFlow. Compose hero mosaics, automate launches, and keep brand in motion.",
+    "keywords": [
+      "mosaic layouts",
+      "marketing website",
+      "framer motion",
+      "nextjs landing page"
+    ]
+  },
+  "navigation": [
+    { "label": "Home", "href": "/" },
+    { "label": "Waitlist", "href": "#waitlist" }
+  ],
+  "social": [
+    { "label": "LinkedIn", "href": "https://www.linkedin.com/company/mosaicflow" },
+    { "label": "Twitter", "href": "https://x.com/mosaicflow" },
+    { "label": "Dribbble", "href": "https://dribbble.com/mosaicflow" }
+  ],
+  "footer": {
+    "columns": [
+      {
+        "title": "Platform",
+        "links": [
+          { "label": "Overview", "href": "/#platform" },
+          { "label": "Product Updates", "href": "/about#updates" },
+          { "label": "Security", "href": "/about#security" }
+        ]
+      },
+      {
+        "title": "Company",
+        "links": [
+          { "label": "Our story", "href": "/about" },
+          { "label": "Careers", "href": "mailto:careers@mosaicflow.io" },
+          { "label": "Press", "href": "mailto:press@mosaicflow.io" }
+        ]
+      },
+      {
+        "title": "Resources",
+        "links": [
+          { "label": "Documentation", "href": "https://docs.mosaicflow.io" },
+          { "label": "Brand kit", "href": "https://brand.mosaicflow.io" },
+          { "label": "Support", "href": "mailto:support@mosaicflow.io" }
+        ]
+      }
+    ],
+    "copyright": "© {{year}} MosaicFlow. Crafted for marketing teams who design with motion."
+  }
+}

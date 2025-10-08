@@ -1,0 +1,337 @@
+.home {
+  display: flex;
+  flex-direction: column;
+  gap: 6rem;
+  padding-bottom: 6rem;
+}
+
+.hero {
+  position: relative;
+  padding: 6rem min(8vw, 96px) 5rem;
+  display: grid;
+  gap: 2.5rem;
+  background: linear-gradient(135deg, rgba(255, 111, 145, 0.15), rgba(255, 209, 102, 0.18));
+  border-bottom-left-radius: var(--radius-xl);
+  border-bottom-right-radius: var(--radius-xl);
+  overflow: hidden;
+}
+
+.hero::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 80% 20%, rgba(106, 198, 255, 0.4), transparent 50%);
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.heroContent {
+  position: relative;
+  max-width: 720px;
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+}
+
+.heroPill {
+  align-self: flex-start;
+  padding: 0.5rem 1.2rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.6);
+  color: var(--primary);
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-size: 0.85rem;
+}
+
+.heroTitle {
+  font-size: clamp(2.75rem, 5vw, 4rem);
+  line-height: 1.05;
+  margin: 0;
+}
+
+.heroTitle span {
+  color: var(--primary);
+}
+
+.heroSubtitle {
+  margin: 0;
+  font-size: 1.2rem;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.heroActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.heroPrimary,
+.heroSecondary {
+  padding: 0.95rem 1.8rem;
+  border-radius: 999px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.heroPrimary {
+  background: var(--primary);
+  color: #fff;
+  box-shadow: 0 18px 35px -18px rgba(255, 111, 145, 0.7);
+}
+
+.heroPrimary:hover {
+  transform: translateY(-3px);
+}
+
+.heroSecondary {
+  border: 2px solid rgba(255, 255, 255, 0.7);
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.heroSecondary:hover {
+  transform: translateY(-3px);
+}
+
+.programSection {
+  padding: 0 min(8vw, 96px);
+  display: flex;
+  flex-direction: column;
+  gap: 2.5rem;
+}
+
+.sectionHeading {
+  max-width: 720px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.sectionHeading h2 {
+  font-size: clamp(2rem, 3.2vw, 2.8rem);
+  margin: 0;
+}
+
+.sectionHeading p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 1.05rem;
+}
+
+.programGrid {
+  display: grid;
+  gap: 1.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.programCard {
+  background: var(--card);
+  border-radius: 24px;
+  padding: 1.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.2rem;
+  border: 1px solid var(--border);
+  box-shadow: 0 22px 40px -32px rgba(0, 0, 0, 0.25);
+}
+
+.programMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 1.2rem;
+  font-size: 0.95rem;
+  color: var(--muted);
+}
+
+.programMeta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.programCard h3 {
+  margin: 0;
+  font-size: 1.45rem;
+}
+
+.programCard p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.highlightSection {
+  padding: 0 min(8vw, 96px);
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.highlightGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1.5rem;
+}
+
+.highlightCard {
+  background: rgba(255, 255, 255, 0.7);
+  border-radius: 20px;
+  padding: 1.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+}
+
+.highlightCard h3 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.highlightCard p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.scheduleSection {
+  padding: 0 min(8vw, 96px);
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.scheduleGrid {
+  display: grid;
+  gap: 1.4rem;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.scheduleCard {
+  background: var(--card);
+  border-radius: 20px;
+  padding: 1.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  border: 1px solid var(--border);
+}
+
+.scheduleCard span {
+  font-weight: 600;
+  color: var(--primary);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-size: 0.8rem;
+}
+
+.scheduleCard h3 {
+  margin: 0;
+  font-size: 1.3rem;
+}
+
+.scheduleCard p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.testimonialSection {
+  padding: 0 min(8vw, 96px);
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.testimonialGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1.5rem;
+}
+
+.testimonialCard {
+  background: rgba(255, 255, 255, 0.7);
+  border-radius: 20px;
+  padding: 1.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow: 0 16px 32px -28px rgba(0, 0, 0, 0.2);
+}
+
+.testimonialCard blockquote {
+  margin: 0;
+  color: var(--text);
+  line-height: 1.6;
+}
+
+.testimonialCard figcaption {
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.ctaSection {
+  margin: 0 min(8vw, 96px);
+  padding: 2.8rem clamp(1.8rem, 5vw, 3rem);
+  background: linear-gradient(140deg, rgba(255, 111, 145, 0.15), rgba(136, 178, 255, 0.15));
+  border-radius: 28px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+}
+
+.ctaContent {
+  max-width: 520px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.ctaContent h2 {
+  margin: 0;
+  font-size: clamp(2rem, 3vw, 2.6rem);
+}
+
+.ctaContent p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+@media (max-width: 960px) {
+  .hero {
+    padding: 5rem 2rem 4rem;
+  }
+
+  .ctaSection {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+@media (max-width: 640px) {
+  .hero {
+    padding: 4rem 1.5rem 3.5rem;
+  }
+
+  .programSection,
+  .highlightSection,
+  .scheduleSection,
+  .testimonialSection {
+    padding: 0 1.5rem;
+  }
+
+  .ctaSection {
+    margin: 0 1.5rem;
+    padding: 2.4rem;
+  }
+}

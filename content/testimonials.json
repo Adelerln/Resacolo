@@ -1,0 +1,25 @@
+{
+  "items": [
+    {
+      "name": "Isabella Duarte",
+      "role": "VP Marketing",
+      "company": "Atlas Studio",
+      "quote": "Our launch velocity tripled. MosaicFlow let us remix motion-forward stories with the guardrails legal needed.",
+      "avatar": "/avatars/isabella.png"
+    },
+    {
+      "name": "Ravi Patel",
+      "role": "Director of Growth",
+      "company": "Voyage",
+      "quote": "The adaptive mosaic keeps our pages feeling alive without additional design sprints.",
+      "avatar": "/avatars/ravi.png"
+    },
+    {
+      "name": "Mae Kim",
+      "role": "Head of Brand",
+      "company": "Opaline",
+      "quote": "Cinematics, personalization, governance — all in one canvas. Our creatives finally have room to play.",
+      "avatar": "/avatars/mae.png"
+    }
+  ]
+}

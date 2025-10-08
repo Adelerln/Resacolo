@@ -19,8 +19,8 @@ export default function RessourcesPage() {
       <div className="space-y-4">
         <h1 className="text-3xl font-semibold text-slate-900">Ressources partagées</h1>
         <p className="text-lg text-slate-600">
-          Le collectif met à disposition des ressources mutualisées pour soutenir les équipes de terrain, les
-          collectivités et les familles.
+          Resacolo met à disposition des ressources mutualisées pour soutenir les équipes de terrain, les collectivités
+          et les familles.
         </p>
       </div>
       <div className="grid gap-6 md:grid-cols-3">

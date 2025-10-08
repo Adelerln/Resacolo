@@ -1,6 +1,6 @@
 # Resacolo
 
-Plateforme Next.js pour agréger et présenter les séjours de colonies de vacances proposés par les membres de Résocolo.
+Plateforme Next.js pour agréger et présenter les séjours de colonies de vacances proposés par les membres de Resacolo.
 
 ## Fonctionnalités clés
 

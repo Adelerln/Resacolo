@@ -67,7 +67,7 @@ export default function ContactPage() {
       <div className="space-y-4">
         <h1 className="text-3xl font-semibold text-slate-900">Contact</h1>
         <p className="text-lg text-slate-600">
-          Une question, un besoin d’accompagnement ou l’envie de rejoindre notre collectif ? Laissez-nous un message.
+          Une question, un besoin d’accompagnement ou l’envie de rejoindre Resacolo ? Laissez-nous un message.
         </p>
       </div>
       <form onSubmit={handleSubmit} className="grid gap-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">

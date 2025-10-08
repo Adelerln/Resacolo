@@ -7,12 +7,12 @@ const commitments = [
   {
     title: 'Qualité pédagogique',
     description:
-      'Chaque organisateur s’engage sur un projet éducatif fort, évalué et partagé au sein du réseau mutualisé.'
+      'Chaque organisateur s’engage sur un projet éducatif fort, évalué et partagé au sein du réseau Resacolo.'
   },
   {
     title: 'Innovation collective',
     description:
-      'Le collectif favorise les synergies entre organisateurs pour mutualiser outils, contenus et bonnes pratiques.'
+      'Resacolo favorise les synergies entre organisateurs pour mutualiser outils, contenus et bonnes pratiques.'
   }
 ];
 
@@ -20,9 +20,9 @@ export default function AssociationPage() {
   return (
     <section className="mx-auto max-w-4xl space-y-8 px-6 py-16">
       <div className="space-y-4">
-        <h1 className="text-3xl font-semibold text-slate-900">L’association des organisateurs</h1>
+        <h1 className="text-3xl font-semibold text-slate-900">L’association Resacolo</h1>
         <p className="text-lg text-slate-600">
-          L’association rassemble des professionnels de l’éducation populaire et du tourisme social. Ensemble, nous
+          Resacolo rassemble des professionnels de l’éducation populaire et du tourisme social. Ensemble, nous
           mutualisons nos forces pour rendre les colonies de vacances plus visibles et plus simples d’accès.
         </p>
       </div>

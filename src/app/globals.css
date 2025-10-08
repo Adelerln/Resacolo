@@ -7,13 +7,17 @@
 }
 
 body {
-  @apply bg-slate-50 text-slate-900 antialiased;
+  @apply bg-white text-slate-900 antialiased;
 }
 
 a {
-  @apply text-brand-600 underline-offset-4 transition hover:text-brand-700;
+  @apply text-brand-500 no-underline transition hover:text-brand-600;
 }
 
 main {
   @apply min-h-screen;
+}
+
+.font-display {
+  font-family: var(--font-display);
 }

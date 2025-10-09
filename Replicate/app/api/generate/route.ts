@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabase-admin';
+import { createSupabaseAdminClient } from '@/lib/supabase-admin';
 import { randomUUID } from 'crypto';
 import { Buffer } from 'node:buffer';
 
@@ -25,6 +25,8 @@ if (!modelId || !modelVersion) {
 
 export async function POST(request: NextRequest) {
   try {
+    const supabaseAdmin = createSupabaseAdminClient();
+
     const formData = await request.formData();
 
     const image = formData.get('image');

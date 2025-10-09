@@ -6,6 +6,8 @@ import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import Replicate from 'replicate';
 
+export const runtime = 'nodejs';
+
 function requireEnv(name: string): string {
   const value = process.env[name];
   if (!value) {
@@ -17,7 +19,9 @@ function requireEnv(name: string): string {
 const inputBucket = requireEnv('SUPABASE_INPUT_BUCKET');
 const outputBucket = requireEnv('SUPABASE_OUTPUT_BUCKET');
 const replicateToken = requireEnv('REPLICATE_API_TOKEN');
-const replicateModel = requireEnv('REPLICATE_MODEL');
+const replicateModel = (process.env.REPLICATE_MODEL ?? 'google/nano-banana') as
+  | `${string}/${string}`
+  | `${string}/${string}:${string}`;
 
 const replicateClient = new Replicate({ auth: replicateToken });
 
@@ -71,16 +75,12 @@ export async function POST(request: NextRequest) {
       data: { publicUrl: inputPublicUrl }
     } = supabaseAdmin.storage.from(inputBucket).getPublicUrl(inputPath);
 
-    const replicateOutput = await replicateClient.run(
-      replicateModel,
-      {
-        input: {
-          prompt,
-          image_input: [inputPublicUrl],
-          image: inputPublicUrl
-        }
+    const replicateOutput = await replicateClient.run(replicateModel, {
+      input: {
+        prompt,
+        image_input: [inputPublicUrl]
       }
-    );
+    });
 
     const { buffer: generatedBuffer, contentType } = await normaliseReplicateOutput(replicateOutput);
     const outputPath = `results/${randomUUID()}.png`;

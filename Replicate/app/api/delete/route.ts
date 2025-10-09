@@ -3,6 +3,8 @@ import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { createSupabaseAdminClient } from '@/lib/supabase-admin';
 
+export const runtime = 'nodejs';
+
 function requireEnv(name: string): string {
   const value = process.env[name];
   if (!value) {

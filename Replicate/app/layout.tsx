@@ -1,5 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import { AuthProvider } from '@/context/AuthContext';
+import { Header } from '@/components/Header';
 
 export const metadata: Metadata = {
   title: 'Resacolo Studio | IA Image Editor',
@@ -10,15 +12,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="fr">
       <body>
-        <div
-          style={{
-            minHeight: '100vh',
-            display: 'flex',
-            flexDirection: 'column'
-          }}
-        >
-          {children}
-        </div>
+        <AuthProvider>
+          <Header />
+          <main
+            style={{
+              flex: 1,
+              display: 'flex',
+              flexDirection: 'column'
+            }}
+          >
+            {children}
+          </main>
+        </AuthProvider>
       </body>
     </html>
   );

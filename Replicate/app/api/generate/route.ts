@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseAdminClient } from '@/lib/supabase-admin';
 import { randomUUID } from 'crypto';
 import { Buffer } from 'node:buffer';
+import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { cookies } from 'next/headers';
+import Replicate from 'replicate';
 
 function requireEnv(name: string): string {
   const value = process.env[name];
@@ -16,15 +19,24 @@ const outputBucket = requireEnv('SUPABASE_OUTPUT_BUCKET');
 const replicateToken = requireEnv('REPLICATE_API_TOKEN');
 const replicateModel = requireEnv('REPLICATE_MODEL');
 
-const [modelId, modelVersion] = replicateModel.split(':');
-if (!modelId || !modelVersion) {
-  throw new Error(
-    'REPLICATE_MODEL doit respecter le format "owner/model:version". Exemple: google/nano-banana:xxxxxxxxxxxxxxxx".'
-  );
-}
+const replicateClient = new Replicate({ auth: replicateToken });
 
 export async function POST(request: NextRequest) {
   try {
+    const supabase = createRouteHandlerClient({ cookies });
+    const {
+      data: { user },
+      error: userError
+    } = await supabase.auth.getUser();
+
+    if (userError) {
+      throw userError;
+    }
+
+    if (!user) {
+      return NextResponse.json({ message: 'Authentification requise.' }, { status: 401 });
+    }
+
     const supabaseAdmin = createSupabaseAdminClient();
 
     const formData = await request.formData();
@@ -59,37 +71,24 @@ export async function POST(request: NextRequest) {
       data: { publicUrl: inputPublicUrl }
     } = supabaseAdmin.storage.from(inputBucket).getPublicUrl(inputPath);
 
-    const prediction = await createPrediction({
-      modelId,
-      modelVersion,
-      input: {
-        image: inputPublicUrl,
-        prompt
+    const replicateOutput = await replicateClient.run(
+      replicateModel,
+      {
+        input: {
+          prompt,
+          image_input: [inputPublicUrl],
+          image: inputPublicUrl
+        }
       }
-    });
+    );
 
-    const finalPrediction = await waitForPrediction(prediction.id);
-    if (finalPrediction.status !== 'succeeded') {
-      throw new Error(finalPrediction.error ?? 'La génération Replicate a échoué.');
-    }
-
-    const generatedUrl = extractImageUrl(finalPrediction.output);
-    if (!generatedUrl) {
-      throw new Error('Impossible de récupérer le lien de l’image générée par Replicate.');
-    }
-
-    const generatedImageResponse = await fetch(generatedUrl);
-    if (!generatedImageResponse.ok) {
-      throw new Error(`Téléchargement de l’image générée échoué : ${generatedImageResponse.statusText}`);
-    }
-
-    const generatedBuffer = Buffer.from(await generatedImageResponse.arrayBuffer());
+    const { buffer: generatedBuffer, contentType } = await normaliseReplicateOutput(replicateOutput);
     const outputPath = `results/${randomUUID()}.png`;
 
     const { error: uploadOutputError } = await supabaseAdmin.storage
       .from(outputBucket)
       .upload(outputPath, generatedBuffer, {
-        contentType: generatedImageResponse.headers.get('content-type') ?? 'image/png',
+        contentType: contentType ?? 'image/png',
         cacheControl: '3600',
         upsert: false
       });
@@ -102,144 +101,90 @@ export async function POST(request: NextRequest) {
       data: { publicUrl: outputPublicUrl }
     } = supabaseAdmin.storage.from(outputBucket).getPublicUrl(outputPath);
 
-    await supabaseAdmin.from('projects').insert({
+    const { error: insertError } = await supabaseAdmin.from('projects').insert({
       input_image_url: inputPublicUrl,
       output_image_url: outputPublicUrl,
       prompt,
-      status: 'completed'
+      status: 'completed',
+      user_id: user.id
     });
+
+    if (insertError) {
+      throw insertError;
+    }
 
     return NextResponse.json({ imageUrl: outputPublicUrl });
   } catch (error) {
     console.error('[generate] error', error);
-    return NextResponse.json(
-      {
-        message:
-          error instanceof Error
-            ? error.message
-            : 'Une erreur interne est survenue pendant la génération.'
-      },
-      { status: 500 }
-    );
+    const message =
+      error instanceof Error
+        ? error.message
+        : typeof error === 'object' && error && 'message' in error
+        ? String((error as { message?: unknown }).message)
+        : 'Une erreur interne est survenue pendant la génération.';
+    return NextResponse.json({ message }, { status: 500 });
   }
 }
 
-type ReplicateResult =
-  | string
-  | string[]
-  | { [key: string]: unknown }
-  | Array<{ [key: string]: unknown }>
-  | null
-  | undefined;
-
-interface ReplicatePrediction {
-  id: string;
-  status: 'starting' | 'processing' | 'succeeded' | 'failed' | 'canceled';
-  output: ReplicateResult;
-  error?: string | null;
-}
-
-async function createPrediction({
-  modelId,
-  modelVersion,
-  input
-}: {
-  modelId: string;
-  modelVersion: string;
-  input: Record<string, unknown>;
-}): Promise<ReplicatePrediction> {
-  const response = await fetch(
-    `https://api.replicate.com/v1/models/${modelId}/versions/${modelVersion}/predictions`,
-    {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${replicateToken}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        input
-      })
-    }
-  );
-
-  if (!response.ok) {
-    const errorPayload = await response.json().catch(() => ({}));
-    throw new Error(errorPayload?.detail ?? 'Impossible de créer la prédiction Replicate.');
+async function normaliseReplicateOutput(
+  output: unknown
+): Promise<{ buffer: Buffer; contentType?: string | null }> {
+  if (!output) {
+    throw new Error('Réponse vide reçue de Replicate.');
   }
 
-  return (await response.json()) as ReplicatePrediction;
-}
-
-async function waitForPrediction(id: string): Promise<ReplicatePrediction> {
-  const poll = async (): Promise<ReplicatePrediction> => {
-    const response = await fetch(`https://api.replicate.com/v1/predictions/${id}`, {
-      headers: {
-        Authorization: `Bearer ${replicateToken}`,
-        'Content-Type': 'application/json'
+  // Handle modern output object with helper methods.
+  if (typeof output === 'object') {
+    if (typeof (output as { url?: () => unknown }).url === 'function') {
+      const result = (output as { url: () => unknown }).url();
+      if (result && typeof (result as Promise<unknown>).then === 'function') {
+        const resolvedUrl = (await result) as unknown;
+        return downloadToBuffer(String(resolvedUrl));
       }
-    });
-
-    if (!response.ok) {
-      const errorPayload = await response.json().catch(() => ({}));
-      throw new Error(errorPayload?.detail ?? 'Échec de récupération de la prédiction Replicate.');
+      return downloadToBuffer(String(result));
     }
 
-    return (await response.json()) as ReplicatePrediction;
-  };
+    if (typeof Blob !== 'undefined' && output instanceof Blob) {
+      const arrayBuffer = await output.arrayBuffer();
+      return {
+        buffer: Buffer.from(arrayBuffer),
+        contentType: output.type ?? 'image/png'
+      };
+    }
 
-  let prediction = await poll();
-  const terminalStates = new Set(['succeeded', 'failed', 'canceled']);
-
-  while (!terminalStates.has(prediction.status)) {
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    prediction = await poll();
-  }
-
-  return prediction;
-}
-
-function extractImageUrl(result: ReplicateResult): string | null {
-  if (!result) {
-    return null;
-  }
-
-  if (typeof result === 'string') {
-    return result;
-  }
-
-  if (Array.isArray(result)) {
-    for (const item of result) {
-      if (typeof item === 'string') {
-        return item;
-      }
-      if (item && typeof item === 'object') {
-        const url = findUrlInObject(item);
-        if (url) {
-          return url;
+    if (Array.isArray(output)) {
+      for (const entry of output) {
+        try {
+          return await normaliseReplicateOutput(entry);
+        } catch {
+          // continue until we find a valid entry
         }
       }
     }
   }
 
-  if (typeof result === 'object') {
-    return findUrlInObject(result as Record<string, unknown>);
+  if (typeof output === 'string') {
+    return downloadToBuffer(output);
   }
 
-  return null;
+  if (output instanceof ArrayBuffer) {
+    return { buffer: Buffer.from(output) };
+  }
+
+  if (ArrayBuffer.isView(output)) {
+    return { buffer: Buffer.from(output.buffer) };
+  }
+
+  throw new Error('Format de sortie Replicate non pris en charge.');
 }
 
-function findUrlInObject(value: Record<string, unknown>): string | null {
-  for (const key of Object.keys(value)) {
-    const entry = value[key];
-    if (typeof entry === 'string' && entry.startsWith('http')) {
-      return entry;
-    }
-    if (entry && typeof entry === 'object') {
-      const nested = extractImageUrl(entry as ReplicateResult);
-      if (nested) {
-        return nested;
-      }
-    }
+async function downloadToBuffer(url: string): Promise<{ buffer: Buffer; contentType?: string | null }> {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Téléchargement de la sortie Replicate échoué : ${response.statusText}`);
   }
-  return null;
+  return {
+    buffer: Buffer.from(await response.arrayBuffer()),
+    contentType: response.headers.get('content-type')
+  };
 }

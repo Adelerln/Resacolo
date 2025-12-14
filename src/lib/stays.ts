@@ -10,6 +10,7 @@ import type { Stay, StayAudience, StayCategory, StayDuration, StayFilters as Sta
 type StayPeriod = StayFiltersMeta['periods'][number];
 type StayTransport = StayFiltersMeta['transport'][number];
 
+const USE_SAMPLE_STAYS = process.env.USE_SAMPLE_STAYS === 'true';
 const OPENAI_MODEL = 'gpt-4.1';
 
 const StayJsonSchema = {
@@ -235,7 +236,21 @@ async function fetchOrganizerHtml(url: string) {
   return response.text();
 }
 
+function loadSampleStays(): Stay[] {
+  const fallback = StayCollectionSchema.parse(sampleData);
+  return fallback.stays.map((stay) =>
+    normalisePayload({
+      ...stay,
+      updatedAt: stay.updatedAt || new Date().toISOString()
+    })
+  );
+}
+
 async function generateAllStays(): Promise<Stay[]> {
+  if (USE_SAMPLE_STAYS) {
+    return loadSampleStays();
+  }
+
   try {
     const results = await Promise.allSettled(
       ORGANIZERS.map(async (organizer) => {
@@ -249,25 +264,13 @@ async function generateAllStays(): Promise<Stay[]> {
       .map((stay) => ({ ...stay, updatedAt: new Date().toISOString() }));
 
     if (!stays.length) {
-      const fallback = StayCollectionSchema.parse(sampleData);
-      return fallback.stays.map((stay) =>
-        normalisePayload({
-          ...stay,
-          updatedAt: stay.updatedAt || new Date().toISOString()
-        })
-      );
+      return loadSampleStays();
     }
 
     return stays;
   } catch (error) {
     console.error('Erreur durant la génération des séjours', error);
-    const fallback = StayCollectionSchema.parse(sampleData);
-    return fallback.stays.map((stay) =>
-      normalisePayload({
-        ...stay,
-        updatedAt: stay.updatedAt || new Date().toISOString()
-      })
-    );
+    return loadSampleStays();
   }
 }
 

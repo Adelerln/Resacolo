@@ -1,0 +1,384 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TenantType {
+  PARTNER
+  ORGANIZER
+  INTERNAL
+}
+
+enum MembershipRole {
+  PARTNER_ADMIN
+  PARTNER_AGENT
+  ORGANIZER_ADMIN
+  ORGANIZER_AGENT
+  PLATFORM_ADMIN
+  SUPPORT
+}
+
+enum StayStatus {
+  DRAFT
+  PENDING
+  PUBLISHED
+  ARCHIVED
+}
+
+enum SessionStatus {
+  OPEN
+  NEAR_FULL
+  CLOSED
+}
+
+enum AssortmentStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum AssortmentItemType {
+  STAY
+  ORGANIZER
+  THEME
+  TAG
+}
+
+enum RequestStageScope {
+  GLOBAL
+  PARTNER
+  ORGANIZER
+}
+
+model User {
+  id           String         @id @default(cuid())
+  email        String         @unique
+  passwordHash String?
+  name         String?
+  status       String?
+  lastLoginAt  DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  memberships  TenantUser[]
+  notifications Notification[]
+  auditLogs    AuditLog[]     @relation("AuditLogActor")
+  requestEvents RequestEvent[] @relation("RequestEventActor")
+}
+
+model Tenant {
+  id               String             @id @default(cuid())
+  type             TenantType
+  name             String
+  slug             String             @unique
+  status           String?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  memberships      TenantUser[]
+  partnerConfig    PartnerConfig?
+  organizerProfile OrganizerProfile?
+  stays            Stay[]
+  partnerRequests  Request[]          @relation("PartnerRequests")
+  assortments      Assortment[]
+  auditLogs        AuditLog[]
+}
+
+model TenantUser {
+  id        String          @id @default(cuid())
+  userId    String
+  tenantId  String?
+  role      MembershipRole
+  createdAt DateTime        @default(now())
+  user      User            @relation(fields: [userId], references: [id])
+  tenant    Tenant?         @relation(fields: [tenantId], references: [id])
+
+  @@index([userId])
+  @@index([tenantId])
+}
+
+model Season {
+  id        String   @id @default(cuid())
+  name      String
+  startsAt  DateTime
+  endsAt    DateTime
+  status    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  stays     Stay[]
+  sessions  StaySession[]
+  requests  Request[]
+  assortments Assortment[]
+  performanceDaily PerformanceDaily[]
+
+  @@index([startsAt, endsAt])
+}
+
+model PartnerConfig {
+  id                   String   @id @default(cuid())
+  tenantId             String   @unique
+  brandName            String?
+  logoUrl              String?
+  colorsJson           Json?
+  homepageHtml         String?
+  defaultFiltersJson   Json?
+  eligibilityRulesJson Json?
+  subsidiesJson        Json?
+  codeRulesJson        Json?
+  tenant               Tenant   @relation(fields: [tenantId], references: [id])
+}
+
+model OrganizerProfile {
+  id           String   @id @default(cuid())
+  tenantId     String   @unique
+  description  String?
+  approvalsJson Json?
+  contactsJson Json?
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+}
+
+model Stay {
+  id                String        @id @default(cuid())
+  organizerTenantId String
+  seasonId          String
+  title             String
+  status            StayStatus    @default(DRAFT)
+  description       String?
+  ageMin            Int?
+  ageMax            Int?
+  location          String?
+  themesJson        Json?
+  tagsJson          Json?
+  qualityScore      Int           @default(0)
+  qualityWarningsJson Json?
+  createdBy         String?
+  updatedBy         String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  organizerTenant   Tenant        @relation(fields: [organizerTenantId], references: [id])
+  season            Season        @relation(fields: [seasonId], references: [id])
+  sessions          StaySession[]
+  options           StayOption[]
+  media             StayMedia[]
+  taxonomies        StayTaxonomy[]
+  requests          Request[]
+  performanceDaily  PerformanceDaily[]
+
+  @@index([organizerTenantId, seasonId])
+}
+
+model StaySession {
+  id               String        @id @default(cuid())
+  stayId           String
+  seasonId         String
+  startDate        DateTime
+  endDate          DateTime
+  capacityTotal    Int
+  capacityReserved Int           @default(0)
+  status           SessionStatus @default(OPEN)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  stay             Stay          @relation(fields: [stayId], references: [id])
+  season           Season        @relation(fields: [seasonId], references: [id])
+  prices           StayPrice[]
+  requests         Request[]
+  performanceDaily PerformanceDaily[]
+
+  @@index([stayId, seasonId])
+  @@index([startDate, endDate])
+}
+
+model StayPrice {
+  id            String   @id @default(cuid())
+  sessionId     String
+  amountCents   Int
+  currency      String   @default("EUR")
+  priceType     String?
+  conditionsJson Json?
+  session       StaySession @relation(fields: [sessionId], references: [id])
+
+  @@index([sessionId])
+}
+
+model StayOption {
+  id          String   @id @default(cuid())
+  stayId      String
+  label       String
+  amountCents Int
+  required    Boolean  @default(false)
+  stay        Stay     @relation(fields: [stayId], references: [id])
+
+  @@index([stayId])
+}
+
+model StayMedia {
+  id        String   @id @default(cuid())
+  stayId    String
+  url       String
+  type      String?
+  position  Int      @default(0)
+  stay      Stay     @relation(fields: [stayId], references: [id])
+
+  @@index([stayId])
+}
+
+model RequestStage {
+  id        String           @id @default(cuid())
+  key       String
+  label     String
+  order     Int
+  scope     RequestStageScope @default(GLOBAL)
+  tenantId  String?
+  isTerminal Boolean         @default(false)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+  requests  Request[]        @relation("CurrentStage")
+
+  @@index([scope, tenantId])
+  @@unique([scope, tenantId, key])
+}
+
+model Request {
+  id               String        @id @default(cuid())
+  stayId           String
+  sessionId        String
+  seasonId         String
+  partnerTenantId  String
+  currentStageId   String
+  applicantJson    Json?
+  notes            String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  stay             Stay          @relation(fields: [stayId], references: [id])
+  session          StaySession   @relation(fields: [sessionId], references: [id])
+  season           Season        @relation(fields: [seasonId], references: [id])
+  partnerTenant    Tenant        @relation("PartnerRequests", fields: [partnerTenantId], references: [id])
+  currentStage     RequestStage  @relation("CurrentStage", fields: [currentStageId], references: [id])
+  events           RequestEvent[]
+  performanceDaily PerformanceDaily[]
+
+  @@index([partnerTenantId, seasonId])
+  @@index([sessionId])
+}
+
+model RequestEvent {
+  id            String   @id @default(cuid())
+  requestId     String
+  seasonId      String
+  eventType     String
+  oldStageId    String?
+  newStageId    String?
+  actorUserId   String?
+  payloadJson   Json?
+  createdAt     DateTime @default(now())
+  request       Request  @relation(fields: [requestId], references: [id])
+  actor         User?    @relation("RequestEventActor", fields: [actorUserId], references: [id])
+  season        Season   @relation(fields: [seasonId], references: [id])
+
+  @@index([requestId])
+  @@index([seasonId])
+}
+
+model Assortment {
+  id               String            @id @default(cuid())
+  partnerTenantId  String
+  seasonId         String
+  name             String
+  status           AssortmentStatus  @default(ACTIVE)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  partnerTenant    Tenant            @relation(fields: [partnerTenantId], references: [id])
+  season           Season            @relation(fields: [seasonId], references: [id])
+  items            AssortmentItem[]
+
+  @@index([partnerTenantId, seasonId])
+}
+
+model AssortmentItem {
+  id            String             @id @default(cuid())
+  assortmentId  String
+  type          AssortmentItemType
+  targetRef     String
+  include       Boolean            @default(true)
+  priority      Int                @default(0)
+  assortment    Assortment         @relation(fields: [assortmentId], references: [id])
+
+  @@index([assortmentId])
+  @@index([type, targetRef])
+}
+
+model Taxonomy {
+  id        String   @id @default(cuid())
+  type      String
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  stays     StayTaxonomy[]
+}
+
+model StayTaxonomy {
+  stayId      String
+  taxonomyId  String
+  stay        Stay     @relation(fields: [stayId], references: [id])
+  taxonomy    Taxonomy @relation(fields: [taxonomyId], references: [id])
+
+  @@id([stayId, taxonomyId])
+}
+
+model PerformanceDaily {
+  id                String   @id @default(cuid())
+  date              DateTime
+  seasonId          String
+  stayId            String?
+  sessionId         String?
+  partnerTenantId   String?
+  organizerTenantId String?
+  requestsCount     Int      @default(0)
+  qualifiedCount    Int      @default(0)
+  transmittedCount  Int      @default(0)
+  finalizedCount    Int      @default(0)
+  lostCount         Int      @default(0)
+  capacityTotal     Int      @default(0)
+  capacityReserved  Int      @default(0)
+  season            Season   @relation(fields: [seasonId], references: [id])
+  stay              Stay?    @relation(fields: [stayId], references: [id])
+  session           StaySession? @relation(fields: [sessionId], references: [id])
+
+  @@index([date, seasonId])
+  @@index([stayId])
+  @@index([sessionId])
+  @@index([partnerTenantId])
+  @@index([organizerTenantId])
+  @@unique([date, seasonId, stayId, sessionId, partnerTenantId, organizerTenantId])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String
+  payloadJson Json?
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  actorUserId String?
+  tenantId    String?
+  seasonId    String?
+  entityType  String
+  entityId    String
+  action      String
+  diffJson    Json?
+  createdAt   DateTime @default(now())
+  actor       User?    @relation("AuditLogActor", fields: [actorUserId], references: [id])
+  tenant      Tenant?  @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@index([seasonId])
+  @@index([entityType, entityId])
+}

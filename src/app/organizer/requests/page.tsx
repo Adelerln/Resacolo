@@ -1,16 +1,17 @@
-import { prisma } from '@/lib/db';
 import { requireRole } from '@/lib/auth/require';
+import { mockRequests, mockSessions, mockStages, mockStays } from '@/lib/mocks';
 
 export default async function OrganizerRequestsPage() {
   const session = requireRole('ORGANISATEUR');
-  const organizerTenantId = session.tenantId;
-
-  const requests = organizerTenantId
-    ? await prisma.request.findMany({
-        where: { stay: { organizerTenantId } },
-        include: { stay: true, session: true, currentStage: true, partnerTenant: true },
-        orderBy: { createdAt: 'desc' }
-      })
+  const useMock = process.env.MOCK_UI === '1';
+  const requests = useMock
+    ? mockRequests.map((request) => ({
+        ...request,
+        stay: mockStays.find((s) => s.id === request.stayId),
+        session: mockSessions.find((s) => s.id === request.sessionId),
+        currentStage: mockStages.find((s) => s.id === request.currentStageId),
+        partnerTenant: { name: 'CSE Horizon' }
+      }))
     : [];
 
   return (
@@ -29,9 +30,9 @@ export default async function OrganizerRequestsPage() {
           <tbody>
             {requests.map((request) => (
               <tr key={request.id} className="border-t border-slate-100">
-                <td className="px-4 py-3 font-medium text-slate-900">{request.stay.title}</td>
+                <td className="px-4 py-3 font-medium text-slate-900">{request.stay?.title ?? '-'}</td>
                 <td className="px-4 py-3 text-slate-600">
-                  {request.session.startDate.toLocaleDateString('fr-FR')}
+                  {request.session?.startDate.toLocaleDateString('fr-FR')}
                 </td>
                 <td className="px-4 py-3 text-slate-600">{request.partnerTenant?.name}</td>
                 <td className="px-4 py-3 text-slate-600">{request.currentStage?.label}</td>

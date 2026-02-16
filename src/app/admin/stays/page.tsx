@@ -1,20 +1,16 @@
 import { redirect } from 'next/navigation';
-import { prisma } from '@/lib/db';
 import { requireRole } from '@/lib/auth/require';
+import { mockOrganizerTenant, mockSeasons, mockStays } from '@/lib/mocks';
 
 export default async function AdminStaysPage() {
   requireRole('ADMIN');
-  const stays = await prisma.stay.findMany({
-    include: { organizerTenant: true, season: true },
-    orderBy: { createdAt: 'desc' }
-  });
+  const stays = mockStays;
 
   async function updateStatus(formData: FormData) {
     'use server';
     const stayId = String(formData.get('stayId') ?? '');
     const status = String(formData.get('status') ?? 'DRAFT');
     if (!stayId) return;
-    await prisma.stay.update({ where: { id: stayId }, data: { status } });
     redirect('/admin/stays');
   }
 
@@ -36,8 +32,10 @@ export default async function AdminStaysPage() {
             {stays.map((stay) => (
               <tr key={stay.id} className="border-t border-slate-100">
                 <td className="px-4 py-3 font-medium text-slate-900">{stay.title}</td>
-                <td className="px-4 py-3 text-slate-600">{stay.organizerTenant?.name}</td>
-                <td className="px-4 py-3 text-slate-600">{stay.season?.name}</td>
+                <td className="px-4 py-3 text-slate-600">{mockOrganizerTenant.name}</td>
+                <td className="px-4 py-3 text-slate-600">
+                  {mockSeasons.find((s) => s.id === stay.seasonId)?.name}
+                </td>
                 <td className="px-4 py-3 text-slate-600">{stay.status}</td>
                 <td className="px-4 py-3 text-right">
                   <form action={updateStatus} className="flex items-center justify-end gap-2">

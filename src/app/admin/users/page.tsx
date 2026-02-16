@@ -1,15 +1,11 @@
 import { redirect } from 'next/navigation';
-import { prisma } from '@/lib/db';
 import { requireRole } from '@/lib/auth/require';
-import { hashPassword } from '@/lib/auth/password';
+import { mockUsers } from '@/lib/mocks';
 
 export default async function AdminUsersPage() {
   requireRole('ADMIN');
-  const users = await prisma.user.findMany({
-    include: { memberships: { include: { tenant: true } } },
-    orderBy: { createdAt: 'desc' }
-  });
-  const tenants = await prisma.tenant.findMany({ orderBy: { name: 'asc' } });
+  const users = mockUsers;
+  const tenants = [];
 
   async function createUser(formData: FormData) {
     'use server';
@@ -20,44 +16,6 @@ export default async function AdminUsersPage() {
     const tenantId = String(formData.get('tenantId') ?? '');
 
     if (!email || !password || !role) return;
-
-    const user = await prisma.user.create({
-      data: {
-        name,
-        email,
-        passwordHash: hashPassword(password)
-      }
-    });
-
-    if (role === 'ADMIN') {
-      await prisma.tenantUser.create({
-        data: {
-          userId: user.id,
-          role: 'PLATFORM_ADMIN',
-          tenantId: null
-        }
-      });
-    }
-
-    if (role === 'ORGANISATEUR' && tenantId) {
-      await prisma.tenantUser.create({
-        data: {
-          userId: user.id,
-          role: 'ORGANIZER_ADMIN',
-          tenantId
-        }
-      });
-    }
-
-    if (role === 'PARTENAIRE' && tenantId) {
-      await prisma.tenantUser.create({
-        data: {
-          userId: user.id,
-          role: 'PARTNER_ADMIN',
-          tenantId
-        }
-      });
-    }
 
     redirect('/admin/users');
   }
@@ -124,7 +82,7 @@ export default async function AdminUsersPage() {
                 <td className="px-4 py-3 font-medium text-slate-900">{user.name ?? '-'}</td>
                 <td className="px-4 py-3 text-slate-600">{user.email}</td>
                 <td className="px-4 py-3 text-slate-600">
-                  {user.memberships.map((m) => `${m.role}${m.tenant ? ` (${m.tenant.name})` : ''}`).join(', ')}
+                  {user.roles.join(', ')}
                 </td>
               </tr>
             ))}

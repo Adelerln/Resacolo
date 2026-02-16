@@ -2,6 +2,29 @@ import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth/session';
 
 export default function LoginPage() {
+  if (process.env.MOCK_UI === '1') {
+    return (
+      <div className="min-h-screen bg-slate-50 px-6 py-16">
+        <div className="mx-auto max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+          <h1 className="text-2xl font-semibold text-slate-900">Preview UI</h1>
+          <p className="mt-2 text-sm text-slate-600">
+            Mode maquette actif. Choisis un espace pour visualiser les ecrans.
+          </p>
+          <div className="mt-6 grid gap-3">
+            <a href="/admin" className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white">
+              Ouvrir Admin
+            </a>
+            <a href="/organizer" className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">
+              Ouvrir Organisateur
+            </a>
+            <a href="/partner" className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-white">
+              Ouvrir Partenaire
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  }
   const session = getSession();
   if (session) {
     if (session.role === 'ADMIN') redirect('/admin');

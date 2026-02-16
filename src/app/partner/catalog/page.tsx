@@ -1,16 +1,12 @@
 import { redirect } from 'next/navigation';
-import { prisma } from '@/lib/db';
 import { requireRole } from '@/lib/auth/require';
-import { AssortmentService } from '@/lib/domain/services/assortmentService';
-import { RequestPipelineService } from '@/lib/domain/services/requestPipelineService';
+import { mockSeasons, mockSessions, mockStays } from '@/lib/mocks';
 
 export default async function PartnerCatalogPage({ searchParams }: { searchParams?: { q?: string } }) {
   const session = requireRole('PARTENAIRE');
   const partnerTenantId = session.tenantId;
-
-  const season = await prisma.season.findFirst({
-    orderBy: { startsAt: 'desc' }
-  });
+  const useMock = process.env.MOCK_UI === '1';
+  const season = useMock ? mockSeasons[0] : null;
 
   if (!partnerTenantId || !season) {
     return (
@@ -22,47 +18,16 @@ export default async function PartnerCatalogPage({ searchParams }: { searchParam
   }
 
   const q = (searchParams?.q ?? '').toLowerCase();
-  const assortmentService = new AssortmentService();
-  const stays = await assortmentService.listCatalogStays(partnerTenantId, season.id);
+  const stays = useMock ? mockStays.filter((stay) => stay.status === 'PUBLISHED') : [];
   const filtered = q ? stays.filter((stay) => stay.title.toLowerCase().includes(q)) : stays;
 
-  const sessions = await prisma.staySession.findMany({
-    where: { stayId: { in: filtered.map((s) => s.id) } },
-    orderBy: { startDate: 'asc' }
-  });
+  const sessions = useMock ? mockSessions.filter((s) => filtered.some((stay) => stay.id === s.stayId)) : [];
 
   async function createRequest(formData: FormData) {
     'use server';
     const stayId = String(formData.get('stayId') ?? '');
     const sessionId = String(formData.get('sessionId') ?? '');
     if (!stayId || !sessionId) return;
-
-    const pipeline = new RequestPipelineService();
-    const stages = await pipeline.listStages('GLOBAL');
-    const currentStageId = stages[0]?.id;
-    if (!currentStageId) return;
-
-    await prisma.$transaction(async (tx) => {
-      const request = await tx.request.create({
-        data: {
-          stayId,
-          sessionId,
-          seasonId: season.id,
-          partnerTenantId,
-          currentStageId
-        }
-      });
-
-      await tx.requestEvent.create({
-        data: {
-          requestId: request.id,
-          seasonId: season.id,
-          eventType: 'CREATED',
-          newStageId: currentStageId
-        }
-      });
-    });
-
     redirect('/partner/requests');
   }
 

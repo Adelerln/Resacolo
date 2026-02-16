@@ -1,24 +1,23 @@
 import { redirect } from 'next/navigation';
-import { prisma } from '@/lib/db';
 import { requireRole } from '@/lib/auth/require';
-import { RequestPipelineService } from '@/lib/domain/services/requestPipelineService';
+import { mockRequests, mockSessions, mockStages, mockStays, mockPartnerTenant } from '@/lib/mocks';
 
 export default async function AdminRequestsPage() {
   requireRole('ADMIN');
-  const requests = await prisma.request.findMany({
-    include: { stay: true, session: true, currentStage: true, partnerTenant: true },
-    orderBy: { createdAt: 'desc' }
-  });
-
-  const stages = await new RequestPipelineService().listStages('GLOBAL');
+  const requests = mockRequests.map((request) => ({
+    ...request,
+    stay: mockStays.find((s) => s.id === request.stayId),
+    session: mockSessions.find((s) => s.id === request.sessionId),
+    currentStage: mockStages.find((s) => s.id === request.currentStageId),
+    partnerTenant: mockPartnerTenant
+  }));
+  const stages = mockStages;
 
   async function updateStage(formData: FormData) {
     'use server';
     const requestId = String(formData.get('requestId'));
     const stageId = String(formData.get('stageId'));
     if (!requestId || !stageId) return;
-    const pipeline = new RequestPipelineService();
-    await pipeline.setStage(requestId, stageId);
     redirect('/admin/requests');
   }
 
@@ -39,9 +38,9 @@ export default async function AdminRequestsPage() {
           <tbody>
             {requests.map((request) => (
               <tr key={request.id} className="border-t border-slate-100">
-                <td className="px-4 py-3 font-medium text-slate-900">{request.stay.title}</td>
+                <td className="px-4 py-3 font-medium text-slate-900">{request.stay?.title ?? '-'}</td>
                 <td className="px-4 py-3 text-slate-600">
-                  {request.session.startDate.toLocaleDateString('fr-FR')}
+                  {request.session?.startDate.toLocaleDateString('fr-FR')}
                 </td>
                 <td className="px-4 py-3 text-slate-600">{request.partnerTenant?.name}</td>
                 <td className="px-4 py-3 text-slate-600">{request.currentStage?.label}</td>

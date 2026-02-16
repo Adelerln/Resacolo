@@ -1,56 +1,42 @@
 import { redirect } from 'next/navigation';
-import { prisma } from '@/lib/db';
 import { requireRole } from '@/lib/auth/require';
-import { StayService } from '@/lib/domain/services/stayService';
-import { SessionService } from '@/lib/domain/services/sessionService';
-import { RequestPipelineService } from '@/lib/domain/services/requestPipelineService';
+import { mockRequests, mockSeasons, mockSessions, mockStages, mockStays } from '@/lib/mocks';
 
 type PageProps = { params: { id: string } };
 
 export default async function OrganizerStayDetailPage({ params }: PageProps) {
   const session = requireRole('ORGANISATEUR');
-  const stay = await prisma.stay.findUnique({
-    where: { id: params.id },
-    include: {
-      season: true,
-      sessions: true,
-      requests: { include: { currentStage: true, session: true, partnerTenant: true } }
-    }
-  });
+  const useMock = process.env.MOCK_UI === '1';
+  const stay = useMock ? mockStays.find((item) => item.id === params.id) : null;
 
   if (!stay || stay.organizerTenantId !== session.tenantId) {
     redirect('/organizer/stays');
   }
 
-  const stages = await new RequestPipelineService().listStages('GLOBAL');
+  const stages = useMock ? mockStages : [];
+  const staySessions = useMock ? mockSessions.filter((s) => s.stayId === stay.id) : [];
+  const stayRequests = useMock
+    ? mockRequests
+        .filter((r) => r.stayId === stay.id)
+        .map((r) => ({
+          ...r,
+          currentStage: stages.find((s) => s.id === r.currentStageId),
+          session: staySessions.find((s) => s.id === r.sessionId),
+          partnerTenant: { name: 'CSE Horizon' }
+        }))
+    : [];
 
   async function updateStay(formData: FormData) {
     'use server';
-    const service = new StayService();
-    await service.update(params.id, {
-      title: String(formData.get('title') ?? ''),
-      description: String(formData.get('description') ?? ''),
-      ageMin: Number(formData.get('ageMin') ?? 0) || undefined,
-      ageMax: Number(formData.get('ageMax') ?? 0) || undefined,
-      location: String(formData.get('location') ?? '')
-    });
     redirect(`/organizer/stays/${params.id}`);
   }
 
   async function addSession(formData: FormData) {
     'use server';
-    const service = new SessionService();
     const startDate = String(formData.get('startDate') ?? '');
     const endDate = String(formData.get('endDate') ?? '');
     const capacityTotal = Number(formData.get('capacityTotal') ?? 0);
     if (!startDate || !endDate || !capacityTotal) return;
-    await service.create({
-      stayId: params.id,
-      seasonId: stay.seasonId,
-      startDate: new Date(startDate),
-      endDate: new Date(endDate),
-      capacityTotal
-    });
     redirect(`/organizer/stays/${params.id}`);
   }
 
@@ -59,8 +45,6 @@ export default async function OrganizerStayDetailPage({ params }: PageProps) {
     const requestId = String(formData.get('requestId'));
     const stageId = String(formData.get('stageId'));
     if (!requestId || !stageId) return;
-    const pipeline = new RequestPipelineService();
-    await pipeline.setStage(requestId, stageId, session.userId);
     redirect(`/organizer/stays/${params.id}`);
   }
 
@@ -69,7 +53,9 @@ export default async function OrganizerStayDetailPage({ params }: PageProps) {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">{stay.title}</h1>
-          <p className="text-sm text-slate-600">Saison: {stay.season?.name}</p>
+          <p className="text-sm text-slate-600">
+            Saison: {useMock ? mockSeasons.find((s) => s.id === stay.seasonId)?.name : '-'}
+          </p>
         </div>
         <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
           {stay.status}
@@ -132,7 +118,7 @@ export default async function OrganizerStayDetailPage({ params }: PageProps) {
         <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
           <h2 className="text-lg font-semibold text-slate-900">Sessions</h2>
           <ul className="space-y-2 text-sm text-slate-600">
-            {stay.sessions.map((sessionItem) => (
+            {staySessions.map((sessionItem) => (
               <li key={sessionItem.id} className="flex items-center justify-between">
                 <span>
                   {sessionItem.startDate.toLocaleDateString('fr-FR')} -{' '}
@@ -143,7 +129,7 @@ export default async function OrganizerStayDetailPage({ params }: PageProps) {
                 </span>
               </li>
             ))}
-            {stay.sessions.length === 0 && <li>Aucune session.</li>}
+            {staySessions.length === 0 && <li>Aucune session.</li>}
           </ul>
           <form action={addSession} className="space-y-3 border-t border-slate-100 pt-4">
             <div className="grid gap-3 md:grid-cols-3">
@@ -169,7 +155,7 @@ export default async function OrganizerStayDetailPage({ params }: PageProps) {
         <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
           <h2 className="text-lg font-semibold text-slate-900">Demandes liees</h2>
           <div className="space-y-3 text-sm text-slate-600">
-            {stay.requests.map((request) => (
+            {stayRequests.map((request) => (
               <div key={request.id} className="rounded-lg border border-slate-100 p-3">
                 <div className="flex items-center justify-between">
                   <div>
@@ -198,7 +184,7 @@ export default async function OrganizerStayDetailPage({ params }: PageProps) {
                 </div>
               </div>
             ))}
-            {stay.requests.length === 0 && <p>Aucune demande.</p>}
+            {stayRequests.length === 0 && <p>Aucune demande.</p>}
           </div>
         </div>
       </div>

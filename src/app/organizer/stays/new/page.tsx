@@ -1,12 +1,12 @@
 import { redirect } from 'next/navigation';
-import { prisma } from '@/lib/db';
 import { requireRole } from '@/lib/auth/require';
-import { StayService } from '@/lib/domain/services/stayService';
+import { mockSeasons } from '@/lib/mocks';
 
 export default async function NewStayPage() {
   const session = requireRole('ORGANISATEUR');
   const organizerTenantId = session.tenantId;
-  const seasons = await prisma.season.findMany({ orderBy: { startsAt: 'desc' } });
+  const useMock = process.env.MOCK_UI === '1';
+  const seasons = useMock ? mockSeasons : [];
 
   async function createStay(formData: FormData) {
     'use server';
@@ -21,18 +21,7 @@ export default async function NewStayPage() {
       redirect('/organizer/stays');
     }
 
-    const service = new StayService();
-    const stay = await service.create({
-      organizerTenantId,
-      seasonId,
-      title,
-      description,
-      ageMin: ageMin || undefined,
-      ageMax: ageMax || undefined,
-      location
-    });
-
-    redirect(`/organizer/stays/${stay.id}`);
+    redirect('/organizer/stays');
   }
 
   return (

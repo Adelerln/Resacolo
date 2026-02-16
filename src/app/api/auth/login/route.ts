@@ -1,7 +1,5 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { prisma } from '@/lib/db';
-import { verifyPassword } from '@/lib/auth/password';
 import { setSessionCookie, type AppRole } from '@/lib/auth/session';
 
 export const runtime = 'nodejs';
@@ -28,6 +26,9 @@ function mapRole(memberships: { role: string; tenantId: string | null }[]): {
 }
 
 export async function POST(req: Request) {
+  if (process.env.MOCK_UI === '1') {
+    return NextResponse.redirect(new URL('/admin', req.url));
+  }
   const contentType = req.headers.get('content-type') ?? '';
   const data =
     contentType.includes('application/json')
@@ -35,6 +36,8 @@ export async function POST(req: Request) {
       : Object.fromEntries(await req.formData());
   const input = loginSchema.parse(data);
 
+  const { prisma } = await import('@/lib/db');
+  const { verifyPassword } = await import('@/lib/auth/password');
   const user = await prisma.user.findUnique({
     where: { email: input.email },
     include: { memberships: true }

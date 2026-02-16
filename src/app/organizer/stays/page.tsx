@@ -1,18 +1,13 @@
 import Link from 'next/link';
-import { prisma } from '@/lib/db';
 import { requireRole } from '@/lib/auth/require';
+import { mockSeasons, mockStays } from '@/lib/mocks';
 
 export default async function OrganizerStaysPage() {
   const session = requireRole('ORGANISATEUR');
-  const organizerTenantId = session.tenantId;
+  const useMock = process.env.MOCK_UI === '1';
 
-  const stays = organizerTenantId
-    ? await prisma.stay.findMany({
-        where: { organizerTenantId },
-        orderBy: { createdAt: 'desc' },
-        include: { season: true }
-      })
-    : [];
+  const stays = useMock ? mockStays : [];
+  const seasonsById = new Map(mockSeasons.map((season) => [season.id, season]));
 
   return (
     <div className="space-y-6">
@@ -44,7 +39,9 @@ export default async function OrganizerStaysPage() {
             {stays.map((stay) => (
               <tr key={stay.id} className="border-t border-slate-100">
                 <td className="px-4 py-3 font-medium text-slate-900">{stay.title}</td>
-                <td className="px-4 py-3 text-slate-600">{stay.season?.name}</td>
+                <td className="px-4 py-3 text-slate-600">
+                  {useMock ? seasonsById.get(stay.seasonId)?.name : '-'}
+                </td>
                 <td className="px-4 py-3 text-slate-600">{stay.status}</td>
                 <td className="px-4 py-3 text-slate-600">{stay.qualityScore}%</td>
                 <td className="px-4 py-3 text-right">

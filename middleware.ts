@@ -12,6 +12,9 @@ const rolePaths: Record<string, string> = {
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
+  if (process.env.MOCK_UI === '1') {
+    return NextResponse.next();
+  }
   if (
     pathname.startsWith('/login') ||
     pathname.startsWith('/api/auth') ||

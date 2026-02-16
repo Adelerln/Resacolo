@@ -17,7 +17,7 @@ export default async function AdminUsersPage() {
 
     if (!email || !password || !role) return;
 
-    redirect('/admin/users');
+    redirect('/admin/utilisateurs');
   }
 
   return (
@@ -44,7 +44,7 @@ export default async function AdminUsersPage() {
           <label className="block text-sm font-medium text-slate-700">
             Role
             <select name="role" className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2" required>
-              <option value="">Selectionner</option>
+              <option value="">Sélectionner</option>
               <option value="ADMIN">ADMIN</option>
               <option value="ORGANISATEUR">ORGANISATEUR</option>
               <option value="PARTENAIRE">PARTENAIRE</option>

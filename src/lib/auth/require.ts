@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import { getSession, type AppRole, type SessionPayload } from '@/lib/auth/session';
 
 export function requireRole(role: AppRole): SessionPayload {
-  if (process.env.MOCK_UI === '1') {
+  if (process.env.MOCK_UI === '1' || process.env.DISABLE_AUTH === '1') {
     return {
       userId: 'mock-user',
       email: 'mock@resacolo.com',
@@ -18,7 +18,7 @@ export function requireRole(role: AppRole): SessionPayload {
 }
 
 export function requireAnyRole(): SessionPayload {
-  if (process.env.MOCK_UI === '1') {
+  if (process.env.MOCK_UI === '1' || process.env.DISABLE_AUTH === '1') {
     return {
       userId: 'mock-user',
       email: 'mock@resacolo.com',

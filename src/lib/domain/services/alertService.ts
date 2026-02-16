@@ -27,7 +27,7 @@ export class AlertService {
         alerts.push({
           code: 'NO_REQUESTS_30D',
           level: 'warning',
-          message: 'Sejour sans demande depuis 30 jours.',
+          message: 'Séjour sans demande depuis 30 jours.',
           stayId: stay.id
         });
       }
@@ -47,7 +47,7 @@ export class AlertService {
           alerts.push({
             code: 'SESSION_NEAR_FULL',
             level: 'info',
-            message: 'Session bientot pleine.',
+          message: 'Session bientôt pleine.',
             stayId: stay.id,
             sessionId: session.id
           });

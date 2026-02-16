@@ -1,5 +1,5 @@
 export const mockSeasons = [
-  { id: 'season-ete-2026', name: 'Ete 2026' }
+  { id: 'season-ete-2026', name: 'Été 2026' }
 ];
 
 export const mockOrganizerTenant = { id: 'tenant-org-1', name: 'Alpha Organisateur' };
@@ -16,11 +16,11 @@ export const mockStays = [
     location: 'Alpes',
     ageMin: 12,
     ageMax: 16,
-    description: 'Un sejour sportif pour les ados.'
+    description: 'Un séjour sportif pour les ados.'
   },
   {
     id: 'stay-2',
-    title: 'Stage ocean',
+    title: 'Stage océan',
     status: 'PENDING',
     qualityScore: 62,
     seasonId: 'season-ete-2026',
@@ -28,7 +28,7 @@ export const mockStays = [
     location: 'Biarritz',
     ageMin: 8,
     ageMax: 12,
-    description: 'Surf et ocean.'
+    description: 'Surf et océan.'
   }
 ];
 
@@ -55,10 +55,10 @@ export const mockSessions = [
 
 export const mockStages = [
   { id: 'stage-1', label: 'Nouvelle' },
-  { id: 'stage-2', label: 'Qualifiee' },
+  { id: 'stage-2', label: 'Qualifiée' },
   { id: 'stage-3', label: 'Transmise organisateur' },
   { id: 'stage-4', label: 'En cours' },
-  { id: 'stage-5', label: 'Finalisee' },
+  { id: 'stage-5', label: 'Finalisée' },
   { id: 'stage-6', label: 'Perdue' }
 ];
 

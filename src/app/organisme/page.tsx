@@ -7,7 +7,7 @@ export default function OrganizerHome() {
     <div className="space-y-4">
       <h1 className="text-2xl font-semibold text-slate-900">Bonjour {session.name ?? 'Organisateur'}</h1>
       <p className="text-sm text-slate-600">
-        Gere tes sejours, sessions et demandes.
+        Gère tes séjours, sessions et réservations.
       </p>
     </div>
   );

@@ -6,13 +6,13 @@ type SessionPayload = {
 
 const rolePaths: Record<string, string> = {
   ADMIN: '/admin',
-  ORGANISATEUR: '/organizer',
-  PARTENAIRE: '/partner'
+  ORGANISATEUR: '/organisme',
+  PARTENAIRE: '/partenaire'
 };
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
-  if (process.env.MOCK_UI === '1') {
+  if (process.env.MOCK_UI === '1' || process.env.DISABLE_AUTH === '1') {
     return NextResponse.next();
   }
   if (
@@ -24,7 +24,7 @@ export function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  const protectedPrefixes = ['/admin', '/organizer', '/partner'];
+  const protectedPrefixes = ['/admin', '/organisme', '/partenaire'];
   const isProtected = protectedPrefixes.some((prefix) => pathname.startsWith(prefix));
   if (!isProtected) return NextResponse.next();
 
@@ -67,5 +67,5 @@ function parseSession(token: string): SessionPayload | null {
 }
 
 export const config = {
-  matcher: ['/admin/:path*', '/organizer/:path*', '/partner/:path*', '/login']
+  matcher: ['/admin/:path*', '/organisme/:path*', '/partenaire/:path*', '/login']
 };

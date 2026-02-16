@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { requireRole } from '@/lib/auth/require';
 import { mockSeasons, mockStays } from '@/lib/mocks';
+import { stayStatusLabel } from '@/lib/ui/labels';
 
 export default async function OrganizerStaysPage() {
   const session = requireRole('ORGANISATEUR');
@@ -13,14 +14,14 @@ export default async function OrganizerStaysPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Sejours</h1>
-          <p className="text-sm text-slate-600">Liste des sejours declares.</p>
+          <h1 className="text-2xl font-semibold text-slate-900">Séjours</h1>
+          <p className="text-sm text-slate-600">Liste des séjours déclarés.</p>
         </div>
         <Link
-          href="/organizer/stays/new"
+          href="/organisme/stays/new"
           className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white"
         >
-          Nouveau sejour
+          Nouveau séjour
         </Link>
       </div>
 
@@ -28,10 +29,10 @@ export default async function OrganizerStaysPage() {
         <table className="w-full text-left text-sm">
           <thead className="bg-slate-50 text-xs uppercase text-slate-500">
             <tr>
-              <th className="px-4 py-3">Sejour</th>
+              <th className="px-4 py-3">Séjour</th>
               <th className="px-4 py-3">Saison</th>
               <th className="px-4 py-3">Statut</th>
-              <th className="px-4 py-3">Qualite</th>
+              <th className="px-4 py-3">Qualité</th>
               <th className="px-4 py-3"></th>
             </tr>
           </thead>
@@ -42,10 +43,10 @@ export default async function OrganizerStaysPage() {
                 <td className="px-4 py-3 text-slate-600">
                   {useMock ? seasonsById.get(stay.seasonId)?.name : '-'}
                 </td>
-                <td className="px-4 py-3 text-slate-600">{stay.status}</td>
+                <td className="px-4 py-3 text-slate-600">{stayStatusLabel(stay.status)}</td>
                 <td className="px-4 py-3 text-slate-600">{stay.qualityScore}%</td>
                 <td className="px-4 py-3 text-right">
-                  <Link href={`/organizer/stays/${stay.id}`} className="text-emerald-600">
+                  <Link href={`/organisme/stays/${stay.id}`} className="text-emerald-600">
                     Ouvrir
                   </Link>
                 </td>
@@ -54,7 +55,7 @@ export default async function OrganizerStaysPage() {
             {stays.length === 0 && (
               <tr>
                 <td className="px-4 py-6 text-slate-500" colSpan={5}>
-                  Aucun sejour pour le moment.
+                  Aucun séjour pour le moment.
                 </td>
               </tr>
             )}

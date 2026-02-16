@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { requireRole } from '@/lib/auth/require';
 import { mockRequests, mockSeasons, mockSessions, mockStages, mockStays } from '@/lib/mocks';
+import { sessionStatusLabel, stayStatusLabel } from '@/lib/ui/labels';
 
 type PageProps = { params: { id: string } };
 
@@ -10,7 +11,7 @@ export default async function OrganizerStayDetailPage({ params }: PageProps) {
   const stay = useMock ? mockStays.find((item) => item.id === params.id) : null;
 
   if (!stay || stay.organizerTenantId !== session.tenantId) {
-    redirect('/organizer/stays');
+    redirect('/organisme/stays');
   }
 
   const stages = useMock ? mockStages : [];
@@ -28,7 +29,7 @@ export default async function OrganizerStayDetailPage({ params }: PageProps) {
 
   async function updateStay(formData: FormData) {
     'use server';
-    redirect(`/organizer/stays/${params.id}`);
+    redirect(`/organisme/stays/${params.id}`);
   }
 
   async function addSession(formData: FormData) {
@@ -37,7 +38,7 @@ export default async function OrganizerStayDetailPage({ params }: PageProps) {
     const endDate = String(formData.get('endDate') ?? '');
     const capacityTotal = Number(formData.get('capacityTotal') ?? 0);
     if (!startDate || !endDate || !capacityTotal) return;
-    redirect(`/organizer/stays/${params.id}`);
+    redirect(`/organisme/stays/${params.id}`);
   }
 
   async function updateRequestStage(formData: FormData) {
@@ -45,7 +46,7 @@ export default async function OrganizerStayDetailPage({ params }: PageProps) {
     const requestId = String(formData.get('requestId'));
     const stageId = String(formData.get('stageId'));
     if (!requestId || !stageId) return;
-    redirect(`/organizer/stays/${params.id}`);
+    redirect(`/organisme/stays/${params.id}`);
   }
 
   return (
@@ -58,12 +59,12 @@ export default async function OrganizerStayDetailPage({ params }: PageProps) {
           </p>
         </div>
         <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-          {stay.status}
+          {stayStatusLabel(stay.status)}
         </span>
       </div>
 
       <form action={updateStay} className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
-        <h2 className="text-lg font-semibold text-slate-900">Infos sejour</h2>
+        <h2 className="text-lg font-semibold text-slate-900">Infos séjour</h2>
         <label className="block text-sm font-medium text-slate-700">
           Titre
           <input
@@ -83,7 +84,7 @@ export default async function OrganizerStayDetailPage({ params }: PageProps) {
         </label>
         <div className="grid gap-4 md:grid-cols-2">
           <label className="block text-sm font-medium text-slate-700">
-            Age min
+            Âge min
             <input
               name="ageMin"
               type="number"
@@ -92,7 +93,7 @@ export default async function OrganizerStayDetailPage({ params }: PageProps) {
             />
           </label>
           <label className="block text-sm font-medium text-slate-700">
-            Age max
+            Âge max
             <input
               name="ageMax"
               type="number"
@@ -125,7 +126,8 @@ export default async function OrganizerStayDetailPage({ params }: PageProps) {
                   {sessionItem.endDate.toLocaleDateString('fr-FR')}
                 </span>
                 <span className="text-xs text-slate-500">
-                  {sessionItem.capacityReserved}/{sessionItem.capacityTotal} ({sessionItem.status})
+                  {sessionItem.capacityReserved}/{sessionItem.capacityTotal} (
+                  {sessionStatusLabel(sessionItem.status)})
                 </span>
               </li>
             ))}
@@ -153,7 +155,7 @@ export default async function OrganizerStayDetailPage({ params }: PageProps) {
         </div>
 
         <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
-          <h2 className="text-lg font-semibold text-slate-900">Demandes liees</h2>
+          <h2 className="text-lg font-semibold text-slate-900">Réservations liées</h2>
           <div className="space-y-3 text-sm text-slate-600">
             {stayRequests.map((request) => (
               <div key={request.id} className="rounded-lg border border-slate-100 p-3">

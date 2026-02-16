@@ -59,5 +59,7 @@ export async function POST(req: Request) {
     tenantId
   });
 
-  return NextResponse.redirect(new URL(role === 'ADMIN' ? '/admin' : role === 'ORGANISATEUR' ? '/organizer' : '/partner', req.url));
+  return NextResponse.redirect(
+    new URL(role === 'ADMIN' ? '/admin' : role === 'ORGANISATEUR' ? '/organisme' : '/partenaire', req.url)
+  );
 }

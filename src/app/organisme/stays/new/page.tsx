@@ -18,15 +18,15 @@ export default async function NewStayPage() {
     const location = String(formData.get('location') ?? '');
 
     if (!organizerTenantId) {
-      redirect('/organizer/stays');
+      redirect('/organisme/stays');
     }
 
-    redirect('/organizer/stays');
+    redirect('/organisme/stays');
   }
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold text-slate-900">Nouveau sejour</h1>
+      <h1 className="text-2xl font-semibold text-slate-900">Nouveau séjour</h1>
       <form action={createStay} className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
         <label className="block text-sm font-medium text-slate-700">
           Titre
@@ -35,7 +35,7 @@ export default async function NewStayPage() {
         <label className="block text-sm font-medium text-slate-700">
           Saison
           <select name="seasonId" className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2" required>
-            <option value="">Selectionner</option>
+            <option value="">Sélectionner</option>
             {seasons.map((season) => (
               <option key={season.id} value={season.id}>
                 {season.name}

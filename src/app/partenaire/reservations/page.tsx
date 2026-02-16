@@ -15,12 +15,12 @@ export default async function PartnerRequestsPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold text-slate-900">Mes demandes</h1>
+      <h1 className="text-2xl font-semibold text-slate-900">Mes réservations</h1>
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
         <table className="w-full text-left text-sm">
           <thead className="bg-slate-50 text-xs uppercase text-slate-500">
             <tr>
-              <th className="px-4 py-3">Sejour</th>
+              <th className="px-4 py-3">Séjour</th>
               <th className="px-4 py-3">Session</th>
               <th className="px-4 py-3">Statut</th>
             </tr>

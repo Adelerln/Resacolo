@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
@@ -25,10 +26,14 @@ export function MainNavigation() {
     <header className="border-b border-slate-200 bg-white/80 backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
         <Link href="/" className="flex items-center gap-3 text-2xl font-semibold tracking-tight text-slate-900">
-          <span className="font-display text-3xl uppercase text-brand-500">
-            RESA<span className="text-slate-950">COLO</span>
-          </span>
-          <span className="inline-flex h-5 w-5 flex-none rounded-full bg-accent-400" />
+          <Image
+            src="/image/logo-resacolo.png"
+            alt="Resacolo"
+            width={140}
+            height={40}
+            className="h-10 w-auto"
+            priority
+          />
         </Link>
         <nav className="hidden items-center gap-8 text-sm font-medium text-slate-600 md:flex">
           {links.map((link) => {

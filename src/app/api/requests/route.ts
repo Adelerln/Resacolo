@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { RequestPipelineService } from '@/lib/domain/services/requestPipelineService';
 
@@ -28,7 +29,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'No request stage configured' }, { status: 400 });
   }
 
-  const created = await prisma.$transaction(async (tx) => {
+  const created = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     const request = await tx.request.create({
       data: {
         stayId: input.stayId,

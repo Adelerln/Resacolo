@@ -1,5 +1,7 @@
 import { prisma } from '@/lib/db';
-import type { RequestStageScope } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
+
+type RequestStageScope = 'GLOBAL' | 'PARTNER' | 'ORGANIZER';
 
 export type RequestStageInput = {
   key: string;
@@ -54,7 +56,7 @@ export class RequestPipelineService {
   }
 
   async setStage(requestId: string, newStageId: string, actorUserId?: string, payload?: unknown) {
-    return prisma.$transaction(async (tx) => {
+    return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const request = await tx.request.findUnique({ where: { id: requestId } });
       if (!request) return null;
 

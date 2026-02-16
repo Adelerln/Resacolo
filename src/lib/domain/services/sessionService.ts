@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/db';
-import type { SessionStatus } from '@prisma/client';
+
+type SessionStatus = 'OPEN' | 'NEAR_FULL' | 'CLOSED';
 
 export type SessionInput = {
   stayId: string;

@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/db';
-import type { AssortmentItemType } from '@prisma/client';
+
+type AssortmentItemType = 'STAY' | 'ORGANIZER' | 'THEME' | 'TAG';
 
 export type AssortmentInput = {
   partnerTenantId: string;
@@ -41,9 +42,9 @@ export class AssortmentService {
   async listCatalogStays(partnerTenantId: string, seasonId: string) {
     const assortments = await this.listByPartner(partnerTenantId, seasonId);
     const stayIds = assortments
-      .flatMap((a) => a.items)
-      .filter((item) => item.type === 'STAY' && item.include)
-      .map((item) => item.targetRef);
+      .flatMap((a: { items: Array<{ type: AssortmentItemType; include: boolean; targetRef: string }> }) => a.items)
+      .filter((item: { type: AssortmentItemType; include: boolean }) => item.type === 'STAY' && item.include)
+      .map((item: { targetRef: string }) => item.targetRef);
 
     if (stayIds.length === 0) return [];
 

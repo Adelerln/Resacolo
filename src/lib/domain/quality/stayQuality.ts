@@ -1,5 +1,3 @@
-import type { StaySession } from '@prisma/client';
-
 type StayQualityInput = {
   title?: string | null;
   description?: string | null;
@@ -8,7 +6,7 @@ type StayQualityInput = {
   location?: string | null;
   themesCount?: number;
   mediaCount?: number;
-  sessions?: StaySession[];
+  sessions?: Array<{ startDate: Date; endDate: Date }>;
 };
 
 export type StayQualityResult = {

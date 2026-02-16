@@ -48,7 +48,10 @@ export async function POST(req: Request) {
   }
 
   const { role, tenantId } = mapRole(
-    user.memberships.map((m) => ({ role: m.role, tenantId: m.tenantId ?? null }))
+    user.memberships.map((m: { role: string; tenantId: string | null }) => ({
+      role: m.role,
+      tenantId: m.tenantId ?? null
+    }))
   );
 
   setSessionCookie({

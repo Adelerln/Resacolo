@@ -5,7 +5,7 @@ import { mockUsers } from '@/lib/mocks';
 export default async function AdminUsersPage() {
   requireRole('ADMIN');
   const users = mockUsers;
-  const tenants = [];
+  const tenants: Array<{ id: string; name: string; type: string }> = [];
 
   async function createUser(formData: FormData) {
     'use server';

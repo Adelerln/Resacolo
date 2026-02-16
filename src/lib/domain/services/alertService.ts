@@ -32,7 +32,9 @@ export class AlertService {
         });
       }
 
-      const allClosed = stay.sessions.length > 0 && stay.sessions.every((s) => s.status === 'CLOSED');
+      const allClosed =
+        stay.sessions.length > 0 &&
+        stay.sessions.every((s: { status: string }) => s.status === 'CLOSED');
       if (allClosed) {
         alerts.push({
           code: 'SUGGEST_NEW_SESSION',

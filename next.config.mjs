@@ -10,6 +10,10 @@ const nextConfig = {
       {
         protocol: 'https',
         hostname: 'resacolo.com'
+      },
+      {
+        protocol: 'https',
+        hostname: 'www.choisirsacolo.fr'
       }
     ]
   },

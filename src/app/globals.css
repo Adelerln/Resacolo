@@ -6,6 +6,10 @@
   color-scheme: light;
 }
 
+html {
+  font-size: 18px;
+}
+
 body {
   @apply bg-white text-slate-900 antialiased;
 }

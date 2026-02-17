@@ -9,7 +9,7 @@ import clsx from 'clsx';
 
 const links = [
   { href: '/sejours', label: 'Séjours' },
-  { href: '#guide', label: 'Bien choisir sa colo' },
+  { href: '/bien-choisir-sa-colo', label: 'Bien choisir sa colo' },
   {
     label: 'À propos',
     children: [
@@ -18,7 +18,7 @@ const links = [
       { href: '/organisateurs', label: 'Organisateurs' }
     ]
   },
-  { href: '#faq', label: 'FAQ' },
+  { href: '/faq', label: 'FAQ' },
   { href: '/contact', label: 'Contact' }
 ];
 
@@ -43,8 +43,8 @@ export function MainNavigation() {
   const close = () => setOpen(false);
 
   return (
-    <header className="border-b border-slate-200 bg-white/80 backdrop-blur">
-      <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
+    <header className="relative z-[100] overflow-visible border-b border-slate-200 bg-white/80 backdrop-blur">
+      <div className="mx-auto flex max-w-6xl items-center justify-between overflow-visible px-6 py-4">
         <Link href="/" className="flex items-center gap-3 text-2xl font-semibold tracking-tight text-slate-900">
           <Image
             src="/image/logo-resacolo.png"
@@ -55,7 +55,7 @@ export function MainNavigation() {
             priority
           />
         </Link>
-        <nav className="hidden items-center gap-8 text-sm font-medium text-slate-600 md:flex">
+        <nav className="hidden items-center gap-8 overflow-visible text-sm font-medium text-slate-600 md:flex">
           {links.map((link) => {
             if (isDropdownItem(link)) {
               const isActive = link.children.some((c) => pathname === c.href);

@@ -4,10 +4,6 @@ import {
   Monitor,
   ArrowLeftRight,
   Star,
-  MapPin,
-  Calendar,
-  Users,
-  Search,
   PawPrint,
   Waves,
   Palette,
@@ -83,52 +79,6 @@ function HeroBanner() {
           </p>
         </div>
 
-        <div className="w-full max-w-3xl">
-          <div className="flex flex-col gap-4 rounded-xl bg-white p-4 shadow-lg ring-1 ring-slate-200 sm:flex-row sm:gap-3 sm:p-5">
-            <div className="flex flex-1 flex-col gap-2">
-              <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Destination</label>
-              <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-3">
-                <MapPin className="h-4 w-4 flex-shrink-0 text-[#3B82F6]" />
-                <input
-                  type="text"
-                  placeholder="Où partir ?"
-                  className="w-full bg-transparent text-sm text-slate-700 placeholder-slate-400 outline-none"
-                />
-              </div>
-            </div>
-            <div className="flex flex-1 flex-col gap-2">
-              <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Date</label>
-              <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-3">
-                <Calendar className="h-4 w-4 flex-shrink-0 text-[#3B82F6]" />
-                <input
-                  type="text"
-                  placeholder="Quand ?"
-                  className="w-full bg-transparent text-sm text-slate-700 placeholder-slate-400 outline-none"
-                />
-              </div>
-            </div>
-            <div className="flex flex-1 flex-col gap-2">
-              <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Âge</label>
-              <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-3">
-                <Users className="h-4 w-4 flex-shrink-0 text-[#3B82F6]" />
-                <input
-                  type="text"
-                  placeholder="Âge du participant"
-                  className="w-full bg-transparent text-sm text-slate-700 placeholder-slate-400 outline-none"
-                />
-              </div>
-            </div>
-            <div className="flex items-end">
-              <Link
-                href="/sejours"
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#F97316] px-6 py-3.5 font-semibold text-white shadow-md transition hover:bg-[#ea580c] sm:w-auto"
-              >
-                <Search className="h-4 w-4" />
-                Rechercher
-              </Link>
-            </div>
-          </div>
-        </div>
       </div>
     </section>
   );

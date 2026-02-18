@@ -2,7 +2,7 @@ import Link from 'next/link';
 
 const quickLinks = [
   { href: '/sejours', label: 'Séjours' },
-  { href: '/association', label: 'À propos' },
+  { href: '/notre-concept', label: 'À propos' },
   { href: '/ressources', label: 'Ressources' },
   { href: '/contact', label: 'Contact' }
 ];

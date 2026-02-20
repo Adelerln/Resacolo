@@ -3,7 +3,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, Heart, Menu, ShoppingCart, UserRound, X } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -38,6 +38,33 @@ export function MainNavigation() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const dropdownCloseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const openDropdown = () => {
+    if (dropdownCloseTimeoutRef.current) {
+      clearTimeout(dropdownCloseTimeoutRef.current);
+      dropdownCloseTimeoutRef.current = null;
+    }
+    setDropdownOpen(true);
+  };
+
+  const closeDropdown = () => {
+    if (dropdownCloseTimeoutRef.current) {
+      clearTimeout(dropdownCloseTimeoutRef.current);
+    }
+    dropdownCloseTimeoutRef.current = setTimeout(() => {
+      setDropdownOpen(false);
+      dropdownCloseTimeoutRef.current = null;
+    }, 180);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (dropdownCloseTimeoutRef.current) {
+        clearTimeout(dropdownCloseTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const toggle = () => setOpen((current) => !current);
   const close = () => setOpen(false);
@@ -63,11 +90,13 @@ export function MainNavigation() {
                 <div
                   key={link.label}
                   className="relative"
-                  onMouseEnter={() => setDropdownOpen(true)}
-                  onMouseLeave={() => setDropdownOpen(false)}
+                  onMouseEnter={openDropdown}
+                  onMouseLeave={closeDropdown}
                 >
                   <button
                     type="button"
+                    aria-expanded={dropdownOpen}
+                    aria-haspopup="menu"
                     className={clsx(
                       'flex items-center gap-1 transition hover:text-brand-500',
                       isActive && 'text-brand-500'
@@ -79,19 +108,21 @@ export function MainNavigation() {
                     />
                   </button>
                   {dropdownOpen && (
-                    <div className="absolute left-0 top-full z-50 mt-1 min-w-[180px] rounded-xl border border-slate-200 bg-white py-2 shadow-lg">
-                      {link.children.map((child) => (
-                        <Link
-                          key={child.href}
-                          href={child.href}
-                          className={clsx(
-                            'block px-4 py-2 text-slate-700 hover:bg-slate-50 hover:text-brand-500',
-                            pathname === child.href && 'bg-brand-50 text-brand-600'
-                          )}
-                        >
-                          {child.label}
-                        </Link>
-                      ))}
+                    <div className="absolute left-0 top-full z-50 min-w-[180px] pt-1">
+                      <div className="rounded-xl border border-slate-200 bg-white py-2 shadow-lg">
+                        {link.children.map((child) => (
+                          <Link
+                            key={child.href}
+                            href={child.href}
+                            className={clsx(
+                              'block px-4 py-2 text-slate-700 hover:bg-slate-50 hover:text-brand-500',
+                              pathname === child.href && 'bg-brand-50 text-brand-600'
+                            )}
+                          >
+                            {child.label}
+                          </Link>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>

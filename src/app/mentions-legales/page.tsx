@@ -6,7 +6,7 @@ export default function MentionsLegalesPage() {
           <p className="text-xs font-semibold uppercase tracking-[0.28em] text-emerald-700">
             RESACOLO
           </p>
-          <h1 className="text-3xl font-semibold text-slate-900 sm:text-4xl">
+          <h1 className="text-4xl font-bold text-slate-900 sm:text-4xl">
             Mentions légales
           </h1>
           <p className="max-w-2xl text-base text-slate-600">
@@ -20,7 +20,7 @@ export default function MentionsLegalesPage() {
 
         <div className="mt-10 grid gap-6">
           <article className="rounded-2xl border border-emerald-100 bg-white/80 p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-slate-900">
+            <h2 className="text-2xl font-bold text-slate-900">
               1 - Édition du site
             </h2>
             <div className="mt-4 space-y-2 text-sm text-slate-700">
@@ -39,7 +39,7 @@ export default function MentionsLegalesPage() {
           </article>
 
           <article className="rounded-2xl border border-amber-100 bg-white/80 p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-slate-900">
+            <h2 className="text-2xl font-bold text-slate-900">
               2 - Hébergement
             </h2>
             <div className="mt-4 space-y-2 text-sm text-slate-700">
@@ -52,7 +52,7 @@ export default function MentionsLegalesPage() {
           </article>
 
           <article className="rounded-2xl border border-slate-200 bg-white/80 p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-slate-900">
+            <h2 className="text-2xl font-bold text-slate-900">
               3 - Conception et réalisation du site
             </h2>
             <div className="mt-4 space-y-2 text-sm text-slate-700">
@@ -71,7 +71,7 @@ export default function MentionsLegalesPage() {
           </article>
 
           <article className="rounded-2xl border border-emerald-100 bg-white/80 p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-slate-900">
+            <h2 className="text-2xl font-bold text-slate-900">
               4 - Propriété intellectuelle
             </h2>
             <div className="mt-4 space-y-2 text-sm text-slate-700">
@@ -94,7 +94,7 @@ export default function MentionsLegalesPage() {
           </article>
 
           <article className="rounded-2xl border border-amber-100 bg-white/80 p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-slate-900">
+            <h2 className="text-2xl font-bold text-slate-900">
               5 - Responsabilité
             </h2>
             <div className="mt-4 space-y-2 text-sm text-slate-700">
@@ -116,7 +116,7 @@ export default function MentionsLegalesPage() {
           </article>
 
           <article className="rounded-2xl border border-slate-200 bg-white/80 p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-slate-900">
+            <h2 className="text-2xl font-bold text-slate-900">
               6 - Liens hypertextes
             </h2>
             <div className="mt-4 space-y-2 text-sm text-slate-700">
@@ -130,7 +130,7 @@ export default function MentionsLegalesPage() {
           </article>
 
           <article className="rounded-2xl border border-emerald-100 bg-white/80 p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-slate-900">
+            <h2 className="text-2xl font-bold text-slate-900">
               7 - Données personnelles
             </h2>
             <div className="mt-4 space-y-2 text-sm text-slate-700">
@@ -145,7 +145,7 @@ export default function MentionsLegalesPage() {
           </article>
 
           <article className="rounded-2xl border border-amber-100 bg-white/80 p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-slate-900">8 - Cookies</h2>
+            <h2 className="text-2xl font-bold text-slate-900">8 - Cookies</h2>
             <div className="mt-4 space-y-2 text-sm text-slate-700">
               <p>
                 Le Site utilise des cookies afin de vous offrir une expérience
@@ -158,7 +158,7 @@ export default function MentionsLegalesPage() {
           </article>
 
           <article className="rounded-2xl border border-slate-200 bg-white/80 p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-slate-900">
+            <h2 className="text-2xl font-bold text-slate-900">
               9 - Loi applicable
             </h2>
             <div className="mt-4 space-y-2 text-sm text-slate-700">
@@ -172,7 +172,7 @@ export default function MentionsLegalesPage() {
           </article>
 
           <article className="rounded-2xl border border-emerald-100 bg-white/80 p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-slate-900">
+            <h2 className="text-2xl font-bold text-slate-900">
               10 - Contact
             </h2>
             <div className="mt-4 space-y-2 text-sm text-slate-700">

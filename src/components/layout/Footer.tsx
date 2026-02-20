@@ -10,7 +10,8 @@ const quickLinks = [
 const legalLinks = [
   { href: '/mentions-legales', label: 'Mentions légales' },
   { href: '/confidentialite', label: 'Politique de confidentialité' },
-  { href: '/cgu', label: 'Conditions générales' }
+  { href: '/cgu', label: 'Conditions Générales d’Utilisation' },
+  { href: '/cgv', label: 'Conditions Générales de Ventes' }
 ];
 
 export function Footer() {

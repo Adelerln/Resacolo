@@ -2,7 +2,7 @@ import { requireRole } from '@/lib/auth/require';
 import { mockRequests, mockSessions, mockStages, mockStays } from '@/lib/mocks';
 
 export default async function OrganizerRequestsPage() {
-  const session = requireRole('ORGANISATEUR');
+  requireRole('ORGANISATEUR');
   const useMock = process.env.MOCK_UI === '1';
   const requests = useMock
     ? mockRequests.map((request) => ({

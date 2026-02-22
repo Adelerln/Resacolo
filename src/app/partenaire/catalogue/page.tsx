@@ -55,7 +55,7 @@ export default async function PartnerCatalogPage({ searchParams }: { searchParam
       <div className="rounded-2xl border border-slate-200 bg-white p-6">
         <h2 className="text-lg font-semibold text-slate-900">Sélection de catalogue</h2>
         <p className="mt-1 text-sm text-slate-600">
-          Choisissez les séjours, organisateurs et tranches d'âge à exposer.
+          Choisissez les séjours, organisateurs et tranches d&apos;âge à exposer.
         </p>
         <div className="mt-4 grid gap-4 md:grid-cols-2">
           <label className="block text-sm font-medium text-slate-700">
@@ -67,7 +67,7 @@ export default async function PartnerCatalogPage({ searchParams }: { searchParam
             </select>
           </label>
           <label className="block text-sm font-medium text-slate-700">
-            Tranches d'âge
+            Tranches d&apos;âge
             <select className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2" multiple>
               <option>6-10 ans</option>
               <option>11-13 ans</option>

@@ -46,7 +46,7 @@ export default function ContactPage() {
       setPhone('');
       setMessage('');
       setCaptcha(null);
-    } catch (err) {
+    } catch {
       setStatus('error');
       setErrorMessage('L\'envoi a échoué. Veuillez réessayer.');
     }

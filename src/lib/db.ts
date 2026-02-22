@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 
 type PrismaClientType = PrismaClient;
 
@@ -20,15 +20,9 @@ function createClient() {
   if (process.env.MOCK_UI === '1') {
     return createUnavailableClient('Prisma disabled in MOCK_UI mode.');
   }
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { PrismaClient } = require('@prisma/client') as { PrismaClient: new (...args: any[]) => PrismaClientType };
-    return new PrismaClient({
-      log: ['warn', 'error']
-    });
-  } catch (error) {
-    return createUnavailableClient(error);
-  }
+  return new PrismaClient({
+    log: ['warn', 'error']
+  });
 }
 
 export const prisma = globalForPrisma.prisma ?? createClient();

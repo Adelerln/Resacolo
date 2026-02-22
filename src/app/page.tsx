@@ -19,6 +19,7 @@ import {
   Gift,
   Ticket
 } from 'lucide-react';
+import { FlowReveal } from '@/components/ui/FlowReveal';
 
 const themes = [
   { title: 'Animaux', icon: PawPrint },
@@ -69,7 +70,7 @@ export default function HomePage() {
 function HeroBanner() {
   return (
     <section className="relative w-full overflow-hidden bg-[#FFFFFF]">
-      <div className="mx-auto flex w-full max-w-6xl flex-col items-center gap-10 px-4 py-16 sm:px-6 md:py-20 lg:py-24">
+      <FlowReveal className="mx-auto flex w-full max-w-6xl flex-col items-center gap-10 px-4 py-16 sm:px-6 md:py-20 lg:py-24">
         <div className="text-center">
           <h1 className="font-display text-4xl font-bold tracking-tight text-slate-900 sm:text-5xl lg:text-6xl">
             ResaColo
@@ -78,8 +79,7 @@ function HeroBanner() {
             Trouvez la colonie de vacances idéale pour vos enfants. Un collectif d&apos;organisateurs à votre service.
           </p>
         </div>
-
-      </div>
+      </FlowReveal>
     </section>
   );
 }
@@ -102,7 +102,7 @@ function ValuePropositionSection() {
 
   return (
     <section className="w-full bg-[#FFFFFF] py-16 md:py-20">
-      <div className="mx-auto max-w-6xl px-4 sm:px-6">
+      <FlowReveal className="mx-auto max-w-6xl px-4 sm:px-6">
         <h2 className="mb-10 text-center text-2xl font-semibold text-slate-800 md:mb-12 md:text-3xl">
           Pourquoi choisir Resacolo ?
         </h2>
@@ -114,9 +114,10 @@ function ValuePropositionSection() {
             </p>
           </div>
           <div className="flex flex-col gap-6">
-            {benefits.map((item) => (
-              <div
+            {benefits.map((item, index) => (
+              <FlowReveal
                 key={item.text}
+                delay={index * 0.08}
                 className="flex items-start gap-4 rounded-xl bg-white p-4 shadow-md ring-1 ring-slate-100"
               >
                 <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-[#3B82F6]/10 text-[#3B82F6]">
@@ -137,11 +138,11 @@ function ValuePropositionSection() {
                     </>
                   )}
                 </p>
-              </div>
+              </FlowReveal>
             ))}
           </div>
         </div>
-      </div>
+      </FlowReveal>
     </section>
   );
 }
@@ -149,7 +150,7 @@ function ValuePropositionSection() {
 function ThemesSection() {
   return (
     <section className="w-full bg-[#FFFFFF] py-16 md:py-20">
-      <div className="mx-auto max-w-6xl px-4 sm:px-6">
+      <FlowReveal className="mx-auto max-w-6xl px-4 sm:px-6">
         <h2 className="mb-8 text-2xl font-semibold text-slate-900 md:mb-10 md:text-3xl">
           Choisir votre <span className="text-[#3B82F6]">thématique</span>
         </h2>
@@ -189,21 +190,22 @@ function ThemesSection() {
 
           <div className="overflow-x-auto pb-2 lg:overflow-visible">
             <div className="flex gap-4 lg:flex-wrap lg:justify-start" style={{ minWidth: 'min-content' }}>
-              {themes.map((theme) => (
-                <div
+              {themes.map((theme, index) => (
+                <FlowReveal
                   key={theme.title}
+                  delay={index * 0.06}
                   className="flex min-w-[180px] flex-col items-center gap-4 rounded-xl bg-white p-6 shadow-lg ring-1 ring-slate-100 transition hover:shadow-xl sm:min-w-[200px]"
                 >
                   <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-[#F97316]/15 text-[#F97316]">
                     <theme.icon className="h-8 w-8" />
                   </div>
                   <h3 className="text-center font-semibold text-slate-800">{theme.title}</h3>
-                </div>
+                </FlowReveal>
               ))}
             </div>
           </div>
         </div>
-      </div>
+      </FlowReveal>
     </section>
   );
 }
@@ -211,14 +213,15 @@ function ThemesSection() {
 function ProcessSection() {
   return (
     <section className="w-full bg-[#FFFFFF] py-16 md:py-20">
-      <div className="mx-auto max-w-6xl px-4 sm:px-6">
+      <FlowReveal className="mx-auto max-w-6xl px-4 sm:px-6">
         <h2 className="mb-12 text-center text-2xl font-semibold text-slate-900 md:text-3xl">
           RESACOLO, <span className="text-[#3B82F6]">comment ça marche ?</span>
         </h2>
         <div className="grid gap-10 md:grid-cols-3">
-          {processSteps.map((step) => (
-            <div
+          {processSteps.map((step, index) => (
+            <FlowReveal
               key={step.title}
+              delay={index * 0.1}
               className="flex flex-col items-center rounded-xl bg-white p-6 text-center shadow-md ring-1 ring-slate-100"
             >
               <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-[#3B82F6]/10 text-[#3B82F6]">
@@ -226,7 +229,7 @@ function ProcessSection() {
               </div>
               <h3 className="mt-4 font-semibold text-slate-900">{step.title}</h3>
               <p className="mt-2 text-sm text-slate-600">{step.description}</p>
-            </div>
+            </FlowReveal>
           ))}
         </div>
         <div className="mt-12 flex justify-center">
@@ -238,7 +241,7 @@ function ProcessSection() {
             <ChevronRight className="h-4 w-4" />
           </Link>
         </div>
-      </div>
+      </FlowReveal>
     </section>
   );
 }
@@ -252,7 +255,7 @@ function FinancialAidSection() {
           backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Ctext x='0' y='28' font-size='24' fill='%23000'%3E€%3C/text%3E%3C/svg%3E")`
         }}
       />
-      <div className="relative mx-auto max-w-6xl px-4 sm:px-6">
+      <FlowReveal className="relative mx-auto max-w-6xl px-4 sm:px-6">
         <span className="block text-center text-xs font-semibold uppercase tracking-widest text-slate-400">
           COUP DE POUCE
         </span>
@@ -268,20 +271,21 @@ function FinancialAidSection() {
             </p>
           </div>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-2">
-            {financialPartners.map((partner) => (
-              <div
+            {financialPartners.map((partner, index) => (
+              <FlowReveal
                 key={partner.label}
+                delay={index * 0.07}
                 className="flex flex-col items-center justify-center gap-3 rounded-xl bg-white p-6 shadow-md ring-1 ring-slate-100"
               >
                 <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#3B82F6]/10 text-[#3B82F6]">
                   <partner.icon className="h-6 w-6" />
                 </div>
                 <span className="text-center text-sm font-medium text-slate-800">{partner.label}</span>
-              </div>
+              </FlowReveal>
             ))}
           </div>
         </div>
-      </div>
+      </FlowReveal>
     </section>
   );
 }

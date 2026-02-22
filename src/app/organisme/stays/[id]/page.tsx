@@ -27,7 +27,7 @@ export default async function OrganizerStayDetailPage({ params }: PageProps) {
         }))
     : [];
 
-  async function updateStay(formData: FormData) {
+  async function updateStay() {
     'use server';
     redirect(`/organisme/stays/${params.id}`);
   }

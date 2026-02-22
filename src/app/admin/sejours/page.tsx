@@ -10,7 +10,6 @@ export default async function AdminStaysPage() {
   async function updateStatus(formData: FormData) {
     'use server';
     const stayId = String(formData.get('stayId') ?? '');
-    const status = String(formData.get('status') ?? 'DRAFT');
     if (!stayId) return;
     redirect('/admin/sejours');
   }

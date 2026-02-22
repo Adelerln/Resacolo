@@ -9,11 +9,9 @@ export default async function AdminUsersPage() {
 
   async function createUser(formData: FormData) {
     'use server';
-    const name = String(formData.get('name') ?? '');
     const email = String(formData.get('email') ?? '');
     const password = String(formData.get('password') ?? '');
     const role = String(formData.get('role') ?? '');
-    const tenantId = String(formData.get('tenantId') ?? '');
 
     if (!email || !password || !role) return;
 

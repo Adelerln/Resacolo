@@ -39,7 +39,7 @@ export default function BeneficiairesPage() {
       <div>
         <h1 className="text-2xl font-semibold text-slate-900">Bénéficiaires</h1>
         <p className="text-sm text-slate-600">
-          Validez les affiliations et définissez la durée d'accès.
+          Validez les affiliations et définissez la durée d&apos;accès.
         </p>
       </div>
 

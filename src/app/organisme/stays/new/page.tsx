@@ -8,15 +8,8 @@ export default async function NewStayPage() {
   const useMock = process.env.MOCK_UI === '1';
   const seasons = useMock ? mockSeasons : [];
 
-  async function createStay(formData: FormData) {
+  async function createStay() {
     'use server';
-    const title = String(formData.get('title') ?? '');
-    const seasonId = String(formData.get('seasonId') ?? '');
-    const description = String(formData.get('description') ?? '');
-    const ageMin = Number(formData.get('ageMin') ?? 0);
-    const ageMax = Number(formData.get('ageMax') ?? 0);
-    const location = String(formData.get('location') ?? '');
-
     if (!organizerTenantId) {
       redirect('/organisme/stays');
     }

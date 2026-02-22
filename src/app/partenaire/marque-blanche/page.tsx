@@ -4,7 +4,7 @@ export default function MarqueBlanchePage() {
       <div>
         <h1 className="text-2xl font-semibold text-slate-900">Marque blanche</h1>
         <p className="text-sm text-slate-600">
-          Personnalisez l'espace partenaire avec votre identité visuelle.
+          Personnalisez l&apos;espace partenaire avec votre identité visuelle.
         </p>
       </div>
 
@@ -19,7 +19,7 @@ export default function MarqueBlanchePage() {
             <input type="color" className="mt-1 h-10 w-24 rounded border border-slate-200" defaultValue="#0f766e" />
           </label>
           <label className="block text-sm font-medium text-slate-700">
-            Texte d'accueil
+            Texte d&apos;accueil
             <textarea
               rows={4}
               className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"

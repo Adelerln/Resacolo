@@ -4,7 +4,7 @@ import { mockSeasons, mockStays } from '@/lib/mocks';
 import { stayStatusLabel } from '@/lib/ui/labels';
 
 export default async function OrganizerStaysPage() {
-  const session = requireRole('ORGANISATEUR');
+  requireRole('ORGANISATEUR');
   const useMock = process.env.MOCK_UI === '1';
 
   const stays = useMock ? mockStays : [];

@@ -4,18 +4,24 @@
 
 :root {
   color-scheme: light;
+  --flow-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --flow-fast: 220ms;
+  --flow-medium: 420ms;
 }
 
 html {
   font-size: 18px;
+  scroll-behavior: smooth;
 }
 
 body {
   @apply bg-white text-slate-900 antialiased;
+  text-rendering: geometricPrecision;
 }
 
 a {
-  @apply text-brand-500 no-underline transition hover:text-brand-600;
+  @apply text-brand-500 no-underline hover:text-brand-600;
+  transition: color var(--flow-fast) var(--flow-ease);
 }
 
 main {
@@ -33,4 +39,14 @@ h4,
 h5,
 h6 {
   font-family: var(--font-display);
+}
+
+button,
+[role='button'] {
+  transition:
+    color var(--flow-fast) var(--flow-ease),
+    background-color var(--flow-fast) var(--flow-ease),
+    border-color var(--flow-fast) var(--flow-ease),
+    transform var(--flow-fast) var(--flow-ease),
+    box-shadow var(--flow-medium) var(--flow-ease);
 }

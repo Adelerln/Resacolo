@@ -1,6 +1,5 @@
 import { cache } from 'react';
 import { NextRequest } from 'next/server';
-import { z } from 'zod';
 import { createOpenAIClient } from '@/lib/openai';
 import { FILTER_LABELS, ORGANIZERS } from '@/lib/constants';
 import { StayCollectionSchema, StayPayload } from '@/lib/schemas';
@@ -164,8 +163,9 @@ Complète strictement la taxonomie fournie :
 - transport possibles: depart-paris, depart-region, sans-transport
 `;
 
-  const response = await client.responses.create({
+  const requestPayload = {
     model: OPENAI_MODEL,
+    stream: false,
     input: [
       {
         role: 'system',
@@ -192,18 +192,15 @@ Complète strictement la taxonomie fournie :
       json_schema: StayJsonSchema
     },
     temperature: 0.4
-  } as any);
+  } as unknown as Parameters<typeof client.responses.create>[0];
 
-  const jsonOutput = response.output
-    ?.map((item) => ('content' in item ? item.content : []))
-    .flat()
-    .find((item) => item.type === 'output_text');
+  const response = await client.responses.create(requestPayload);
 
-  if (!jsonOutput || jsonOutput.type !== 'output_text') {
+  if (!('output_text' in response) || !response.output_text) {
     throw new Error('Réponse OpenAI invalide');
   }
 
-  const parsed = StayCollectionSchema.safeParse(JSON.parse(jsonOutput.text));
+  const parsed = StayCollectionSchema.safeParse(JSON.parse(response.output_text));
   if (!parsed.success) {
     throw new Error(`Schéma JSON invalide: ${parsed.error.message}`);
   }

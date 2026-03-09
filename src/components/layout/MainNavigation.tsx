@@ -175,10 +175,10 @@ export function MainNavigation() {
             )}
           </Link>
           <Link
-            href="/partenariat"
+            href="/back-office"
             className="rounded-full border border-accent-400 px-4 py-2 text-sm font-semibold text-accent-500 transition hover:bg-accent-500 hover:text-white"
           >
-            Partenariat
+            Back Office
           </Link>
         </div>
         <button
@@ -242,11 +242,11 @@ export function MainNavigation() {
               })}
               <li>
                 <Link
-                  href="/partenariat"
+                  href="/back-office"
                   onClick={close}
                   className="inline-flex w-full items-center justify-center rounded-full border border-accent-400 px-4 py-2 text-accent-500"
                 >
-                  Partenariat
+                  Back Office
                 </Link>
               </li>
             </ul>

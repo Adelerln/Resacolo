@@ -10,6 +10,7 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const hidePublicShell =
     pathname.startsWith('/admin') ||
+    pathname.startsWith('/back-office') ||
     pathname.startsWith('/organisme') ||
     pathname.startsWith('/partenaire');
   if (hidePublicShell) {

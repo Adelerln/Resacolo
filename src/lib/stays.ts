@@ -9,7 +9,8 @@ import type { Stay, StayAudience, StayCategory, StayDuration, StayFilters as Sta
 type StayPeriod = StayFiltersMeta['periods'][number];
 type StayTransport = StayFiltersMeta['transport'][number];
 
-const USE_SAMPLE_STAYS = process.env.USE_SAMPLE_STAYS === 'true';
+// Par défaut : données sample (chargement instantané). Mettre USE_SAMPLE_STAYS=false pour lancer le pipeline OpenAI (lent).
+const USE_SAMPLE_STAYS = process.env.USE_SAMPLE_STAYS !== 'false';
 const OPENAI_MODEL = 'gpt-4.1';
 
 const StayJsonSchema = {

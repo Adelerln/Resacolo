@@ -106,11 +106,12 @@ model Season {
   status    String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  stays     Stay[]
-  sessions  StaySession[]
-  requests  Request[]
-  assortments Assortment[]
+  stays            Stay[]
+  sessions         StaySession[]
+  requests         Request[]
+  assortments      Assortment[]
   performanceDaily PerformanceDaily[]
+  requestEvents    RequestEvent[]
 
   @@index([startsAt, endsAt])
 }
@@ -341,13 +342,16 @@ model PerformanceDaily {
   lostCount         Int      @default(0)
   capacityTotal     Int      @default(0)
   capacityReserved  Int      @default(0)
-  season            Season   @relation(fields: [seasonId], references: [id])
-  stay              Stay?    @relation(fields: [stayId], references: [id])
+  season            Season       @relation(fields: [seasonId], references: [id])
+  stay              Stay?        @relation(fields: [stayId], references: [id])
   session           StaySession? @relation(fields: [sessionId], references: [id])
+  request           Request?     @relation(fields: [requestId], references: [id])
+  requestId         String?
 
   @@index([date, seasonId])
   @@index([stayId])
   @@index([sessionId])
+  @@index([requestId])
   @@index([partnerTenantId])
   @@index([organizerTenantId])
   @@unique([date, seasonId, stayId, sessionId, partnerTenantId, organizerTenantId])

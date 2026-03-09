@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { StayService } from '@/lib/domain/services/stayService';
+import { StayService, type StayInput } from '@/lib/domain/services/stayService';
 
 export const runtime = 'nodejs';
 
@@ -27,6 +27,6 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   const body = await req.json();
   const input = stayUpdateSchema.parse(body);
   const service = new StayService();
-  const stay = await service.update(params.id, input);
+  const stay = await service.update(params.id, input as Partial<StayInput>);
   return NextResponse.json(stay);
 }

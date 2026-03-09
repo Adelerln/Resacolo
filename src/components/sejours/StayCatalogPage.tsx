@@ -1,6 +1,7 @@
 'use client';
 
 import Image from 'next/image';
+import Link from 'next/link';
 import { useState } from 'react';
 import { Compass, Clock3, Filter, MapPin, Search, ShoppingCart, Sun } from 'lucide-react';
 import {
@@ -122,8 +123,9 @@ function FiltersPanel() {
 
 function StayCard({ stay }: { stay: MockStay }) {
   return (
-    <Card className="overflow-hidden rounded-3xl">
-      <div className="relative h-56 w-full">
+    <Link href={`/sejours/${stay.slug}`} className="block transition-opacity hover:opacity-95">
+      <Card className="overflow-hidden rounded-3xl">
+        <div className="relative h-56 w-full">
         <Image src={stay.image} alt={stay.title} fill className="object-cover" sizes="(max-width: 768px) 100vw, 33vw" />
         <div className="absolute right-3 top-3 h-11 w-11 overflow-hidden rounded-full border-2 border-white bg-white shadow">
           <Image src={stay.organizerLogo} alt="Organisateur" fill className="object-contain p-1" sizes="44px" />
@@ -168,6 +170,7 @@ function StayCard({ stay }: { stay: MockStay }) {
         <p className="text-center text-xl font-bold text-[#F97316]">À partir de {stay.priceFrom} €</p>
       </CardContent>
     </Card>
+    </Link>
   );
 }
 

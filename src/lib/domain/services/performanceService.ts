@@ -27,7 +27,8 @@ export class PerformanceService {
           sessionId: input.sessionId ?? null,
           partnerTenantId: input.partnerTenantId ?? null,
           organizerTenantId: input.organizerTenantId ?? null
-        }
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Prisma composite unique with nullable fields
+        } as any
       },
       create: {
         date: input.date,

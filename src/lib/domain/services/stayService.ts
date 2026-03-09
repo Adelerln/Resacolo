@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { evaluateStayQuality } from '@/lib/domain/quality/stayQuality';
 
@@ -9,15 +10,23 @@ export type StayInput = {
   ageMin?: number | null;
   ageMax?: number | null;
   location?: string | null;
-  themesJson?: unknown;
-  tagsJson?: unknown;
+  themesJson?: Prisma.InputJsonValue;
+  tagsJson?: Prisma.InputJsonValue;
 };
 
 export class StayService {
   async create(input: StayInput, actorUserId?: string) {
     const stay = await prisma.stay.create({
       data: {
-        ...input,
+        organizerTenantId: input.organizerTenantId,
+        seasonId: input.seasonId,
+        title: input.title,
+        description: input.description,
+        ageMin: input.ageMin,
+        ageMax: input.ageMax,
+        location: input.location,
+        themesJson: input.themesJson as Prisma.InputJsonValue | undefined,
+        tagsJson: input.tagsJson as Prisma.InputJsonValue | undefined,
         createdBy: actorUserId,
         updatedBy: actorUserId
       }

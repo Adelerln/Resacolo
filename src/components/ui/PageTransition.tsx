@@ -2,8 +2,10 @@
 
 import { AnimatePresence, motion } from 'framer-motion';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
+
+const WIPE_DURATION = 0.82;
 
 export function PageTransition({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -12,6 +14,13 @@ export function PageTransition({ children }: { children: ReactNode }) {
     const query = searchParams.toString();
     return query ? `${pathname}?${query}` : pathname;
   }, [pathname, searchParams]);
+
+  const [barVisible, setBarVisible] = useState(true);
+  useEffect(() => {
+    setBarVisible(true);
+    const t = setTimeout(() => setBarVisible(false), WIPE_DURATION * 1000);
+    return () => clearTimeout(t);
+  }, [routeKey]);
 
   return (
     <>
@@ -33,16 +42,20 @@ export function PageTransition({ children }: { children: ReactNode }) {
           initial={{ scaleX: 1 }}
           animate={{ scaleX: 0 }}
           exit={{ scaleX: 0 }}
-          transition={{ duration: 0.82, ease: [0.25, 0.1, 0.25, 1] }}
+          transition={{ duration: WIPE_DURATION, ease: [0.25, 0.1, 0.25, 1] }}
           className="pointer-events-none fixed inset-0 z-[140] origin-left bg-white"
         />
       </AnimatePresence>
 
+      {/* Barre visible pendant la transition, disparaît quand le wipe est terminé */}
       <motion.div
         key={`progress-${routeKey}`}
         initial={{ scaleX: 0 }}
-        animate={{ scaleX: 1 }}
-        transition={{ duration: 0.82, ease: [0.25, 0.1, 0.25, 1] }}
+        animate={{ scaleX: 1, opacity: barVisible ? 1 : 0 }}
+        transition={{
+          scaleX: { duration: 0.2 },
+          opacity: { duration: 0.25 }
+        }}
         className="pointer-events-none fixed inset-x-0 top-0 z-[150] h-1 origin-left bg-gradient-to-r from-brand-400 via-brand-500 to-accent-400"
       />
     </>

@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/db';
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 
 type RequestStageScope = 'GLOBAL' | 'PARTNER' | 'ORGANIZER';
 
@@ -73,7 +73,7 @@ export class RequestPipelineService {
           oldStageId: request.currentStageId,
           newStageId,
           actorUserId: actorUserId ?? null,
-          payloadJson: payload ?? null
+          payloadJson: payload ?? Prisma.JsonNull
         }
       });
 

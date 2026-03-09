@@ -33,6 +33,111 @@
       "sourceUrl": "https://www.aventures-vacances-energie.com/",
       "rawContext": {},
       "updatedAt": "2024-06-01T00:00:00.000Z"
+    },
+    {
+      "id": "demo-moto-rider",
+      "title": "Moto Rider",
+      "slug": "moto-rider",
+      "summary": "Stage de Moto. Un séjour intensif pour progresser en motocross.",
+      "description": "Un séjour intensif pour progresser en motocross avec des ateliers techniques, des balades encadrées et des défis tout-terrain.",
+      "organizer": {
+        "name": "Resacolo",
+        "website": "https://resacolo.com/"
+      },
+      "location": "Beaumont, Saint-Cyr (86)",
+      "country": "France",
+      "ageRange": "6-17 ans",
+      "duration": "8 jours",
+      "priceFrom": 689,
+      "period": ["printemps"],
+      "categories": ["sport"],
+      "highlights": [
+        "Ateliers techniques motocross",
+        "Balades encadrées",
+        "Défis tout-terrain"
+      ],
+      "coverImage": "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=1200&q=80",
+      "filters": {
+        "categories": ["sport"],
+        "audiences": ["6-9", "10-12", "13-15", "16-17"],
+        "durations": ["semaine"],
+        "periods": ["printemps"],
+        "priceRange": [600, 750],
+        "transport": ["depart-region"]
+      },
+      "sourceUrl": "https://resacolo.com/",
+      "rawContext": {},
+      "updatedAt": "2024-06-01T00:00:00.000Z"
+    },
+    {
+      "id": "demo-strasbourg-europa",
+      "title": "Strasbourg - Europa Park",
+      "slug": "strasbourg-europa-park",
+      "summary": "Mini-séjour. Découverte de Strasbourg puis immersion à Europa Park.",
+      "description": "Découverte de Strasbourg puis immersion à Europa Park pour un programme rythmé entre culture urbaine et sensations fortes.",
+      "organizer": {
+        "name": "Resacolo",
+        "website": "https://resacolo.com/"
+      },
+      "location": "Strasbourg & Europa Park",
+      "country": "France",
+      "ageRange": "6-17 ans",
+      "duration": "5 jours",
+      "priceFrom": 559,
+      "period": ["ete"],
+      "categories": ["culture", "sport"],
+      "highlights": [
+        "Visite de Strasbourg",
+        "Europa Park",
+        "Culture et sensations fortes"
+      ],
+      "coverImage": "https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?auto=format&fit=crop&w=1200&q=80",
+      "filters": {
+        "categories": ["culture", "sport"],
+        "audiences": ["6-9", "10-12", "13-15", "16-17"],
+        "durations": ["mini-sejour"],
+        "periods": ["ete"],
+        "priceRange": [500, 600],
+        "transport": ["depart-region"]
+      },
+      "sourceUrl": "https://resacolo.com/",
+      "rawContext": {},
+      "updatedAt": "2024-06-01T00:00:00.000Z"
+    },
+    {
+      "id": "demo-dubai",
+      "title": "Dubaï",
+      "slug": "dubai",
+      "summary": "Aux portes du désert. Une aventure internationale entre métropole et désert.",
+      "description": "Une aventure internationale entre métropole futuriste et escapades dans le désert, avec activités de groupe et visites guidées.",
+      "organizer": {
+        "name": "Resacolo",
+        "website": "https://resacolo.com/"
+      },
+      "location": "Dubaï (Émirats Arabes Unis)",
+      "country": "Émirats Arabes Unis",
+      "ageRange": "14-17 ans",
+      "duration": "10 jours",
+      "priceFrom": 1390,
+      "period": ["hiver"],
+      "categories": ["culture", "multi-activites"],
+      "highlights": [
+        "Métropole futuriste",
+        "Escapades dans le désert",
+        "Visites guidées et activités de groupe"
+      ],
+      "coverImage": "https://images.unsplash.com/photo-1548013146-72479768bada?auto=format&fit=crop&w=1200&q=80",
+      "filters": {
+        "categories": ["culture", "multi-activites"],
+        "audiences": ["16-17"],
+        "durations": ["semaine"],
+        "periods": ["hiver"],
+        "priceRange": [1300, 1500],
+        "transport": ["depart-paris"]
+      },
+      "sourceUrl": "https://resacolo.com/",
+      "rawContext": {},
+      "updatedAt": "2024-06-01T00:00:00.000Z"
     }
   ]
 }

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { Baloo_2, Raleway } from 'next/font/google';
 import './globals.css';
+import { CartProvider } from '@/context/CartContext';
 import { SiteShell } from '@/components/layout/SiteShell';
 
 const raleway = Raleway({
@@ -25,7 +26,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="fr" className="bg-slate-50 text-slate-900">
       <body className={`${raleway.variable} ${baloo.variable} font-sans bg-white`}>
-        <SiteShell>{children}</SiteShell>
+        <CartProvider>
+          <SiteShell>{children}</SiteShell>
+        </CartProvider>
       </body>
     </html>
   );

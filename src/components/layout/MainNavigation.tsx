@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, Heart, Menu, ShoppingCart, UserRound, X } from 'lucide-react';
 import clsx from 'clsx';
+import { useCart } from '@/context/CartContext';
 import { AnimatePresence, motion } from 'framer-motion';
 
 const links = [
@@ -37,6 +38,7 @@ function isDropdownItem(
 
 export function MainNavigation() {
   const pathname = usePathname();
+  const { count: cartCount } = useCart();
   const [open, setOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownCloseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -160,12 +162,18 @@ export function MainNavigation() {
           <button className="rounded-full border border-slate-200 p-2 text-slate-500 hover:border-brand-200 hover:text-brand-500">
             <Heart className="h-4 w-4" />
           </button>
-          <button className="relative rounded-full border border-slate-200 p-2 text-slate-500 hover:border-brand-200 hover:text-brand-500">
+          <Link
+            href="/panier"
+            className="relative rounded-full border border-slate-200 p-2 text-slate-500 hover:border-brand-200 hover:text-brand-500"
+            aria-label="Panier"
+          >
             <ShoppingCart className="h-4 w-4" />
-            <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-brand-500 text-[10px] font-semibold text-white">
-              0
-            </span>
-          </button>
+            {cartCount > 0 && (
+              <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-accent-500 text-[10px] font-semibold text-white">
+                {cartCount > 99 ? '99+' : cartCount}
+              </span>
+            )}
+          </Link>
           <Link
             href="/partenariat"
             className="rounded-full border border-accent-400 px-4 py-2 text-sm font-semibold text-accent-500 transition hover:bg-accent-500 hover:text-white"

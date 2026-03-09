@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   Palette,
   MapPin,
@@ -16,6 +17,7 @@ import {
   User
 } from 'lucide-react';
 import type { Stay } from '@/types/stay';
+import { useCart } from '@/context/CartContext';
 import { FILTER_LABELS } from '@/lib/constants';
 
 type TabId = 'programme' | 'activites' | 'encadrement';
@@ -55,7 +57,14 @@ const DEFAULT_GALLERY = [
 ];
 
 export function StayDetailView({ stay }: { stay: Stay }) {
+  const router = useRouter();
+  const { addItem } = useCart();
   const [activeTab, setActiveTab] = useState<TabId>('programme');
+
+  const handleReserver = () => {
+    addItem(stay);
+    router.push('/panier');
+  };
   const galleryImages = stay.coverImage
     ? [stay.coverImage, DEFAULT_GALLERY[1], DEFAULT_GALLERY[2]]
     : DEFAULT_GALLERY;
@@ -275,14 +284,13 @@ export function StayDetailView({ stay }: { stay: Stay }) {
                     className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 placeholder:text-slate-400"
                   />
                 </div>
-                <a
-                  href={stay.sourceUrl ?? stay.organizer.website}
-                  target="_blank"
-                  rel="noreferrer"
+                <button
+                  type="button"
+                  onClick={handleReserver}
                   className="mt-4 flex w-full items-center justify-center rounded-xl bg-accent-500 px-6 py-3.5 text-base font-semibold text-white shadow-md transition-colors hover:bg-accent-600"
                 >
                   Réserver maintenant
-                </a>
+                </button>
               </form>
 
               <div className="mt-6 flex items-center gap-3 text-sm text-slate-600">

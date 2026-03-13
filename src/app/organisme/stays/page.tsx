@@ -1,14 +1,37 @@
 import Link from 'next/link';
 import { requireRole } from '@/lib/auth/require';
-import { mockSeasons, mockStays } from '@/lib/mocks';
 import { stayStatusLabel } from '@/lib/ui/labels';
+import { getServerSupabaseClient } from '@/lib/supabase/server';
 
 export default async function OrganizerStaysPage() {
-  requireRole('ORGANISATEUR');
-  const useMock = process.env.MOCK_UI === '1';
+  const session = requireRole('ORGANISATEUR');
+  const supabase = getServerSupabaseClient();
 
-  const stays = useMock ? mockStays : [];
-  const seasonsById = new Map(mockSeasons.map((season) => [season.id, season]));
+  let organizerId = session.tenantId ?? null;
+  if (!organizerId) {
+    const { data: fallbackOrganizer } = await supabase
+      .from('organizers')
+      .select('id')
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    organizerId = fallbackOrganizer?.id ?? null;
+  }
+
+  const { data: stays, error: staysError } = organizerId
+    ? await supabase
+        .from('stays')
+        .select('id,title,status,season_id,created_at')
+        .eq('organizer_id', organizerId)
+        .order('created_at', { ascending: false })
+    : { data: [], error: null };
+  const safeStays = stays ?? [];
+
+  const { data: seasons } = await supabase
+    .from('seasons')
+    .select('id,name');
+  const seasonsById = new Map((seasons ?? []).map((season) => [season.id, season]));
+  const loadError = staysError?.message ?? null;
 
   return (
     <div className="space-y-6">
@@ -37,25 +60,33 @@ export default async function OrganizerStaysPage() {
             </tr>
           </thead>
           <tbody>
-            {stays.map((stay) => (
+            {safeStays.map((stay) => (
               <tr key={stay.id} className="border-t border-slate-100">
                 <td className="px-4 py-3 font-medium text-slate-900">{stay.title}</td>
                 <td className="px-4 py-3 text-slate-600">
-                  {useMock ? seasonsById.get(stay.seasonId)?.name : '-'}
+                  {seasonsById.get(stay.season_id)?.name ?? '-'}
                 </td>
                 <td className="px-4 py-3 text-slate-600">{stayStatusLabel(stay.status)}</td>
-                <td className="px-4 py-3 text-slate-600">{stay.qualityScore}%</td>
+                <td className="px-4 py-3 text-slate-600">-</td>
                 <td className="px-4 py-3 text-right">
-                  <Link href={`/organisme/stays/${stay.id}`} className="text-emerald-600">
-                    Ouvrir
-                  </Link>
+                  <div className="flex items-center justify-end gap-3">
+                    <Link href={`/organisme/stays/${stay.id}`} className="text-emerald-600">
+                      Ouvrir
+                    </Link>
+                    <Link
+                      href={`/organisme/stays/${stay.id}`}
+                      className="rounded-lg border border-emerald-200 px-3 py-1 text-xs font-semibold text-emerald-700"
+                    >
+                      Éditer
+                    </Link>
+                  </div>
                 </td>
               </tr>
             ))}
-            {stays.length === 0 && (
+            {safeStays.length === 0 && (
               <tr>
                 <td className="px-4 py-6 text-slate-500" colSpan={5}>
-                  Aucun séjour pour le moment.
+                  {loadError ? `Erreur: ${loadError}` : 'Aucun séjour pour le moment.'}
                 </td>
               </tr>
             )}

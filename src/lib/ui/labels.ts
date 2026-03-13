@@ -2,10 +2,10 @@ export function stayStatusLabel(status?: string | null) {
   switch (status) {
     case 'DRAFT':
       return 'Brouillon';
-    case 'PENDING':
-      return 'En validation';
     case 'PUBLISHED':
       return 'Publié';
+    case 'HIDDEN':
+      return 'Masqué';
     case 'ARCHIVED':
       return 'Archivé';
     default:
@@ -17,10 +17,12 @@ export function sessionStatusLabel(status?: string | null) {
   switch (status) {
     case 'OPEN':
       return 'Ouverte';
-    case 'NEAR_FULL':
-      return 'Quasi complète';
-    case 'CLOSED':
-      return 'Fermée';
+    case 'FULL':
+      return 'Complète';
+    case 'COMPLETED':
+      return 'Terminée';
+    case 'ARCHIVED':
+      return 'Archivée';
     default:
       return status ?? '-';
   }

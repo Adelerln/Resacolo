@@ -1,5 +1,9 @@
 export const mockSeasons = [
-  { id: 'season-ete-2026', name: 'Été 2026' }
+  { id: 'season-hiver-2026', name: 'Hiver' },
+  { id: 'season-printemps-2026', name: 'Printemps' },
+  { id: 'season-ete-2026', name: 'Été' },
+  { id: 'season-automne-2026', name: 'Automne' },
+  { id: 'season-fin-annee-2026', name: "Fin d'année" }
 ];
 
 export const mockOrganizerTenant = { id: 'tenant-org-1', name: 'Alpha Organisateur' };

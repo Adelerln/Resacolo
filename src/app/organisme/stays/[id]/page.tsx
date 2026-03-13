@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { requireRole } from '@/lib/auth/require';
 import { mockRequests, mockSeasons, mockSessions, mockStages, mockStays } from '@/lib/mocks';
 import { sessionStatusLabel, stayStatusLabel } from '@/lib/ui/labels';
+import { getServerSupabaseClient } from '@/lib/supabase/server';
 
 type PageProps = { params: { id: string } };
 
@@ -9,6 +10,45 @@ export default async function OrganizerStayDetailPage({ params }: PageProps) {
   const session = requireRole('ORGANISATEUR');
   const useMock = process.env.MOCK_UI === '1';
   const stay = useMock ? mockStays.find((item) => item.id === params.id) : null;
+  const supabase = getServerSupabaseClient();
+  const { data: seasonsRaw } = await supabase.from('seasons').select('id,name');
+  const seasonOrder = ['Hiver', 'Printemps', 'Été', 'Automne', "Fin d'année"];
+  const seasons = [...(seasonsRaw ?? [])].sort((a, b) => {
+    const indexA = seasonOrder.indexOf(a.name);
+    const indexB = seasonOrder.indexOf(b.name);
+    if (indexA === -1 && indexB === -1) {
+      return a.name.localeCompare(b.name, 'fr');
+    }
+    if (indexA === -1) return 1;
+    if (indexB === -1) return -1;
+    return indexA - indexB;
+  });
+  const photoUrls = useMock
+    ? [
+        'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee',
+        'https://images.unsplash.com/photo-1500534314209-a25ddb2bd429',
+        ''
+      ]
+    : ['', '', ''];
+  const transportOptions = useMock
+    ? {
+        bus: true,
+        train: true,
+        plane: false,
+        byOwn: true,
+        meetingPoint: 'Gare de Lyon, Paris',
+        notes: 'Transferts inclus depuis la gare.'
+      }
+    : { bus: false, train: false, plane: false, byOwn: false, meetingPoint: '', notes: '' };
+  const contentSections = useMock
+    ? {
+        tagline: 'Une aventure nature pour les 12-16 ans.',
+        program: 'Randonnées, escalade, veillées.',
+        lodging: 'Chalets en montagne, chambres de 4.',
+        meals: 'Pension complète, cuisine locale.',
+        supervision: '1 animateur pour 6 jeunes.'
+      }
+    : { tagline: '', program: '', lodging: '', meals: '', supervision: '' };
 
   if (!stay || stay.organizerTenantId !== session.tenantId) {
     redirect('/organisme/stays');
@@ -28,6 +68,21 @@ export default async function OrganizerStayDetailPage({ params }: PageProps) {
     : [];
 
   async function updateStay() {
+    'use server';
+    redirect(`/organisme/stays/${params.id}`);
+  }
+
+  async function updateMedia() {
+    'use server';
+    redirect(`/organisme/stays/${params.id}`);
+  }
+
+  async function updateContent() {
+    'use server';
+    redirect(`/organisme/stays/${params.id}`);
+  }
+
+  async function updateTransport() {
     'use server';
     redirect(`/organisme/stays/${params.id}`);
   }
@@ -74,6 +129,21 @@ export default async function OrganizerStayDetailPage({ params }: PageProps) {
           />
         </label>
         <label className="block text-sm font-medium text-slate-700">
+          Saison
+          <select
+            name="season_id"
+            defaultValue={stay.seasonId}
+            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+          >
+            <option value="">Sélectionner</option>
+            {(seasons ?? []).map((season) => (
+              <option key={season.id} value={season.id}>
+                {season.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block text-sm font-medium text-slate-700">
           Description
           <textarea
             name="description"
@@ -114,6 +184,123 @@ export default async function OrganizerStayDetailPage({ params }: PageProps) {
           Enregistrer
         </button>
       </form>
+
+      <div className="grid gap-6 lg:grid-cols-3">
+        <form action={updateMedia} className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
+          <h2 className="text-lg font-semibold text-slate-900">Photos</h2>
+          <p className="text-sm text-slate-500">Ajoute des URLs d’images (3 max).</p>
+          <div className="space-y-3">
+            {photoUrls.map((url, index) => (
+              <label key={`photo-${index}`} className="block text-sm font-medium text-slate-700">
+                Photo {index + 1}
+                <input
+                  name={`photo_${index + 1}`}
+                  defaultValue={url}
+                  placeholder="https://"
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+                />
+              </label>
+            ))}
+          </div>
+          <button className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">
+            Enregistrer
+          </button>
+        </form>
+
+        <form action={updateContent} className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
+          <h2 className="text-lg font-semibold text-slate-900">Textes</h2>
+          <label className="block text-sm font-medium text-slate-700">
+            Accroche
+            <textarea
+              name="tagline"
+              defaultValue={contentSections.tagline}
+              rows={2}
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+            />
+          </label>
+          <label className="block text-sm font-medium text-slate-700">
+            Programme
+            <textarea
+              name="program"
+              defaultValue={contentSections.program}
+              rows={3}
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+            />
+          </label>
+          <label className="block text-sm font-medium text-slate-700">
+            Hébergement
+            <textarea
+              name="lodging"
+              defaultValue={contentSections.lodging}
+              rows={3}
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+            />
+          </label>
+          <label className="block text-sm font-medium text-slate-700">
+            Restauration
+            <textarea
+              name="meals"
+              defaultValue={contentSections.meals}
+              rows={3}
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+            />
+          </label>
+          <label className="block text-sm font-medium text-slate-700">
+            Encadrement
+            <textarea
+              name="supervision"
+              defaultValue={contentSections.supervision}
+              rows={2}
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+            />
+          </label>
+          <button className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">
+            Enregistrer
+          </button>
+        </form>
+
+        <form action={updateTransport} className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
+          <h2 className="text-lg font-semibold text-slate-900">Transports</h2>
+          <div className="space-y-2 text-sm text-slate-700">
+            <label className="flex items-center gap-2">
+              <input type="checkbox" name="bus" defaultChecked={transportOptions.bus} />
+              Bus
+            </label>
+            <label className="flex items-center gap-2">
+              <input type="checkbox" name="train" defaultChecked={transportOptions.train} />
+              Train
+            </label>
+            <label className="flex items-center gap-2">
+              <input type="checkbox" name="plane" defaultChecked={transportOptions.plane} />
+              Avion
+            </label>
+            <label className="flex items-center gap-2">
+              <input type="checkbox" name="byOwn" defaultChecked={transportOptions.byOwn} />
+              Trajet par vos propres moyens
+            </label>
+          </div>
+          <label className="block text-sm font-medium text-slate-700">
+            Point de rendez-vous
+            <input
+              name="meetingPoint"
+              defaultValue={transportOptions.meetingPoint}
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+            />
+          </label>
+          <label className="block text-sm font-medium text-slate-700">
+            Notes complémentaires
+            <textarea
+              name="transportNotes"
+              defaultValue={transportOptions.notes}
+              rows={3}
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+            />
+          </label>
+          <button className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">
+            Enregistrer
+          </button>
+        </form>
+      </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">

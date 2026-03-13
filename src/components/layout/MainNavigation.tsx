@@ -24,6 +24,12 @@ const links = [
   { href: '/contact', label: 'Contact' }
 ];
 
+const backOfficeLinks = [
+  { href: '/admin', label: 'Admin' },
+  { href: '/organisme', label: 'Organisateur' },
+  { href: '/partenaire', label: 'Collectivité' }
+];
+
 function isLinkItem(
   item: (typeof links)[number]
 ): item is { href: string; label: string } {
@@ -41,7 +47,9 @@ export function MainNavigation() {
   const { count: cartCount } = useCart();
   const [open, setOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [backOfficeOpen, setBackOfficeOpen] = useState(false);
   const dropdownCloseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const backOfficeCloseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const openDropdown = () => {
     if (dropdownCloseTimeoutRef.current) {
@@ -61,10 +69,31 @@ export function MainNavigation() {
     }, 180);
   };
 
+  const openBackOffice = () => {
+    if (backOfficeCloseTimeoutRef.current) {
+      clearTimeout(backOfficeCloseTimeoutRef.current);
+      backOfficeCloseTimeoutRef.current = null;
+    }
+    setBackOfficeOpen(true);
+  };
+
+  const closeBackOffice = () => {
+    if (backOfficeCloseTimeoutRef.current) {
+      clearTimeout(backOfficeCloseTimeoutRef.current);
+    }
+    backOfficeCloseTimeoutRef.current = setTimeout(() => {
+      setBackOfficeOpen(false);
+      backOfficeCloseTimeoutRef.current = null;
+    }, 180);
+  };
+
   useEffect(() => {
     return () => {
       if (dropdownCloseTimeoutRef.current) {
         clearTimeout(dropdownCloseTimeoutRef.current);
+      }
+      if (backOfficeCloseTimeoutRef.current) {
+        clearTimeout(backOfficeCloseTimeoutRef.current);
       }
     };
   }, []);
@@ -170,16 +199,51 @@ export function MainNavigation() {
             <ShoppingCart className="h-4 w-4" />
             {cartCount > 0 && (
               <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-accent-500 text-[10px] font-semibold text-white">
-                {cartCount > 99 ? '99+' : cartCount}
-              </span>
-            )}
+            {cartCount > 99 ? '99+' : cartCount}
+            </span>
+          )}
           </Link>
-          <Link
-            href="/back-office"
-            className="rounded-full border border-accent-400 px-4 py-2 text-sm font-semibold text-accent-500 transition hover:bg-accent-500 hover:text-white"
+          <div
+            className="relative"
+            onMouseEnter={openBackOffice}
+            onMouseLeave={closeBackOffice}
           >
-            Back Office
-          </Link>
+            <button
+              type="button"
+              aria-expanded={backOfficeOpen}
+              aria-haspopup="menu"
+              className="inline-flex items-center gap-2 rounded-full border border-accent-400 px-4 py-2 text-sm font-semibold text-accent-500 transition hover:bg-accent-500 hover:text-white"
+            >
+              Back Office
+              <ChevronDown className={clsx('h-4 w-4 transition', backOfficeOpen && 'rotate-180')} />
+            </button>
+            <AnimatePresence>
+              {backOfficeOpen && (
+                <motion.div
+                  initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 6, scale: 0.98 }}
+                  transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                  className="absolute right-0 top-full z-50 min-w-[200px] pt-2"
+                >
+                  <div className="rounded-xl border border-slate-200 bg-white py-2 shadow-lg">
+                    {backOfficeLinks.map((item) => (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        className={clsx(
+                          'block px-4 py-2 text-slate-700 hover:bg-slate-50 hover:text-brand-500',
+                          pathname === item.href && 'bg-brand-50 text-brand-600'
+                        )}
+                      >
+                        {item.label}
+                      </Link>
+                    ))}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
         </div>
         <button
           className="rounded-md border border-slate-200 p-2 text-slate-600 md:hidden"
@@ -241,13 +305,23 @@ export function MainNavigation() {
                 return null;
               })}
               <li>
-                <Link
-                  href="/back-office"
-                  onClick={close}
-                  className="inline-flex w-full items-center justify-center rounded-full border border-accent-400 px-4 py-2 text-accent-500"
-                >
-                  Back Office
-                </Link>
+                <span className="block font-medium text-slate-500">Back Office</span>
+                <ul className="mt-2 flex flex-col gap-2 pl-3">
+                  {backOfficeLinks.map((item) => (
+                    <li key={item.href}>
+                      <Link
+                        href={item.href}
+                        onClick={close}
+                        className={clsx(
+                          'block transition hover:text-brand-600',
+                          pathname === item.href && 'text-brand-600'
+                        )}
+                      >
+                        {item.label}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
               </li>
             </ul>
           </motion.nav>

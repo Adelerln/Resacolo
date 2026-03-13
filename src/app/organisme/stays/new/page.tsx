@@ -1,16 +1,31 @@
 import { redirect } from 'next/navigation';
 import { requireRole } from '@/lib/auth/require';
-import { mockSeasons } from '@/lib/mocks';
+import { getServerSupabaseClient } from '@/lib/supabase/server';
 
 export default async function NewStayPage() {
   const session = requireRole('ORGANISATEUR');
   const organizerTenantId = session.tenantId;
-  const useMock = process.env.MOCK_UI === '1';
-  const seasons = useMock ? mockSeasons : [];
+  const supabase = getServerSupabaseClient();
+  const { data: seasonsRaw } = await supabase.from('seasons').select('id,name');
+  const seasonOrder = ['Hiver', 'Printemps', 'Été', 'Automne', "Fin d'année"];
+  const seasons = [...(seasonsRaw ?? [])].sort((a, b) => {
+    const indexA = seasonOrder.indexOf(a.name);
+    const indexB = seasonOrder.indexOf(b.name);
+    if (indexA === -1 && indexB === -1) {
+      return a.name.localeCompare(b.name, 'fr');
+    }
+    if (indexA === -1) return 1;
+    if (indexB === -1) return -1;
+    return indexA - indexB;
+  });
 
-  async function createStay() {
+  async function createStay(formData: FormData) {
     'use server';
     if (!organizerTenantId) {
+      redirect('/organisme/stays');
+    }
+    const seasonId = String(formData.get('season_id') ?? '');
+    if (!seasonId) {
       redirect('/organisme/stays');
     }
 
@@ -27,9 +42,9 @@ export default async function NewStayPage() {
         </label>
         <label className="block text-sm font-medium text-slate-700">
           Saison
-          <select name="seasonId" className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2" required>
+          <select name="season_id" className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2" required>
             <option value="">Sélectionner</option>
-            {seasons.map((season) => (
+            {(seasons ?? []).map((season) => (
               <option key={season.id} value={season.id}>
                 {season.name}
               </option>

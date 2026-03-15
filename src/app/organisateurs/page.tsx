@@ -1,5 +1,7 @@
 import { Badge, Calendar, User } from 'lucide-react';
 import { OrganisateursGridWithModal } from '@/components/organisateurs/OrganisateursGridWithModal';
+import { getServerSupabaseClient } from '@/lib/supabase/server';
+import { slugify } from '@/lib/utils';
 
 export const metadata = {
   title: 'Organisateurs | ResaColo',
@@ -7,12 +9,24 @@ export const metadata = {
     'Découvrez les organisateurs de colonies de vacances du collectif ResaColo.'
 };
 
-interface PageProps {
-  searchParams: Promise<{ organisateur?: string }>;
-}
+export default async function OrganisateursPage() {
+  const supabase = getServerSupabaseClient();
+  const { data: organizers } = await supabase
+    .from('organizers')
+    .select('id,name,slug,logo_path,founded_year,age_min,age_max')
+    .order('name', { ascending: true });
 
-export default async function OrganisateursPage({ searchParams }: PageProps) {
-  const { organisateur } = await searchParams;
+  const formatted = (organizers ?? []).map((org) => ({
+    id: org.id,
+    name: org.name,
+    slug: org.slug ?? slugify(org.name),
+    logoUrl: org.logo_path
+      ? supabase.storage.from('organizer-logo').getPublicUrl(org.logo_path).data.publicUrl
+      : null,
+    creationYear: org.founded_year,
+    ageMin: org.age_min,
+    ageMax: org.age_max
+  }));
 
   return (
     <div className="min-h-screen bg-white">
@@ -60,7 +74,7 @@ export default async function OrganisateursPage({ searchParams }: PageProps) {
           </p>
         </div>
 
-        <OrganisateursGridWithModal initialSlug={organisateur ?? null} />
+        <OrganisateursGridWithModal organizers={formatted} />
       </section>
     </div>
   );

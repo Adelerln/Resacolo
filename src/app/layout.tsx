@@ -1,16 +1,24 @@
 import type { Metadata } from 'next';
-import { Baloo_2, Raleway } from 'next/font/google';
+import localFont from 'next/font/local';
 import './globals.css';
 import { CartProvider } from '@/context/CartContext';
 import { SiteShell } from '@/components/layout/SiteShell';
 
-const raleway = Raleway({
-  subsets: ['latin'],
+const raleway = localFont({
+  src: [
+    { path: './fonts/raleway-latin.woff2', weight: '400', style: 'normal' },
+    { path: './fonts/raleway-latin.woff2', weight: '500', style: 'normal' },
+    { path: './fonts/raleway-latin.woff2', weight: '600', style: 'normal' },
+    { path: './fonts/raleway-latin.woff2', weight: '700', style: 'normal' }
+  ],
   variable: '--font-sans',
   display: 'swap'
 });
-const baloo = Baloo_2({
-  subsets: ['latin'],
+const baloo = localFont({
+  src: [
+    { path: './fonts/baloo2-latin.woff2', weight: '700', style: 'normal' },
+    { path: './fonts/baloo2-latin.woff2', weight: '800', style: 'normal' }
+  ],
   variable: '--font-display',
   display: 'swap'
 });

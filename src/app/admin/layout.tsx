@@ -40,6 +40,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             >
               Utilisateurs
             </Link>
+            <Link
+              href="/admin/organizers"
+              className="mb-1 block rounded-lg px-3 py-2 transition hover:bg-slate-100"
+            >
+              Organisateurs
+            </Link>
           </nav>
           <div className="mt-auto px-6 pb-6 pt-4">
             <form action="/api/auth/logout" method="post">

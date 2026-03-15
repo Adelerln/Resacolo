@@ -1,0 +1,75 @@
+import { NextResponse } from 'next/server';
+import { getServerSupabaseClient } from '@/lib/supabase/server';
+
+export const runtime = 'nodejs';
+
+export async function POST(req: Request, context: { params: { id: string } }) {
+  const { id } = context.params;
+  const formData = await req.formData();
+  const email = String(formData.get('email') ?? '').trim();
+  const tempPassword = String(formData.get('temp_password') ?? '').trim();
+  const firstName = String(formData.get('first_name') ?? '').trim();
+  const lastName = String(formData.get('last_name') ?? '').trim();
+  const role = String(formData.get('role') ?? 'EDITOR').trim();
+
+  if (!email || !firstName || !lastName) {
+    return NextResponse.redirect(
+      new URL(`/admin/organizers/${id}/members/new?error=Tous%20les%20champs%20sont%20requis`, req.url),
+      303
+    );
+  }
+
+  const supabase = getServerSupabaseClient();
+  let userId: string | null = null;
+
+  const { data: existing } = await supabase.auth.admin.getUserByEmail(email);
+  if (existing?.user) {
+    userId = existing.user.id;
+  } else {
+    if (!tempPassword) {
+      return NextResponse.redirect(
+        new URL(`/admin/organizers/${id}/members/new?error=Mot%20de%20passe%20temporaire%20requis`, req.url),
+        303
+      );
+    }
+    const { data: userData, error: userError } = await supabase.auth.admin.createUser({
+      email,
+      password: tempPassword,
+      email_confirm: true
+    });
+    if (userError || !userData?.user) {
+      return NextResponse.redirect(
+        new URL(
+          `/admin/organizers/${id}/members/new?error=${encodeURIComponent(
+            userError?.message ?? "Impossible de créer l'utilisateur"
+          )}`,
+          req.url
+        ),
+        303
+      );
+    }
+    userId = userData.user.id;
+  }
+
+  const { error: memberError } = await supabase.from('organizer_members').insert({
+    organizer_id: id,
+    user_id: userId,
+    role,
+    first_name: firstName,
+    last_name: lastName
+  });
+
+  if (memberError) {
+    return NextResponse.redirect(
+      new URL(
+        `/admin/organizers/${id}/members/new?error=${encodeURIComponent(
+          memberError.message ?? "Impossible d'ajouter le membre"
+        )}`,
+        req.url
+      ),
+      303
+    );
+  }
+
+  return NextResponse.redirect(new URL(`/admin/organizers/${id}`, req.url), 303);
+}

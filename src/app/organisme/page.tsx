@@ -49,6 +49,8 @@ export default async function OrganizerHome() {
     : null;
   const hasProject = Boolean(organizer.education_project_path);
   const organizerSlug = organizer.slug ?? organizer.id;
+  const currentOrganizerId = organizer.id;
+  const currentOrganizerSlug = organizer.slug;
 
   async function updateProfile(formData: FormData) {
     'use server';
@@ -64,7 +66,7 @@ export default async function OrganizerHome() {
     const foundedYear = foundedYearRaw ? Number(foundedYearRaw) : null;
     const ageMin = ageMinRaw ? Number(ageMinRaw) : null;
     const ageMax = ageMaxRaw ? Number(ageMaxRaw) : null;
-    const slug = name ? slugify(name) : organizer.slug;
+    const slug = name ? slugify(name) : currentOrganizerSlug;
 
     await supabase
       .from('organizers')
@@ -77,21 +79,21 @@ export default async function OrganizerHome() {
         age_max: ageMax,
         slug
       })
-      .eq('id', organizer.id);
+      .eq('id', currentOrganizerId);
 
     if (logoFile instanceof File && logoFile.size > 0) {
       const extension = logoFile.name.split('.').pop()?.toLowerCase() || 'bin';
-      const logoPath = `organizers/${organizer.id}/logo.${extension}`;
+      const logoPath = `organizers/${currentOrganizerId}/logo.${extension}`;
       const logoBuffer = Buffer.from(await logoFile.arrayBuffer());
       await supabase.storage
         .from('organizer-logo')
         .upload(logoPath, logoBuffer, { upsert: true, contentType: logoFile.type });
-      await supabase.from('organizers').update({ logo_path: logoPath }).eq('id', organizer.id);
+      await supabase.from('organizers').update({ logo_path: logoPath }).eq('id', currentOrganizerId);
     }
 
     if (projectFile instanceof File && projectFile.size > 0) {
       const extension = projectFile.name.split('.').pop()?.toLowerCase() || 'pdf';
-      const projectPath = `organizers/${organizer.id}/education-project.${extension}`;
+      const projectPath = `organizers/${currentOrganizerId}/education-project.${extension}`;
       const projectBuffer = Buffer.from(await projectFile.arrayBuffer());
       await supabase.storage
         .from('organizer-docs')
@@ -99,7 +101,7 @@ export default async function OrganizerHome() {
       await supabase
         .from('organizers')
         .update({ education_project_path: projectPath })
-        .eq('id', organizer.id);
+        .eq('id', currentOrganizerId);
     }
 
     redirect('/organisme');

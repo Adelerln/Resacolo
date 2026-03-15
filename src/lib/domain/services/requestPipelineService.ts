@@ -73,7 +73,7 @@ export class RequestPipelineService {
           oldStageId: request.currentStageId,
           newStageId,
           actorUserId: actorUserId ?? null,
-          payloadJson: payload ?? Prisma.JsonNull
+          payloadJson: payload ?? undefined
         }
       });
 

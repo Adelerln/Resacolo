@@ -1,6 +1,7 @@
-import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { evaluateStayQuality } from '@/lib/domain/quality/stayQuality';
+
+type JsonValue = object | string | number | boolean | null;
 
 export type StayInput = {
   organizerTenantId: string;
@@ -10,8 +11,8 @@ export type StayInput = {
   ageMin?: number | null;
   ageMax?: number | null;
   location?: string | null;
-  themesJson?: Prisma.InputJsonValue;
-  tagsJson?: Prisma.InputJsonValue;
+  themesJson?: JsonValue;
+  tagsJson?: JsonValue;
 };
 
 export class StayService {
@@ -25,8 +26,8 @@ export class StayService {
         ageMin: input.ageMin,
         ageMax: input.ageMax,
         location: input.location,
-        themesJson: input.themesJson as Prisma.InputJsonValue | undefined,
-        tagsJson: input.tagsJson as Prisma.InputJsonValue | undefined,
+        themesJson: input.themesJson ?? undefined,
+        tagsJson: input.tagsJson ?? undefined,
         createdBy: actorUserId,
         updatedBy: actorUserId
       }
@@ -39,7 +40,16 @@ export class StayService {
   async update(id: string, input: Partial<StayInput>, actorUserId?: string) {
     const stay = await prisma.stay.update({
       where: { id },
-      data: { ...input, updatedBy: actorUserId }
+      data: {
+        title: input.title,
+        description: input.description,
+        ageMin: input.ageMin,
+        ageMax: input.ageMax,
+        location: input.location,
+        themesJson: input.themesJson ?? undefined,
+        tagsJson: input.tagsJson ?? undefined,
+        updatedBy: actorUserId
+      }
     });
 
     await this.recalculateQuality(stay.id);

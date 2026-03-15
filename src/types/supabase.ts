@@ -665,21 +665,27 @@ export type Database = {
       organizer_members: {
         Row: {
           created_at: string
+          first_name: string | null
           id: string
+          last_name: string | null
           organizer_id: string
           role: string
           user_id: string
         }
         Insert: {
           created_at?: string
+          first_name?: string | null
           id?: string
+          last_name?: string | null
           organizer_id: string
           role: string
           user_id: string
         }
         Update: {
           created_at?: string
+          first_name?: string | null
           id?: string
+          last_name?: string | null
           organizer_id?: string
           role?: string
           user_id?: string
@@ -698,20 +704,41 @@ export type Database = {
         Row: {
           contact_email: string | null
           created_at: string
+          description: string | null
+          education_project_path: string | null
+          founded_year: number | null
+          age_min: number | null
+          age_max: number | null
           id: string
+          logo_path: string | null
           name: string
+          slug: string | null
         }
         Insert: {
           contact_email?: string | null
           created_at?: string
+          description?: string | null
+          education_project_path?: string | null
+          founded_year?: number | null
+          age_min?: number | null
+          age_max?: number | null
           id?: string
+          logo_path?: string | null
           name: string
+          slug?: string | null
         }
         Update: {
           contact_email?: string | null
           created_at?: string
+          description?: string | null
+          education_project_path?: string | null
+          founded_year?: number | null
+          age_min?: number | null
+          age_max?: number | null
           id?: string
+          logo_path?: string | null
           name?: string
+          slug?: string | null
         }
         Relationships: []
       }

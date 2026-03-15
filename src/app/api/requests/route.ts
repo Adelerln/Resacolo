@@ -37,7 +37,7 @@ export async function POST(req: Request) {
         seasonId: input.seasonId,
         partnerTenantId: input.partnerTenantId,
         currentStageId,
-        applicantJson: input.applicantJson ?? Prisma.JsonNull
+        applicantJson: input.applicantJson ?? undefined
       }
     });
 
@@ -47,7 +47,7 @@ export async function POST(req: Request) {
         seasonId: request.seasonId,
         eventType: 'CREATED',
         newStageId: currentStageId,
-        payloadJson: input.applicantJson ?? Prisma.JsonNull
+        payloadJson: input.applicantJson ?? undefined
       }
     });
 

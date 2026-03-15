@@ -10,6 +10,7 @@ type OrganizerRow = {
   name: string;
   contact_email: string | null;
   created_at: string;
+  slug: string | null;
   membersCount?: number;
 };
 

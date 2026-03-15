@@ -44,9 +44,10 @@ export async function POST(req: Request, context: { params: { id: string } }) {
   }
   let userId: string | null = null;
 
-  const { data: existing } = await supabase.auth.admin.getUserByEmail(email);
-  if (existing?.user) {
-    userId = existing.user.id;
+  const { data: listData } = await supabase.auth.admin.listUsers({ perPage: 1000 });
+  const existingUser = listData?.users?.find((u) => u.email?.toLowerCase() === email.toLowerCase());
+  if (existingUser) {
+    userId = existingUser.id;
   } else {
     if (!tempPassword) {
       return NextResponse.redirect(

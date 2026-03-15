@@ -4,6 +4,8 @@ import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { slugify } from '@/lib/utils';
 
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export default async function OrganizerHome() {
   const session = requireRole('ORGANISATEUR');
@@ -36,11 +38,17 @@ export default async function OrganizerHome() {
   }
 
   const logoUrl = organizer.logo_path
-    ? supabase.storage.from('organizer-logo').getPublicUrl(organizer.logo_path).data.publicUrl
+    ? (await supabase.storage
+        .from('organizer-logo')
+        .createSignedUrl(organizer.logo_path, 60 * 60)).data?.signedUrl ?? null
     : null;
   const projectUrl = organizer.education_project_path
-    ? supabase.storage.from('organizer-docs').getPublicUrl(organizer.education_project_path).data.publicUrl
+    ? (await supabase.storage
+        .from('organizer-docs')
+        .createSignedUrl(organizer.education_project_path, 60 * 60)).data?.signedUrl ?? null
     : null;
+  const hasProject = Boolean(organizer.education_project_path);
+  const organizerSlug = organizer.slug ?? organizer.id;
 
   async function updateProfile(formData: FormData) {
     'use server';
@@ -176,20 +184,40 @@ export default async function OrganizerHome() {
               accept="image/*"
               className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
             />
-            {logoUrl && <img src={logoUrl} alt={organizer.name} className="mt-2 h-16 w-auto rounded-lg border" />}
+            {logoUrl && (
+              <div className="mt-2 space-y-1">
+                <div className="text-xs text-slate-500">Logo déjà chargé</div>
+                <img src={logoUrl} alt={organizer.name} className="h-16 w-auto rounded-lg border" />
+              </div>
+            )}
           </label>
           <label className="block text-sm font-medium text-slate-700">
             Projet éducatif (PDF)
-            <input
-              name="education_project"
-              type="file"
-              accept="application/pdf"
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-            />
-            {projectUrl && (
-              <a className="mt-2 inline-flex text-sm font-medium text-brand-600" href={projectUrl}>
-                Télécharger le PDF actuel
-              </a>
+            {hasProject ? (
+              <div className="mt-2 space-y-1">
+                <div className="text-xs text-slate-500">Projet déjà chargé</div>
+                {projectUrl && (
+                  <a className="inline-flex text-sm font-medium text-brand-600" href={projectUrl}>
+                    Télécharger le PDF actuel
+                  </a>
+                )}
+                <form
+                  action={`/api/organizers/${organizerSlug}/project/delete`}
+                  method="post"
+                  className="inline-flex"
+                >
+                  <button className="inline-flex items-center text-xs font-semibold text-red-600">
+                    Supprimer le PDF
+                  </button>
+                </form>
+              </div>
+            ) : (
+              <input
+                name="education_project"
+                type="file"
+                accept="application/pdf"
+                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+              />
             )}
           </label>
         </div>

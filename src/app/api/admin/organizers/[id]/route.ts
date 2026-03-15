@@ -5,7 +5,7 @@ import { slugify } from '@/lib/utils';
 export const runtime = 'nodejs';
 
 export async function POST(req: Request, context: { params: { id: string } }) {
-  const { id } = context.params;
+  const { id: idOrSlug } = context.params;
   const formData = await req.formData();
   const name = String(formData.get('name') ?? '').trim();
   const contactEmail = String(formData.get('contact_email') ?? '').trim();
@@ -20,8 +20,31 @@ export async function POST(req: Request, context: { params: { id: string } }) {
   const ageMin = ageMinRaw ? Number(ageMinRaw) : null;
   const ageMax = ageMaxRaw ? Number(ageMaxRaw) : null;
   const slug = name ? slugify(name) : null;
+  const urlSlug = slug ?? String(idOrSlug);
 
   const supabase = getServerSupabaseClient();
+  let { data: organizer } = await supabase
+    .from('organizers')
+    .select('id')
+    .eq('slug', idOrSlug)
+    .maybeSingle();
+
+  if (!organizer) {
+    const { data: byId } = await supabase
+      .from('organizers')
+      .select('id')
+      .eq('id', idOrSlug)
+      .maybeSingle();
+    organizer = byId ?? null;
+  }
+
+  if (!organizer) {
+    return NextResponse.redirect(
+      new URL(`/admin/organisateurs/${urlSlug}?error=Organisateur%20introuvable`, req.url),
+      303
+    );
+  }
+
   const { error } = await supabase
     .from('organizers')
     .update({
@@ -33,49 +56,58 @@ export async function POST(req: Request, context: { params: { id: string } }) {
       age_max: ageMax,
       slug
     })
-    .eq('id', id);
+    .eq('id', organizer.id);
 
   if (error) {
     return NextResponse.redirect(
-      new URL(`/admin/organizers/${id}?error=${encodeURIComponent(error.message)}`, req.url),
+      new URL(
+        `/admin/organisateurs/${urlSlug}?error=${encodeURIComponent(error.message)}`,
+        req.url
+      ),
       303
     );
   }
 
   if (logoFile instanceof File && logoFile.size > 0) {
     const extension = logoFile.name.split('.').pop()?.toLowerCase() || 'bin';
-    const logoPath = `organizers/${id}/logo.${extension}`;
+    const logoPath = `organizers/${organizer.id}/logo.${extension}`;
     const logoBuffer = Buffer.from(await logoFile.arrayBuffer());
     const { error: logoError } = await supabase.storage
       .from('organizer-logo')
       .upload(logoPath, logoBuffer, { upsert: true, contentType: logoFile.type });
     if (logoError) {
       return NextResponse.redirect(
-        new URL(`/admin/organizers/${id}?error=${encodeURIComponent(logoError.message)}`, req.url),
+        new URL(
+          `/admin/organisateurs/${urlSlug}?error=${encodeURIComponent(logoError.message)}`,
+          req.url
+        ),
         303
       );
     }
-    await supabase.from('organizers').update({ logo_path: logoPath }).eq('id', id);
+    await supabase.from('organizers').update({ logo_path: logoPath }).eq('id', organizer.id);
   }
 
   if (projectFile instanceof File && projectFile.size > 0) {
     const extension = projectFile.name.split('.').pop()?.toLowerCase() || 'pdf';
-    const projectPath = `organizers/${id}/education-project.${extension}`;
+    const projectPath = `organizers/${organizer.id}/education-project.${extension}`;
     const projectBuffer = Buffer.from(await projectFile.arrayBuffer());
     const { error: projectError } = await supabase.storage
       .from('organizer-docs')
       .upload(projectPath, projectBuffer, { upsert: true, contentType: projectFile.type });
     if (projectError) {
       return NextResponse.redirect(
-        new URL(`/admin/organizers/${id}?error=${encodeURIComponent(projectError.message)}`, req.url),
+        new URL(
+          `/admin/organisateurs/${urlSlug}?error=${encodeURIComponent(projectError.message)}`,
+          req.url
+        ),
         303
       );
     }
     await supabase
       .from('organizers')
       .update({ education_project_path: projectPath })
-      .eq('id', id);
+      .eq('id', organizer.id);
   }
 
-  return NextResponse.redirect(new URL(`/admin/organizers/${id}`, req.url), 303);
+  return NextResponse.redirect(new URL(`/admin/organisateurs/${urlSlug}?success=1`, req.url), 303);
 }

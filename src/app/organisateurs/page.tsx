@@ -16,17 +16,24 @@ export default async function OrganisateursPage() {
     .select('id,name,slug,logo_path,founded_year,age_min,age_max')
     .order('name', { ascending: true });
 
-  const formatted = (organizers ?? []).map((org) => ({
-    id: org.id,
-    name: org.name,
-    slug: org.slug ?? slugify(org.name),
-    logoUrl: org.logo_path
-      ? supabase.storage.from('organizer-logo').getPublicUrl(org.logo_path).data.publicUrl
-      : null,
-    creationYear: org.founded_year,
-    ageMin: org.age_min,
-    ageMax: org.age_max
-  }));
+  const formatted = await Promise.all(
+    (organizers ?? []).map(async (org) => {
+      const logoUrl = org.logo_path
+        ? (await supabase.storage
+            .from('organizer-logo')
+            .createSignedUrl(org.logo_path, 60 * 60)).data?.signedUrl ?? null
+        : null;
+      return {
+        id: org.id,
+        name: org.name,
+        slug: org.slug ?? slugify(org.name),
+        logoUrl,
+        creationYear: org.founded_year,
+        ageMin: org.age_min,
+        ageMax: org.age_max
+      };
+    })
+  );
 
   return (
     <div className="min-h-screen bg-white">

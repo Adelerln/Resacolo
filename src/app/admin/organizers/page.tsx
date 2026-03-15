@@ -3,6 +3,7 @@ import { requireRole } from '@/lib/auth/require';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 type OrganizerRow = {
   id: string;
@@ -19,7 +20,7 @@ export default async function AdminOrganizersPage() {
 
   const { data, error } = await supabase
     .from('organizers')
-    .select('id,name,contact_email,created_at')
+    .select('id,name,contact_email,created_at,slug')
     .order('created_at', { ascending: false });
 
   const organizersBase = (data ?? []) as OrganizerRow[];
@@ -48,7 +49,7 @@ export default async function AdminOrganizersPage() {
           <p className="text-sm text-slate-600">Gérer les organismes et leurs membres.</p>
         </div>
         <Link
-          href="/admin/organizers/new"
+          href="/admin/organisateurs/new"
           className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white"
         >
           Créer un organisateur
@@ -78,7 +79,10 @@ export default async function AdminOrganizersPage() {
                   {new Date(organizer.created_at).toLocaleDateString('fr-FR')}
                 </td>
                 <td className="px-4 py-3 text-right">
-                  <Link href={`/admin/organizers/${organizer.id}`} className="text-emerald-600">
+                  <Link
+                    href={`/admin/organisateurs/${organizer.slug ?? organizer.id}`}
+                    className="text-emerald-600"
+                  >
                     Voir
                   </Link>
                 </td>

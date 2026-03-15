@@ -4,7 +4,7 @@ import { getServerSupabaseClient } from '@/lib/supabase/server';
 export const runtime = 'nodejs';
 
 export async function POST(req: Request, context: { params: { id: string } }) {
-  const { id } = context.params;
+  const { id: idOrSlug } = context.params;
   const formData = await req.formData();
   const email = String(formData.get('email') ?? '').trim();
   const tempPassword = String(formData.get('temp_password') ?? '').trim();
@@ -14,12 +14,34 @@ export async function POST(req: Request, context: { params: { id: string } }) {
 
   if (!email || !firstName || !lastName) {
     return NextResponse.redirect(
-      new URL(`/admin/organizers/${id}/members/new?error=Tous%20les%20champs%20sont%20requis`, req.url),
+      new URL(
+        `/admin/organisateurs/${idOrSlug}/members/new?error=Tous%20les%20champs%20sont%20requis`,
+        req.url
+      ),
       303
     );
   }
 
   const supabase = getServerSupabaseClient();
+  let { data: organizer } = await supabase
+    .from('organizers')
+    .select('id')
+    .eq('slug', idOrSlug)
+    .maybeSingle();
+  if (!organizer) {
+    const { data: byId } = await supabase
+      .from('organizers')
+      .select('id')
+      .eq('id', idOrSlug)
+      .maybeSingle();
+    organizer = byId ?? null;
+  }
+  if (!organizer) {
+    return NextResponse.redirect(
+      new URL(`/admin/organisateurs/${idOrSlug}?error=Organisateur%20introuvable`, req.url),
+      303
+    );
+  }
   let userId: string | null = null;
 
   const { data: existing } = await supabase.auth.admin.getUserByEmail(email);
@@ -28,7 +50,10 @@ export async function POST(req: Request, context: { params: { id: string } }) {
   } else {
     if (!tempPassword) {
       return NextResponse.redirect(
-        new URL(`/admin/organizers/${id}/members/new?error=Mot%20de%20passe%20temporaire%20requis`, req.url),
+        new URL(
+          `/admin/organisateurs/${idOrSlug}/members/new?error=Mot%20de%20passe%20temporaire%20requis`,
+          req.url
+        ),
         303
       );
     }
@@ -40,7 +65,7 @@ export async function POST(req: Request, context: { params: { id: string } }) {
     if (userError || !userData?.user) {
       return NextResponse.redirect(
         new URL(
-          `/admin/organizers/${id}/members/new?error=${encodeURIComponent(
+          `/admin/organisateurs/${idOrSlug}/members/new?error=${encodeURIComponent(
             userError?.message ?? "Impossible de créer l'utilisateur"
           )}`,
           req.url
@@ -52,7 +77,7 @@ export async function POST(req: Request, context: { params: { id: string } }) {
   }
 
   const { error: memberError } = await supabase.from('organizer_members').insert({
-    organizer_id: id,
+    organizer_id: organizer.id,
     user_id: userId,
     role,
     first_name: firstName,
@@ -62,7 +87,7 @@ export async function POST(req: Request, context: { params: { id: string } }) {
   if (memberError) {
     return NextResponse.redirect(
       new URL(
-        `/admin/organizers/${id}/members/new?error=${encodeURIComponent(
+        `/admin/organisateurs/${idOrSlug}/members/new?error=${encodeURIComponent(
           memberError.message ?? "Impossible d'ajouter le membre"
         )}`,
         req.url
@@ -71,5 +96,8 @@ export async function POST(req: Request, context: { params: { id: string } }) {
     );
   }
 
-  return NextResponse.redirect(new URL(`/admin/organizers/${id}`, req.url), 303);
+  return NextResponse.redirect(
+    new URL(`/admin/organisateurs/${idOrSlug}?success=1`, req.url),
+    303
+  );
 }

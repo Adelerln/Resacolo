@@ -1,93 +1,97 @@
-import { redirect } from 'next/navigation';
 import { requireRole } from '@/lib/auth/require';
-import { mockUsers } from '@/lib/mocks';
+import { getServerSupabaseClient } from '@/lib/supabase/server';
+
+export const runtime = 'nodejs';
 
 export default async function AdminUsersPage() {
   requireRole('ADMIN');
-  const users = mockUsers;
-  const tenants: Array<{ id: string; name: string; type: string }> = [];
+  const supabase = getServerSupabaseClient();
 
-  async function createUser(formData: FormData) {
-    'use server';
-    const email = String(formData.get('email') ?? '');
-    const password = String(formData.get('password') ?? '');
-    const role = String(formData.get('role') ?? '');
+  const { data: membersRaw, error } = await supabase
+    .from('organizer_members')
+    .select('id,role,user_id,first_name,last_name,created_at,organizers(name)')
+    .order('created_at', { ascending: false });
 
-    if (!email || !password || !role) return;
-
-    redirect('/admin/utilisateurs');
-  }
+  const members = await Promise.all(
+    (membersRaw ?? []).map(async (member) => {
+      const { data: userData } = await supabase.auth.admin.getUserById(member.user_id);
+      return {
+        ...member,
+        email: userData?.user?.email ?? null,
+        organizerName: member.organizers?.name ?? '-'
+      };
+    })
+  );
 
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold text-slate-900">Utilisateurs</h1>
 
-      <form action={createUser} className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
-        <h2 className="text-lg font-semibold text-slate-900">Creer un utilisateur</h2>
-        <div className="grid gap-4 md:grid-cols-2">
-          <label className="block text-sm font-medium text-slate-700">
-            Nom
-            <input name="name" className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2" />
-          </label>
-          <label className="block text-sm font-medium text-slate-700">
-            Email
-            <input name="email" type="email" className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2" required />
-          </label>
-        </div>
-        <div className="grid gap-4 md:grid-cols-2">
-          <label className="block text-sm font-medium text-slate-700">
-            Mot de passe
-            <input name="password" type="password" className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2" required />
-          </label>
-          <label className="block text-sm font-medium text-slate-700">
-            Role
-            <select name="role" className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2" required>
-              <option value="">Sélectionner</option>
-              <option value="ADMIN">ADMIN</option>
-              <option value="ORGANISATEUR">ORGANISATEUR</option>
-              <option value="PARTENAIRE">PARTENAIRE</option>
-            </select>
-          </label>
-        </div>
-        <label className="block text-sm font-medium text-slate-700">
-          Tenant (organisateur/partenaire)
-          <select name="tenantId" className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2">
-            <option value="">Aucun</option>
-            {tenants.map((tenant) => (
-              <option key={tenant.id} value={tenant.id}>
-                {tenant.name} ({tenant.type})
-              </option>
-            ))}
-          </select>
-        </label>
-        <button className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">
-          Creer
-        </button>
-      </form>
-
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
         <table className="w-full text-left text-sm">
           <thead className="bg-slate-50 text-xs uppercase text-slate-500">
             <tr>
+              <th className="px-4 py-3">Prénom</th>
               <th className="px-4 py-3">Nom</th>
               <th className="px-4 py-3">Email</th>
-              <th className="px-4 py-3">Roles</th>
+              <th className="px-4 py-3">Organisateur</th>
+              <th className="px-4 py-3">Rôle</th>
             </tr>
           </thead>
           <tbody>
-            {users.map((user) => (
-              <tr key={user.id} className="border-t border-slate-100">
-                <td className="px-4 py-3 font-medium text-slate-900">{user.name ?? '-'}</td>
-                <td className="px-4 py-3 text-slate-600">{user.email}</td>
+            {members.map((member) => (
+              <tr key={member.id} className="border-t border-slate-100">
                 <td className="px-4 py-3 text-slate-600">
-                  {user.roles.join(', ')}
+                  <input
+                    form={`member-${member.id}`}
+                    name="first_name"
+                    defaultValue={member.first_name ?? ''}
+                    className="w-28 rounded border border-slate-200 px-2 py-1 text-xs"
+                  />
+                </td>
+                <td className="px-4 py-3 text-slate-600">
+                  <input
+                    form={`member-${member.id}`}
+                    name="last_name"
+                    defaultValue={member.last_name ?? ''}
+                    className="w-28 rounded border border-slate-200 px-2 py-1 text-xs"
+                  />
+                </td>
+                <td className="px-4 py-3 text-slate-600">
+                  <input
+                    form={`member-${member.id}`}
+                    name="email"
+                    defaultValue={member.email ?? ''}
+                    className="w-56 rounded border border-slate-200 px-2 py-1 text-xs"
+                  />
+                </td>
+                <td className="px-4 py-3 text-slate-600">{member.organizerName}</td>
+                <td className="px-4 py-3 text-slate-600">
+                  <select
+                    form={`member-${member.id}`}
+                    name="role"
+                    defaultValue={member.role}
+                    className="rounded border border-slate-200 px-2 py-1 text-xs"
+                  >
+                    <option value="OWNER">OWNER</option>
+                    <option value="EDITOR">EDITOR</option>
+                    <option value="RESERVATION_MANAGER">RESERVATION_MANAGER</option>
+                  </select>
+                </td>
+                <td className="px-4 py-3 text-right">
+                  <form id={`member-${member.id}`} action={`/api/admin/organizer-members/${member.id}`} method="post">
+                    <input type="hidden" name="user_id" value={member.user_id} />
+                    <button className="rounded bg-emerald-600 px-2 py-1 text-xs font-semibold text-white">
+                      OK
+                    </button>
+                  </form>
                 </td>
               </tr>
             ))}
-            {users.length === 0 && (
+            {members.length === 0 && (
               <tr>
-                <td className="px-4 py-6 text-slate-500" colSpan={3}>
-                  Aucun utilisateur.
+                <td className="px-4 py-6 text-slate-500" colSpan={6}>
+                  {error ? `Erreur: ${error.message}` : 'Aucun utilisateur.'}
                 </td>
               </tr>
             )}

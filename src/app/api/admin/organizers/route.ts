@@ -21,7 +21,7 @@ export async function POST(req: Request) {
 
   if (!name || !contactEmail || !userEmail || !tempPassword || !firstName || !lastName) {
     return NextResponse.redirect(
-      new URL('/admin/organizers/new?error=Tous%20les%20champs%20sont%20requis', req.url),
+      new URL('/admin/organisateurs/new?error=Tous%20les%20champs%20sont%20requis', req.url),
       303
     );
   }
@@ -50,7 +50,7 @@ export async function POST(req: Request) {
   if (organizerError || !organizer) {
     return NextResponse.redirect(
       new URL(
-        `/admin/organizers/new?error=${encodeURIComponent(
+        `/admin/organisateurs/new?error=${encodeURIComponent(
           organizerError?.message ?? "Impossible de créer l'organisateur"
         )}`,
         req.url
@@ -70,7 +70,7 @@ export async function POST(req: Request) {
       await supabase.from('organizers').delete().eq('id', organizer.id);
       return NextResponse.redirect(
         new URL(
-          `/admin/organizers/new?error=${encodeURIComponent(
+          `/admin/organisateurs/new?error=${encodeURIComponent(
             logoError.message ?? 'Impossible de téléverser le logo'
           )}`,
           req.url
@@ -92,7 +92,7 @@ export async function POST(req: Request) {
       await supabase.from('organizers').delete().eq('id', organizer.id);
       return NextResponse.redirect(
         new URL(
-          `/admin/organizers/new?error=${encodeURIComponent(
+          `/admin/organisateurs/new?error=${encodeURIComponent(
             projectError.message ?? 'Impossible de téléverser le projet éducatif'
           )}`,
           req.url
@@ -116,7 +116,7 @@ export async function POST(req: Request) {
     await supabase.from('organizers').delete().eq('id', organizer.id);
     return NextResponse.redirect(
       new URL(
-        `/admin/organizers/new?error=${encodeURIComponent(
+        `/admin/organisateurs/new?error=${encodeURIComponent(
           userError?.message ?? "Impossible de créer l'utilisateur"
         )}`,
         req.url
@@ -138,7 +138,7 @@ export async function POST(req: Request) {
     await supabase.from('organizers').delete().eq('id', organizer.id);
     return NextResponse.redirect(
       new URL(
-        `/admin/organizers/new?error=${encodeURIComponent(
+        `/admin/organisateurs/new?error=${encodeURIComponent(
           memberError.message ?? "Impossible de lier l'utilisateur"
         )}`,
         req.url
@@ -147,5 +147,5 @@ export async function POST(req: Request) {
     );
   }
 
-  return NextResponse.redirect(new URL(`/admin/organizers/${organizer.id}`, req.url), 303);
+  return NextResponse.redirect(new URL(`/admin/organisateurs/${slug}?success=1`, req.url), 303);
 }

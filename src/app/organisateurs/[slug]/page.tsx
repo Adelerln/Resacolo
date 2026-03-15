@@ -27,12 +27,14 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
   }
 
   const logoUrl = resolvedOrganizer.logo_path
-    ? supabase.storage.from('organizer-logo').getPublicUrl(resolvedOrganizer.logo_path).data.publicUrl
+    ? (await supabase.storage
+        .from('organizer-logo')
+        .createSignedUrl(resolvedOrganizer.logo_path, 60 * 60)).data?.signedUrl ?? null
     : null;
   const projectUrl = resolvedOrganizer.education_project_path
-    ? supabase.storage
+    ? (await supabase.storage
         .from('organizer-docs')
-        .getPublicUrl(resolvedOrganizer.education_project_path).data.publicUrl
+        .createSignedUrl(resolvedOrganizer.education_project_path, 60 * 60)).data?.signedUrl ?? null
     : null;
 
   return (

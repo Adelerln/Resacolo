@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { MapPin, Clock, Trash2, ShoppingBag } from 'lucide-react';
 import { useCart } from '@/context/CartContext';
+import { getMockImageUrl, mockImages } from '@/lib/mockImages';
 
 function formatPrice(price?: number | null) {
   if (!price) return 'Sur demande';
@@ -35,7 +36,7 @@ export default function PanierPage() {
         </p>
         <Link
           href="/sejours"
-          className="mt-8 inline-flex items-center rounded-xl bg-accent-500 px-6 py-3 font-semibold text-white shadow-md transition-colors hover:bg-accent-600"
+          className="btn btn-primary btn-md mt-8"
         >
           Voir les séjours
         </Link>
@@ -58,7 +59,7 @@ export default function PanierPage() {
           >
             <div className="relative h-40 w-full shrink-0 sm:h-36 sm:w-48">
               <Image
-                src={stay.coverImage || 'https://images.unsplash.com/photo-1506929562872-bb421503ef21?auto=format&fit=crop&w=400&q=80'}
+                src={stay.coverImage || getMockImageUrl(mockImages.sejours.fallbackCover, 400, 80)}
                 alt=""
                 fill
                 className="object-cover"
@@ -115,14 +116,14 @@ export default function PanierPage() {
           <div className="flex flex-col gap-3 sm:flex-row">
             <Link
               href="/sejours"
-              className="inline-flex justify-center rounded-xl border border-slate-200 bg-white px-6 py-3 font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+              className="btn btn-secondary btn-md"
             >
               Continuer mes recherches
             </Link>
             <button
               type="button"
               onClick={() => router.push('/contact')}
-              className="inline-flex justify-center rounded-xl bg-accent-500 px-6 py-3 font-semibold text-white shadow-md transition-colors hover:bg-accent-600"
+              className="btn btn-primary btn-md"
             >
               Valider le panier
             </button>

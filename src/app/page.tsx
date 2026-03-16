@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { useState } from 'react';
+import { getMockImageUrl, mockImages } from '@/lib/mockImages';
 import {
   Users,
   Repeat,
@@ -149,14 +150,14 @@ export default function HomePage() {
             <div className="mt-8 flex flex-col sm:flex-row items-center gap-4 justify-center lg:justify-start">
               <Link
                 href="/sejours"
-                className="inline-flex items-center gap-2 rounded-xl bg-accent-500 px-7 py-3 text-base font-semibold text-white shadow-md hover:bg-accent-600 transition-colors"
+                className="btn btn-primary btn-md"
               >
                 Trouver une colo
                 <ArrowRight size={18} />
               </Link>
               <a
                 href="#comment-ca-marche"
-                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-7 py-3 text-base font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+                className="btn btn-secondary btn-md"
               >
                 Comment ça marche ?
               </a>
@@ -176,7 +177,7 @@ export default function HomePage() {
           >
             <div className="relative aspect-[16/10] rounded-3xl overflow-hidden shadow-lg">
               <Image
-                src="https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?auto=format&fit=crop&w=900&q=80"
+                src={getMockImageUrl(mockImages.home.hero, 900, 80)}
                 alt="Enfants heureux en colonie de vacances"
                 fill
                 className="object-cover"
@@ -275,9 +276,9 @@ export default function HomePage() {
             whileInView={{ opacity: 1 }}
             viewport={{ once: true }}
           >
-            <div className="relative w-full max-w-2xl aspect-[3/2] rounded-2xl overflow-hidden shadow-md">
+            <div className="relative w-full max-w-2xl aspect-[3/2] overflow-hidden rounded-2xl bg-slate-100 shadow-md">
               <Image
-                src="https://images.unsplash.com/photo-1578198576814-8f1dff252730?auto=format&fit=crop&w=800&q=80"
+                src={getMockImageUrl(mockImages.home.thematiques, 800, 80)}
                 alt="Enfants en activité de colonie"
                 fill
                 className="object-cover"

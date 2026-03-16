@@ -4,6 +4,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useState } from 'react';
 import { Compass, Clock3, Filter, MapPin, Search, ShoppingCart, Sun } from 'lucide-react';
+import { getMockImageUrl, mockImages } from '@/lib/mockImages';
 import {
   Accordion,
   AccordionContent,
@@ -38,8 +39,7 @@ const mockStays: MockStay[] = [
     description:
       'Un séjour intensif pour progresser en motocross avec des ateliers techniques, des balades encadrées et des défis tout-terrain.',
     priceFrom: 689,
-    image:
-      'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=1200&q=80',
+    image: getMockImageUrl(mockImages.sampleStays[0], 1200, 80),
     organizerLogo: '/image/logo-resacolo.png'
   },
   {
@@ -53,8 +53,7 @@ const mockStays: MockStay[] = [
     description:
       'Découverte de Strasbourg puis immersion à Europa Park pour un programme rythmé entre culture urbaine et sensations fortes.',
     priceFrom: 559,
-    image:
-      'https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?auto=format&fit=crop&w=1200&q=80',
+    image: getMockImageUrl(mockImages.sampleStays[1], 1200, 80),
     organizerLogo: '/image/logo-resacolo.png'
   },
   {
@@ -68,8 +67,7 @@ const mockStays: MockStay[] = [
     description:
       'Une aventure internationale entre métropole futuriste et escapades dans le désert, avec activités de groupe et visites guidées.',
     priceFrom: 1390,
-    image:
-      'https://images.unsplash.com/photo-1548013146-72479768bada?auto=format&fit=crop&w=1200&q=80',
+    image: getMockImageUrl(mockImages.sampleStays[2], 1200, 80),
     organizerLogo: '/image/logo-resacolo.png'
   }
 ];
@@ -139,19 +137,19 @@ function StayCard({ stay }: { stay: MockStay }) {
         </span>
       </div>
 
-      <CardContent className="space-y-4 p-4">
-        <div className="flex items-center justify-between gap-2 text-xs font-medium text-[#3B82F6]">
-          <span className="inline-flex items-center gap-1.5">
+      <CardContent className="space-y-4 p-4 pt-6">
+        <div className="flex items-center justify-between gap-3 text-xs font-medium text-[#3B82F6] whitespace-nowrap">
+          <span className="inline-flex min-w-0 items-center gap-1.5">
             <MapPin className="h-3.5 w-3.5" />
-            {stay.location}
+            <span className="min-w-0 truncate">{stay.location}</span>
           </span>
-          <span className="inline-flex items-center gap-1.5">
+          <span className="inline-flex shrink-0 items-center gap-1.5">
             <Clock3 className="h-3.5 w-3.5" />
             {stay.duration}
           </span>
         </div>
 
-        <div className="space-y-2 text-center">
+        <div className="space-y-2 text-center pt-1">
           <CardTitle className="text-xl font-bold text-slate-900">{stay.title}</CardTitle>
           <CardDescription className="text-sm text-slate-500">{stay.subtitle}</CardDescription>
           <p
@@ -166,7 +164,6 @@ function StayCard({ stay }: { stay: MockStay }) {
             {stay.description}
           </p>
         </div>
-
         <p className="text-center text-xl font-bold text-[#F97316]">À partir de {stay.priceFrom} €</p>
       </CardContent>
     </Card>
@@ -182,7 +179,7 @@ export function StayCatalogPage() {
       <section className="relative overflow-hidden">
         <div className="absolute inset-0">
           <Image
-            src="https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=1800&q=80"
+            src={getMockImageUrl(mockImages.sejours.hero, 1800, 80)}
             alt="Aventure nature"
             fill
             className="object-cover"
@@ -191,16 +188,19 @@ export function StayCatalogPage() {
           <div className="absolute inset-0 bg-slate-900/60" />
         </div>
 
-        <div className="pointer-events-none absolute left-6 top-8 md:left-16">
-          <div className="relative">
-            <Compass className="h-9 w-9 text-white" />
-            <div className="absolute -left-4 top-7 h-24 w-24 rounded-full border-2 border-dashed border-white/70" />
-            <div className="absolute left-8 top-16 h-20 w-32 rounded-full border-2 border-dashed border-white/50" />
-          </div>
-        </div>
-
         <div className="relative mx-auto max-w-7xl px-6 py-20 md:py-28">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/90">TOUS NOS SÉJOURS</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/90">
+            <span className="relative inline-flex items-center gap-3">
+              <span className="relative z-10 inline-flex items-center gap-2">
+                <Compass className="h-5 w-5 text-white/95" aria-hidden />
+                TOUS NOS SÉJOURS
+              </span>
+              <span
+                aria-hidden
+                className="absolute -inset-x-4 -inset-y-3 rounded-full border-2 border-dashed border-white/60"
+              />
+            </span>
+          </p>
           <h1 className="mt-4 max-w-3xl text-4xl font-extrabold leading-tight text-white md:text-5xl">
             Colonies de vacances et séjours jeunes adultes
           </h1>

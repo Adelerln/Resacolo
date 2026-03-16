@@ -15,7 +15,7 @@ export default function BienChoisirSaColoPage() {
   return (
     <div className="min-h-screen bg-white">
       {/* Section 1: Header */}
-      <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6 md:py-20">
+      <section className="section-container py-16 md:py-20">
         <div className="grid gap-12 lg:grid-cols-2 lg:items-center">
           <div>
             <p className="text-xs font-bold uppercase tracking-widest text-slate-500">
@@ -38,7 +38,7 @@ export default function BienChoisirSaColoPage() {
 
       {/* Section 2: Spotlight - ChoisirSaColo.fr */}
       <section className="bg-gradient-to-r from-blue-50 to-white py-20">
-        <div className="mx-auto max-w-5xl px-4 sm:px-6">
+        <div className="mx-auto max-w-5xl px-6 sm:px-8">
           <div className="overflow-hidden rounded-3xl bg-white/80 p-8 shadow-xl backdrop-blur-sm sm:p-10 md:flex md:items-center md:gap-12 md:p-12">
             <div className="flex flex-shrink-0 justify-center md:max-w-[45%]">
               <div className="flex items-center justify-center rounded-2xl border border-slate-200 bg-slate-50/50 p-4">
@@ -77,7 +77,7 @@ export default function BienChoisirSaColoPage() {
       </section>
 
       {/* Section 3: Quick Tips */}
-      <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6 md:py-20">
+      <section className="section-container py-16 md:py-20">
         <div className="grid gap-6 sm:grid-cols-3">
           {[
             {

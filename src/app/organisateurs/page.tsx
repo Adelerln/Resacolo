@@ -38,7 +38,7 @@ export default async function OrganisateursPage() {
   return (
     <div className="min-h-screen bg-white">
       {/* Section A: Intro Header */}
-      <section className="relative mx-auto max-w-6xl px-4 py-16 sm:px-6 md:py-20">
+      <section className="relative section-container py-16 md:py-20">
         <div className="grid gap-10 lg:grid-cols-2 lg:items-center lg:gap-16">
           <div className="space-y-6">
             <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">
@@ -70,7 +70,7 @@ export default async function OrganisateursPage() {
       </section>
 
       {/* Section B: Organizers Grid */}
-      <section className="mx-auto max-w-6xl px-4 pb-20 sm:px-6">
+      <section className="section-container pb-20">
         <div className="mb-10 text-center">
           <h2 className="font-display text-2xl font-bold text-slate-900 sm:text-3xl">
             Ils composent le catalogue <span className="text-[#3B82F6]">RESACOLO</span>

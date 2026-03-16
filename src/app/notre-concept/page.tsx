@@ -55,7 +55,7 @@ export default function NotreConceptPage() {
   return (
     <div className="min-h-screen bg-white text-slate-900">
       {/* 1. INTRO HEADER */}
-      <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6 md:py-20">
+      <section className="section-container py-16 md:py-20">
         <div className="grid gap-12 lg:grid-cols-2 lg:items-center">
           <div>
             <p className="text-xs font-bold uppercase tracking-widest text-slate-400">
@@ -92,7 +92,7 @@ export default function NotreConceptPage() {
 
       {/* 2. ORIGIN STORY */}
       <section className="border-t border-slate-100 bg-slate-50/30 py-16 md:py-20">
-        <div className="mx-auto max-w-6xl px-4 sm:px-6">
+        <div className="section-container">
           <div className="grid gap-12 lg:grid-cols-2 lg:items-center">
             <div className="flex items-center justify-center gap-0">
               <div className="flex items-center justify-center gap-6 rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
@@ -137,7 +137,7 @@ export default function NotreConceptPage() {
       </section>
 
       {/* 3. STRENGTHS GRID */}
-      <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6 md:py-20">
+      <section className="section-container py-16 md:py-20">
         <div className="grid gap-12 lg:grid-cols-[3fr_2fr] lg:gap-16">
           <div className="grid grid-cols-2 gap-4 sm:gap-6">
             {strengths.map((item) => (
@@ -171,7 +171,7 @@ export default function NotreConceptPage() {
 
       {/* 4. INTERACTIVE TABS */}
       <section className="border-t border-slate-100 bg-slate-50/30 py-16 md:py-20">
-        <div className="mx-auto max-w-6xl px-4 sm:px-6">
+        <div className="section-container">
           <h2 className="mb-12 text-center font-display text-2xl font-bold text-slate-900 sm:text-3xl">
             Pourquoi nous <span style={{ color: BLUE }}>choisir</span> ?
           </h2>
@@ -180,7 +180,7 @@ export default function NotreConceptPage() {
       </section>
 
       {/* 5. GUARANTEES */}
-      <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6 md:py-20">
+      <section className="section-container py-16 md:py-20">
         <div className="grid gap-12 lg:grid-cols-[20%_1fr] lg:gap-16">
           <div>
             <h2 className="font-display text-2xl font-bold text-slate-900 sm:text-3xl">

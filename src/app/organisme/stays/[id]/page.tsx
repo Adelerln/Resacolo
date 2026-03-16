@@ -3,6 +3,7 @@ import { requireRole } from '@/lib/auth/require';
 import { mockRequests, mockSeasons, mockSessions, mockStages, mockStays } from '@/lib/mocks';
 import { sessionStatusLabel, stayStatusLabel } from '@/lib/ui/labels';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
+import { getMockImageUrl, mockImages } from '@/lib/mockImages';
 
 type PageProps = { params: { id: string } };
 
@@ -25,8 +26,8 @@ export default async function OrganizerStayDetailPage({ params }: PageProps) {
   });
   const photoUrls = useMock
     ? [
-        'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee',
-        'https://images.unsplash.com/photo-1500534314209-a25ddb2bd429',
+        getMockImageUrl(mockImages.sampleStays[0], 1200, 80),
+        getMockImageUrl(mockImages.sampleStays[1], 1200, 80),
         ''
       ]
     : ['', '', ''];

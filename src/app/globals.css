@@ -2,6 +2,32 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl font-semibold transition-colors;
+  }
+
+  .btn-md {
+    @apply px-6 py-3 text-base;
+  }
+
+  .btn-sm {
+    @apply px-4 py-2 text-sm;
+  }
+
+  .btn-primary {
+    @apply bg-accent-500 text-white shadow-md hover:bg-accent-600;
+  }
+
+  .btn-secondary {
+    @apply border border-slate-200 bg-white text-slate-700 hover:bg-slate-50;
+  }
+
+  .btn-accent-outline {
+    @apply rounded-full border border-accent-400 text-accent-500 hover:bg-accent-500 hover:text-white;
+  }
+}
+
 :root {
   color-scheme: light;
   --flow-ease: cubic-bezier(0.22, 1, 0.36, 1);
@@ -59,7 +85,7 @@ button,
 
 /* Layout utilities */
 .section-container {
-  @apply mx-auto max-w-6xl px-5 sm:px-8;
+  @apply mx-auto max-w-6xl px-6 sm:px-8;
 }
 
 .section-padding {

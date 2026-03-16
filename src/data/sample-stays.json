@@ -56,7 +56,7 @@
         "Balades encadrées",
         "Défis tout-terrain"
       ],
-      "coverImage": "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=1200&q=80",
+      "coverImage": "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1200&q=80",
       "filters": {
         "categories": ["sport"],
         "audiences": ["6-9", "10-12", "13-15", "16-17"],
@@ -91,7 +91,7 @@
         "Europa Park",
         "Culture et sensations fortes"
       ],
-      "coverImage": "https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?auto=format&fit=crop&w=1200&q=80",
+      "coverImage": "https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?auto=format&fit=crop&w=1200&q=80",
       "filters": {
         "categories": ["culture", "sport"],
         "audiences": ["6-9", "10-12", "13-15", "16-17"],
@@ -126,7 +126,7 @@
         "Escapades dans le désert",
         "Visites guidées et activités de groupe"
       ],
-      "coverImage": "https://images.unsplash.com/photo-1548013146-72479768bada?auto=format&fit=crop&w=1200&q=80",
+      "coverImage": "https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?auto=format&fit=crop&w=1200&q=80",
       "filters": {
         "categories": ["culture", "multi-activites"],
         "audiences": ["16-17"],

@@ -103,7 +103,7 @@ export function MainNavigation() {
 
   return (
     <header className="relative z-[100] overflow-visible border-b border-slate-200 bg-white/80 backdrop-blur">
-      <div className="mx-auto flex max-w-6xl items-center justify-between overflow-visible px-6 py-4">
+      <div className="section-container flex items-center justify-between overflow-visible py-4">
         <Link href="/" className="flex items-center gap-3 text-2xl font-semibold tracking-tight text-slate-900">
           <Image
             src="/image/logo-resacolo.png"
@@ -212,7 +212,7 @@ export function MainNavigation() {
               type="button"
               aria-expanded={backOfficeOpen}
               aria-haspopup="menu"
-              className="inline-flex items-center gap-2 rounded-full border border-accent-400 px-4 py-2 text-sm font-semibold text-accent-500 transition hover:bg-accent-500 hover:text-white"
+              className="btn btn-sm btn-accent-outline"
             >
               Back Office
               <ChevronDown className={clsx('h-4 w-4 transition', backOfficeOpen && 'rotate-180')} />

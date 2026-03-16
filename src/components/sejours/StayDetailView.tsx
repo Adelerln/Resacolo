@@ -19,6 +19,7 @@ import {
 import type { Stay } from '@/types/stay';
 import { useCart } from '@/context/CartContext';
 import { FILTER_LABELS } from '@/lib/constants';
+import { getMockImageUrl, mockImages } from '@/lib/mockImages';
 
 type TabId = 'programme' | 'activites' | 'encadrement';
 
@@ -51,9 +52,9 @@ function getProgrammeBlocks(description: string): { title?: string; text: string
 }
 
 const DEFAULT_GALLERY = [
-  'https://images.unsplash.com/photo-1506929562872-bb421503ef21?auto=format&fit=crop&w=600&q=80',
-  'https://images.unsplash.com/photo-1528543606781-2f6e6857f318?auto=format&fit=crop&w=600&q=80',
-  'https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?auto=format&fit=crop&w=600&q=80'
+  getMockImageUrl(mockImages.sejours.gallery[0], 600, 80),
+  getMockImageUrl(mockImages.sejours.gallery[1], 600, 80),
+  getMockImageUrl(mockImages.sejours.gallery[2], 600, 80)
 ];
 
 export function StayDetailView({ stay }: { stay: Stay }) {

@@ -1,7 +1,7 @@
 export default function MentionsLegalesPage() {
   return (
-    <section className="bg-gradient-to-b from-orange-50 via-amber-50 to-sky-50">
-      <div className="mx-auto max-w-5xl px-6 py-16">
+    <section className="bg-slate-50">
+      <div className="section-container py-16">
         <header className="space-y-4">
           <p className="text-xs font-semibold uppercase tracking-[0.28em] text-emerald-700">
             RESACOLO

@@ -17,7 +17,7 @@ const legalLinks = [
 export function Footer() {
   return (
     <footer className="border-t border-slate-200 bg-slate-50">
-      <div className="mx-auto max-w-6xl px-6 py-16">
+      <div className="section-container py-16">
         <div className="grid gap-12 md:grid-cols-[1.2fr_1fr_1fr]">
           <div className="space-y-4">
             <Link href="/" className="flex items-center gap-3 text-2xl font-semibold text-slate-900">

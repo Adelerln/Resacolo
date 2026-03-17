@@ -3,6 +3,8 @@ import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { AdminUsersTable } from '@/components/admin/AdminUsersTable';
 
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export default async function AdminUsersPage() {
   requireRole('ADMIN');

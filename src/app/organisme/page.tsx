@@ -22,7 +22,7 @@ export default async function OrganizerHome() {
   }
 
   if (!organizerId) {
-    redirect('/organisme/stays');
+    redirect('/organisme/sejours');
   }
 
   const { data: organizer } = await supabase
@@ -34,7 +34,7 @@ export default async function OrganizerHome() {
     .maybeSingle();
 
   if (!organizer) {
-    redirect('/organisme/stays');
+    redirect('/organisme/sejours');
   }
 
   const logoUrl = organizer.logo_path

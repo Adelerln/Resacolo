@@ -1,5 +1,6 @@
 import Image from 'next/image';
 import Link from 'next/link';
+import { ArrowLeft } from 'lucide-react';
 import { requireRole } from '@/lib/auth/require';
 
 export default function OrganizerLayout({ children }: { children: React.ReactNode }) {
@@ -10,14 +11,25 @@ export default function OrganizerLayout({ children }: { children: React.ReactNod
       <div className="flex min-h-screen">
         <aside className="w-64 border-r border-slate-200 bg-white">
           <div className="px-6 py-6">
-            <Link href="/organisme" className="text-lg font-semibold text-slate-900">
-              Espace Organisateur
-            </Link>
-            <p className="mt-1 text-xs text-slate-500">Gestion des séjours</p>
+            <div className="mb-3">
+              <Link
+                href="/"
+                className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-800"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                Retour
+              </Link>
+            </div>
+            <div>
+              <Link href="/organisme" className="text-lg font-semibold text-slate-900">
+                Espace Organisateur
+              </Link>
+              <p className="mt-1 text-xs text-slate-500">Gestion des séjours</p>
+            </div>
           </div>
           <nav className="px-3 text-sm text-slate-600">
             <Link
-              href="/organisme/stays"
+              href="/organisme/sejours"
               className="mb-1 block rounded-lg px-3 py-2 transition hover:bg-slate-100"
             >
               Séjours

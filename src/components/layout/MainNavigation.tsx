@@ -186,9 +186,13 @@ export function MainNavigation() {
           })}
         </nav>
         <div className="hidden items-center gap-5 md:flex">
-          <button className="rounded-full border border-slate-200 p-2 text-slate-500 hover:border-brand-200 hover:text-brand-500">
+          <Link
+            href="/mon-compte"
+            className="rounded-full border border-slate-200 p-2 text-slate-500 hover:border-brand-200 hover:text-brand-500"
+            aria-label="Mon compte"
+          >
             <UserRound className="h-4 w-4" />
-          </button>
+          </Link>
           <button className="rounded-full border border-slate-200 p-2 text-slate-500 hover:border-brand-200 hover:text-brand-500">
             <Heart className="h-4 w-4" />
           </button>

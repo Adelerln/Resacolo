@@ -52,7 +52,7 @@ export default async function OrganizerStayDetailPage({ params }: PageProps) {
     : { tagline: '', program: '', lodging: '', meals: '', supervision: '' };
 
   if (!stay || stay.organizerTenantId !== session.tenantId) {
-    redirect('/organisme/stays');
+    redirect('/organisme/sejours');
   }
 
   const stages = useMock ? mockStages : [];
@@ -70,22 +70,22 @@ export default async function OrganizerStayDetailPage({ params }: PageProps) {
 
   async function updateStay() {
     'use server';
-    redirect(`/organisme/stays/${params.id}`);
+    redirect(`/organisme/sejours/${params.id}`);
   }
 
   async function updateMedia() {
     'use server';
-    redirect(`/organisme/stays/${params.id}`);
+    redirect(`/organisme/sejours/${params.id}`);
   }
 
   async function updateContent() {
     'use server';
-    redirect(`/organisme/stays/${params.id}`);
+    redirect(`/organisme/sejours/${params.id}`);
   }
 
   async function updateTransport() {
     'use server';
-    redirect(`/organisme/stays/${params.id}`);
+    redirect(`/organisme/sejours/${params.id}`);
   }
 
   async function addSession(formData: FormData) {
@@ -94,7 +94,7 @@ export default async function OrganizerStayDetailPage({ params }: PageProps) {
     const endDate = String(formData.get('endDate') ?? '');
     const capacityTotal = Number(formData.get('capacityTotal') ?? 0);
     if (!startDate || !endDate || !capacityTotal) return;
-    redirect(`/organisme/stays/${params.id}`);
+    redirect(`/organisme/sejours/${params.id}`);
   }
 
   async function updateRequestStage(formData: FormData) {

@@ -22,14 +22,14 @@ export default async function NewStayPage() {
   async function createStay(formData: FormData) {
     'use server';
     if (!organizerTenantId) {
-      redirect('/organisme/stays');
+      redirect('/organisme/sejours');
     }
     const seasonId = String(formData.get('season_id') ?? '');
     if (!seasonId) {
-      redirect('/organisme/stays');
+      redirect('/organisme/sejours');
     }
 
-    redirect('/organisme/stays');
+    redirect('/organisme/sejours');
   }
 
   return (

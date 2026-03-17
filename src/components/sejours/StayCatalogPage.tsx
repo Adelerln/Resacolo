@@ -73,15 +73,22 @@ const mockStays: MockStay[] = [
 ];
 
 const filterGroups = [
-  { id: 'saison', label: 'SAISON', options: ['Printemps', 'Été', 'Toussaint', 'Hiver'] },
-  { id: 'type', label: 'TYPE DE SÉJOUR', options: ['Sport', 'Aventure', 'Culture', 'Mini-séjour'] },
-  { id: 'age', label: 'AGE DU PARTICIPANT', options: ['6-9 ans', '10-13 ans', '14-17 ans'] },
-  { id: 'tarif', label: 'TARIF', options: ['< 500 €', '500 - 900 €', '900 - 1400 €', '> 1400 €'] },
-  { id: 'destinations', label: 'DESTINATIONS', options: ['France', 'Europe', 'International'] },
-  { id: 'duree', label: 'DURÉE', options: ['3-5 jours', '6-8 jours', '9 jours et +'] }
-];
+  { id: 'season', label: 'SAISON', options: ['Printemps', 'Été', 'Toussaint', 'Hiver'] },
+  { id: 'age', label: 'AGE DU PARTICIPANT', options: ['6-9 ans', '10-13 ans', '14-17 ans'] }
+] as const;
 
-function FiltersPanel() {
+type FilterState = {
+  season: Set<string>;
+  age: Set<string>;
+};
+
+function FiltersPanel({
+  filters,
+  onToggle
+}: {
+  filters: FilterState;
+  onToggle: (groupId: keyof FilterState, option: string) => void;
+}) {
   return (
     <aside className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <h2 className="text-2xl font-semibold text-slate-900">
@@ -105,7 +112,12 @@ function FiltersPanel() {
                 {group.options.map((option) => (
                   <li key={option}>
                     <label className="flex items-center gap-2 text-sm text-slate-600">
-                      <input type="checkbox" className="h-4 w-4 rounded border-slate-300 text-[#3B82F6]" />
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-slate-300 text-[#3B82F6]"
+                        checked={filters[group.id as keyof FilterState].has(option)}
+                        onChange={() => onToggle(group.id as keyof FilterState, option)}
+                      />
                       {option}
                     </label>
                   </li>
@@ -173,6 +185,53 @@ function StayCard({ stay }: { stay: MockStay }) {
 
 export function StayCatalogPage() {
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  const [filters, setFilters] = useState<FilterState>({
+    season: new Set(),
+    age: new Set()
+  });
+
+  const toggleFilter = (groupId: keyof FilterState, option: string) => {
+    setFilters((prev) => {
+      const next = new Map<keyof FilterState, Set<string>>([
+        ['season', new Set(prev.season)],
+        ['age', new Set(prev.age)]
+      ]);
+      const set = next.get(groupId)!;
+      if (set.has(option)) {
+        set.delete(option);
+      } else {
+        set.add(option);
+      }
+      return {
+        season: next.get('season')!,
+        age: next.get('age')!
+      };
+    });
+  };
+
+  const normalizedStays = mockStays.map((stay) => ({
+    ...stay,
+    seasonLabel: stay.season === 'PRINTEMPS' ? 'Printemps' : stay.season === 'ÉTÉ' ? 'Été' : stay.season,
+    ageLabel:
+      stay.age === '6-17 ans'
+        ? ['6-9 ans', '10-13 ans', '14-17 ans']
+        : stay.age === '14-17 ans'
+          ? ['14-17 ans']
+          : [stay.age]
+  }));
+
+  const filteredStays = normalizedStays.filter((stay) => {
+    const seasonActive = filters.season.size > 0;
+    const ageActive = filters.age.size > 0;
+
+    if (!seasonActive && !ageActive) return true;
+
+    const seasonOk = !seasonActive || filters.season.has(stay.seasonLabel);
+    const ageOk =
+      !ageActive || stay.ageLabel.some((label: string) => filters.age.has(label));
+
+    return seasonOk && ageOk;
+  });
 
   return (
     <div className="bg-white">
@@ -227,7 +286,7 @@ export function StayCatalogPage() {
 
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-4">
           <div className="hidden lg:block">
-            <FiltersPanel />
+            <FiltersPanel filters={filters} onToggle={toggleFilter} />
           </div>
 
           <div className="lg:col-span-3">
@@ -239,7 +298,7 @@ export function StayCatalogPage() {
             </div>
 
             <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-              {mockStays.map((stay) => (
+              {filteredStays.map((stay) => (
                 <StayCard key={stay.slug} stay={stay} />
               ))}
             </div>

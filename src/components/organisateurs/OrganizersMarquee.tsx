@@ -60,11 +60,12 @@ export function OrganizersMarquee({ embedded = false }: OrganizersMarqueeProps) 
 
     const intervalId = window.setInterval(() => {
       const next = Math.round((track.scrollLeft + step) / step) * step;
-      track.scrollLeft = next;
-      if (track.scrollLeft >= track.scrollWidth / 2) {
-        track.scrollLeft = 0;
-      }
-    }, 2000);
+      const target = next >= track.scrollWidth / 2 ? 0 : next;
+      track.scrollTo({
+        left: target,
+        behavior: 'smooth'
+      });
+    }, 2600);
 
     return () => window.clearInterval(intervalId);
   }, [shouldAnimate, logos.length]);
@@ -90,7 +91,10 @@ export function OrganizersMarquee({ embedded = false }: OrganizersMarqueeProps) 
     if (!track) return;
     const delta = direction === 'left' ? -step : step;
     const next = Math.round((track.scrollLeft + delta) / step) * step;
-    track.scrollLeft = next < 0 ? 0 : next;
+    track.scrollTo({
+      left: next < 0 ? 0 : next,
+      behavior: 'smooth'
+    });
   };
 
   const content = (

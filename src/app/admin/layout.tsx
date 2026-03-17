@@ -1,5 +1,6 @@
 import Image from 'next/image';
 import Link from 'next/link';
+import { ArrowLeft } from 'lucide-react';
 import { requireRole } from '@/lib/auth/require';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -10,10 +11,21 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       <div className="flex min-h-screen">
         <aside className="w-64 border-r border-slate-200 bg-white">
           <div className="px-6 py-6">
-            <Link href="/admin" className="text-lg font-semibold text-slate-900">
-              Admin Resacolo
-            </Link>
-            <p className="mt-1 text-xs text-slate-500">Pilotage plateforme</p>
+            <div className="mb-3">
+              <Link
+                href="/"
+                className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-800"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                Retour
+              </Link>
+            </div>
+            <div>
+              <Link href="/admin" className="text-lg font-semibold text-slate-900">
+                Admin Resacolo
+              </Link>
+              <p className="mt-1 text-xs text-slate-500">Pilotage plateforme</p>
+            </div>
           </div>
           <nav className="px-3 text-sm text-slate-600">
             <Link

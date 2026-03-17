@@ -31,9 +31,11 @@ export async function GET() {
     return acc;
   }, new Map<string, (typeof sorted)[number]>());
 
+  const uniqueOrgs = Array.from(unique.values());
+
   const logos = (
     await Promise.all(
-      [...unique.values()]
+      uniqueOrgs
         .filter((org) => org.logo_path)
         .map(async (org) => {
           const path = org.logo_path as string;

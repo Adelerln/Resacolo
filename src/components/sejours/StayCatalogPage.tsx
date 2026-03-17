@@ -325,7 +325,7 @@ export function StayCatalogPage() {
                 Fermer
               </button>
             </div>
-            <FiltersPanel />
+            <FiltersPanel filters={filters} onToggle={toggleFilter} />
           </div>
         </div>
       )}

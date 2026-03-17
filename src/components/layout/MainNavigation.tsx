@@ -17,6 +17,7 @@ const links = [
     children: [
       { href: '/notre-concept', label: 'Notre Concept' },
       { href: '/organisateurs', label: 'Organisateurs' },
+      { href: '/devenir-organisateur', label: 'Devenir Organisateur' },
       { href: '/devenir-partenaire', label: 'Devenir Partenaire' }
     ]
   },

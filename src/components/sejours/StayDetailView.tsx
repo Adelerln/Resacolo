@@ -345,21 +345,13 @@ export function StayDetailView({ stay }: { stay: Stay }) {
                 )}
                 <div>
                   <p className="font-medium text-slate-900">{stay.organizer.name}</p>
-                  <a
-                    href={stay.organizer.website}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-sm text-brand-600 hover:underline"
-                  >
-                    Voir le site
-                  </a>
                 </div>
               </div>
               <Link
                 href="/organisateurs"
                 className="mt-4 inline-block rounded-xl bg-accent-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-accent-600"
               >
-                Voir tous les séjours
+                En savoir plus
               </Link>
             </div>
           </aside>

@@ -43,6 +43,15 @@ const config: Config = {
       },
       boxShadow: {
         brand: '0 30px 60px -40px rgba(18, 92, 160, 0.4)'
+      },
+      keyframes: {
+        marquee: {
+          '0%': { transform: 'translateX(0)' },
+          '100%': { transform: 'translateX(-50%)' }
+        }
+      },
+      animation: {
+        marquee: 'marquee 35s linear infinite'
       }
     }
   },

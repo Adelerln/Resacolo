@@ -4,6 +4,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useState } from 'react';
 import { getMockImageUrl, mockImages } from '@/lib/mockImages';
+import { OrganizersMarquee } from '@/components/organisateurs/OrganizersMarquee';
 import {
   Users,
   Repeat,
@@ -144,7 +145,7 @@ export default function HomePage() {
               Resa<span className="text-brand-500">Colo</span>
             </h1>
             <p className="mt-5 text-lg sm:text-xl text-slate-600 max-w-lg mx-auto lg:mx-0">
-              Trouvez la colonie de vacances idéale pour vos enfants. Un collectif d&apos;organisateurs à votre service.
+              Les organisateurs de colos réunis vous offrent leur savoir-faire pour faire grandir vos enfants.
             </p>
 
             <div className="mt-8 flex flex-col sm:flex-row items-center gap-4 justify-center lg:justify-start">
@@ -188,6 +189,8 @@ export default function HomePage() {
           </motion.div>
         </div>
       </section>
+
+      <OrganizersMarquee />
 
       {/* ── Pourquoi Resacolo ── */}
       <section className="section-padding bg-slate-50">

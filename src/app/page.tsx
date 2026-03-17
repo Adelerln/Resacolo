@@ -190,8 +190,6 @@ export default function HomePage() {
         </div>
       </section>
 
-      <OrganizersMarquee />
-
       {/* ── Pourquoi Resacolo ── */}
       <section className="section-padding bg-slate-50">
         <div className="section-container">
@@ -235,6 +233,10 @@ export default function HomePage() {
                 </motion.div>
               ))}
             </div>
+          </div>
+
+          <div className="mt-10">
+            <OrganizersMarquee embedded />
           </div>
         </div>
       </section>

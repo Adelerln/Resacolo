@@ -1,2 +1,1 @@
-export { default } from '../../organizers/[id]/page';
-
+export { default, dynamic, revalidate } from '../../organizers/[id]/page';

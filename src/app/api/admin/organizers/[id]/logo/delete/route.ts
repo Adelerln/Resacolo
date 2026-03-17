@@ -29,8 +29,36 @@ export async function POST(req: Request, context: { params: { id: string } }) {
   }
 
   if (organizer.logo_path) {
-    await supabase.storage.from('organizer-logo').remove([organizer.logo_path]);
-    await supabase.from('organizers').update({ logo_path: null }).eq('id', organizer.id);
+    const { error: removeError } = await supabase.storage
+      .from('organizer-logo')
+      .remove([organizer.logo_path]);
+    if (removeError) {
+      return NextResponse.redirect(
+        new URL(
+          `/admin/organisateurs/${slug}?error=${encodeURIComponent(
+            removeError.message ?? 'Impossible de supprimer le logo'
+          )}`,
+          req.url
+        ),
+        303
+      );
+    }
+
+    const { error: updateError } = await supabase
+      .from('organizers')
+      .update({ logo_path: null })
+      .eq('id', organizer.id);
+    if (updateError) {
+      return NextResponse.redirect(
+        new URL(
+          `/admin/organisateurs/${slug}?error=${encodeURIComponent(
+            updateError.message ?? 'Impossible de mettre a jour le logo'
+          )}`,
+          req.url
+        ),
+        303
+      );
+    }
   }
 
   return NextResponse.redirect(new URL(`/admin/organisateurs/${slug}?success=1`, req.url), 303);

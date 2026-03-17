@@ -166,8 +166,8 @@ export default async function AdminOrganizerDetailPage({ params, searchParams }:
                 <div className="text-xs text-slate-500">Logo déjà chargé</div>
                 <img src={logoUrl} alt={organizer.name} className="h-16 w-auto rounded-lg border" />
                 <button
-                  formAction={`/api/admin/organizers/${organizerSlug}/logo/delete`}
-                  formMethod="post"
+                  type="submit"
+                  form="delete-logo-form"
                   className="inline-flex items-center text-xs font-semibold text-red-600"
                 >
                   Supprimer le logo
@@ -231,6 +231,12 @@ export default async function AdminOrganizerDetailPage({ params, searchParams }:
           </button>
         </div>
       </form>
+
+      <form
+        id="delete-logo-form"
+        action={`/api/admin/organizers/${organizerSlug}/logo/delete`}
+        method="post"
+      />
 
       <div className="flex justify-end">
         <Link

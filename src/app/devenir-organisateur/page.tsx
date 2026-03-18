@@ -21,8 +21,10 @@ export default function DevenirOrganisateurPage() {
               Présenter vos <span className="text-[#F97316]">séjours</span> sur Resacolo
             </h1>
             <p className="max-w-2xl text-base leading-7 text-slate-600">
-              Vous portez des colonies de vacances ou des séjours jeunesse et souhaitez les rendre plus visibles&nbsp;?
-              Rejoignez le collectif Resacolo pour présenter vos séjours dans un cadre qualitatif et mutualiste.
+              Vous portez des colonies de vacances ou des séjours jeunesse&nbsp;? Rejoignez le collectif Resacolo pour
+              gagner en visibilité dans un cadre qualitatif et mutualiste. Seuls les organisateurs producteurs de
+              séjours sont référencés&nbsp;: les revendeurs ne sont pas éligibles (clause d&apos;exclusion en cas de
+              manquement).
             </p>
             <ul className="mt-4 space-y-2 text-sm text-slate-600">
               <li className="flex items-center gap-2">
@@ -139,4 +141,3 @@ export default function DevenirOrganisateurPage() {
     </div>
   );
 }
-

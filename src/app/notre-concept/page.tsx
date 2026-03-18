@@ -146,10 +146,10 @@ export default function NotreConceptPage() {
                 className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm"
               >
                 <div
-                  className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl"
+                  className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-2xl"
                   style={{ backgroundColor: `${ORANGE}20` }}
                 >
-                  <item.icon className="h-7 w-7" style={{ color: ORANGE }} />
+                  <item.icon className="h-10 w-10" style={{ color: ORANGE }} />
                 </div>
                 <h3 className="font-semibold text-slate-900">{item.title}</h3>
                 {item.caption && (
@@ -207,16 +207,6 @@ export default function NotreConceptPage() {
                 Chaque séjour fait l&apos;objet de déclarations officielles auprès des{' '}
                 <strong className="text-slate-800">autorités de tutelle</strong>. La conformité et la sécurité des
                 accueils collectifs de mineurs sont ainsi garanties.
-              </p>
-            </div>
-            <div className="flex flex-col gap-4 py-6 sm:flex-row sm:items-start sm:gap-6">
-              <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-xl bg-slate-100 text-sm font-bold text-slate-500">
-                EDV
-              </div>
-              <p className="text-slate-600">
-                Les membres de RESACOLO sont adhérents{' '}
-                <strong className="text-slate-800">des Entreprises du Voyage</strong>, signe d&apos;un engagement
-                professionnel et d&apos;une exigence de qualité reconnue par la filière.
               </p>
             </div>
           </div>

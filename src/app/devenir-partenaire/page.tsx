@@ -10,6 +10,9 @@ import {
   Gift,
   Heart,
   Home,
+  Megaphone,
+  SlidersHorizontal,
+  Sparkles,
   Search,
   Sun,
   Users,
@@ -45,6 +48,39 @@ const processSteps = [
   }
 ];
 
+const partnerAdvantages = [
+  {
+    icon: Sparkles,
+    title: 'Plateforme gratuite',
+    text: 'La mise à disposition de la plateforme est sans coût pour votre structure.'
+  },
+  {
+    icon: Users,
+    title: 'Sans intermédiaire',
+    text: 'Aucune intermédiation entre les organisateurs et les parents: un circuit court, lisible et direct.'
+  },
+  {
+    icon: PenBox,
+    title: "Page d'accueil personnalisable",
+    text: 'En option, votre espace peut refléter votre identité visuelle et vos priorités.'
+  },
+  {
+    icon: Megaphone,
+    title: 'Communication simplifiée',
+    text: 'Nous facilitons la diffusion de l’offre auprès de vos ayants-droits avec des contenus prêts à relayer.'
+  },
+  {
+    icon: SlidersHorizontal,
+    title: 'Formules flexibles',
+    text: 'Des modalités adaptables selon votre politique CSE, collectivité ou institution.'
+  },
+  {
+    icon: CheckSquare,
+    title: 'Gestion allégée',
+    text: 'Un cadre clair qui simplifie le suivi opérationnel côté CSE ou partenaire.'
+  }
+];
+
 export default function DevenirPartenairePage() {
   return (
     <div className="bg-white">
@@ -55,15 +91,44 @@ export default function DevenirPartenairePage() {
             Les conditions de <span className="text-[#F97316]">partenariat</span>
           </h1>
           <p className="max-w-2xl text-base leading-7 text-slate-600">
-            Devenir partenaire de RESACOLO, c&apos;est promouvoir et faciliter le départ en colonie de vacances.
-            Sensibiliser vos publics aux bienfaits des colonies de vacances en privilégiant la plateforme des
-            professionnels du secteur.
+            Pour un CSE, une collectivité ou une institution, devenir partenaire de RESACOLO permet de proposer une
+            offre de séjours claire, gratuite à déployer et simple à piloter, tout en gardant un lien direct entre
+            organisateurs et familles.
           </p>
         </div>
 
         <div className="flex justify-center lg:justify-end">
           <div className="flex h-56 w-56 items-center justify-center rounded-3xl bg-orange-50 shadow-md ring-1 ring-[#F97316]/20 md:h-72 md:w-72">
             <Gift className="h-28 w-28 text-[#F97316] md:h-36 md:w-36" />
+          </div>
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-7xl px-6 pb-12">
+        <div className="rounded-3xl border border-slate-200 bg-gradient-to-br from-orange-50 via-white to-blue-50 p-6 shadow-sm md:p-10">
+          <div className="mx-auto max-w-3xl text-center">
+            <h2 className="text-3xl font-bold text-slate-900">
+              Pourquoi les <span className="text-[#F97316]">partenaires CSE</span> choisissent RESACOLO
+            </h2>
+            <p className="mt-3 text-slate-600">
+              Une approche pratique et qualitative pour accompagner vos ayants-droits sans complexifier votre
+              organisation.
+            </p>
+          </div>
+
+          <div className="mt-8 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {partnerAdvantages.map((item) => (
+              <article
+                key={item.title}
+                className="rounded-2xl border border-slate-200 bg-white/90 p-5 shadow-sm backdrop-blur"
+              >
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#F97316]/15">
+                  <item.icon className="h-5 w-5 text-[#F97316]" />
+                </div>
+                <h3 className="mt-4 text-lg font-semibold text-slate-900">{item.title}</h3>
+                <p className="mt-2 text-sm leading-6 text-slate-600">{item.text}</p>
+              </article>
+            ))}
           </div>
         </div>
       </section>

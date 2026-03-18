@@ -76,7 +76,7 @@ export default async function OrganisateursPage() {
             Ils composent le catalogue <span className="text-[#3B82F6]">RESACOLO</span>
           </h2>
           <p className="mx-auto mt-4 max-w-2xl text-slate-600">
-            Retrouvez les caractéristiques des organisateurs de colonies de vacances référencés sur la plateforme, tous
+            Faites connaissance avec les organisateurs de colonies de vacances référencés sur la plateforme, tous
             membres du collectif <span className="text-[#F97316]">ResaColo</span>.
           </p>
         </div>

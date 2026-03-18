@@ -271,7 +271,7 @@ export default function MonCompteClient() {
             <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
               <h2 className="font-display text-lg font-semibold text-slate-900">Informations du compte</h2>
               <div className="mt-4 space-y-4">
-                <article className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                <article className="rounded-xl border border-blue-100 bg-blue-100/70 p-4">
                   <h3 className="text-sm font-semibold text-slate-900">Parent 1</h3>
                   <dl className="mt-3 space-y-2 text-sm text-slate-700">
                     <div className="flex items-start justify-between gap-3">
@@ -299,7 +299,7 @@ export default function MonCompteClient() {
                   </dl>
                 </article>
 
-                <article className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                <article className="rounded-xl border border-orange-100 bg-orange-100/70 p-4">
                   <h3 className="text-sm font-semibold text-slate-900">Parent 2</h3>
                   <dl className="mt-3 space-y-2 text-sm text-slate-700">
                     <div className="flex items-start justify-between gap-3">
@@ -436,7 +436,7 @@ export default function MonCompteClient() {
                 </div>
               </section>
 
-              <section className="rounded-xl border border-slate-200 p-4">
+              <section className="rounded-xl border border-blue-100 bg-blue-100/60 p-4">
                 <h4 className="text-sm font-semibold text-slate-900">Parent 1</h4>
                 <div className="mt-3 grid gap-4 sm:grid-cols-2">
                   <label className="sm:col-span-2 text-sm font-medium text-slate-700">
@@ -500,7 +500,7 @@ export default function MonCompteClient() {
                 </div>
               </section>
 
-              <section className="rounded-xl border border-slate-200 p-4">
+              <section className="rounded-xl border border-orange-100 bg-orange-100/60 p-4">
                 <h4 className="text-sm font-semibold text-slate-900">Parent 2</h4>
                 <div className="mt-3 grid gap-4 sm:grid-cols-2">
                   <label className="sm:col-span-2 text-sm font-medium text-slate-700">

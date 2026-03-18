@@ -9,19 +9,20 @@ import {
   UserRound,
   ShieldCheck,
   Settings,
-  Phone,
   Home,
   X
 } from 'lucide-react';
 import Link from 'next/link';
 
-type ParentStatus = 'pere' | 'mere' | 'grand-parent' | 'educateur' | 'autre';
+type ParentStatus = 'pere' | 'mere' | 'grand-parent' | 'autre';
 
 type AccountInfo = {
   addressLine1: string;
   addressLine2: string;
   postalCode: string;
   city: string;
+  parent1Name: string;
+  parent2Name: string;
   parent1Phone: string;
   parent2Phone: string;
   parent1Email: string;
@@ -30,6 +31,11 @@ type AccountInfo = {
   parent2Status: ParentStatus;
   parent1StatusOther: string;
   parent2StatusOther: string;
+  parent2HasDifferentAddress: boolean;
+  parent2AddressLine1: string;
+  parent2AddressLine2: string;
+  parent2PostalCode: string;
+  parent2City: string;
 };
 
 const mockUser = {
@@ -69,22 +75,38 @@ const initialAccountInfo: AccountInfo = {
   addressLine2: 'Bâtiment B, Appartement 23',
   postalCode: '69003',
   city: 'Lyon',
-  parent1Phone: '0612345678',
-  parent2Phone: '0678901234',
+  parent1Name: 'Marie Dupont',
+  parent2Name: 'Jean Dupont',
+  parent1Phone: '06.12.34.56.78',
+  parent2Phone: '06.78.90.12.34',
   parent1Email: 'parent1@example.com',
   parent2Email: 'parent2@example.com',
   parent1Status: 'mere',
   parent2Status: 'pere',
   parent1StatusOther: '',
-  parent2StatusOther: ''
+  parent2StatusOther: '',
+  parent2HasDifferentAddress: false,
+  parent2AddressLine1: '',
+  parent2AddressLine2: '',
+  parent2PostalCode: '',
+  parent2City: ''
 };
 
 function parentStatusLabel(status: ParentStatus, other?: string) {
   if (status === 'pere') return 'Père';
   if (status === 'mere') return 'Mère';
   if (status === 'grand-parent') return 'Grand-parent';
-  if (status === 'educateur') return 'Éducateur';
   return other?.trim() || 'Autre';
+}
+
+function formatFrenchPhone(value: string) {
+  const digits = value.replace(/\D/g, '').slice(0, 10);
+  if (!digits) return '';
+  return digits.match(/.{1,2}/g)?.join('.') ?? digits;
+}
+
+function formatAddress(line1: string, line2: string, postalCode: string, city: string) {
+  return [line1, line2, `${postalCode} ${city}`.trim()].filter(Boolean).join(', ');
 }
 
 export default function MonCompteClient() {
@@ -92,13 +114,20 @@ export default function MonCompteClient() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [draft, setDraft] = useState<AccountInfo>(initialAccountInfo);
 
-  const fullAddress = [
+  const fullAddress = formatAddress(
     accountInfo.addressLine1,
     accountInfo.addressLine2,
-    `${accountInfo.postalCode} ${accountInfo.city}`.trim()
-  ]
-    .filter(Boolean)
-    .join(', ');
+    accountInfo.postalCode,
+    accountInfo.city
+  );
+  const parent2Address = accountInfo.parent2HasDifferentAddress
+    ? formatAddress(
+        accountInfo.parent2AddressLine1,
+        accountInfo.parent2AddressLine2,
+        accountInfo.parent2PostalCode,
+        accountInfo.parent2City
+      )
+    : 'Même adresse que le domicile';
 
   function openEditModal() {
     setDraft(accountInfo);
@@ -241,44 +270,70 @@ export default function MonCompteClient() {
           <aside className="space-y-6">
             <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
               <h2 className="font-display text-lg font-semibold text-slate-900">Informations du compte</h2>
-              <dl className="mt-4 space-y-3 text-sm text-slate-700">
-                <div className="flex items-start justify-between gap-3">
-                  <dt className="text-slate-500">Nom complet</dt>
-                  <dd className="text-right font-medium text-slate-900">{mockUser.name}</dd>
-                </div>
-                <div className="flex items-start justify-between gap-3">
-                  <dt className="text-slate-500">Adresse</dt>
-                  <dd className="max-w-[70%] text-right font-medium text-slate-900">{fullAddress}</dd>
-                </div>
-                <div className="flex items-start justify-between gap-3">
-                  <dt className="text-slate-500">Portable parent 1</dt>
-                  <dd className="font-medium text-slate-900">{accountInfo.parent1Phone}</dd>
-                </div>
-                <div className="flex items-start justify-between gap-3">
-                  <dt className="text-slate-500">Portable parent 2</dt>
-                  <dd className="font-medium text-slate-900">{accountInfo.parent2Phone}</dd>
-                </div>
-                <div className="flex items-start justify-between gap-3">
-                  <dt className="text-slate-500">Email parent 1</dt>
-                  <dd className="font-medium text-slate-900">{accountInfo.parent1Email}</dd>
-                </div>
-                <div className="flex items-start justify-between gap-3">
-                  <dt className="text-slate-500">Email parent 2</dt>
-                  <dd className="font-medium text-slate-900">{accountInfo.parent2Email}</dd>
-                </div>
-                <div className="flex items-start justify-between gap-3">
-                  <dt className="text-slate-500">Statut parent 1</dt>
-                  <dd className="font-medium text-slate-900">
-                    {parentStatusLabel(accountInfo.parent1Status, accountInfo.parent1StatusOther)}
-                  </dd>
-                </div>
-                <div className="flex items-start justify-between gap-3">
-                  <dt className="text-slate-500">Statut parent 2</dt>
-                  <dd className="font-medium text-slate-900">
-                    {parentStatusLabel(accountInfo.parent2Status, accountInfo.parent2StatusOther)}
-                  </dd>
-                </div>
-              </dl>
+              <div className="mt-4 space-y-4">
+                <article className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                  <h3 className="text-sm font-semibold text-slate-900">Parent 1</h3>
+                  <dl className="mt-3 space-y-2 text-sm text-slate-700">
+                    <div className="flex items-start justify-between gap-3">
+                      <dt className="text-slate-500">Nom</dt>
+                      <dd className="font-medium text-slate-900">{accountInfo.parent1Name}</dd>
+                    </div>
+                    <div className="flex items-start justify-between gap-3">
+                      <dt className="text-slate-500">Statut</dt>
+                      <dd className="font-medium text-slate-900">
+                        {parentStatusLabel(accountInfo.parent1Status, accountInfo.parent1StatusOther)}
+                      </dd>
+                    </div>
+                    <div className="flex items-start justify-between gap-3">
+                      <dt className="text-slate-500">Portable</dt>
+                      <dd className="font-medium text-slate-900">{formatFrenchPhone(accountInfo.parent1Phone)}</dd>
+                    </div>
+                    <div className="flex items-start justify-between gap-3">
+                      <dt className="text-slate-500">Email</dt>
+                      <dd className="font-medium text-slate-900">{accountInfo.parent1Email}</dd>
+                    </div>
+                    <div className="flex items-start justify-between gap-3">
+                      <dt className="text-slate-500">Adresse</dt>
+                      <dd className="max-w-[70%] text-right font-medium text-slate-900">{fullAddress}</dd>
+                    </div>
+                  </dl>
+                </article>
+
+                <article className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                  <h3 className="text-sm font-semibold text-slate-900">Parent 2</h3>
+                  <dl className="mt-3 space-y-2 text-sm text-slate-700">
+                    <div className="flex items-start justify-between gap-3">
+                      <dt className="text-slate-500">Nom</dt>
+                      <dd className="font-medium text-slate-900">{accountInfo.parent2Name || 'Non renseigné'}</dd>
+                    </div>
+                    <div className="flex items-start justify-between gap-3">
+                      <dt className="text-slate-500">Statut</dt>
+                      <dd className="font-medium text-slate-900">
+                        {parentStatusLabel(accountInfo.parent2Status, accountInfo.parent2StatusOther)}
+                      </dd>
+                    </div>
+                    <div className="flex items-start justify-between gap-3">
+                      <dt className="text-slate-500">Portable</dt>
+                      <dd className="font-medium text-slate-900">
+                        {accountInfo.parent2Phone ? formatFrenchPhone(accountInfo.parent2Phone) : 'Non renseigné'}
+                      </dd>
+                    </div>
+                    <div className="flex items-start justify-between gap-3">
+                      <dt className="text-slate-500">Email</dt>
+                      <dd className="font-medium text-slate-900">
+                        {accountInfo.parent2Email || 'Non renseigné'}
+                      </dd>
+                    </div>
+                    <div className="flex items-start justify-between gap-3">
+                      <dt className="text-slate-500">Adresse</dt>
+                      <dd className="max-w-[70%] text-right font-medium text-slate-900">
+                        {parent2Address || 'Non renseignée'}
+                      </dd>
+                    </div>
+                  </dl>
+                </article>
+              </div>
+
               <button
                 onClick={openEditModal}
                 className="mt-5 text-sm font-semibold text-brand-600 hover:text-brand-700"
@@ -381,66 +436,22 @@ export default function MonCompteClient() {
                 </div>
               </section>
 
-              <section>
-                <h4 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-                  <Phone className="h-4 w-4" />
-                  Contacts des parents
-                </h4>
+              <section className="rounded-xl border border-slate-200 p-4">
+                <h4 className="text-sm font-semibold text-slate-900">Parent 1</h4>
                 <div className="mt-3 grid gap-4 sm:grid-cols-2">
-                  <label className="text-sm font-medium text-slate-700">
-                    Portable parent 1
+                  <label className="sm:col-span-2 text-sm font-medium text-slate-700">
+                    Nom parent 1
                     <input
-                      type="tel"
-                      inputMode="tel"
-                      pattern="^0[1-9][0-9]{8}$"
+                      type="text"
                       className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                      value={draft.parent1Phone}
-                      onChange={(e) => updateField('parent1Phone', e.target.value)}
-                      placeholder="0612345678"
+                      value={draft.parent1Name}
+                      onChange={(e) => updateField('parent1Name', e.target.value)}
+                      placeholder="Nom et prénom"
                       required
                     />
                   </label>
                   <label className="text-sm font-medium text-slate-700">
-                    Portable parent 2
-                    <input
-                      type="tel"
-                      inputMode="tel"
-                      pattern="^0[1-9][0-9]{8}$"
-                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                      value={draft.parent2Phone}
-                      onChange={(e) => updateField('parent2Phone', e.target.value)}
-                      placeholder="0678901234"
-                    />
-                  </label>
-                  <label className="text-sm font-medium text-slate-700">
-                    Email parent 1
-                    <input
-                      type="email"
-                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                      value={draft.parent1Email}
-                      onChange={(e) => updateField('parent1Email', e.target.value)}
-                      placeholder="parent1@mail.fr"
-                      required
-                    />
-                  </label>
-                  <label className="text-sm font-medium text-slate-700">
-                    Email parent 2
-                    <input
-                      type="email"
-                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                      value={draft.parent2Email}
-                      onChange={(e) => updateField('parent2Email', e.target.value)}
-                      placeholder="parent2@mail.fr"
-                    />
-                  </label>
-                </div>
-              </section>
-
-              <section>
-                <h4 className="text-sm font-semibold text-slate-900">Statut des représentants</h4>
-                <div className="mt-3 grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <label className="text-sm font-medium text-slate-700">Statut parent 1</label>
+                    Statut parent 1
                     <select
                       className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
                       value={draft.parent1Status}
@@ -449,7 +460,6 @@ export default function MonCompteClient() {
                       <option value="pere">Père</option>
                       <option value="mere">Mère</option>
                       <option value="grand-parent">Grand-parent</option>
-                      <option value="educateur">Éducateur</option>
                       <option value="autre">Autre</option>
                     </select>
                     {draft.parent1Status === 'autre' && (
@@ -462,10 +472,49 @@ export default function MonCompteClient() {
                         required
                       />
                     )}
-                  </div>
+                  </label>
+                  <label className="text-sm font-medium text-slate-700">
+                    Portable parent 1
+                    <input
+                      type="tel"
+                      inputMode="tel"
+                      pattern="^0[1-9](\\.[0-9]{2}){4}$"
+                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                      value={draft.parent1Phone}
+                      onChange={(e) => updateField('parent1Phone', formatFrenchPhone(e.target.value))}
+                      placeholder="01.23.45.67.89"
+                      required
+                    />
+                  </label>
+                  <label className="sm:col-span-2 text-sm font-medium text-slate-700">
+                    Email parent 1
+                    <input
+                      type="email"
+                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                      value={draft.parent1Email}
+                      onChange={(e) => updateField('parent1Email', e.target.value)}
+                      placeholder="parent1@mail.fr"
+                      required
+                    />
+                  </label>
+                </div>
+              </section>
 
-                  <div>
-                    <label className="text-sm font-medium text-slate-700">Statut parent 2</label>
+              <section className="rounded-xl border border-slate-200 p-4">
+                <h4 className="text-sm font-semibold text-slate-900">Parent 2</h4>
+                <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                  <label className="sm:col-span-2 text-sm font-medium text-slate-700">
+                    Nom parent 2
+                    <input
+                      type="text"
+                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                      value={draft.parent2Name}
+                      onChange={(e) => updateField('parent2Name', e.target.value)}
+                      placeholder="Nom et prénom"
+                    />
+                  </label>
+                  <label className="text-sm font-medium text-slate-700">
+                    Statut parent 2
                     <select
                       className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
                       value={draft.parent2Status}
@@ -474,7 +523,6 @@ export default function MonCompteClient() {
                       <option value="pere">Père</option>
                       <option value="mere">Mère</option>
                       <option value="grand-parent">Grand-parent</option>
-                      <option value="educateur">Éducateur</option>
                       <option value="autre">Autre</option>
                     </select>
                     {draft.parent2Status === 'autre' && (
@@ -487,8 +535,89 @@ export default function MonCompteClient() {
                         required
                       />
                     )}
-                  </div>
+                  </label>
+                  <label className="text-sm font-medium text-slate-700">
+                    Portable parent 2
+                    <input
+                      type="tel"
+                      inputMode="tel"
+                      pattern="^0[1-9](\\.[0-9]{2}){4}$"
+                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                      value={draft.parent2Phone}
+                      onChange={(e) => updateField('parent2Phone', formatFrenchPhone(e.target.value))}
+                      placeholder="01.23.45.67.89"
+                    />
+                  </label>
+                  <label className="sm:col-span-2 text-sm font-medium text-slate-700">
+                    Email parent 2
+                    <input
+                      type="email"
+                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                      value={draft.parent2Email}
+                      onChange={(e) => updateField('parent2Email', e.target.value)}
+                      placeholder="parent2@mail.fr"
+                    />
+                  </label>
+                  <label className="sm:col-span-2 flex items-center gap-3 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={draft.parent2HasDifferentAddress}
+                      onChange={(e) => updateField('parent2HasDifferentAddress', e.target.checked)}
+                      className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                    />
+                    Adresse parent 2 différente du domicile
+                  </label>
                 </div>
+
+                {draft.parent2HasDifferentAddress && (
+                  <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                    <label className="sm:col-span-2 text-sm font-medium text-slate-700">
+                      N° et voie parent 2
+                      <input
+                        type="text"
+                        className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                        value={draft.parent2AddressLine1}
+                        onChange={(e) => updateField('parent2AddressLine1', e.target.value)}
+                        placeholder="Ex: 18 avenue de la République"
+                        required={draft.parent2HasDifferentAddress}
+                      />
+                    </label>
+                    <label className="sm:col-span-2 text-sm font-medium text-slate-700">
+                      Complément d&apos;adresse parent 2
+                      <input
+                        type="text"
+                        className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                        value={draft.parent2AddressLine2}
+                        onChange={(e) => updateField('parent2AddressLine2', e.target.value)}
+                        placeholder="Bâtiment, appartement, étage..."
+                      />
+                    </label>
+                    <label className="text-sm font-medium text-slate-700">
+                      Code postal parent 2
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]{5}"
+                        className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                        value={draft.parent2PostalCode}
+                        onChange={(e) => updateField('parent2PostalCode', e.target.value)}
+                        placeholder="75001"
+                        required={draft.parent2HasDifferentAddress}
+                      />
+                    </label>
+                    <label className="text-sm font-medium text-slate-700">
+                      Ville parent 2
+                      <input
+                        type="text"
+                        className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                        value={draft.parent2City}
+                        onChange={(e) => updateField('parent2City', e.target.value)}
+                        placeholder="Paris"
+                        required={draft.parent2HasDifferentAddress}
+                      />
+                    </label>
+                  </div>
+                )}
               </section>
 
               <div className="flex justify-end gap-3 pt-2">

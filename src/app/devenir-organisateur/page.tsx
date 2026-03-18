@@ -22,9 +22,10 @@ export default function DevenirOrganisateurPage() {
             </h1>
             <p className="max-w-2xl text-base leading-7 text-slate-600">
               Vous portez des colonies de vacances ou des séjours jeunesse&nbsp;? Rejoignez le collectif Resacolo pour
-              gagner en visibilité dans un cadre qualitatif et mutualiste. Seuls les organisateurs producteurs de
-              séjours sont référencés&nbsp;: les revendeurs ne sont pas éligibles (clause d&apos;exclusion en cas de
-              manquement).
+              gagner en visibilité dans un cadre qualitatif et mutualiste.
+              <br />
+              Seuls les organisateurs producteurs de séjours sont référencés&nbsp;: les revendeurs ne sont pas
+              éligibles (clause d&apos;exclusion en cas de manquement).
             </p>
             <ul className="mt-4 space-y-2 text-sm text-slate-600">
               <li className="flex items-center gap-2">
@@ -80,11 +81,25 @@ export default function DevenirOrganisateurPage() {
               </div>
             </div>
 
-            <div>
-              <label className="mb-2 block text-sm font-semibold text-slate-700">
-                Site web (facultatif)
-              </label>
-              <input className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 shadow-sm outline-none focus:border-[#3B82F6]" />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700">
+                  Numéro SDJES (format XXXORGXXXX) *
+                </label>
+                <input
+                  placeholder="ex : 123ORG4567"
+                  pattern="^[0-9]{3}ORG[0-9]{4}$"
+                  title="Format attendu : 123ORG4567"
+                  className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 uppercase shadow-sm outline-none focus:border-[#3B82F6]"
+                  required
+                />
+              </div>
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700">
+                  Site web (facultatif)
+                </label>
+                <input className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 shadow-sm outline-none focus:border-[#3B82F6]" />
+              </div>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">

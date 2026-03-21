@@ -14,7 +14,19 @@ type StayMediaRow = Pick<Database['public']['Tables']['stay_media']['Row'], 'url
 type SessionRow = Pick<Database['public']['Tables']['sessions']['Row'], 'start_date' | 'end_date'>;
 type AccommodationRow = Pick<
   Database['public']['Tables']['accommodations']['Row'],
-  'id' | 'name' | 'description' | 'country' | 'rooming_text' | 'catering_text'
+  | 'id'
+  | 'name'
+  | 'accommodation_type'
+  | 'description'
+  | 'capacity_total'
+  | 'room_count'
+  | 'bed_info'
+  | 'bathroom_info'
+  | 'indoor_features'
+  | 'outdoor_features'
+  | 'medical_proximity'
+  | 'catering_info'
+  | 'accessibility_info'
 >;
 type StayAccommodationRow = Pick<
   Database['public']['Tables']['stay_accommodations']['Row'],
@@ -114,16 +126,23 @@ function buildAccommodationText(accommodations: AccommodationRow[]) {
 
   return accommodations
     .map((accommodation) => {
-      const location = [accommodation.country].filter(Boolean).join(', ');
       const details = [
+        accommodation.accommodation_type,
         accommodation.description,
-        accommodation.rooming_text,
-        accommodation.catering_text
+        accommodation.capacity_total ? `Capacité totale : ${accommodation.capacity_total}` : null,
+        accommodation.room_count ? `Nombre de chambres : ${accommodation.room_count}` : null,
+        accommodation.bed_info,
+        accommodation.bathroom_info,
+        accommodation.indoor_features,
+        accommodation.outdoor_features,
+        accommodation.medical_proximity,
+        accommodation.catering_info,
+        accommodation.accessibility_info
       ]
         .filter(Boolean)
         .join('\n');
 
-      return [accommodation.name, location, details].filter(Boolean).join('\n');
+      return [accommodation.name, details].filter(Boolean).join('\n');
     })
     .join('\n\n');
 }
@@ -180,7 +199,9 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
     stayIds.length
       ? supabase
           .from('accommodations')
-          .select('id,name,description,country,rooming_text,catering_text')
+          .select(
+            'id,name,accommodation_type,description,capacity_total,room_count,bed_info,bathroom_info,indoor_features,outdoor_features,medical_proximity,catering_info,accessibility_info'
+          )
       : Promise.resolve({ data: [] as AccommodationRow[] | null })
   ]);
 

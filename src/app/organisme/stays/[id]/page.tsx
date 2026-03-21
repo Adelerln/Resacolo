@@ -1,4 +1,5 @@
 import { revalidatePath } from 'next/cache';
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import GoogleMapsCityInput from '@/components/common/GoogleMapsCityInput';
 import SavedToast from '@/components/common/SavedToast';
@@ -70,7 +71,9 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
       .order('position', { ascending: true }),
     supabase
       .from('accommodations')
-      .select('id,name,description,country,rooming_text,catering_text')
+      .select(
+        'id,name,accommodation_type,description,capacity_total,room_count,bed_info,bathroom_info,indoor_features,outdoor_features,medical_proximity,catering_info,accessibility_info,status'
+      )
       .eq('organizer_id', selectedOrganizerId)
       .order('name', { ascending: true }),
     supabase
@@ -186,91 +189,6 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
           accommodation_id: accommodationId,
           position: index
         }))
-      );
-    }
-
-    revalidatePath(`/organisme/sejours/${currentStay.id}`);
-    revalidatePath(`/organisme/stays/${currentStay.id}`);
-    redirect(withOrganizerQuery(`/organisme/sejours/${currentStay.id}`, selectedOrganizerId));
-  }
-
-  async function createAccommodation(formData: FormData) {
-    'use server';
-    const supabase = getServerSupabaseClient();
-    const name = String(formData.get('name') ?? '').trim();
-    if (!name) {
-      redirect(withOrganizerQuery(`/organisme/sejours/${currentStay.id}`, selectedOrganizerId));
-    }
-
-    const payload = {
-      organizer_id: selectedOrganizerId,
-      name,
-      description: String(formData.get('accommodation_description') ?? '').trim() || null,
-      country: String(formData.get('country') ?? '').trim() || null,
-      rooming_text: String(formData.get('rooming_text') ?? '').trim() || null,
-      catering_text: String(formData.get('catering_text') ?? '').trim() || null,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    };
-
-    const { data: insertedAccommodation, error } = await supabase
-      .from('accommodations')
-      .insert(payload)
-      .select('id')
-      .single();
-
-    if (error) {
-      console.error('Erreur Supabase (create accommodation)', error.message);
-      redirect(
-        withOrganizerQuery(
-          `/organisme/sejours/${currentStay.id}?error=${encodeURIComponent(error.message)}`,
-          selectedOrganizerId
-        )
-      );
-    }
-
-    if (formData.get('link_to_stay') === 'on' && insertedAccommodation?.id) {
-      const nextPosition = stayAccommodationLinks.length;
-      await supabase.from('stay_accommodations').insert({
-        stay_id: currentStay.id,
-        accommodation_id: insertedAccommodation.id,
-        position: nextPosition
-      });
-    }
-
-    revalidatePath(`/organisme/sejours/${currentStay.id}`);
-    revalidatePath(`/organisme/stays/${currentStay.id}`);
-    redirect(withOrganizerQuery(`/organisme/sejours/${currentStay.id}`, selectedOrganizerId));
-  }
-
-  async function updateAccommodation(formData: FormData) {
-    'use server';
-    const supabase = getServerSupabaseClient();
-    const accommodationId = String(formData.get('accommodation_id') ?? '').trim();
-    if (!accommodationId) {
-      redirect(withOrganizerQuery(`/organisme/sejours/${currentStay.id}`, selectedOrganizerId));
-    }
-
-    const { error } = await supabase
-      .from('accommodations')
-      .update({
-        name: String(formData.get('name') ?? '').trim(),
-        description: String(formData.get('accommodation_description') ?? '').trim() || null,
-        country: String(formData.get('country') ?? '').trim() || null,
-        rooming_text: String(formData.get('rooming_text') ?? '').trim() || null,
-        catering_text: String(formData.get('catering_text') ?? '').trim() || null,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', accommodationId)
-      .eq('organizer_id', selectedOrganizerId);
-
-    if (error) {
-      console.error('Erreur Supabase (update accommodation)', error.message);
-      redirect(
-        withOrganizerQuery(
-          `/organisme/sejours/${currentStay.id}?error=${encodeURIComponent(error.message)}`,
-          selectedOrganizerId
-        )
       );
     }
 
@@ -425,7 +343,9 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
                   />
                   <span>
                     <span className="block font-medium text-slate-900">{accommodation.name}</span>
-                    <span className="block text-slate-600">{accommodation.country || 'Sans localisation'}</span>
+                    <span className="block text-slate-600">
+                      {accommodation.accommodation_type || 'Type non renseigné'}
+                    </span>
                   </span>
                 </label>
               ))}
@@ -444,7 +364,7 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
               {linkedAccommodations.map((accommodation) => (
                 <li key={accommodation.id} className="rounded-lg border border-slate-100 px-3 py-2">
                   <div className="font-medium text-slate-900">{accommodation.name}</div>
-                  <div>{accommodation.country || 'Sans localisation'}</div>
+                  <div>{accommodation.accommodation_type || 'Type non renseigné'}</div>
                 </li>
               ))}
             </ul>
@@ -540,127 +460,35 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
         <div>
           <h2 className="text-lg font-semibold text-slate-900">Créer un hébergement</h2>
           <p className="text-sm text-slate-600">
-            Les hébergements créés ici seront réutilisables sur d&apos;autres séjours du même organisme.
+            La création et la modification détaillées se font maintenant depuis la page dédiée des hébergements.
           </p>
         </div>
-        <form action={createAccommodation} className="grid gap-4 md:grid-cols-2">
-          <label className="block text-sm font-medium text-slate-700 md:col-span-2">
-            Nom
-            <input
-              name="name"
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-              required
-            />
-          </label>
-          <label className="block text-sm font-medium text-slate-700 md:col-span-2">
-            Description
-            <textarea
-              name="accommodation_description"
-              rows={3}
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-            />
-          </label>
-          <label className="block text-sm font-medium text-slate-700">
-            Pays
-            <input
-              name="country"
-              defaultValue="France"
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-            />
-          </label>
-          <label className="block text-sm font-medium text-slate-700">
-            Couchage
-            <textarea
-              name="rooming_text"
-              rows={3}
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-            />
-          </label>
-          <label className="block text-sm font-medium text-slate-700 md:col-span-2">
-            Restauration
-            <textarea
-              name="catering_text"
-              rows={3}
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-            />
-          </label>
-          <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-700 md:col-span-2">
-            <input type="checkbox" name="link_to_stay" className="cursor-pointer" />
-            Lier directement cet hébergement au séjour
-          </label>
-          <div className="md:col-span-2 flex justify-end">
-            <button className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">
-              Créer l&apos;hébergement
-            </button>
-          </div>
-        </form>
+        <div className="flex justify-end">
+          <Link
+            href={withOrganizerQuery('/organisme/hebergements', selectedOrganizerId)}
+            className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+          >
+            Gérer les hébergements
+          </Link>
+        </div>
       </section>
 
       {accommodations.length > 0 && (
         <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
           <div>
-            <h2 className="text-lg font-semibold text-slate-900">Modifier les hébergements</h2>
+            <h2 className="text-lg font-semibold text-slate-900">Bibliothèque des hébergements</h2>
             <p className="text-sm text-slate-600">
-              Cette bibliothèque est partagée entre les séjours de l&apos;organisme sélectionné.
+              Pour modifier une fiche, utilise la page dédiée des hébergements.
             </p>
           </div>
           <div className="space-y-4">
             {accommodations.map((accommodation) => (
-              <form
-                key={accommodation.id}
-                action={updateAccommodation}
-                className="grid gap-4 rounded-xl border border-slate-100 p-4 md:grid-cols-2"
-              >
-                <input type="hidden" name="accommodation_id" value={accommodation.id} />
-                <label className="block text-sm font-medium text-slate-700 md:col-span-2">
-                  Nom
-                  <input
-                    name="name"
-                    defaultValue={accommodation.name}
-                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-                  />
-                </label>
-                <label className="block text-sm font-medium text-slate-700 md:col-span-2">
-                  Description
-                  <textarea
-                    name="accommodation_description"
-                    rows={3}
-                    defaultValue={accommodation.description ?? ''}
-                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-                  />
-                </label>
-                <label className="block text-sm font-medium text-slate-700">
-                  Pays
-                  <input
-                    name="country"
-                    defaultValue={accommodation.country ?? ''}
-                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-                  />
-                </label>
-                <label className="block text-sm font-medium text-slate-700">
-                  Couchage
-                  <textarea
-                    name="rooming_text"
-                    rows={3}
-                    defaultValue={accommodation.rooming_text ?? ''}
-                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-                  />
-                </label>
-                <label className="block text-sm font-medium text-slate-700 md:col-span-2">
-                  Restauration
-                  <textarea
-                    name="catering_text"
-                    rows={3}
-                    defaultValue={accommodation.catering_text ?? ''}
-                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-                  />
-                </label>
-                <div className="md:col-span-2 flex justify-end">
-                  <button className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white">
-                    Enregistrer l&apos;hébergement
-                  </button>
+              <div key={accommodation.id} className="rounded-xl border border-slate-100 p-4">
+                <div className="font-medium text-slate-900">{accommodation.name}</div>
+                <div className="text-sm text-slate-600">
+                  {accommodation.accommodation_type || 'Type non renseigné'}
                 </div>
-              </form>
+              </div>
             ))}
           </div>
         </section>

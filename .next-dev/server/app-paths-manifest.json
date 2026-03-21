@@ -1,5 +1,1 @@
-{
-  "/sejours/[slug]/page": "app/sejours/[slug]/page.js",
-  "/organisme/sejours/[id]/page": "app/organisme/sejours/[id]/page.js",
-  "/organisme/hebergements/page": "app/organisme/hebergements/page.js"
-}
+{}

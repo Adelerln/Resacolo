@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -21,7 +21,7 @@ import { useCart } from '@/context/CartContext';
 import { FILTER_LABELS } from '@/lib/constants';
 import { getMockImageUrl, mockImages } from '@/lib/mockImages';
 
-type TabId = 'programme' | 'activites' | 'encadrement';
+type TabId = 'sejour' | 'programme' | 'hebergement' | 'encadrement' | 'infos';
 
 function formatLabel(group: keyof typeof FILTER_LABELS, value: string) {
   return FILTER_LABELS[group][value as keyof (typeof FILTER_LABELS)[typeof group]] ?? value;
@@ -40,6 +40,7 @@ function formatPrice(price?: number | null) {
 // Build a simple programme from description (split by double newline or "Jour")
 function getProgrammeBlocks(description: string): { title?: string; text: string }[] {
   const trimmed = description.trim();
+  if (!trimmed) return [];
   const byDay = trimmed.split(/(?=Jour \d+)/i).filter(Boolean);
   if (byDay.length > 1) {
     return byDay.map((block) => {
@@ -51,6 +52,29 @@ function getProgrammeBlocks(description: string): { title?: string; text: string
   return [{ text: trimmed }];
 }
 
+function normalizeRawText(value: unknown) {
+  if (typeof value === 'string') return value.trim();
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => (typeof item === 'string' ? item.trim() : String(item)))
+      .filter(Boolean)
+      .join('\n');
+  }
+  if (value == null) return '';
+  return String(value).trim();
+}
+
+function getRawField(raw: Record<string, unknown> | undefined, keys: string[]) {
+  if (!raw) return '';
+  for (const key of keys) {
+    if (key in raw) {
+      const value = normalizeRawText(raw[key]);
+      if (value) return value;
+    }
+  }
+  return '';
+}
+
 const DEFAULT_GALLERY = [
   getMockImageUrl(mockImages.sejours.gallery[0], 600, 80),
   getMockImageUrl(mockImages.sejours.gallery[1], 600, 80),
@@ -60,7 +84,7 @@ const DEFAULT_GALLERY = [
 export function StayDetailView({ stay }: { stay: Stay }) {
   const router = useRouter();
   const { addItem } = useCart();
-  const [activeTab, setActiveTab] = useState<TabId>('programme');
+  const [activeTab, setActiveTab] = useState<TabId>('sejour');
 
   const handleReserver = () => {
     addItem(stay);
@@ -69,7 +93,24 @@ export function StayDetailView({ stay }: { stay: Stay }) {
   const galleryImages = stay.coverImage
     ? [stay.coverImage, DEFAULT_GALLERY[1], DEFAULT_GALLERY[2]]
     : DEFAULT_GALLERY;
-  const programmeBlocks = getProgrammeBlocks(stay.description);
+  const sejourText = getRawField(stay.rawContext, ['sejour', 'presentation', 'description']) || stay.summary;
+  const programmeText =
+    getRawField(stay.rawContext, ['programme', 'program', 'programme_details']) || stay.description;
+  const activitiesText = getRawField(stay.rawContext, ['activites', 'activities', 'activities_text']);
+  const hebergementText = getRawField(stay.rawContext, ['hebergement', 'lodging', 'lodging_details']);
+  const encadrementText = getRawField(stay.rawContext, ['encadrement', 'supervision']);
+  const documentsText = getRawField(stay.rawContext, [
+    'documents_obligatoires',
+    'documents',
+    'documentsObligatoires'
+  ]);
+  const transportText = getRawField(stay.rawContext, ['transport', 'transports']);
+  const programmeBlocks = useMemo(() => getProgrammeBlocks(programmeText), [programmeText]);
+  const transportLabels = useMemo(
+    () =>
+      stay.filters.transport.map((item) => formatLabel('transport', item)).filter(Boolean),
+    [stay.filters.transport]
+  );
   const firstCategory = stay.filters.categories[0];
   const themeLabel = firstCategory ? formatLabel('categories', firstCategory) : stay.title;
 
@@ -138,9 +179,11 @@ export function StayDetailView({ stay }: { stay: Stay }) {
             <div className="mb-6 flex flex-wrap gap-2 border-b border-slate-200 pb-2">
               {(
                 [
+                  { id: 'sejour' as TabId, label: 'Séjour' },
                   { id: 'programme' as TabId, label: 'Programme' },
-                  { id: 'activites' as TabId, label: 'Activités' },
-                  { id: 'encadrement' as TabId, label: 'Encadrement' }
+                  { id: 'hebergement' as TabId, label: 'Hébergement' },
+                  { id: 'encadrement' as TabId, label: 'Encadrement' },
+                  { id: 'infos' as TabId, label: 'Infos pratiques' }
                 ] as const
               ).map(({ id, label }) => (
                 <button
@@ -153,56 +196,110 @@ export function StayDetailView({ stay }: { stay: Stay }) {
                       : 'bg-white text-slate-600 hover:bg-slate-50'
                   }`}
                 >
-                  {id === 'programme' ? stay.title : label}
+                  {label}
                 </button>
               ))}
             </div>
 
             {/* Tab content */}
             <div className="prose prose-slate max-w-none">
+              {activeTab === 'sejour' && (
+                <section className="space-y-4">
+                  <h2 className="font-display text-xl font-semibold text-slate-900">Séjour</h2>
+                  <p className="text-sm leading-relaxed text-slate-600 whitespace-pre-line">
+                    {sejourText || 'Informations à venir.'}
+                  </p>
+                  {activitiesText && (
+                    <div className="pt-2">
+                      <h3 className="text-sm font-semibold text-slate-900">Activités</h3>
+                      <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-slate-600">
+                        {activitiesText}
+                      </p>
+                    </div>
+                  )}
+                  {stay.highlights.length > 0 && (
+                    <div className="pt-2">
+                      <h3 className="text-sm font-semibold text-slate-900">Points forts</h3>
+                      <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-600">
+                        {stay.highlights.map((item, i) => (
+                          <li key={i}>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </section>
+              )}
+
               {activeTab === 'programme' && (
                 <section className="space-y-6">
                   <h2 className="font-display text-xl font-semibold text-slate-900">
-                    {stay.title} — Programme
+                    Programme
                   </h2>
                   <div className="space-y-4 text-slate-600">
-                    {programmeBlocks.map((block, i) => (
-                      <div key={i}>
-                        {block.title && (
-                          <h3 className="mb-1 font-semibold text-slate-800">{block.title}</h3>
-                        )}
-                        <p className="whitespace-pre-line text-sm leading-relaxed">{block.text}</p>
-                      </div>
-                    ))}
+                    {programmeBlocks.length > 0 ? (
+                      programmeBlocks.map((block, i) => (
+                        <div key={i}>
+                          {block.title && (
+                            <h3 className="mb-1 font-semibold text-slate-800">{block.title}</h3>
+                          )}
+                          <p className="whitespace-pre-line text-sm leading-relaxed">{block.text}</p>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-sm leading-relaxed">Informations à venir.</p>
+                    )}
                   </div>
                 </section>
               )}
 
-              {activeTab === 'activites' && (
+              {activeTab === 'hebergement' && (
                 <section className="space-y-4">
-                  <h2 className="font-display text-xl font-semibold text-slate-900">Activités</h2>
-                  <ul className="list-disc space-y-2 pl-6 text-slate-600">
-                    {stay.highlights.length > 0 ? (
-                      stay.highlights.map((item, i) => (
-                        <li key={i} className="text-sm leading-relaxed">
-                          {item}
-                        </li>
-                      ))
-                    ) : (
-                      <li className="text-sm">Découverte, loisirs et activités encadrées.</li>
-                    )}
-                  </ul>
+                  <h2 className="font-display text-xl font-semibold text-slate-900">Hébergement</h2>
+                  <p className="text-sm leading-relaxed text-slate-600 whitespace-pre-line">
+                    {hebergementText || 'Informations à venir.'}
+                  </p>
                 </section>
               )}
 
               {activeTab === 'encadrement' && (
                 <section className="space-y-4">
                   <h2 className="font-display text-xl font-semibold text-slate-900">Encadrement</h2>
-                  <p className="text-sm leading-relaxed text-slate-600">
-                    L&apos;équipe d&apos;encadrement est composée de professionnels qualifiés et
-                    diplômés. Les effectifs respectent les taux d&apos;encadrement réglementaires.
-                    Pour toute question, contactez directement l&apos;organisateur du séjour.
+                  <p className="text-sm leading-relaxed text-slate-600 whitespace-pre-line">
+                    {encadrementText ||
+                      "L'équipe d'encadrement est composée de professionnels qualifiés et diplômés. Pour toute question, contactez l'organisateur du séjour."}
                   </p>
+                </section>
+              )}
+
+              {activeTab === 'infos' && (
+                <section className="space-y-6">
+                  <h2 className="font-display text-xl font-semibold text-slate-900">Infos pratiques</h2>
+                  <div className="space-y-4">
+                    <div>
+                      <h3 className="text-sm font-semibold text-slate-900">Documents obligatoires</h3>
+                      <p className="mt-2 text-sm leading-relaxed text-slate-600 whitespace-pre-line">
+                        {documentsText || 'Informations à venir.'}
+                      </p>
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-semibold text-slate-900">Transport</h3>
+                      {transportText ? (
+                        <p className="mt-2 text-sm leading-relaxed text-slate-600 whitespace-pre-line">
+                          {transportText}
+                        </p>
+                      ) : transportLabels.length > 0 ? (
+                        <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-600">
+                          {transportLabels.map((label, index) => (
+                            <li key={index}>{label}</li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="mt-2 text-sm leading-relaxed text-slate-600">
+                          Informations à venir.
+                        </p>
+                      )}
+                    </div>
+                  </div>
                 </section>
               )}
             </div>

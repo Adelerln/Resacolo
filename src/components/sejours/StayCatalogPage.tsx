@@ -12,8 +12,10 @@ import {
   AccordionTrigger
 } from '@/components/ui/accordion';
 import { Card, CardContent, CardDescription, CardTitle } from '@/components/ui/card';
+import { FILTER_LABELS } from '@/lib/constants';
+import type { Stay } from '@/types/stay';
 
-type MockStay = {
+type StayCardData = {
   slug: string;
   title: string;
   subtitle: string;
@@ -22,55 +24,15 @@ type MockStay = {
   season: string;
   duration: string;
   description: string;
-  priceFrom: number;
+  priceFrom: number | null;
   image: string;
-  organizerLogo: string;
+  organizerLogo: string | null;
 };
 
-const mockStays: MockStay[] = [
-  {
-    slug: 'moto-rider',
-    title: 'Moto Rider',
-    subtitle: 'Stage de Moto',
-    location: 'Beaumont, Saint-Cyr (86)',
-    age: '6-17 ans',
-    season: 'PRINTEMPS',
-    duration: '8 jours',
-    description:
-      'Un séjour intensif pour progresser en motocross avec des ateliers techniques, des balades encadrées et des défis tout-terrain.',
-    priceFrom: 689,
-    image: getMockImageUrl(mockImages.sampleStays[0], 1200, 80),
-    organizerLogo: '/image/logo-resacolo.png'
-  },
-  {
-    slug: 'strasbourg-europa-park',
-    title: 'Strasbourg - Europa Park',
-    subtitle: 'Mini-séjour',
-    location: 'Strasbourg & Europa Park',
-    age: '6-17 ans',
-    season: 'ÉTÉ',
-    duration: '5 jours',
-    description:
-      'Découverte de Strasbourg puis immersion à Europa Park pour un programme rythmé entre culture urbaine et sensations fortes.',
-    priceFrom: 559,
-    image: getMockImageUrl(mockImages.sampleStays[1], 1200, 80),
-    organizerLogo: '/image/logo-resacolo.png'
-  },
-  {
-    slug: 'dubai',
-    title: 'Dubaï',
-    subtitle: 'Aux portes du désert',
-    location: 'Dubaï (Émirats Arabes Unis)',
-    age: '14-17 ans',
-    season: 'HIVER',
-    duration: '10 jours',
-    description:
-      'Une aventure internationale entre métropole futuriste et escapades dans le désert, avec activités de groupe et visites guidées.',
-    priceFrom: 1390,
-    image: getMockImageUrl(mockImages.sampleStays[2], 1200, 80),
-    organizerLogo: '/image/logo-resacolo.png'
-  }
-];
+type NormalizedStay = StayCardData & {
+  seasonLabels: string[];
+  ageLabels: string[];
+};
 
 const filterGroups = [
   { id: 'season', label: 'SAISON', options: ['Printemps', 'Été', 'Toussaint', 'Hiver'] },
@@ -131,59 +93,75 @@ function FiltersPanel({
   );
 }
 
-function StayCard({ stay }: { stay: MockStay }) {
+function StayCard({ stay }: { stay: StayCardData }) {
+  const organizerLogo = stay.organizerLogo ?? '/image/logo-resacolo.png';
+  const priceLabel =
+    typeof stay.priceFrom === 'number' ? `À partir de ${stay.priceFrom} €` : 'Sur demande';
+
   return (
     <Link href={`/sejours/${stay.slug}`} className="block transition-opacity hover:opacity-95">
       <Card className="overflow-hidden rounded-3xl">
         <div className="relative h-56 w-full">
-        <Image src={stay.image} alt={stay.title} fill className="object-cover" sizes="(max-width: 768px) 100vw, 33vw" />
-        <div className="absolute right-3 top-3 h-11 w-11 overflow-hidden rounded-full border-2 border-white bg-white shadow">
-          <Image src={stay.organizerLogo} alt="Organisateur" fill className="object-contain p-1" sizes="44px" />
-        </div>
-        <span className="absolute bottom-3 left-3 rounded-full bg-[#F97316] px-3 py-1 text-xs font-semibold text-white">
-          {stay.age}
-        </span>
-        <span className="absolute bottom-3 right-3 inline-flex items-center gap-1 rounded-full bg-white px-3 py-1 text-xs font-semibold text-[#F97316]">
-          <Sun className="h-3.5 w-3.5" />
-          {stay.season}
-        </span>
-      </div>
-
-      <CardContent className="space-y-4 p-4 pt-6">
-        <div className="flex items-center justify-between gap-3 text-xs font-medium text-[#3B82F6] whitespace-nowrap">
-          <span className="inline-flex min-w-0 items-center gap-1.5">
-            <MapPin className="h-3.5 w-3.5" />
-            <span className="min-w-0 truncate">{stay.location}</span>
+          <Image
+            src={stay.image}
+            alt={stay.title}
+            fill
+            className="object-cover"
+            sizes="(max-width: 768px) 100vw, 33vw"
+          />
+          <div className="absolute right-3 top-3 h-11 w-11 overflow-hidden rounded-full border-2 border-white bg-white shadow">
+            <Image
+              src={organizerLogo}
+              alt="Organisateur"
+              fill
+              className="object-contain p-1"
+              sizes="44px"
+            />
+          </div>
+          <span className="absolute bottom-3 left-3 rounded-full bg-[#F97316] px-3 py-1 text-xs font-semibold text-white">
+            {stay.age}
           </span>
-          <span className="inline-flex shrink-0 items-center gap-1.5">
-            <Clock3 className="h-3.5 w-3.5" />
-            {stay.duration}
+          <span className="absolute bottom-3 right-3 inline-flex items-center gap-1 rounded-full bg-white px-3 py-1 text-xs font-semibold text-[#F97316]">
+            <Sun className="h-3.5 w-3.5" />
+            {stay.season}
           </span>
         </div>
 
-        <div className="space-y-2 text-center pt-1">
-          <CardTitle className="text-xl font-bold text-slate-900">{stay.title}</CardTitle>
-          <CardDescription className="text-sm text-slate-500">{stay.subtitle}</CardDescription>
-          <p
-            className="text-sm leading-6 text-slate-600"
-            style={{
-              display: '-webkit-box',
-              WebkitLineClamp: 3,
-              WebkitBoxOrient: 'vertical',
-              overflow: 'hidden'
-            }}
-          >
-            {stay.description}
-          </p>
-        </div>
-        <p className="text-center text-xl font-bold text-[#F97316]">À partir de {stay.priceFrom} €</p>
-      </CardContent>
-    </Card>
+        <CardContent className="space-y-4 p-4 pt-6">
+          <div className="flex items-center justify-between gap-3 whitespace-nowrap text-xs font-medium text-[#3B82F6]">
+            <span className="inline-flex min-w-0 items-center gap-1.5">
+              <MapPin className="h-3.5 w-3.5" />
+              <span className="min-w-0 truncate">{stay.location}</span>
+            </span>
+            <span className="inline-flex shrink-0 items-center gap-1.5">
+              <Clock3 className="h-3.5 w-3.5" />
+              {stay.duration}
+            </span>
+          </div>
+
+          <div className="space-y-2 pt-1 text-center">
+            <CardTitle className="text-xl font-bold text-slate-900">{stay.title}</CardTitle>
+            <CardDescription className="text-sm text-slate-500">{stay.subtitle}</CardDescription>
+            <p
+              className="text-sm leading-6 text-slate-600"
+              style={{
+                display: '-webkit-box',
+                WebkitLineClamp: 3,
+                WebkitBoxOrient: 'vertical',
+                overflow: 'hidden'
+              }}
+            >
+              {stay.description}
+            </p>
+          </div>
+          <p className="text-center text-xl font-bold text-[#F97316]">{priceLabel}</p>
+        </CardContent>
+      </Card>
     </Link>
   );
 }
 
-export function StayCatalogPage() {
+export function StayCatalogPage({ stays = [] }: { stays?: Stay[] }) {
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [filters, setFilters] = useState<FilterState>({
     season: new Set(),
@@ -209,16 +187,42 @@ export function StayCatalogPage() {
     });
   };
 
-  const normalizedStays = mockStays.map((stay) => ({
-    ...stay,
-    seasonLabel: stay.season === 'PRINTEMPS' ? 'Printemps' : stay.season === 'ÉTÉ' ? 'Été' : stay.season,
-    ageLabel:
-      stay.age === '6-17 ans'
-        ? ['6-9 ans', '10-13 ans', '14-17 ans']
-        : stay.age === '14-17 ans'
-          ? ['14-17 ans']
-          : [stay.age]
-  }));
+  const normalizedStays: NormalizedStay[] = stays.map((stay) => {
+    const seasonLabels =
+      stay.filters.periods.length > 0
+        ? stay.filters.periods.map((period) => FILTER_LABELS.periods[period])
+        : stay.period.length > 0
+          ? stay.period
+          : ['À venir'];
+
+    const ageLabels = stay.filters.audiences.length
+      ? stay.filters.audiences
+          .map((audience) => {
+            if (audience === '6-9') return '6-9 ans';
+            if (audience === '10-12') return '10-13 ans';
+            return '14-17 ans';
+          })
+          .filter(Boolean)
+      : stay.ageRange
+        ? [stay.ageRange]
+        : ['Tous âges'];
+
+    return {
+      slug: stay.slug,
+      title: stay.title,
+      subtitle: stay.organizer.name,
+      location: stay.location || 'Lieu à préciser',
+      age: stay.ageRange || 'Tous âges',
+      season: seasonLabels[0] ?? 'À venir',
+      duration: stay.duration || 'Durée à venir',
+      description: stay.summary || stay.description,
+      priceFrom: stay.priceFrom,
+      image: stay.coverImage || getMockImageUrl(mockImages.sejours.fallbackCover, 1200, 80),
+      organizerLogo: stay.organizer.logoUrl ?? null,
+      seasonLabels,
+      ageLabels
+    };
+  });
 
   const filteredStays = normalizedStays.filter((stay) => {
     const seasonActive = filters.season.size > 0;
@@ -226,9 +230,10 @@ export function StayCatalogPage() {
 
     if (!seasonActive && !ageActive) return true;
 
-    const seasonOk = !seasonActive || filters.season.has(stay.seasonLabel);
+    const seasonOk =
+      !seasonActive || stay.seasonLabels.some((label: string) => filters.season.has(label));
     const ageOk =
-      !ageActive || stay.ageLabel.some((label: string) => filters.age.has(label));
+      !ageActive || stay.ageLabels.some((label: string) => filters.age.has(label));
 
     return seasonOk && ageOk;
   });
@@ -291,16 +296,22 @@ export function StayCatalogPage() {
 
           <div className="lg:col-span-3">
             <div className="mb-5 hidden items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 lg:flex">
-              <p>Affichage de 1-36 sur 358 résultats</p>
+              <p>
+                Affichage de 1-{filteredStays.length} sur {normalizedStays.length} résultats
+              </p>
               <select className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700">
                 <option>Tri aléatoire</option>
               </select>
             </div>
 
             <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-              {filteredStays.map((stay) => (
-                <StayCard key={stay.slug} stay={stay} />
-              ))}
+              {filteredStays.length === 0 ? (
+                <p className="text-sm text-slate-600">
+                  Aucun séjour disponible pour les filtres sélectionnés.
+                </p>
+              ) : (
+                filteredStays.map((stay) => <StayCard key={stay.slug} stay={stay} />)
+              )}
             </div>
           </div>
         </div>

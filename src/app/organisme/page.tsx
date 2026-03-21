@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import { requireRole } from '@/lib/auth/require';
+import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { slugify } from '@/lib/utils';
 
@@ -7,19 +8,20 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-export default async function OrganizerHome() {
+type PageProps = {
+  searchParams?: {
+    organizerId?: string | string[];
+  };
+};
+
+export default async function OrganizerHome({ searchParams }: PageProps) {
   const session = requireRole('ORGANISATEUR');
   const supabase = getServerSupabaseClient();
-
-  let organizerId = session.tenantId ?? null;
-  if (!organizerId) {
-    const { data: membership } = await supabase
-      .from('organizer_members')
-      .select('organizer_id')
-      .eq('user_id', session.userId)
-      .maybeSingle();
-    organizerId = membership?.organizer_id ?? null;
-  }
+  const { selectedOrganizerId } = await resolveOrganizerSelection(
+    searchParams?.organizerId,
+    session.tenantId ?? null
+  );
+  const organizerId = selectedOrganizerId;
 
   if (!organizerId) {
     redirect('/organisme/sejours');
@@ -54,6 +56,7 @@ export default async function OrganizerHome() {
 
   async function updateProfile(formData: FormData) {
     'use server';
+    const supabase = getServerSupabaseClient();
     const name = String(formData.get('name') ?? '').trim();
     const contactEmail = String(formData.get('contact_email') ?? '').trim();
     const description = String(formData.get('description') ?? '').trim();
@@ -104,7 +107,7 @@ export default async function OrganizerHome() {
         .eq('id', currentOrganizerId);
     }
 
-    redirect('/organisme');
+    redirect(withOrganizerQuery('/organisme', currentOrganizerId));
   }
 
   return (

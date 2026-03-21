@@ -700,6 +700,59 @@ export type Database = {
           },
         ]
       }
+      accommodations: {
+        Row: {
+          address_text: string | null
+          catering_text: string | null
+          city: string | null
+          country: string | null
+          created_at: string
+          description: string | null
+          id: string
+          name: string
+          organizer_id: string
+          postal_code: string | null
+          rooming_text: string | null
+          updated_at: string
+        }
+        Insert: {
+          address_text?: string | null
+          catering_text?: string | null
+          city?: string | null
+          country?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          name: string
+          organizer_id: string
+          postal_code?: string | null
+          rooming_text?: string | null
+          updated_at?: string
+        }
+        Update: {
+          address_text?: string | null
+          catering_text?: string | null
+          city?: string | null
+          country?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          name?: string
+          organizer_id?: string
+          postal_code?: string | null
+          rooming_text?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "accommodations_organizer_id_fkey"
+            columns: ["organizer_id"]
+            isOneToOne: false
+            referencedRelation: "organizers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       organizers: {
         Row: {
           contact_email: string | null
@@ -996,6 +1049,39 @@ export type Database = {
         }
         Relationships: []
       }
+      stay_accommodations: {
+        Row: {
+          accommodation_id: string
+          position: number
+          stay_id: string
+        }
+        Insert: {
+          accommodation_id: string
+          position?: number
+          stay_id: string
+        }
+        Update: {
+          accommodation_id?: string
+          position?: number
+          stay_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stay_accommodations_accommodation_id_fkey"
+            columns: ["accommodation_id"]
+            isOneToOne: false
+            referencedRelation: "accommodations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stay_accommodations_stay_id_fkey"
+            columns: ["stay_id"]
+            isOneToOne: false
+            referencedRelation: "stays"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       stay_extra_options: {
         Row: {
           amount_cents: number
@@ -1071,14 +1157,20 @@ export type Database = {
           age_max: number | null
           age_min: number | null
           archive_at: string | null
+          activities_text: string | null
           created_at: string
           description: string | null
           id: string
           location_text: string | null
           organizer_id: string
+          program_text: string | null
+          required_documents_text: string | null
           season_id: string
           status: Database["public"]["Enums"]["stay_status"]
+          summary: string | null
+          supervision_text: string | null
           title: string
+          transport_text: string | null
           transport_mode: string
           updated_at: string
         }
@@ -1086,14 +1178,20 @@ export type Database = {
           age_max?: number | null
           age_min?: number | null
           archive_at?: string | null
+          activities_text?: string | null
           created_at?: string
           description?: string | null
           id?: string
           location_text?: string | null
           organizer_id: string
+          program_text?: string | null
+          required_documents_text?: string | null
           season_id: string
           status?: Database["public"]["Enums"]["stay_status"]
+          summary?: string | null
+          supervision_text?: string | null
           title: string
+          transport_text?: string | null
           transport_mode?: string
           updated_at?: string
         }
@@ -1101,14 +1199,20 @@ export type Database = {
           age_max?: number | null
           age_min?: number | null
           archive_at?: string | null
+          activities_text?: string | null
           created_at?: string
           description?: string | null
           id?: string
           location_text?: string | null
           organizer_id?: string
+          program_text?: string | null
+          required_documents_text?: string | null
           season_id?: string
           status?: Database["public"]["Enums"]["stay_status"]
+          summary?: string | null
+          supervision_text?: string | null
           title?: string
+          transport_text?: string | null
           transport_mode?: string
           updated_at?: string
         }

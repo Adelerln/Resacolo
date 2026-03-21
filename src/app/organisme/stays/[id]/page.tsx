@@ -1,131 +1,307 @@
+import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { requireRole } from '@/lib/auth/require';
-import { mockRequests, mockSeasons, mockSessions, mockStages, mockStays } from '@/lib/mocks';
-import { sessionStatusLabel, stayStatusLabel } from '@/lib/ui/labels';
+import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
-import { getMockImageUrl, mockImages } from '@/lib/mockImages';
+import { sessionStatusLabel, stayStatusLabel } from '@/lib/ui/labels';
 
-type PageProps = { params: { id: string } };
+type PageProps = {
+  params: { id: string };
+  searchParams?: {
+    organizerId?: string | string[];
+    saved?: string | string[];
+  };
+};
 
-export default async function OrganizerStayDetailPage({ params }: PageProps) {
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+export default async function OrganizerStayDetailPage({ params, searchParams }: PageProps) {
   const session = requireRole('ORGANISATEUR');
-  const useMock = process.env.MOCK_UI === '1';
-  const stay = useMock ? mockStays.find((item) => item.id === params.id) : null;
   const supabase = getServerSupabaseClient();
-  const { data: seasonsRaw } = await supabase.from('seasons').select('id,name');
-  const seasonOrder = ['Hiver', 'Printemps', 'Été', 'Automne', "Fin d'année"];
-  const seasons = [...(seasonsRaw ?? [])].sort((a, b) => {
-    const indexA = seasonOrder.indexOf(a.name);
-    const indexB = seasonOrder.indexOf(b.name);
-    if (indexA === -1 && indexB === -1) {
-      return a.name.localeCompare(b.name, 'fr');
-    }
-    if (indexA === -1) return 1;
-    if (indexB === -1) return -1;
-    return indexA - indexB;
-  });
-  const photoUrls = useMock
-    ? [
-        getMockImageUrl(mockImages.sampleStays[0], 1200, 80),
-        getMockImageUrl(mockImages.sampleStays[1], 1200, 80),
-        ''
-      ]
-    : ['', '', ''];
-  const transportOptions = useMock
-    ? {
-        bus: true,
-        train: true,
-        plane: false,
-        byOwn: true,
-        meetingPoint: 'Gare de Lyon, Paris',
-        notes: 'Transferts inclus depuis la gare.'
-      }
-    : { bus: false, train: false, plane: false, byOwn: false, meetingPoint: '', notes: '' };
-  const contentSections = useMock
-    ? {
-        tagline: 'Une aventure nature pour les 12-16 ans.',
-        program: 'Randonnées, escalade, veillées.',
-        lodging: 'Chalets en montagne, chambres de 4.',
-        meals: 'Pension complète, cuisine locale.',
-        supervision: '1 animateur pour 6 jeunes.'
-      }
-    : { tagline: '', program: '', lodging: '', meals: '', supervision: '' };
+  const { selectedOrganizerId } = await resolveOrganizerSelection(
+    searchParams?.organizerId,
+    session.tenantId ?? null
+  );
+  const savedParam = Array.isArray(searchParams?.saved) ? searchParams?.saved[0] : searchParams?.saved;
+  const showSavedBanner = savedParam === '1';
 
-  if (!stay || stay.organizerTenantId !== session.tenantId) {
+  if (!selectedOrganizerId) {
     redirect('/organisme/sejours');
   }
 
-  const stages = useMock ? mockStages : [];
-  const staySessions = useMock ? mockSessions.filter((s) => s.stayId === stay.id) : [];
-  const stayRequests = useMock
-    ? mockRequests
-        .filter((r) => r.stayId === stay.id)
-        .map((r) => ({
-          ...r,
-          currentStage: stages.find((s) => s.id === r.currentStageId),
-          session: staySessions.find((s) => s.id === r.sessionId),
-          partnerTenant: { name: 'CSE Horizon' }
-        }))
-    : [];
+  const { data: stay } = await supabase
+    .from('stays')
+    .select(
+      'id,title,status,season_id,description,summary,activities_text,program_text,supervision_text,required_documents_text,transport_text,age_min,age_max,location_text,transport_mode,organizer_id'
+    )
+    .eq('id', params.id)
+    .maybeSingle();
 
-  async function updateStay() {
-    'use server';
-    redirect(`/organisme/sejours/${params.id}`);
+  if (!stay || stay.organizer_id !== selectedOrganizerId) {
+    redirect(withOrganizerQuery('/organisme/sejours', selectedOrganizerId));
   }
+  const currentStay = stay;
 
-  async function updateMedia() {
-    'use server';
-    redirect(`/organisme/sejours/${params.id}`);
-  }
+  const [
+    { data: seasonsRaw },
+    { data: sessionsRaw },
+    { data: mediaRaw },
+    { data: accommodationsRaw },
+    { data: stayAccommodationLinksRaw }
+  ] = await Promise.all([
+    supabase.from('seasons').select('id,name').order('name', { ascending: true }),
+    supabase
+      .from('sessions')
+      .select('id,start_date,end_date,capacity_total,capacity_reserved,status')
+      .eq('stay_id', currentStay.id)
+      .order('start_date', { ascending: true }),
+    supabase
+      .from('stay_media')
+      .select('id,url,position,media_type')
+      .eq('stay_id', currentStay.id)
+      .order('position', { ascending: true }),
+    supabase
+      .from('accommodations')
+      .select('id,name,description,address_text,postal_code,city,country,rooming_text,catering_text')
+      .eq('organizer_id', selectedOrganizerId)
+      .order('name', { ascending: true }),
+    supabase
+      .from('stay_accommodations')
+      .select('accommodation_id,position')
+      .eq('stay_id', currentStay.id)
+      .order('position', { ascending: true })
+  ]);
 
-  async function updateContent() {
-    'use server';
-    redirect(`/organisme/sejours/${params.id}`);
-  }
+  const seasons = seasonsRaw ?? [];
+  const sessions = sessionsRaw ?? [];
+  const media = mediaRaw ?? [];
+  const accommodations = accommodationsRaw ?? [];
+  const stayAccommodationLinks = stayAccommodationLinksRaw ?? [];
+  const linkedAccommodationIds = new Set(
+    stayAccommodationLinks.map((link) => link.accommodation_id)
+  );
+  const linkedAccommodations = stayAccommodationLinks
+    .map((link) => accommodations.find((item) => item.id === link.accommodation_id))
+    .filter((item): item is NonNullable<typeof item> => Boolean(item));
 
-  async function updateTransport() {
+  async function updateStay(formData: FormData) {
     'use server';
-    redirect(`/organisme/sejours/${params.id}`);
+    const supabase = getServerSupabaseClient();
+    const title = String(formData.get('title') ?? '').trim();
+    const summary = String(formData.get('summary') ?? '').trim();
+    const seasonId = String(formData.get('season_id') ?? '').trim();
+    const description = String(formData.get('description') ?? '').trim();
+    const activitiesText = String(formData.get('activities_text') ?? '').trim();
+    const programText = String(formData.get('program_text') ?? '').trim();
+    const supervisionText = String(formData.get('supervision_text') ?? '').trim();
+    const requiredDocumentsText = String(formData.get('required_documents_text') ?? '').trim();
+    const ageMinRaw = String(formData.get('ageMin') ?? '').trim();
+    const ageMaxRaw = String(formData.get('ageMax') ?? '').trim();
+    const location = String(formData.get('location') ?? '').trim();
+    const transportMode = String(formData.get('transport_mode') ?? '').trim();
+    const transportText = String(formData.get('transport_text') ?? '').trim();
+
+    await supabase
+      .from('stays')
+      .update({
+        title,
+        summary: summary || null,
+        season_id: seasonId || currentStay.season_id,
+        description: description || null,
+        activities_text: activitiesText || null,
+        program_text: programText || null,
+        supervision_text: supervisionText || null,
+        required_documents_text: requiredDocumentsText || null,
+        age_min: ageMinRaw ? Number(ageMinRaw) : null,
+        age_max: ageMaxRaw ? Number(ageMaxRaw) : null,
+        location_text: location || null,
+        transport_mode: transportMode || currentStay.transport_mode,
+        transport_text: transportText || null
+      })
+      .eq('id', currentStay.id);
+
+    revalidatePath(`/organisme/sejours/${currentStay.id}`);
+    revalidatePath(`/organisme/stays/${currentStay.id}`);
+    revalidatePath('/organisme/sejours');
+    revalidatePath('/organisme/stays');
+    redirect(withOrganizerQuery(`/organisme/sejours/${currentStay.id}?saved=1`, selectedOrganizerId));
   }
 
   async function addSession(formData: FormData) {
     'use server';
-    const startDate = String(formData.get('startDate') ?? '');
-    const endDate = String(formData.get('endDate') ?? '');
+    const supabase = getServerSupabaseClient();
+    const startDate = String(formData.get('startDate') ?? '').trim();
+    const endDate = String(formData.get('endDate') ?? '').trim();
     const capacityTotal = Number(formData.get('capacityTotal') ?? 0);
-    if (!startDate || !endDate || !capacityTotal) return;
-    redirect(`/organisme/sejours/${params.id}`);
+    if (!startDate || !endDate || !capacityTotal) {
+      redirect(withOrganizerQuery(`/organisme/sejours/${currentStay.id}`, selectedOrganizerId));
+    }
+
+    await supabase.from('sessions').insert({
+      stay_id: currentStay.id,
+      start_date: startDate,
+      end_date: endDate,
+      capacity_total: capacityTotal,
+      capacity_reserved: 0,
+      status: 'OPEN'
+    });
+
+    revalidatePath(`/organisme/sejours/${currentStay.id}`);
+    revalidatePath(`/organisme/stays/${currentStay.id}`);
+    revalidatePath('/organisme/sejours');
+    revalidatePath('/organisme/stays');
+    redirect(withOrganizerQuery(`/organisme/sejours/${currentStay.id}`, selectedOrganizerId));
   }
 
-  async function updateRequestStage(formData: FormData) {
+  async function syncAccommodations(formData: FormData) {
     'use server';
-    const requestId = String(formData.get('requestId'));
-    const stageId = String(formData.get('stageId'));
-    if (!requestId || !stageId) return;
-    redirect(`/organisme/stays/${params.id}`);
+    const supabase = getServerSupabaseClient();
+    const selectedIds = formData
+      .getAll('accommodation_ids')
+      .map((value) => String(value))
+      .filter(Boolean);
+
+    const { data: validRows } = await supabase
+      .from('accommodations')
+      .select('id')
+      .eq('organizer_id', selectedOrganizerId);
+    const validIds = new Set((validRows ?? []).map((row) => row.id));
+    const filteredIds = selectedIds.filter((id) => validIds.has(id));
+
+    await supabase.from('stay_accommodations').delete().eq('stay_id', currentStay.id);
+
+    if (filteredIds.length > 0) {
+      await supabase.from('stay_accommodations').insert(
+        filteredIds.map((accommodationId, index) => ({
+          stay_id: currentStay.id,
+          accommodation_id: accommodationId,
+          position: index
+        }))
+      );
+    }
+
+    revalidatePath(`/organisme/sejours/${currentStay.id}`);
+    revalidatePath(`/organisme/stays/${currentStay.id}`);
+    redirect(withOrganizerQuery(`/organisme/sejours/${currentStay.id}`, selectedOrganizerId));
+  }
+
+  async function createAccommodation(formData: FormData) {
+    'use server';
+    const supabase = getServerSupabaseClient();
+    const name = String(formData.get('name') ?? '').trim();
+    if (!name) {
+      redirect(withOrganizerQuery(`/organisme/sejours/${currentStay.id}`, selectedOrganizerId));
+    }
+
+    const payload = {
+      organizer_id: selectedOrganizerId,
+      name,
+      description: String(formData.get('accommodation_description') ?? '').trim() || null,
+      address_text: String(formData.get('address_text') ?? '').trim() || null,
+      postal_code: String(formData.get('postal_code') ?? '').trim() || null,
+      city: String(formData.get('city') ?? '').trim() || null,
+      country: String(formData.get('country') ?? '').trim() || null,
+      rooming_text: String(formData.get('rooming_text') ?? '').trim() || null,
+      catering_text: String(formData.get('catering_text') ?? '').trim() || null
+    };
+
+    const { data: insertedAccommodation } = await supabase
+      .from('accommodations')
+      .insert(payload)
+      .select('id')
+      .single();
+
+    if (formData.get('link_to_stay') === 'on' && insertedAccommodation?.id) {
+      const nextPosition = stayAccommodationLinks.length;
+      await supabase.from('stay_accommodations').insert({
+        stay_id: currentStay.id,
+        accommodation_id: insertedAccommodation.id,
+        position: nextPosition
+      });
+    }
+
+    revalidatePath(`/organisme/sejours/${currentStay.id}`);
+    revalidatePath(`/organisme/stays/${currentStay.id}`);
+    redirect(withOrganizerQuery(`/organisme/sejours/${currentStay.id}`, selectedOrganizerId));
+  }
+
+  async function updateAccommodation(formData: FormData) {
+    'use server';
+    const supabase = getServerSupabaseClient();
+    const accommodationId = String(formData.get('accommodation_id') ?? '').trim();
+    if (!accommodationId) {
+      redirect(withOrganizerQuery(`/organisme/sejours/${currentStay.id}`, selectedOrganizerId));
+    }
+
+    await supabase
+      .from('accommodations')
+      .update({
+        name: String(formData.get('name') ?? '').trim(),
+        description: String(formData.get('accommodation_description') ?? '').trim() || null,
+        address_text: String(formData.get('address_text') ?? '').trim() || null,
+        postal_code: String(formData.get('postal_code') ?? '').trim() || null,
+        city: String(formData.get('city') ?? '').trim() || null,
+        country: String(formData.get('country') ?? '').trim() || null,
+        rooming_text: String(formData.get('rooming_text') ?? '').trim() || null,
+        catering_text: String(formData.get('catering_text') ?? '').trim() || null
+      })
+      .eq('id', accommodationId)
+      .eq('organizer_id', selectedOrganizerId);
+
+    revalidatePath(`/organisme/sejours/${currentStay.id}`);
+    revalidatePath(`/organisme/stays/${currentStay.id}`);
+    redirect(withOrganizerQuery(`/organisme/sejours/${currentStay.id}`, selectedOrganizerId));
   }
 
   return (
     <div className="space-y-6">
+      {showSavedBanner && (
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">
+          La fiche séjour a bien été enregistrée.
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">{stay.title}</h1>
+          <h1 className="text-2xl font-semibold text-slate-900">{currentStay.title}</h1>
           <p className="text-sm text-slate-600">
-            Saison: {useMock ? mockSeasons.find((s) => s.id === stay.seasonId)?.name : '-'}
+            Saison: {seasons.find((season) => season.id === currentStay.season_id)?.name ?? '-'}
           </p>
         </div>
-        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-          {stayStatusLabel(stay.status)}
-        </span>
+        <div className="flex items-center gap-3">
+          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+            {stayStatusLabel(currentStay.status)}
+          </span>
+          <button
+            type="submit"
+            form="stay-form"
+            className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white"
+          >
+            Enregistrer le séjour
+          </button>
+        </div>
       </div>
 
-      <form action={updateStay} className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
+      <form
+        id="stay-form"
+        action={updateStay}
+        className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6"
+      >
         <h2 className="text-lg font-semibold text-slate-900">Infos séjour</h2>
         <label className="block text-sm font-medium text-slate-700">
           Titre
           <input
             name="title"
-            defaultValue={stay.title}
+            defaultValue={currentStay.title}
+            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+          />
+        </label>
+        <label className="block text-sm font-medium text-slate-700">
+          Résumé commercial
+          <textarea
+            name="summary"
+            defaultValue={currentStay.summary ?? ''}
+            rows={3}
             className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
           />
         </label>
@@ -133,11 +309,11 @@ export default async function OrganizerStayDetailPage({ params }: PageProps) {
           Saison
           <select
             name="season_id"
-            defaultValue={stay.seasonId}
+            defaultValue={currentStay.season_id}
             className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
           >
             <option value="">Sélectionner</option>
-            {(seasons ?? []).map((season) => (
+            {seasons.map((season) => (
               <option key={season.id} value={season.id}>
                 {season.name}
               </option>
@@ -148,7 +324,43 @@ export default async function OrganizerStayDetailPage({ params }: PageProps) {
           Description
           <textarea
             name="description"
-            defaultValue={stay.description ?? ''}
+            defaultValue={currentStay.description ?? ''}
+            rows={4}
+            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+          />
+        </label>
+        <label className="block text-sm font-medium text-slate-700">
+          Activités
+          <textarea
+            name="activities_text"
+            defaultValue={currentStay.activities_text ?? ''}
+            rows={4}
+            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+          />
+        </label>
+        <label className="block text-sm font-medium text-slate-700">
+          Programme
+          <textarea
+            name="program_text"
+            defaultValue={currentStay.program_text ?? ''}
+            rows={5}
+            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+          />
+        </label>
+        <label className="block text-sm font-medium text-slate-700">
+          Encadrement
+          <textarea
+            name="supervision_text"
+            defaultValue={currentStay.supervision_text ?? ''}
+            rows={4}
+            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+          />
+        </label>
+        <label className="block text-sm font-medium text-slate-700">
+          Documents obligatoires
+          <textarea
+            name="required_documents_text"
+            defaultValue={currentStay.required_documents_text ?? ''}
             rows={4}
             className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
           />
@@ -159,7 +371,7 @@ export default async function OrganizerStayDetailPage({ params }: PageProps) {
             <input
               name="ageMin"
               type="number"
-              defaultValue={stay.ageMin ?? ''}
+              defaultValue={currentStay.age_min ?? ''}
               className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
             />
           </label>
@@ -168,7 +380,7 @@ export default async function OrganizerStayDetailPage({ params }: PageProps) {
             <input
               name="ageMax"
               type="number"
-              defaultValue={stay.ageMax ?? ''}
+              defaultValue={currentStay.age_max ?? ''}
               className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
             />
           </label>
@@ -177,163 +389,158 @@ export default async function OrganizerStayDetailPage({ params }: PageProps) {
           Lieu
           <input
             name="location"
-            defaultValue={stay.location ?? ''}
+            defaultValue={currentStay.location_text ?? ''}
             className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
           />
         </label>
-        <button className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">
-          Enregistrer
-        </button>
+        <div className="grid gap-4 md:grid-cols-2">
+          <label className="block text-sm font-medium text-slate-700">
+            Mode de transport
+            <input
+              name="transport_mode"
+              defaultValue={currentStay.transport_mode ?? ''}
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+            />
+          </label>
+        </div>
+        <label className="block text-sm font-medium text-slate-700">
+          Texte transport
+          <textarea
+            name="transport_text"
+            defaultValue={currentStay.transport_text ?? ''}
+            rows={4}
+            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+          />
+        </label>
+        <div className="flex justify-end">
+          <button
+            type="submit"
+            className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white"
+          >
+            Enregistrer le séjour
+          </button>
+        </div>
       </form>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <form action={updateMedia} className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
-          <h2 className="text-lg font-semibold text-slate-900">Photos</h2>
-          <p className="text-sm text-slate-500">Ajoute des URLs d’images (3 max).</p>
-          <div className="space-y-3">
-            {photoUrls.map((url, index) => (
-              <label key={`photo-${index}`} className="block text-sm font-medium text-slate-700">
-                Photo {index + 1}
-                <input
-                  name={`photo_${index + 1}`}
-                  defaultValue={url}
-                  placeholder="https://"
-                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-                />
-              </label>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <section className="rounded-2xl border border-slate-200 bg-white p-6">
+          <h2 className="text-lg font-semibold text-slate-900">Hébergements liés</h2>
+          <p className="mt-1 text-sm text-slate-600">
+            Sélectionne les hébergements réutilisables à rattacher à ce séjour.
+          </p>
+          <form action={syncAccommodations} className="mt-4 space-y-3">
+            <div className="space-y-2">
+              {accommodations.map((accommodation) => (
+                <label
+                  key={accommodation.id}
+                  className="flex items-start gap-3 rounded-lg border border-slate-100 px-3 py-3 text-sm"
+                >
+                  <input
+                    type="checkbox"
+                    name="accommodation_ids"
+                    value={accommodation.id}
+                    defaultChecked={linkedAccommodationIds.has(accommodation.id)}
+                    className="mt-1"
+                  />
+                  <span>
+                    <span className="block font-medium text-slate-900">{accommodation.name}</span>
+                    <span className="block text-slate-600">
+                      {[accommodation.city, accommodation.country].filter(Boolean).join(', ') || 'Sans localisation'}
+                    </span>
+                  </span>
+                </label>
+              ))}
+              {accommodations.length === 0 && (
+                <p className="text-sm text-slate-500">Aucun hébergement créé pour cet organisme.</p>
+              )}
+            </div>
+            <div className="flex justify-end">
+              <button className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white">
+                Enregistrer les liaisons
+              </button>
+            </div>
+          </form>
+          {linkedAccommodations.length > 0 && (
+            <ul className="mt-4 space-y-2 text-sm text-slate-600">
+              {linkedAccommodations.map((accommodation) => (
+                <li key={accommodation.id} className="rounded-lg border border-slate-100 px-3 py-2">
+                  <div className="font-medium text-slate-900">{accommodation.name}</div>
+                  <div>{[accommodation.address_text, accommodation.postal_code, accommodation.city].filter(Boolean).join(', ')}</div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-6">
+          <h2 className="text-lg font-semibold text-slate-900">Médias</h2>
+          <ul className="mt-4 space-y-2 text-sm text-slate-600">
+            {media.map((item) => (
+              <li key={item.id} className="rounded-lg border border-slate-100 px-3 py-2">
+                {item.media_type || 'media'} : {item.url}
+              </li>
             ))}
-          </div>
-          <button className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">
-            Enregistrer
-          </button>
-        </form>
+            {media.length === 0 && <li>Aucun média.</li>}
+          </ul>
+        </section>
 
-        <form action={updateContent} className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
-          <h2 className="text-lg font-semibold text-slate-900">Textes</h2>
-          <label className="block text-sm font-medium text-slate-700">
-            Accroche
-            <textarea
-              name="tagline"
-              defaultValue={contentSections.tagline}
-              rows={2}
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-            />
-          </label>
-          <label className="block text-sm font-medium text-slate-700">
-            Programme
-            <textarea
-              name="program"
-              defaultValue={contentSections.program}
-              rows={3}
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-            />
-          </label>
-          <label className="block text-sm font-medium text-slate-700">
-            Hébergement
-            <textarea
-              name="lodging"
-              defaultValue={contentSections.lodging}
-              rows={3}
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-            />
-          </label>
-          <label className="block text-sm font-medium text-slate-700">
-            Restauration
-            <textarea
-              name="meals"
-              defaultValue={contentSections.meals}
-              rows={3}
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-            />
-          </label>
-          <label className="block text-sm font-medium text-slate-700">
-            Encadrement
-            <textarea
-              name="supervision"
-              defaultValue={contentSections.supervision}
-              rows={2}
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-            />
-          </label>
-          <button className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">
-            Enregistrer
-          </button>
-        </form>
-
-        <form action={updateTransport} className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
-          <h2 className="text-lg font-semibold text-slate-900">Transports</h2>
-          <div className="space-y-2 text-sm text-slate-700">
-            <label className="flex items-center gap-2">
-              <input type="checkbox" name="bus" defaultChecked={transportOptions.bus} />
-              Bus
-            </label>
-            <label className="flex items-center gap-2">
-              <input type="checkbox" name="train" defaultChecked={transportOptions.train} />
-              Train
-            </label>
-            <label className="flex items-center gap-2">
-              <input type="checkbox" name="plane" defaultChecked={transportOptions.plane} />
-              Avion
-            </label>
-            <label className="flex items-center gap-2">
-              <input type="checkbox" name="byOwn" defaultChecked={transportOptions.byOwn} />
-              Trajet par vos propres moyens
-            </label>
-          </div>
-          <label className="block text-sm font-medium text-slate-700">
-            Point de rendez-vous
-            <input
-              name="meetingPoint"
-              defaultValue={transportOptions.meetingPoint}
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-            />
-          </label>
-          <label className="block text-sm font-medium text-slate-700">
-            Notes complémentaires
-            <textarea
-              name="transportNotes"
-              defaultValue={transportOptions.notes}
-              rows={3}
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-            />
-          </label>
-          <button className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">
-            Enregistrer
-          </button>
-        </form>
+        <section className="rounded-2xl border border-slate-200 bg-white p-6">
+          <h2 className="text-lg font-semibold text-slate-900">Transport</h2>
+          <p className="mt-4 text-sm text-slate-600">
+            {currentStay.transport_mode || 'Non renseigné'}
+          </p>
+          <p className="mt-3 whitespace-pre-line text-sm text-slate-600">
+            {currentStay.transport_text || 'Aucun texte transport saisi.'}
+          </p>
+        </section>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
           <h2 className="text-lg font-semibold text-slate-900">Sessions</h2>
           <ul className="space-y-2 text-sm text-slate-600">
-            {staySessions.map((sessionItem) => (
+            {sessions.map((sessionItem) => (
               <li key={sessionItem.id} className="flex items-center justify-between">
                 <span>
-                  {sessionItem.startDate.toLocaleDateString('fr-FR')} -{' '}
-                  {sessionItem.endDate.toLocaleDateString('fr-FR')}
+                  {new Date(sessionItem.start_date).toLocaleDateString('fr-FR')} -{' '}
+                  {new Date(sessionItem.end_date).toLocaleDateString('fr-FR')}
                 </span>
                 <span className="text-xs text-slate-500">
-                  {sessionItem.capacityReserved}/{sessionItem.capacityTotal} (
+                  {sessionItem.capacity_reserved}/{sessionItem.capacity_total} (
                   {sessionStatusLabel(sessionItem.status)})
                 </span>
               </li>
             ))}
-            {staySessions.length === 0 && <li>Aucune session.</li>}
+            {sessions.length === 0 && <li>Aucune session.</li>}
           </ul>
           <form action={addSession} className="space-y-3 border-t border-slate-100 pt-4">
             <div className="grid gap-3 md:grid-cols-3">
               <label className="text-xs font-medium text-slate-600">
                 Debut
-                <input name="startDate" type="date" className="mt-1 w-full rounded border border-slate-200 px-2 py-1" required />
+                <input
+                  name="startDate"
+                  type="date"
+                  className="mt-1 w-full rounded border border-slate-200 px-2 py-1"
+                  required
+                />
               </label>
               <label className="text-xs font-medium text-slate-600">
                 Fin
-                <input name="endDate" type="date" className="mt-1 w-full rounded border border-slate-200 px-2 py-1" required />
+                <input
+                  name="endDate"
+                  type="date"
+                  className="mt-1 w-full rounded border border-slate-200 px-2 py-1"
+                  required
+                />
               </label>
               <label className="text-xs font-medium text-slate-600">
                 Capacite
-                <input name="capacityTotal" type="number" className="mt-1 w-full rounded border border-slate-200 px-2 py-1" required />
+                <input
+                  name="capacityTotal"
+                  type="number"
+                  className="mt-1 w-full rounded border border-slate-200 px-2 py-1"
+                  required
+                />
               </label>
             </div>
             <button className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white">
@@ -344,39 +551,195 @@ export default async function OrganizerStayDetailPage({ params }: PageProps) {
 
         <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
           <h2 className="text-lg font-semibold text-slate-900">Réservations liées</h2>
-          <div className="space-y-3 text-sm text-slate-600">
-            {stayRequests.map((request) => (
-              <div key={request.id} className="rounded-lg border border-slate-100 p-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="font-medium text-slate-900">{request.partnerTenant?.name}</div>
-                    <div className="text-xs text-slate-500">
-                      Session {request.session?.startDate.toLocaleDateString('fr-FR')}
-                    </div>
-                  </div>
-                  <form action={updateRequestStage} className="flex items-center gap-2">
-                    <input type="hidden" name="requestId" value={request.id} />
-                    <select
-                      name="stageId"
-                      defaultValue={request.currentStageId}
-                      className="rounded border border-slate-200 px-2 py-1 text-xs"
-                    >
-                      {stages.map((stage) => (
-                        <option key={stage.id} value={stage.id}>
-                          {stage.label}
-                        </option>
-                      ))}
-                    </select>
-                    <button className="rounded bg-emerald-600 px-2 py-1 text-xs font-semibold text-white">
-                      OK
-                    </button>
-                  </form>
-                </div>
-              </div>
-            ))}
-            {stayRequests.length === 0 && <p>Aucune demande.</p>}
-          </div>
+          <p className="text-sm text-slate-600">
+            Cette section sera branchée quand le flux de réservation organisateur sera connecté.
+          </p>
         </div>
+      </div>
+
+      <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
+        <div>
+          <h2 className="text-lg font-semibold text-slate-900">Créer un hébergement</h2>
+          <p className="text-sm text-slate-600">
+            Les hébergements créés ici seront réutilisables sur d&apos;autres séjours du même organisme.
+          </p>
+        </div>
+        <form action={createAccommodation} className="grid gap-4 md:grid-cols-2">
+          <label className="block text-sm font-medium text-slate-700 md:col-span-2">
+            Nom
+            <input
+              name="name"
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+              required
+            />
+          </label>
+          <label className="block text-sm font-medium text-slate-700 md:col-span-2">
+            Description
+            <textarea
+              name="accommodation_description"
+              rows={3}
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+            />
+          </label>
+          <label className="block text-sm font-medium text-slate-700 md:col-span-2">
+            Adresse
+            <input
+              name="address_text"
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+            />
+          </label>
+          <label className="block text-sm font-medium text-slate-700">
+            Code postal
+            <input
+              name="postal_code"
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+            />
+          </label>
+          <label className="block text-sm font-medium text-slate-700">
+            Ville
+            <input
+              name="city"
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+            />
+          </label>
+          <label className="block text-sm font-medium text-slate-700">
+            Pays
+            <input
+              name="country"
+              defaultValue="France"
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+            />
+          </label>
+          <label className="block text-sm font-medium text-slate-700">
+            Couchage
+            <textarea
+              name="rooming_text"
+              rows={3}
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+            />
+          </label>
+          <label className="block text-sm font-medium text-slate-700 md:col-span-2">
+            Restauration
+            <textarea
+              name="catering_text"
+              rows={3}
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+            />
+          </label>
+          <label className="flex items-center gap-2 text-sm font-medium text-slate-700 md:col-span-2">
+            <input type="checkbox" name="link_to_stay" />
+            Lier directement cet hébergement au séjour
+          </label>
+          <div className="md:col-span-2 flex justify-end">
+            <button className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">
+              Créer l&apos;hébergement
+            </button>
+          </div>
+        </form>
+      </section>
+
+      {accommodations.length > 0 && (
+        <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900">Modifier les hébergements</h2>
+            <p className="text-sm text-slate-600">
+              Cette bibliothèque est partagée entre les séjours de l&apos;organisme sélectionné.
+            </p>
+          </div>
+          <div className="space-y-4">
+            {accommodations.map((accommodation) => (
+              <form
+                key={accommodation.id}
+                action={updateAccommodation}
+                className="grid gap-4 rounded-xl border border-slate-100 p-4 md:grid-cols-2"
+              >
+                <input type="hidden" name="accommodation_id" value={accommodation.id} />
+                <label className="block text-sm font-medium text-slate-700 md:col-span-2">
+                  Nom
+                  <input
+                    name="name"
+                    defaultValue={accommodation.name}
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+                  />
+                </label>
+                <label className="block text-sm font-medium text-slate-700 md:col-span-2">
+                  Description
+                  <textarea
+                    name="accommodation_description"
+                    rows={3}
+                    defaultValue={accommodation.description ?? ''}
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+                  />
+                </label>
+                <label className="block text-sm font-medium text-slate-700 md:col-span-2">
+                  Adresse
+                  <input
+                    name="address_text"
+                    defaultValue={accommodation.address_text ?? ''}
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+                  />
+                </label>
+                <label className="block text-sm font-medium text-slate-700">
+                  Code postal
+                  <input
+                    name="postal_code"
+                    defaultValue={accommodation.postal_code ?? ''}
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+                  />
+                </label>
+                <label className="block text-sm font-medium text-slate-700">
+                  Ville
+                  <input
+                    name="city"
+                    defaultValue={accommodation.city ?? ''}
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+                  />
+                </label>
+                <label className="block text-sm font-medium text-slate-700">
+                  Pays
+                  <input
+                    name="country"
+                    defaultValue={accommodation.country ?? ''}
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+                  />
+                </label>
+                <label className="block text-sm font-medium text-slate-700">
+                  Couchage
+                  <textarea
+                    name="rooming_text"
+                    rows={3}
+                    defaultValue={accommodation.rooming_text ?? ''}
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+                  />
+                </label>
+                <label className="block text-sm font-medium text-slate-700 md:col-span-2">
+                  Restauration
+                  <textarea
+                    name="catering_text"
+                    rows={3}
+                    defaultValue={accommodation.catering_text ?? ''}
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+                  />
+                </label>
+                <div className="md:col-span-2 flex justify-end">
+                  <button className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white">
+                    Enregistrer l&apos;hébergement
+                  </button>
+                </div>
+              </form>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <div className="sticky bottom-4 z-10 flex justify-end">
+        <button
+          type="submit"
+          form="stay-form"
+          className="rounded-full bg-emerald-600 px-5 py-3 text-sm font-semibold text-white shadow-lg"
+        >
+          Enregistrer le séjour
+        </button>
       </div>
     </div>
   );

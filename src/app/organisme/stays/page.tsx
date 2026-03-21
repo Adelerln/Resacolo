@@ -1,22 +1,26 @@
 import Link from 'next/link';
 import { requireRole } from '@/lib/auth/require';
+import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers';
 import { stayStatusLabel } from '@/lib/ui/labels';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 
-export default async function OrganizerStaysPage() {
+type PageProps = {
+  searchParams?: {
+    organizerId?: string | string[];
+  };
+};
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+export default async function OrganizerStaysPage({ searchParams }: PageProps) {
   const session = requireRole('ORGANISATEUR');
   const supabase = getServerSupabaseClient();
-
-  let organizerId = session.tenantId ?? null;
-  if (!organizerId) {
-    const { data: fallbackOrganizer } = await supabase
-      .from('organizers')
-      .select('id')
-      .order('created_at', { ascending: true })
-      .limit(1)
-      .maybeSingle();
-    organizerId = fallbackOrganizer?.id ?? null;
-  }
+  const { selectedOrganizer, selectedOrganizerId } = await resolveOrganizerSelection(
+    searchParams?.organizerId,
+    session.tenantId ?? null
+  );
+  const organizerId = selectedOrganizerId;
 
   const { data: stays, error: staysError } = organizerId
     ? await supabase
@@ -38,10 +42,14 @@ export default async function OrganizerStaysPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Séjours</h1>
-          <p className="text-sm text-slate-600">Liste des séjours déclarés.</p>
+          <p className="text-sm text-slate-600">
+            {selectedOrganizer
+              ? `Liste des séjours déclarés pour ${selectedOrganizer.name}.`
+              : 'Liste des séjours déclarés.'}
+          </p>
         </div>
         <Link
-          href="/organisme/sejours/new"
+          href={withOrganizerQuery('/organisme/sejours/new', organizerId)}
           className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white"
         >
           Nouveau séjour
@@ -70,11 +78,14 @@ export default async function OrganizerStaysPage() {
                 <td className="px-4 py-3 text-slate-600">-</td>
                 <td className="px-4 py-3 text-right">
                   <div className="flex items-center justify-end gap-3">
-                    <Link href={`/organisme/sejours/${stay.id}`} className="text-emerald-600">
+                    <Link
+                      href={withOrganizerQuery(`/organisme/sejours/${stay.id}`, organizerId)}
+                      className="text-emerald-600"
+                    >
                       Ouvrir
                     </Link>
                     <Link
-                      href={`/organisme/sejours/${stay.id}`}
+                      href={withOrganizerQuery(`/organisme/sejours/${stay.id}`, organizerId)}
                       className="rounded-lg border border-emerald-200 px-3 py-1 text-xs font-semibold text-emerald-700"
                     >
                       Éditer

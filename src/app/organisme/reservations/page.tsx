@@ -1,8 +1,19 @@
 import { requireRole } from '@/lib/auth/require';
+import { resolveOrganizerSelection } from '@/lib/organizers';
 import { mockRequests, mockSessions, mockStages, mockStays } from '@/lib/mocks';
 
-export default async function OrganizerRequestsPage() {
-  requireRole('ORGANISATEUR');
+type PageProps = {
+  searchParams?: {
+    organizerId?: string | string[];
+  };
+};
+
+export default async function OrganizerRequestsPage({ searchParams }: PageProps) {
+  const session = requireRole('ORGANISATEUR');
+  const { selectedOrganizer } = await resolveOrganizerSelection(
+    searchParams?.organizerId,
+    session.tenantId ?? null
+  );
   const useMock = process.env.MOCK_UI === '1';
   const requests = useMock
     ? mockRequests.map((request) => ({
@@ -16,7 +27,14 @@ export default async function OrganizerRequestsPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold text-slate-900">Réservations</h1>
+      <div>
+        <h1 className="text-2xl font-semibold text-slate-900">Réservations</h1>
+        <p className="text-sm text-slate-600">
+          {selectedOrganizer
+            ? `Affichage du contexte ${selectedOrganizer.name}.`
+            : 'Affichage des réservations.'}
+        </p>
+      </div>
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
         <table className="w-full text-left text-sm">
           <thead className="bg-slate-50 text-xs uppercase text-slate-500">

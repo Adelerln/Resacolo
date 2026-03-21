@@ -1,10 +1,17 @@
 import Image from 'next/image';
 import Link from 'next/link';
+import { Suspense } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { requireRole } from '@/lib/auth/require';
+import {
+  OrganizerWorkspaceNav,
+  OrganizerWorkspaceSelector
+} from '@/components/organisme/OrganizerWorkspaceControls';
+import { getOrganizerOptions } from '@/lib/organizers';
 
-export default function OrganizerLayout({ children }: { children: React.ReactNode }) {
+export default async function OrganizerLayout({ children }: { children: React.ReactNode }) {
   requireRole('ORGANISATEUR');
+  const organizers = await getOrganizerOptions();
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -27,20 +34,9 @@ export default function OrganizerLayout({ children }: { children: React.ReactNod
               <p className="mt-1 text-xs text-slate-500">Gestion des séjours</p>
             </div>
           </div>
-          <nav className="px-3 text-sm text-slate-600">
-            <Link
-              href="/organisme/sejours"
-              className="mb-1 block rounded-lg px-3 py-2 transition hover:bg-slate-100"
-            >
-              Séjours
-            </Link>
-            <Link
-              href="/organisme/reservations"
-              className="mb-1 block rounded-lg px-3 py-2 transition hover:bg-slate-100"
-            >
-              Réservations
-            </Link>
-          </nav>
+          <Suspense fallback={<div className="px-3 text-sm text-slate-500">Chargement...</div>}>
+            <OrganizerWorkspaceNav organizers={organizers} />
+          </Suspense>
           <div className="mt-auto px-6 pb-6 pt-4">
             <form action="/api/auth/logout" method="post">
               <button className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 hover:border-slate-300">
@@ -58,7 +54,14 @@ export default function OrganizerLayout({ children }: { children: React.ReactNod
             </div>
           </div>
         </aside>
-        <main className="flex-1 px-6 py-10">{children}</main>
+        <main className="flex-1 px-6 py-10">
+          <Suspense
+            fallback={<div className="mb-6 rounded-2xl border border-slate-200 bg-white px-4 py-4" />}
+          >
+            <OrganizerWorkspaceSelector organizers={organizers} />
+          </Suspense>
+          {children}
+        </main>
       </div>
     </div>
   );

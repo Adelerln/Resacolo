@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Pencil } from 'lucide-react';
+import { ChevronDown, ChevronUp, Pencil } from 'lucide-react';
 
 type MemberRow = {
   id: string;
@@ -13,6 +13,8 @@ type MemberRow = {
   role: 'OWNER' | 'EDITOR' | 'RESERVATION_MANAGER';
 };
 
+type SortKey = 'first_name' | 'last_name' | 'email' | 'organizerName' | 'role';
+
 const ROLE_LABELS: Record<MemberRow['role'], string> = {
   OWNER: 'Propriétaire',
   EDITOR: 'Éditeur',
@@ -21,6 +23,10 @@ const ROLE_LABELS: Record<MemberRow['role'], string> = {
 
 export function AdminUsersTable({ members }: { members: MemberRow[] }) {
   const [editing, setEditing] = useState<MemberRow | null>(null);
+  const [sortConfig, setSortConfig] = useState<{
+    key: SortKey;
+    direction: 'asc' | 'desc';
+  } | null>(null);
 
   const roleOptions = useMemo(
     () => [
@@ -31,25 +37,72 @@ export function AdminUsersTable({ members }: { members: MemberRow[] }) {
     []
   );
 
+  const sortedMembers = useMemo(() => {
+    if (!sortConfig) return members;
+    const { key, direction } = sortConfig;
+    const sorted = [...members].sort((a, b) => {
+      const valueA = getSortValue(a, key);
+      const valueB = getSortValue(b, key);
+      return valueA.localeCompare(valueB, 'fr', { sensitivity: 'base' });
+    });
+    return direction === 'asc' ? sorted : sorted.reverse();
+  }, [members, sortConfig]);
+
+  const toggleSort = (key: SortKey) => {
+    setSortConfig((current) => {
+      if (!current || current.key !== key) {
+        return { key, direction: 'asc' };
+      }
+      if (current.direction === 'asc') {
+        return { key, direction: 'desc' };
+      }
+      return null;
+    });
+  };
+
+  const renderSortIcon = (key: SortKey) => {
+    if (!sortConfig || sortConfig.key !== key) return null;
+    return sortConfig.direction === 'asc' ? (
+      <ChevronUp className="h-3.5 w-3.5" />
+    ) : (
+      <ChevronDown className="h-3.5 w-3.5" />
+    );
+  };
+
+  const renderSortableHeader = (label: string, key: SortKey) => (
+    <button
+      type="button"
+      onClick={() => toggleSort(key)}
+      className="inline-flex items-center gap-1 text-left uppercase tracking-wide text-slate-500"
+    >
+      <span>{label}</span>
+      {renderSortIcon(key)}
+    </button>
+  );
+
   return (
     <>
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
         <table className="w-full text-left text-sm">
           <thead className="bg-slate-50 text-xs uppercase text-slate-500">
             <tr>
-              <th className="px-4 py-3">Prénom</th>
-              <th className="px-4 py-3">Nom</th>
-              <th className="px-4 py-3">Email</th>
-              <th className="px-4 py-3">Rôle</th>
+              <th className="px-4 py-3">{renderSortableHeader('Prénom', 'first_name')}</th>
+              <th className="px-4 py-3">{renderSortableHeader('Nom', 'last_name')}</th>
+              <th className="px-4 py-3">{renderSortableHeader('Email', 'email')}</th>
+              <th className="px-4 py-3">
+                {renderSortableHeader('Organisme', 'organizerName')}
+              </th>
+              <th className="px-4 py-3">{renderSortableHeader('Rôle', 'role')}</th>
               <th className="px-4 py-3 text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
-            {members.map((member) => (
+            {sortedMembers.map((member) => (
               <tr key={member.id} className="border-t border-slate-100">
                 <td className="px-4 py-3 text-slate-600">{member.first_name ?? '-'}</td>
                 <td className="px-4 py-3 text-slate-600">{member.last_name ?? '-'}</td>
                 <td className="px-4 py-3 text-slate-600">{member.email ?? '-'}</td>
+                <td className="px-4 py-3 text-slate-600">{member.organizerName ?? '-'}</td>
                 <td className="px-4 py-3 text-slate-600">{ROLE_LABELS[member.role]}</td>
                 <td className="px-4 py-3 text-right">
                   <button
@@ -156,4 +209,21 @@ export function AdminUsersTable({ members }: { members: MemberRow[] }) {
       )}
     </>
   );
+}
+
+function getSortValue(member: MemberRow, key: SortKey) {
+  switch (key) {
+    case 'first_name':
+      return member.first_name ?? '';
+    case 'last_name':
+      return member.last_name ?? '';
+    case 'email':
+      return member.email ?? '';
+    case 'organizerName':
+      return member.organizerName ?? '';
+    case 'role':
+      return ROLE_LABELS[member.role] ?? '';
+    default:
+      return '';
+  }
 }

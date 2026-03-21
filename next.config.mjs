@@ -1,3 +1,7 @@
+const supabaseHostname = process.env.NEXT_PUBLIC_SUPABASE_URL
+  ? new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).hostname
+  : null;
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone',
@@ -14,7 +18,15 @@ const nextConfig = {
       {
         protocol: 'https',
         hostname: 'www.choisirsacolo.fr'
-      }
+      },
+      ...(supabaseHostname
+        ? [
+            {
+              protocol: 'https',
+              hostname: supabaseHostname
+            }
+          ]
+        : [])
     ]
   },
   experimental: {

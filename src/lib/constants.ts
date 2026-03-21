@@ -51,8 +51,8 @@ export const FILTER_LABELS = {
     toussaint: 'Toussaint'
   },
   transport: {
-    'depart-paris': 'Départ Paris',
-    'depart-region': 'Départ régions',
-    'sans-transport': 'Sans transport'
+    'Aller/Retour similaire': 'Aller/Retour similaire',
+    'Aller/Retour différencié': 'Aller/Retour différencié',
+    'Sans transport': 'Sans transport'
   }
 } as const;

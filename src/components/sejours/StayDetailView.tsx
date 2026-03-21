@@ -11,15 +11,13 @@ import {
   Clock,
   Phone,
   MapPin as PinIcon,
-  Bus,
-  Bed,
-  CheckCircle,
   User
 } from 'lucide-react';
 import type { Stay } from '@/types/stay';
 import { useCart } from '@/context/CartContext';
 import { FILTER_LABELS } from '@/lib/constants';
 import { getMockImageUrl, mockImages } from '@/lib/mockImages';
+import StayLocationMap from '@/components/sejours/StayLocationMap';
 
 type TabId = 'sejour' | 'programme' | 'hebergement' | 'encadrement' | 'infos';
 
@@ -106,11 +104,6 @@ export function StayDetailView({ stay }: { stay: Stay }) {
   ]);
   const transportText = getRawField(stay.rawContext, ['transport', 'transports']);
   const programmeBlocks = useMemo(() => getProgrammeBlocks(programmeText), [programmeText]);
-  const transportLabels = useMemo(
-    () =>
-      stay.filters.transport.map((item) => formatLabel('transport', item)).filter(Boolean),
-    [stay.filters.transport]
-  );
   const firstCategory = stay.filters.categories[0];
   const themeLabel = firstCategory ? formatLabel('categories', firstCategory) : stay.title;
 
@@ -287,12 +280,6 @@ export function StayDetailView({ stay }: { stay: Stay }) {
                         <p className="mt-2 text-sm leading-relaxed text-slate-600 whitespace-pre-line">
                           {transportText}
                         </p>
-                      ) : transportLabels.length > 0 ? (
-                        <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-600">
-                          {transportLabels.map((label, index) => (
-                            <li key={index}>{label}</li>
-                          ))}
-                        </ul>
                       ) : (
                         <p className="mt-2 text-sm leading-relaxed text-slate-600">
                           Informations à venir.
@@ -401,22 +388,12 @@ export function StayDetailView({ stay }: { stay: Stay }) {
             <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
               <h3 className="font-display flex items-center gap-2 text-base font-semibold text-slate-900">
                 <PinIcon className="h-4 w-4 text-accent-500" />
-                Lieux de séjour
+                Ville du séjour
               </h3>
-              <ul className="mt-3 space-y-2 text-sm text-slate-600">
-                <li className="flex items-center gap-2">
-                  <Bus className="h-4 w-4 text-slate-400" />
-                  Tour et transports
-                </li>
-                <li className="flex items-center gap-2">
-                  <Bed className="h-4 w-4 text-slate-400" />
-                  Hébergement
-                </li>
-                <li className="flex items-center gap-2">
-                  <CheckCircle className="h-4 w-4 text-slate-400" />
-                  Activités
-                </li>
-              </ul>
+              <p className="mt-3 text-sm text-slate-600">{stay.location || 'Ville à préciser'}</p>
+              <div className="mt-4">
+                <StayLocationMap location={stay.location} />
+              </div>
             </div>
 
             {/* Organisateur */}

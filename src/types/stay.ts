@@ -20,7 +20,7 @@ export interface StayFilters {
   durations: StayDuration[];
   periods: ('hiver' | 'printemps' | 'ete' | 'automne' | 'toussaint')[];
   priceRange: [number, number] | null;
-  transport: ('depart-paris' | 'depart-region' | 'sans-transport')[];
+  transport: ('Aller/Retour similaire' | 'Aller/Retour différencié' | 'Sans transport')[];
 }
 
 export interface OrganizerInfo {

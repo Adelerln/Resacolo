@@ -700,48 +700,110 @@ export type Database = {
           },
         ]
       }
+      accommodation_media: {
+        Row: {
+          accommodation_id: string
+          created_at: string
+          id: string
+          position: number
+          url: string
+        }
+        Insert: {
+          accommodation_id: string
+          created_at?: string
+          id?: string
+          position?: number
+          url: string
+        }
+        Update: {
+          accommodation_id?: string
+          created_at?: string
+          id?: string
+          position?: number
+          url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "accommodation_media_accommodation_id_fkey"
+            columns: ["accommodation_id"]
+            isOneToOne: false
+            referencedRelation: "accommodations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       accommodations: {
         Row: {
-          address_text: string | null
-          catering_text: string | null
-          city: string | null
-          country: string | null
+          accessibility_info: string | null
+          accommodation_type: string | null
+          ai_extracted_data: Json | null
+          bathroom_info: string | null
+          bed_info: string | null
+          capacity_total: number | null
+          catering_info: string | null
           created_at: string
           description: string | null
           id: string
+          indoor_features: string | null
+          medical_proximity: string | null
           name: string
           organizer_id: string
-          postal_code: string | null
-          rooming_text: string | null
+          outdoor_features: string | null
+          room_count: number | null
+          slug: string | null
+          source_url: string | null
+          status: string
           updated_at: string
+          validated_at: string | null
+          validated_by_user_id: string | null
         }
         Insert: {
-          address_text?: string | null
-          catering_text?: string | null
-          city?: string | null
-          country?: string | null
+          accessibility_info?: string | null
+          accommodation_type?: string | null
+          ai_extracted_data?: Json | null
+          bathroom_info?: string | null
+          bed_info?: string | null
+          capacity_total?: number | null
+          catering_info?: string | null
           created_at?: string
           description?: string | null
           id?: string
+          indoor_features?: string | null
+          medical_proximity?: string | null
           name: string
           organizer_id: string
-          postal_code?: string | null
-          rooming_text?: string | null
+          outdoor_features?: string | null
+          room_count?: number | null
+          slug?: string | null
+          source_url?: string | null
+          status?: string
           updated_at?: string
+          validated_at?: string | null
+          validated_by_user_id?: string | null
         }
         Update: {
-          address_text?: string | null
-          catering_text?: string | null
-          city?: string | null
-          country?: string | null
+          accessibility_info?: string | null
+          accommodation_type?: string | null
+          ai_extracted_data?: Json | null
+          bathroom_info?: string | null
+          bed_info?: string | null
+          capacity_total?: number | null
+          catering_info?: string | null
           created_at?: string
           description?: string | null
           id?: string
+          indoor_features?: string | null
+          medical_proximity?: string | null
           name?: string
           organizer_id?: string
-          postal_code?: string | null
-          rooming_text?: string | null
+          outdoor_features?: string | null
+          room_count?: number | null
+          slug?: string | null
+          source_url?: string | null
+          status?: string
           updated_at?: string
+          validated_at?: string | null
+          validated_by_user_id?: string | null
         }
         Relationships: [
           {
@@ -1154,6 +1216,7 @@ export type Database = {
       }
       stays: {
         Row: {
+          ages: number[]
           age_max: number | null
           age_min: number | null
           archive_at: string | null
@@ -1175,6 +1238,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          ages?: number[]
           age_max?: number | null
           age_min?: number | null
           archive_at?: string | null
@@ -1196,6 +1260,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          ages?: number[]
           age_max?: number | null
           age_min?: number | null
           archive_at?: string | null

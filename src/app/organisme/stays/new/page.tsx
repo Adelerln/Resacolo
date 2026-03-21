@@ -1,6 +1,8 @@
 import { redirect } from 'next/navigation';
 import { requireRole } from '@/lib/auth/require';
+import GoogleMapsCityInput from '@/components/common/GoogleMapsCityInput';
 import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers';
+import { getStayAgeBounds, parseStayAges, STAY_AGE_OPTIONS } from '@/lib/stay-ages';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 
 type PageProps = {
@@ -42,13 +44,11 @@ export default async function NewStayPage({ searchParams }: PageProps) {
     }
     const title = String(formData.get('title') ?? '').trim();
     const description = String(formData.get('description') ?? '').trim();
-    const ageMinRaw = String(formData.get('ageMin') ?? '').trim();
-    const ageMaxRaw = String(formData.get('ageMax') ?? '').trim();
+    const selectedAges = parseStayAges(formData);
+    const { ages, ageMin, ageMax } = getStayAgeBounds(selectedAges);
     const location = String(formData.get('location') ?? '').trim();
     const status = String(formData.get('status') ?? 'PUBLISHED').trim();
-
-    const ageMin = ageMinRaw ? Number(ageMinRaw) : null;
-    const ageMax = ageMaxRaw ? Number(ageMaxRaw) : null;
+    const transportMode = String(formData.get('transport_mode') ?? 'Sans transport').trim();
 
     if (!title) {
       redirect(withOrganizerQuery('/organisme/sejours/new', organizerTenantId));
@@ -61,10 +61,16 @@ export default async function NewStayPage({ searchParams }: PageProps) {
         season_id: seasonId,
         title,
         description: description || null,
-        age_min: Number.isFinite(ageMin) ? ageMin : null,
-        age_max: Number.isFinite(ageMax) ? ageMax : null,
+        ages,
+        age_min: ageMin,
+        age_max: ageMax,
         location_text: location || null,
-        transport_mode: 'Sans transport',
+        transport_mode:
+          transportMode === 'Aller/Retour similaire' ||
+          transportMode === 'Aller/Retour différencié' ||
+          transportMode === 'Sans transport'
+            ? transportMode
+            : 'Sans transport',
         status: status === 'DRAFT' || status === 'HIDDEN' || status === 'ARCHIVED' ? status : 'PUBLISHED'
       })
       .select('id')
@@ -103,19 +109,35 @@ export default async function NewStayPage({ searchParams }: PageProps) {
           Description
           <textarea name="description" rows={4} className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2" />
         </label>
-        <div className="grid gap-4 md:grid-cols-2">
-          <label className="block text-sm font-medium text-slate-700">
-            Age min
-            <input name="ageMin" type="number" className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2" />
-          </label>
-          <label className="block text-sm font-medium text-slate-700">
-            Age max
-            <input name="ageMax" type="number" className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2" />
-          </label>
+        <div className="space-y-3">
+          <div>
+            <div className="text-sm font-medium text-slate-700">Âges</div>
+            <p className="mt-1 text-xs text-slate-500">Coche les âges proposés.</p>
+          </div>
+          <div className="grid grid-cols-4 gap-2 md:grid-cols-6 lg:grid-cols-8">
+            {STAY_AGE_OPTIONS.map((age) => (
+              <label
+                key={age}
+                className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700"
+              >
+                <input type="checkbox" name="ages" value={age} className="cursor-pointer" />
+                <span>{age} ans</span>
+              </label>
+            ))}
+          </div>
         </div>
+        <GoogleMapsCityInput name="location" label="Ville du séjour" />
         <label className="block text-sm font-medium text-slate-700">
-          Lieu
-          <input name="location" className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2" />
+          Mode de transport
+          <select
+            name="transport_mode"
+            defaultValue="Sans transport"
+            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+          >
+            <option value="Aller/Retour similaire">Aller/Retour similaire</option>
+            <option value="Aller/Retour différencié">Aller/Retour différencié</option>
+            <option value="Sans transport">Sans transport</option>
+          </select>
         </label>
         <label className="block text-sm font-medium text-slate-700">
           Statut

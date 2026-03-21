@@ -36,6 +36,7 @@ export function OrganizerWorkspaceNav({ organizers }: Props) {
   const links = [
     { href: '/organisme', label: 'Organisme' },
     { href: '/organisme/sejours', label: 'Séjours' },
+    { href: '/organisme/hebergements', label: 'Hébergements' },
     { href: '/organisme/reservations', label: 'Réservations' }
   ];
 

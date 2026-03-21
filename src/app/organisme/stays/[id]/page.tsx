@@ -1,7 +1,11 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
+import GoogleMapsCityInput from '@/components/common/GoogleMapsCityInput';
+import SavedToast from '@/components/common/SavedToast';
+import StayEditorialTabs from '@/components/organisme/StayEditorialTabs';
 import { requireRole } from '@/lib/auth/require';
 import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers';
+import { formatStayAgeRange, getStayAgeBounds, normalizeStayAges, parseStayAges, STAY_AGE_OPTIONS } from '@/lib/stay-ages';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { sessionStatusLabel, stayStatusLabel } from '@/lib/ui/labels';
 
@@ -10,6 +14,7 @@ type PageProps = {
   searchParams?: {
     organizerId?: string | string[];
     saved?: string | string[];
+    error?: string | string[];
   };
 };
 
@@ -24,6 +29,7 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
     session.tenantId ?? null
   );
   const savedParam = Array.isArray(searchParams?.saved) ? searchParams?.saved[0] : searchParams?.saved;
+  const errorParam = Array.isArray(searchParams?.error) ? searchParams?.error[0] : searchParams?.error;
   const showSavedBanner = savedParam === '1';
 
   if (!selectedOrganizerId) {
@@ -33,7 +39,7 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
   const { data: stay } = await supabase
     .from('stays')
     .select(
-      'id,title,status,season_id,description,summary,activities_text,program_text,supervision_text,required_documents_text,transport_text,age_min,age_max,location_text,transport_mode,organizer_id'
+      'id,title,status,season_id,description,summary,activities_text,program_text,supervision_text,required_documents_text,transport_text,ages,age_min,age_max,location_text,transport_mode,organizer_id'
     )
     .eq('id', params.id)
     .maybeSingle();
@@ -42,6 +48,7 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
     redirect(withOrganizerQuery('/organisme/sejours', selectedOrganizerId));
   }
   const currentStay = stay;
+  const selectedAges = normalizeStayAges(currentStay.ages, currentStay.age_min, currentStay.age_max);
 
   const [
     { data: seasonsRaw },
@@ -63,7 +70,7 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
       .order('position', { ascending: true }),
     supabase
       .from('accommodations')
-      .select('id,name,description,address_text,postal_code,city,country,rooming_text,catering_text')
+      .select('id,name,description,country,rooming_text,catering_text')
       .eq('organizer_id', selectedOrganizerId)
       .order('name', { ascending: true }),
     supabase
@@ -96,8 +103,8 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
     const programText = String(formData.get('program_text') ?? '').trim();
     const supervisionText = String(formData.get('supervision_text') ?? '').trim();
     const requiredDocumentsText = String(formData.get('required_documents_text') ?? '').trim();
-    const ageMinRaw = String(formData.get('ageMin') ?? '').trim();
-    const ageMaxRaw = String(formData.get('ageMax') ?? '').trim();
+    const selectedAges = parseStayAges(formData);
+    const { ages, ageMin, ageMax } = getStayAgeBounds(selectedAges);
     const location = String(formData.get('location') ?? '').trim();
     const transportMode = String(formData.get('transport_mode') ?? '').trim();
     const transportText = String(formData.get('transport_text') ?? '').trim();
@@ -113,8 +120,9 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
         program_text: programText || null,
         supervision_text: supervisionText || null,
         required_documents_text: requiredDocumentsText || null,
-        age_min: ageMinRaw ? Number(ageMinRaw) : null,
-        age_max: ageMaxRaw ? Number(ageMaxRaw) : null,
+        ages,
+        age_min: ageMin,
+        age_max: ageMax,
         location_text: location || null,
         transport_mode: transportMode || currentStay.transport_mode,
         transport_text: transportText || null
@@ -198,19 +206,28 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
       organizer_id: selectedOrganizerId,
       name,
       description: String(formData.get('accommodation_description') ?? '').trim() || null,
-      address_text: String(formData.get('address_text') ?? '').trim() || null,
-      postal_code: String(formData.get('postal_code') ?? '').trim() || null,
-      city: String(formData.get('city') ?? '').trim() || null,
       country: String(formData.get('country') ?? '').trim() || null,
       rooming_text: String(formData.get('rooming_text') ?? '').trim() || null,
-      catering_text: String(formData.get('catering_text') ?? '').trim() || null
+      catering_text: String(formData.get('catering_text') ?? '').trim() || null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
     };
 
-    const { data: insertedAccommodation } = await supabase
+    const { data: insertedAccommodation, error } = await supabase
       .from('accommodations')
       .insert(payload)
       .select('id')
       .single();
+
+    if (error) {
+      console.error('Erreur Supabase (create accommodation)', error.message);
+      redirect(
+        withOrganizerQuery(
+          `/organisme/sejours/${currentStay.id}?error=${encodeURIComponent(error.message)}`,
+          selectedOrganizerId
+        )
+      );
+    }
 
     if (formData.get('link_to_stay') === 'on' && insertedAccommodation?.id) {
       const nextPosition = stayAccommodationLinks.length;
@@ -234,20 +251,28 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
       redirect(withOrganizerQuery(`/organisme/sejours/${currentStay.id}`, selectedOrganizerId));
     }
 
-    await supabase
+    const { error } = await supabase
       .from('accommodations')
       .update({
         name: String(formData.get('name') ?? '').trim(),
         description: String(formData.get('accommodation_description') ?? '').trim() || null,
-        address_text: String(formData.get('address_text') ?? '').trim() || null,
-        postal_code: String(formData.get('postal_code') ?? '').trim() || null,
-        city: String(formData.get('city') ?? '').trim() || null,
         country: String(formData.get('country') ?? '').trim() || null,
         rooming_text: String(formData.get('rooming_text') ?? '').trim() || null,
-        catering_text: String(formData.get('catering_text') ?? '').trim() || null
+        catering_text: String(formData.get('catering_text') ?? '').trim() || null,
+        updated_at: new Date().toISOString()
       })
       .eq('id', accommodationId)
       .eq('organizer_id', selectedOrganizerId);
+
+    if (error) {
+      console.error('Erreur Supabase (update accommodation)', error.message);
+      redirect(
+        withOrganizerQuery(
+          `/organisme/sejours/${currentStay.id}?error=${encodeURIComponent(error.message)}`,
+          selectedOrganizerId
+        )
+      );
+    }
 
     revalidatePath(`/organisme/sejours/${currentStay.id}`);
     revalidatePath(`/organisme/stays/${currentStay.id}`);
@@ -256,9 +281,10 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
 
   return (
     <div className="space-y-6">
-      {showSavedBanner && (
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">
-          La fiche séjour a bien été enregistrée.
+      {showSavedBanner && <SavedToast message="La fiche séjour a bien été enregistrée." />}
+      {errorParam && (
+        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          Impossible d&apos;enregistrer l&apos;hébergement : {decodeURIComponent(errorParam)}
         </div>
       )}
       <div className="flex items-center justify-between">
@@ -285,141 +311,96 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
       <form
         id="stay-form"
         action={updateStay}
-        className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6"
+        className="space-y-4"
       >
-        <h2 className="text-lg font-semibold text-slate-900">Infos séjour</h2>
-        <label className="block text-sm font-medium text-slate-700">
-          Titre
-          <input
-            name="title"
-            defaultValue={currentStay.title}
-            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-          />
-        </label>
-        <label className="block text-sm font-medium text-slate-700">
-          Résumé commercial
-          <textarea
-            name="summary"
-            defaultValue={currentStay.summary ?? ''}
-            rows={3}
-            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-          />
-        </label>
-        <label className="block text-sm font-medium text-slate-700">
-          Saison
-          <select
-            name="season_id"
-            defaultValue={currentStay.season_id}
-            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-          >
-            <option value="">Sélectionner</option>
-            {seasons.map((season) => (
-              <option key={season.id} value={season.id}>
-                {season.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="block text-sm font-medium text-slate-700">
-          Description
-          <textarea
-            name="description"
-            defaultValue={currentStay.description ?? ''}
-            rows={4}
-            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-          />
-        </label>
-        <label className="block text-sm font-medium text-slate-700">
-          Activités
-          <textarea
-            name="activities_text"
-            defaultValue={currentStay.activities_text ?? ''}
-            rows={4}
-            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-          />
-        </label>
-        <label className="block text-sm font-medium text-slate-700">
-          Programme
-          <textarea
-            name="program_text"
-            defaultValue={currentStay.program_text ?? ''}
-            rows={5}
-            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-          />
-        </label>
-        <label className="block text-sm font-medium text-slate-700">
-          Encadrement
-          <textarea
-            name="supervision_text"
-            defaultValue={currentStay.supervision_text ?? ''}
-            rows={4}
-            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-          />
-        </label>
-        <label className="block text-sm font-medium text-slate-700">
-          Documents obligatoires
-          <textarea
-            name="required_documents_text"
-            defaultValue={currentStay.required_documents_text ?? ''}
-            rows={4}
-            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-          />
-        </label>
-        <div className="grid gap-4 md:grid-cols-2">
+        <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
+          <h2 className="text-lg font-semibold text-slate-900">Infos séjour</h2>
           <label className="block text-sm font-medium text-slate-700">
-            Âge min
+            Titre
             <input
-              name="ageMin"
-              type="number"
-              defaultValue={currentStay.age_min ?? ''}
+              name="title"
+              defaultValue={currentStay.title}
               className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
             />
           </label>
           <label className="block text-sm font-medium text-slate-700">
-            Âge max
-            <input
-              name="ageMax"
-              type="number"
-              defaultValue={currentStay.age_max ?? ''}
+            Résumé commercial
+            <textarea
+              name="summary"
+              defaultValue={currentStay.summary ?? ''}
+              rows={3}
               className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
             />
           </label>
-        </div>
-        <label className="block text-sm font-medium text-slate-700">
-          Lieu
-          <input
+          <label className="block text-sm font-medium text-slate-700">
+            Saison
+            <select
+              name="season_id"
+              defaultValue={currentStay.season_id}
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+            >
+              <option value="">Sélectionner</option>
+              {seasons.map((season) => (
+                <option key={season.id} value={season.id}>
+                  {season.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </section>
+
+        <StayEditorialTabs
+          description={currentStay.description ?? ''}
+          activitiesText={currentStay.activities_text ?? ''}
+          programText={currentStay.program_text ?? ''}
+          supervisionText={currentStay.supervision_text ?? ''}
+          requiredDocumentsText={currentStay.required_documents_text ?? ''}
+          transportMode={currentStay.transport_mode ?? 'Sans transport'}
+          transportText={currentStay.transport_text ?? ''}
+        />
+
+        <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
+          <h2 className="text-lg font-semibold text-slate-900">Paramètres du séjour</h2>
+          <div className="space-y-3">
+            <div>
+              <div className="text-sm font-medium text-slate-700">Âges</div>
+              <p className="mt-1 text-xs text-slate-500">Coche les âges proposés.</p>
+            </div>
+            <div className="grid grid-cols-4 gap-2 md:grid-cols-6 lg:grid-cols-8">
+              {STAY_AGE_OPTIONS.map((age) => (
+                <label
+                  key={age}
+                  className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700"
+                >
+                  <input
+                    type="checkbox"
+                    name="ages"
+                    value={age}
+                    defaultChecked={selectedAges.includes(age)}
+                    className="cursor-pointer"
+                  />
+                  <span>{age} ans</span>
+                </label>
+              ))}
+            </div>
+            <p className="text-xs text-slate-500">
+              Sélection actuelle : {formatStayAgeRange(selectedAges)}
+            </p>
+          </div>
+          <GoogleMapsCityInput
             name="location"
+            label="Ville du séjour"
             defaultValue={currentStay.location_text ?? ''}
-            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
           />
-        </label>
-        <div className="grid gap-4 md:grid-cols-2">
-          <label className="block text-sm font-medium text-slate-700">
-            Mode de transport
-            <input
-              name="transport_mode"
-              defaultValue={currentStay.transport_mode ?? ''}
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-            />
-          </label>
-        </div>
-        <label className="block text-sm font-medium text-slate-700">
-          Texte transport
-          <textarea
-            name="transport_text"
-            defaultValue={currentStay.transport_text ?? ''}
-            rows={4}
-            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-          />
-        </label>
-        <div className="flex justify-end">
-          <button
-            type="submit"
-            className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white"
-          >
-            Enregistrer le séjour
-          </button>
-        </div>
+          <div className="flex justify-end">
+            <button
+              type="submit"
+              className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white"
+            >
+              Enregistrer le séjour
+            </button>
+          </div>
+        </section>
       </form>
 
       <div className="grid gap-6 lg:grid-cols-2">
@@ -433,20 +414,18 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
               {accommodations.map((accommodation) => (
                 <label
                   key={accommodation.id}
-                  className="flex items-start gap-3 rounded-lg border border-slate-100 px-3 py-3 text-sm"
+                  className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-100 px-3 py-3 text-sm"
                 >
                   <input
                     type="checkbox"
                     name="accommodation_ids"
                     value={accommodation.id}
                     defaultChecked={linkedAccommodationIds.has(accommodation.id)}
-                    className="mt-1"
+                    className="mt-1 cursor-pointer"
                   />
                   <span>
                     <span className="block font-medium text-slate-900">{accommodation.name}</span>
-                    <span className="block text-slate-600">
-                      {[accommodation.city, accommodation.country].filter(Boolean).join(', ') || 'Sans localisation'}
-                    </span>
+                    <span className="block text-slate-600">{accommodation.country || 'Sans localisation'}</span>
                   </span>
                 </label>
               ))}
@@ -465,7 +444,7 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
               {linkedAccommodations.map((accommodation) => (
                 <li key={accommodation.id} className="rounded-lg border border-slate-100 px-3 py-2">
                   <div className="font-medium text-slate-900">{accommodation.name}</div>
-                  <div>{[accommodation.address_text, accommodation.postal_code, accommodation.city].filter(Boolean).join(', ')}</div>
+                  <div>{accommodation.country || 'Sans localisation'}</div>
                 </li>
               ))}
             </ul>
@@ -581,27 +560,6 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
               className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
             />
           </label>
-          <label className="block text-sm font-medium text-slate-700 md:col-span-2">
-            Adresse
-            <input
-              name="address_text"
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-            />
-          </label>
-          <label className="block text-sm font-medium text-slate-700">
-            Code postal
-            <input
-              name="postal_code"
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-            />
-          </label>
-          <label className="block text-sm font-medium text-slate-700">
-            Ville
-            <input
-              name="city"
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-            />
-          </label>
           <label className="block text-sm font-medium text-slate-700">
             Pays
             <input
@@ -626,8 +584,8 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
               className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
             />
           </label>
-          <label className="flex items-center gap-2 text-sm font-medium text-slate-700 md:col-span-2">
-            <input type="checkbox" name="link_to_stay" />
+          <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-700 md:col-span-2">
+            <input type="checkbox" name="link_to_stay" className="cursor-pointer" />
             Lier directement cet hébergement au séjour
           </label>
           <div className="md:col-span-2 flex justify-end">
@@ -668,30 +626,6 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
                     name="accommodation_description"
                     rows={3}
                     defaultValue={accommodation.description ?? ''}
-                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-                  />
-                </label>
-                <label className="block text-sm font-medium text-slate-700 md:col-span-2">
-                  Adresse
-                  <input
-                    name="address_text"
-                    defaultValue={accommodation.address_text ?? ''}
-                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-                  />
-                </label>
-                <label className="block text-sm font-medium text-slate-700">
-                  Code postal
-                  <input
-                    name="postal_code"
-                    defaultValue={accommodation.postal_code ?? ''}
-                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-                  />
-                </label>
-                <label className="block text-sm font-medium text-slate-700">
-                  Ville
-                  <input
-                    name="city"
-                    defaultValue={accommodation.city ?? ''}
                     className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
                   />
                 </label>

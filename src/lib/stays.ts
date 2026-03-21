@@ -1,9 +1,10 @@
 import { cache } from 'react';
 import { NextRequest } from 'next/server';
 import { FILTER_LABELS } from '@/lib/constants';
+import { deriveStayAudiences, formatStayAgeRange } from '@/lib/stay-ages';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { slugify } from '@/lib/utils';
-import type { Stay, StayAudience, StayDuration, StaySearchParams } from '@/types/stay';
+import type { Stay, StayDuration, StaySearchParams } from '@/types/stay';
 import type { Database } from '@/types/supabase';
 
 type PeriodKey = keyof typeof FILTER_LABELS.periods;
@@ -13,7 +14,7 @@ type StayMediaRow = Pick<Database['public']['Tables']['stay_media']['Row'], 'url
 type SessionRow = Pick<Database['public']['Tables']['sessions']['Row'], 'start_date' | 'end_date'>;
 type AccommodationRow = Pick<
   Database['public']['Tables']['accommodations']['Row'],
-  'id' | 'name' | 'description' | 'address_text' | 'postal_code' | 'city' | 'country' | 'rooming_text' | 'catering_text'
+  'id' | 'name' | 'description' | 'country' | 'rooming_text' | 'catering_text'
 >;
 type StayAccommodationRow = Pick<
   Database['public']['Tables']['stay_accommodations']['Row'],
@@ -21,35 +22,6 @@ type StayAccommodationRow = Pick<
 >;
 
 const DAY_MS = 1000 * 60 * 60 * 24;
-
-function formatAgeRange(ageMin?: number | null, ageMax?: number | null) {
-  if (Number.isFinite(ageMin) && Number.isFinite(ageMax)) {
-    return `${ageMin}-${ageMax} ans`;
-  }
-  if (Number.isFinite(ageMin)) {
-    return `À partir de ${ageMin} ans`;
-  }
-  if (Number.isFinite(ageMax)) {
-    return `Jusqu'à ${ageMax} ans`;
-  }
-  return 'Tous âges';
-}
-
-function deriveAudiences(ageMin?: number | null, ageMax?: number | null): StayAudience[] {
-  if (!Number.isFinite(ageMin) && !Number.isFinite(ageMax)) return [];
-  const safeMin = Number.isFinite(ageMin) ? (ageMin as number) : 0;
-  const safeMax = Number.isFinite(ageMax) ? (ageMax as number) : 99;
-  const ranges: Array<{ key: StayAudience; min: number; max: number }> = [
-    { key: '6-9', min: 6, max: 9 },
-    { key: '10-12', min: 10, max: 12 },
-    { key: '13-15', min: 13, max: 15 },
-    { key: '16-17', min: 16, max: 17 }
-  ];
-
-  return ranges
-    .filter((range) => safeMax >= range.min && safeMin <= range.max)
-    .map((range) => range.key);
-}
 
 function deriveDurationDays(sessions: SessionRow[] | null | undefined) {
   if (!sessions || sessions.length === 0) return null;
@@ -111,12 +83,24 @@ function derivePeriods(sessions: SessionRow[] | null | undefined): {
 
 function mapTransport(transportMode?: string | null): TransportKey[] {
   if (!transportMode) return [];
-  const value = transportMode.toLowerCase();
-  const transports: TransportKey[] = [];
-  if (value.includes('paris')) transports.push('depart-paris');
-  if (value.includes('region')) transports.push('depart-region');
-  if (value.includes('sans') || value.includes('aucun')) transports.push('sans-transport');
-  return transports;
+  const normalized = transportMode.trim();
+  const directMatch = Object.keys(FILTER_LABELS.transport).find((value) => value === normalized);
+  if (directMatch) {
+    return [directMatch as TransportKey];
+  }
+
+  const value = normalized.toLowerCase();
+  if (value.includes('sans') || value.includes('aucun') || value === 'none') {
+    return ['Sans transport'];
+  }
+  if (value.includes('diff') || value === 'one_way') {
+    return ['Aller/Retour différencié'];
+  }
+  if (value.includes('simil') || value === 'round_trip') {
+    return ['Aller/Retour similaire'];
+  }
+
+  return [];
 }
 
 function buildSummary(title: string, description?: string | null) {
@@ -130,14 +114,7 @@ function buildAccommodationText(accommodations: AccommodationRow[]) {
 
   return accommodations
     .map((accommodation) => {
-      const location = [
-        accommodation.address_text,
-        accommodation.postal_code,
-        accommodation.city,
-        accommodation.country
-      ]
-        .filter(Boolean)
-        .join(', ');
+      const location = [accommodation.country].filter(Boolean).join(', ');
       const details = [
         accommodation.description,
         accommodation.rooming_text,
@@ -157,7 +134,7 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
   const { data, error } = await supabase
     .from('stays')
     .select(
-      'id,title,summary,description,activities_text,program_text,supervision_text,required_documents_text,transport_text,location_text,age_min,age_max,transport_mode,updated_at,status,organizer_id'
+      'id,title,summary,description,activities_text,program_text,supervision_text,required_documents_text,transport_text,location_text,ages,age_min,age_max,transport_mode,updated_at,status,organizer_id'
     )
     .order('created_at', { ascending: false });
 
@@ -203,7 +180,7 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
     stayIds.length
       ? supabase
           .from('accommodations')
-          .select('id,name,description,address_text,postal_code,city,country,rooming_text,catering_text')
+          .select('id,name,description,country,rooming_text,catering_text')
       : Promise.resolve({ data: [] as AccommodationRow[] | null })
   ]);
 
@@ -261,7 +238,7 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
       const accommodationText = buildAccommodationText(stayAccommodations);
       const durationDays = deriveDurationDays(sessionItems);
       const { keys: periodKeys, labels: periodLabels } = derivePeriods(sessionItems);
-      const audiences = deriveAudiences(stay.age_min, stay.age_max);
+      const audiences = deriveStayAudiences(stay.ages, stay.age_min, stay.age_max);
       const durations = deriveDurationFilters(durationDays);
       const transport = mapTransport(stay.transport_mode);
 
@@ -278,7 +255,7 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
         },
         location: stay.location_text ?? '',
         country: '',
-        ageRange: formatAgeRange(stay.age_min, stay.age_max),
+        ageRange: formatStayAgeRange(stay.ages, stay.age_min, stay.age_max),
         duration: formatDurationLabel(durationDays),
         priceFrom: null,
         period: periodLabels,

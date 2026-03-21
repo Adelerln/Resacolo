@@ -1,6 +1,9 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
+import GoogleMapsCityInput from '@/components/common/GoogleMapsCityInput';
+import SavedToast from '@/components/common/SavedToast';
 import { requireRole } from '@/lib/auth/require';
+import { formatStayAgeRange, getStayAgeBounds, normalizeStayAges, parseStayAges, STAY_AGE_OPTIONS } from '@/lib/stay-ages';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { sessionStatusLabel, stayStatusLabel } from '@/lib/ui/labels';
 
@@ -23,7 +26,7 @@ export default async function AdminStayDetailPage({ params, searchParams }: Page
   const { data: stay } = await supabase
     .from('stays')
     .select(
-      'id,title,status,season_id,description,age_min,age_max,location_text,transport_mode,organizer_id'
+      'id,title,status,season_id,description,ages,age_min,age_max,location_text,transport_mode,organizer_id'
     )
     .eq('id', params.id)
     .maybeSingle();
@@ -33,6 +36,7 @@ export default async function AdminStayDetailPage({ params, searchParams }: Page
   }
 
   const currentStay = stay;
+  const selectedAges = normalizeStayAges(currentStay.ages, currentStay.age_min, currentStay.age_max);
 
   const [{ data: organizersRaw }, { data: seasonsRaw }, { data: sessionsRaw }, { data: mediaRaw }] =
     await Promise.all([
@@ -63,8 +67,8 @@ export default async function AdminStayDetailPage({ params, searchParams }: Page
     const seasonId = String(formData.get('season_id') ?? '').trim();
     const status = String(formData.get('status') ?? '').trim();
     const description = String(formData.get('description') ?? '').trim();
-    const ageMinRaw = String(formData.get('ageMin') ?? '').trim();
-    const ageMaxRaw = String(formData.get('ageMax') ?? '').trim();
+    const selectedAges = parseStayAges(formData);
+    const { ages, ageMin, ageMax } = getStayAgeBounds(selectedAges);
     const location = String(formData.get('location') ?? '').trim();
     const transportMode = String(formData.get('transport_mode') ?? '').trim();
 
@@ -79,8 +83,9 @@ export default async function AdminStayDetailPage({ params, searchParams }: Page
             ? status
             : currentStay.status,
         description: description || null,
-        age_min: ageMinRaw ? Number(ageMinRaw) : null,
-        age_max: ageMaxRaw ? Number(ageMaxRaw) : null,
+        ages,
+        age_min: ageMin,
+        age_max: ageMax,
         location_text: location || null,
         transport_mode: transportMode || undefined
       })
@@ -113,11 +118,7 @@ export default async function AdminStayDetailPage({ params, searchParams }: Page
 
   return (
     <div className="space-y-6">
-      {showSavedBanner && (
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">
-          La fiche séjour a bien été enregistrée.
-        </div>
-      )}
+      {showSavedBanner && <SavedToast message="La fiche séjour a bien été enregistrée." />}
       <div className="flex items-center justify-between gap-4">
         <div>
           <Link href="/admin/sejours" className="text-sm font-medium text-slate-500 hover:text-slate-800">
@@ -190,11 +191,15 @@ export default async function AdminStayDetailPage({ params, searchParams }: Page
           </label>
           <label className="block text-sm font-medium text-slate-700">
             Transport
-            <input
+            <select
               name="transport_mode"
               defaultValue={currentStay.transport_mode ?? ''}
               className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-            />
+            >
+              <option value="Aller/Retour similaire">Aller/Retour similaire</option>
+              <option value="Aller/Retour différencié">Aller/Retour différencié</option>
+              <option value="Sans transport">Sans transport</option>
+            </select>
           </label>
         </div>
 
@@ -209,32 +214,35 @@ export default async function AdminStayDetailPage({ params, searchParams }: Page
         </label>
 
         <div className="grid gap-4 md:grid-cols-3">
-          <label className="block text-sm font-medium text-slate-700">
-            Age min
-            <input
-              name="ageMin"
-              type="number"
-              defaultValue={currentStay.age_min ?? ''}
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-            />
-          </label>
-          <label className="block text-sm font-medium text-slate-700">
-            Age max
-            <input
-              name="ageMax"
-              type="number"
-              defaultValue={currentStay.age_max ?? ''}
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-            />
-          </label>
-          <label className="block text-sm font-medium text-slate-700">
-            Lieu
-            <input
-              name="location"
-              defaultValue={currentStay.location_text ?? ''}
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-            />
-          </label>
+          <div className="md:col-span-2">
+            <div className="text-sm font-medium text-slate-700">Âges</div>
+            <p className="mt-1 text-xs text-slate-500">Coche les âges proposés.</p>
+            <div className="mt-3 grid grid-cols-4 gap-2 md:grid-cols-5 lg:grid-cols-6">
+              {STAY_AGE_OPTIONS.map((age) => (
+                <label
+                  key={age}
+                  className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700"
+                >
+                  <input
+                    type="checkbox"
+                    name="ages"
+                    value={age}
+                    defaultChecked={selectedAges.includes(age)}
+                    className="cursor-pointer"
+                  />
+                  <span>{age} ans</span>
+                </label>
+              ))}
+            </div>
+            <p className="mt-2 text-xs text-slate-500">
+              Sélection actuelle : {formatStayAgeRange(selectedAges)}
+            </p>
+          </div>
+          <GoogleMapsCityInput
+            name="location"
+            label="Ville du séjour"
+            defaultValue={currentStay.location_text ?? ''}
+          />
         </div>
 
         <div className="flex justify-end">

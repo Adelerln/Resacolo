@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { requireRole } from '@/lib/auth/require';
 import GoogleMapsCityInput from '@/components/common/GoogleMapsCityInput';
 import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers';
+import { normalizeStayCategories, STAY_CATEGORY_OPTIONS } from '@/lib/stay-categories';
 import { getStayAgeBounds, parseStayAges, STAY_AGE_OPTIONS } from '@/lib/stay-ages';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 
@@ -45,6 +46,12 @@ export default async function NewStayPage({ searchParams }: PageProps) {
     const title = String(formData.get('title') ?? '').trim();
     const description = String(formData.get('description') ?? '').trim();
     const selectedAges = parseStayAges(formData);
+    const categories = normalizeStayCategories(
+      formData
+        .getAll('categories')
+        .map((value) => String(value).trim())
+        .filter(Boolean)
+    );
     const { ages, ageMin, ageMax } = getStayAgeBounds(selectedAges);
     const location = String(formData.get('location') ?? '').trim();
     const status = String(formData.get('status') ?? 'PUBLISHED').trim();
@@ -61,6 +68,7 @@ export default async function NewStayPage({ searchParams }: PageProps) {
         season_id: seasonId,
         title,
         description: description || null,
+        categories,
         ages,
         age_min: ageMin,
         age_max: ageMax,
@@ -109,6 +117,23 @@ export default async function NewStayPage({ searchParams }: PageProps) {
           Description
           <textarea name="description" rows={4} className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2" />
         </label>
+        <div className="space-y-3">
+          <div>
+            <div className="text-sm font-medium text-slate-700">Catégories du séjour</div>
+            <p className="mt-1 text-xs text-slate-500">Tu peux en sélectionner plusieurs.</p>
+          </div>
+          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+            {STAY_CATEGORY_OPTIONS.map((category) => (
+              <label
+                key={category.value}
+                className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700"
+              >
+                <input type="checkbox" name="categories" value={category.value} className="cursor-pointer" />
+                <span>{category.label}</span>
+              </label>
+            ))}
+          </div>
+        </div>
         <div className="space-y-3">
           <div>
             <div className="text-sm font-medium text-slate-700">Âges</div>

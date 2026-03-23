@@ -325,7 +325,8 @@ export type Database = {
           percent_value: number | null
           pricing_mode: string
           rules_json: Json
-          session_id: string
+          session_id: string | null
+          stay_id: string | null
         }
         Insert: {
           amount_cents?: number | null
@@ -335,7 +336,8 @@ export type Database = {
           percent_value?: number | null
           pricing_mode: string
           rules_json?: Json
-          session_id: string
+          session_id?: string | null
+          stay_id?: string | null
         }
         Update: {
           amount_cents?: number | null
@@ -345,7 +347,8 @@ export type Database = {
           percent_value?: number | null
           pricing_mode?: string
           rules_json?: Json
-          session_id?: string
+          session_id?: string | null
+          stay_id?: string | null
         }
         Relationships: [
           {
@@ -353,6 +356,13 @@ export type Database = {
             columns: ["session_id"]
             isOneToOne: false
             referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "insurance_options_stay_id_fkey"
+            columns: ["stay_id"]
+            isOneToOne: false
+            referencedRelation: "stays"
             referencedColumns: ["id"]
           },
         ]
@@ -1221,6 +1231,7 @@ export type Database = {
           age_min: number | null
           archive_at: string | null
           activities_text: string | null
+          categories: string[]
           created_at: string
           description: string | null
           id: string
@@ -1243,6 +1254,7 @@ export type Database = {
           age_min?: number | null
           archive_at?: string | null
           activities_text?: string | null
+          categories?: string[]
           created_at?: string
           description?: string | null
           id?: string
@@ -1265,6 +1277,7 @@ export type Database = {
           age_min?: number | null
           archive_at?: string | null
           activities_text?: string | null
+          categories?: string[]
           created_at?: string
           description?: string | null
           id?: string

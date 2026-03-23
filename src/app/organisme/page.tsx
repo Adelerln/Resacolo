@@ -1,4 +1,6 @@
 import { redirect } from 'next/navigation';
+import SavedToast from '@/components/common/SavedToast';
+import OrganizerProfileFormEnhancer from '@/components/organisme/OrganizerProfileFormEnhancer';
 import { requireRole } from '@/lib/auth/require';
 import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
@@ -11,6 +13,7 @@ export const revalidate = 0;
 type PageProps = {
   searchParams?: {
     organizerId?: string | string[];
+    saved?: string | string[];
   };
 };
 
@@ -21,6 +24,8 @@ export default async function OrganizerHome({ searchParams }: PageProps) {
     searchParams?.organizerId,
     session.tenantId ?? null
   );
+  const savedParam = Array.isArray(searchParams?.saved) ? searchParams?.saved[0] : searchParams?.saved;
+  const showSavedBanner = savedParam === '1';
   const organizerId = selectedOrganizerId;
 
   if (!organizerId) {
@@ -107,17 +112,22 @@ export default async function OrganizerHome({ searchParams }: PageProps) {
         .eq('id', currentOrganizerId);
     }
 
-    redirect(withOrganizerQuery('/organisme', currentOrganizerId));
+    redirect(withOrganizerQuery('/organisme?saved=1', currentOrganizerId));
   }
 
   return (
     <div className="space-y-6">
+      {showSavedBanner && <SavedToast message="La fiche organisme a bien été enregistrée." />}
       <div>
         <h1 className="text-2xl font-semibold text-slate-900">Bonjour {organizer.name}</h1>
         <p className="text-sm text-slate-600">Gère ton organisme et tes séjours.</p>
       </div>
 
-      <form action={updateProfile} className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
+      <form
+        id="organizer-profile-form"
+        action={updateProfile}
+        className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6"
+      >
         <h2 className="text-lg font-semibold text-slate-900">Fiche organisme</h2>
         <div className="grid gap-4 md:grid-cols-2">
           <label className="block text-sm font-medium text-slate-700">
@@ -125,7 +135,7 @@ export default async function OrganizerHome({ searchParams }: PageProps) {
             <input
               name="name"
               defaultValue={organizer.name}
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+              className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 transition-colors"
             />
           </label>
           <label className="block text-sm font-medium text-slate-700">
@@ -134,7 +144,7 @@ export default async function OrganizerHome({ searchParams }: PageProps) {
               name="contact_email"
               type="email"
               defaultValue={organizer.contact_email ?? ''}
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+              className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 transition-colors"
             />
           </label>
         </div>
@@ -147,7 +157,7 @@ export default async function OrganizerHome({ searchParams }: PageProps) {
               min="1900"
               max="2100"
               defaultValue={organizer.founded_year ?? ''}
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+              className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 transition-colors"
             />
           </label>
           <label className="block text-sm font-medium text-slate-700">
@@ -157,7 +167,7 @@ export default async function OrganizerHome({ searchParams }: PageProps) {
               type="number"
               min="0"
               defaultValue={organizer.age_min ?? ''}
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+              className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 transition-colors"
             />
           </label>
           <label className="block text-sm font-medium text-slate-700">
@@ -167,7 +177,7 @@ export default async function OrganizerHome({ searchParams }: PageProps) {
               type="number"
               min="0"
               defaultValue={organizer.age_max ?? ''}
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+              className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 transition-colors"
             />
           </label>
         </div>
@@ -177,7 +187,7 @@ export default async function OrganizerHome({ searchParams }: PageProps) {
             name="description"
             rows={4}
             defaultValue={organizer.description ?? ''}
-            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+            className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 transition-colors"
           />
         </label>
         <div className="grid gap-4 md:grid-cols-2">
@@ -187,7 +197,7 @@ export default async function OrganizerHome({ searchParams }: PageProps) {
               name="logo"
               type="file"
               accept="image/*"
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+              className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 transition-colors"
             />
             {logoUrl && (
               <div className="mt-2 space-y-1">
@@ -221,17 +231,13 @@ export default async function OrganizerHome({ searchParams }: PageProps) {
                 name="education_project"
                 type="file"
                 accept="application/pdf"
-                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 transition-colors"
               />
             )}
           </label>
         </div>
-        <div className="flex justify-end">
-          <button className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">
-            Enregistrer
-          </button>
-        </div>
       </form>
+      <OrganizerProfileFormEnhancer formId="organizer-profile-form" />
     </div>
   );
 }

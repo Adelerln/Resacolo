@@ -1,1 +1,15 @@
-{}
+{
+  "/sejours/[slug]/page": "app/sejours/[slug]/page.js",
+  "/api/organizers/logos/route": "app/api/organizers/logos/route.js",
+  "/page": "app/page.js",
+  "/organisme/hebergements/page": "app/organisme/hebergements/page.js",
+  "/organisme/sejours/[id]/page": "app/organisme/sejours/[id]/page.js",
+  "/admin/page": "app/admin/page.js",
+  "/admin/reservations/page": "app/admin/reservations/page.js",
+  "/admin/utilisateurs/page": "app/admin/utilisateurs/page.js",
+  "/admin/sejours/[id]/page": "app/admin/sejours/[id]/page.js",
+  "/admin/dashboard/page": "app/admin/dashboard/page.js",
+  "/admin/sejours/page": "app/admin/sejours/page.js",
+  "/organisme/sejours/page": "app/organisme/sejours/page.js",
+  "/organisme/page": "app/organisme/page.js"
+}

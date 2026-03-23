@@ -29,6 +29,7 @@ export class SessionService {
   }
 
   calculateStatus(total: number, reserved: number): SessionStatus {
+    if (total <= 0) return 'OPEN';
     if (reserved >= total) return 'CLOSED';
     if (total > 0 && reserved / total >= 0.9) return 'NEAR_FULL';
     return 'OPEN';

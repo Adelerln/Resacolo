@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -11,9 +11,18 @@ import {
   Clock,
   Phone,
   MapPin as PinIcon,
-  User
+  User,
+  Waves,
+  Mountain,
+  Trees,
+  Flag,
+  Languages,
+  FlaskConical,
+  Dumbbell,
+  Route,
+  Globe2
 } from 'lucide-react';
-import type { Stay } from '@/types/stay';
+import type { Stay, StayInsuranceOption, StaySessionOption, StayTransportOption } from '@/types/stay';
 import { useCart } from '@/context/CartContext';
 import { FILTER_LABELS } from '@/lib/constants';
 import { getMockImageUrl, mockImages } from '@/lib/mockImages';
@@ -26,13 +35,72 @@ function formatLabel(group: keyof typeof FILTER_LABELS, value: string) {
 }
 
 function formatPrice(price?: number | null) {
-  if (!price) return 'Sur demande';
+  if (price == null) return 'Sur demande';
   return new Intl.NumberFormat('fr-FR', {
     style: 'currency',
     currency: 'EUR',
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   }).format(price);
+}
+
+function formatSessionLabel(session: StaySessionOption) {
+  const start = new Date(session.startDate).toLocaleDateString('fr-FR');
+  const end = new Date(session.endDate).toLocaleDateString('fr-FR');
+  const price = session.price != null ? ` · ${formatPrice(session.price)}` : '';
+  return `${start} - ${end}${price}`;
+}
+
+function formatTransportLabel(option: StayTransportOption) {
+  const cities = [option.departureCity, option.returnCity].filter(Boolean);
+  const route =
+    cities.length === 0
+      ? 'Transport'
+      : cities.length === 1 || option.departureCity === option.returnCity
+        ? cities[0]
+        : `${option.departureCity} / ${option.returnCity}`;
+  return `${route} · ${formatPrice(option.amount)}`;
+}
+
+function formatInsuranceLabel(option: StayInsuranceOption) {
+  if (option.amount != null) {
+    return `${option.label} · ${formatPrice(option.amount)}`;
+  }
+  if (option.percentValue != null) {
+    return `${option.label} · ${option.percentValue}%`;
+  }
+  return option.label;
+}
+
+function getUniqueStrings(values: string[]) {
+  return Array.from(new Set(values.filter(Boolean)));
+}
+
+function getCategoryIcon(category: Stay['categories'][number]) {
+  switch (category) {
+    case 'mer':
+      return Waves;
+    case 'montagne':
+      return Mountain;
+    case 'campagne':
+      return Trees;
+    case 'artistique':
+      return Palette;
+    case 'equestre':
+      return Flag;
+    case 'linguistique':
+      return Languages;
+    case 'scientifique':
+      return FlaskConical;
+    case 'sportif':
+      return Dumbbell;
+    case 'itinerant':
+      return Route;
+    case 'etranger':
+      return Globe2;
+    default:
+      return Palette;
+  }
 }
 
 // Build a simple programme from description (split by double newline or "Jour")
@@ -83,9 +151,186 @@ export function StayDetailView({ stay }: { stay: Stay }) {
   const router = useRouter();
   const { addItem } = useCart();
   const [activeTab, setActiveTab] = useState<TabId>('sejour');
+  const [selectedSessionId, setSelectedSessionId] = useState('');
+  const [selectedTransportId, setSelectedTransportId] = useState('');
+  const [selectedDepartureCity, setSelectedDepartureCity] = useState('');
+  const [selectedReturnCity, setSelectedReturnCity] = useState('');
+  const [selectedInsuranceId, setSelectedInsuranceId] = useState('');
+  const [selectedExtraOptionId, setSelectedExtraOptionId] = useState('');
+  const [bookingError, setBookingError] = useState<string | null>(null);
+
+  const bookingOptions = stay.bookingOptions;
+  const availableSessions = useMemo(() => bookingOptions?.sessions ?? [], [bookingOptions]);
+  const transportMode = bookingOptions?.transportMode ?? 'Sans transport';
+  const insuranceOptions = useMemo(() => bookingOptions?.insuranceOptions ?? [], [bookingOptions]);
+  const extraOptions = useMemo(() => bookingOptions?.extraOptions ?? [], [bookingOptions]);
+  const hasSessions = availableSessions.length > 0;
+  const selectedSession = useMemo(
+    () => availableSessions.find((sessionItem) => sessionItem.id === selectedSessionId) ?? null,
+    [availableSessions, selectedSessionId]
+  );
+  const sessionTransportOptions = useMemo(
+    () => selectedSession?.transportOptions ?? [],
+    [selectedSession]
+  );
+  const isDifferentiatedTransport = transportMode === 'Aller/Retour différencié';
+  const departureTransportOptions = useMemo(
+    () => sessionTransportOptions.filter((option) => option.departureCity.trim()),
+    [sessionTransportOptions]
+  );
+  const returnTransportOptions = useMemo(
+    () => sessionTransportOptions.filter((option) => option.returnCity.trim()),
+    [sessionTransportOptions]
+  );
+  const departureCities = useMemo(
+    () => getUniqueStrings(departureTransportOptions.map((option) => option.departureCity)),
+    [departureTransportOptions]
+  );
+  const returnCities = useMemo(
+    () => getUniqueStrings(returnTransportOptions.map((option) => option.returnCity)),
+    [returnTransportOptions]
+  );
+  const selectedTransportOption = useMemo(() => {
+    if (transportMode === 'Sans transport' || isDifferentiatedTransport) return null;
+    return sessionTransportOptions.find((option) => option.id === selectedTransportId) ?? null;
+  }, [isDifferentiatedTransport, selectedTransportId, sessionTransportOptions, transportMode]);
+  const selectedDepartureTransportOption = useMemo(() => {
+    if (!isDifferentiatedTransport) return null;
+    return (
+      departureTransportOptions.find((option) => option.departureCity === selectedDepartureCity) ?? null
+    );
+  }, [departureTransportOptions, isDifferentiatedTransport, selectedDepartureCity]);
+  const selectedReturnTransportOption = useMemo(() => {
+    if (!isDifferentiatedTransport) return null;
+    return returnTransportOptions.find((option) => option.returnCity === selectedReturnCity) ?? null;
+  }, [isDifferentiatedTransport, returnTransportOptions, selectedReturnCity]);
+  const selectedTransportAmount = useMemo(() => {
+    if (transportMode === 'Sans transport') return 0;
+    if (isDifferentiatedTransport) {
+      return (
+        (selectedDepartureTransportOption?.amount ?? 0) + (selectedReturnTransportOption?.amount ?? 0)
+      );
+    }
+    return selectedTransportOption?.amount ?? 0;
+  }, [
+    isDifferentiatedTransport,
+    selectedDepartureTransportOption,
+    selectedReturnTransportOption,
+    selectedTransportOption,
+    transportMode
+  ]);
+  const selectedInsuranceOption = useMemo(
+    () => insuranceOptions.find((option) => option.id === selectedInsuranceId) ?? null,
+    [insuranceOptions, selectedInsuranceId]
+  );
+  const selectedExtraOption = useMemo(
+    () => extraOptions.find((option) => option.id === selectedExtraOptionId) ?? null,
+    [extraOptions, selectedExtraOptionId]
+  );
+  const estimatedPrice = useMemo(() => {
+    const basePrice = selectedSession?.price ?? stay.priceFrom;
+    if (basePrice == null) return stay.priceFrom;
+    let total = basePrice;
+    total += selectedTransportAmount;
+    if (selectedExtraOption) total += selectedExtraOption.amount;
+    if (selectedInsuranceOption?.amount != null) {
+      total += selectedInsuranceOption.amount;
+    } else if (selectedInsuranceOption?.percentValue != null) {
+      total += (basePrice * selectedInsuranceOption.percentValue) / 100;
+    }
+    return Math.round(total * 100) / 100;
+  }, [selectedExtraOption, selectedInsuranceOption, selectedSession, selectedTransportAmount, stay.priceFrom]);
+  const hasStartedSelection = Boolean(
+    selectedSessionId ||
+      selectedTransportId ||
+      selectedDepartureCity ||
+      selectedReturnCity ||
+      selectedInsuranceId ||
+      selectedExtraOptionId
+  );
+
+  useEffect(() => {
+    setSelectedSessionId('');
+    setSelectedTransportId('');
+    setSelectedDepartureCity('');
+    setSelectedReturnCity('');
+    setSelectedInsuranceId('');
+    setSelectedExtraOptionId('');
+    setBookingError(null);
+  }, [stay.id]);
+
+  useEffect(() => {
+    setSelectedTransportId('');
+    setSelectedDepartureCity('');
+    setSelectedReturnCity('');
+    setBookingError(null);
+  }, [selectedSessionId]);
+
+  useEffect(() => {
+    if (!isDifferentiatedTransport) return;
+    if (selectedDepartureCity && !departureCities.includes(selectedDepartureCity)) {
+      setSelectedDepartureCity('');
+    }
+  }, [departureCities, isDifferentiatedTransport, selectedDepartureCity]);
+
+  useEffect(() => {
+    if (!isDifferentiatedTransport) return;
+    if (selectedReturnCity && !returnCities.includes(selectedReturnCity)) {
+      setSelectedReturnCity('');
+    }
+  }, [isDifferentiatedTransport, returnCities, selectedReturnCity]);
 
   const handleReserver = () => {
-    addItem(stay);
+    if (hasSessions && !selectedSession) {
+      setBookingError('Sélectionnez une session.');
+      return;
+    }
+
+    if (transportMode !== 'Sans transport' && selectedSession?.transportOptions.length) {
+      if (isDifferentiatedTransport) {
+        if (departureCities.length > 0 && !selectedDepartureTransportOption) {
+          setBookingError('Sélectionnez un transport aller.');
+          return;
+        }
+        if (returnCities.length > 0 && !selectedReturnTransportOption) {
+          setBookingError('Sélectionnez un transport retour.');
+          return;
+        }
+      } else if (!selectedTransportOption) {
+        setBookingError('Sélectionnez un transport.');
+        return;
+      }
+    }
+
+    setBookingError(null);
+    addItem({
+      ...stay,
+      priceFrom: estimatedPrice,
+      rawContext: {
+        ...(stay.rawContext ?? {}),
+        selected_booking: {
+          sessionId: selectedSession?.id ?? null,
+          sessionLabel: selectedSession ? formatSessionLabel(selectedSession) : null,
+          transportMode,
+          transportId: selectedTransportOption?.id ?? null,
+          transportLabel: selectedTransportOption ? formatTransportLabel(selectedTransportOption) : null,
+          departureTransportId: selectedDepartureTransportOption?.id ?? null,
+          departureTransportLabel: selectedDepartureTransportOption
+            ? formatTransportLabel(selectedDepartureTransportOption)
+            : null,
+          returnTransportId: selectedReturnTransportOption?.id ?? null,
+          returnTransportLabel: selectedReturnTransportOption
+            ? formatTransportLabel(selectedReturnTransportOption)
+            : null,
+          departureCity: selectedDepartureCity || null,
+          returnCity: selectedReturnCity || null,
+          insuranceId: selectedInsuranceOption?.id ?? null,
+          insuranceLabel: selectedInsuranceOption ? formatInsuranceLabel(selectedInsuranceOption) : null,
+          extraOptionId: selectedExtraOption?.id ?? null,
+          extraOptionLabel: selectedExtraOption?.label ?? null
+        }
+      }
+    });
     router.push('/panier');
   };
   const galleryImages = stay.coverImage
@@ -106,6 +351,7 @@ export function StayDetailView({ stay }: { stay: Stay }) {
   const programmeBlocks = useMemo(() => getProgrammeBlocks(programmeText), [programmeText]);
   const firstCategory = stay.filters.categories[0];
   const themeLabel = firstCategory ? formatLabel('categories', firstCategory) : stay.title;
+  const ThemeIcon = firstCategory ? getCategoryIcon(firstCategory) : Palette;
 
   return (
     <div className="min-h-screen bg-white">
@@ -134,7 +380,7 @@ export function StayDetailView({ stay }: { stay: Stay }) {
             {/* Meta line */}
             <div className="mb-6 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-slate-600">
               <span className="flex items-center gap-1.5">
-                <Palette className="h-4 w-4 text-accent-500" aria-hidden />
+                <ThemeIcon className="h-4 w-4 text-accent-500" aria-hidden />
                 {themeLabel}
               </span>
               <span className="flex items-center gap-1.5">
@@ -152,6 +398,23 @@ export function StayDetailView({ stay }: { stay: Stay }) {
             </div>
 
             <p className="mb-8 max-w-3xl text-base leading-relaxed text-slate-600">{stay.summary}</p>
+
+            {stay.filters.categories.length > 0 && (
+              <div className="mb-8 flex flex-wrap gap-3">
+                {stay.filters.categories.map((category) => {
+                  const Icon = getCategoryIcon(category);
+                  return (
+                    <span
+                      key={category}
+                      className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-medium text-slate-700"
+                    >
+                      <Icon className="h-4 w-4 text-accent-500" aria-hidden />
+                      {formatLabel('categories', category)}
+                    </span>
+                  );
+                })}
+              </div>
+            )}
 
             {/* Gallery */}
             <div className="mb-10 grid grid-cols-3 gap-2 sm:gap-3">
@@ -304,75 +567,177 @@ export function StayDetailView({ stay }: { stay: Stay }) {
                 Informations & Réservation
               </h2>
               <p className="mt-2 text-2xl font-bold text-accent-600">
-                À partir de {formatPrice(stay.priceFrom)}
+                {hasStartedSelection && estimatedPrice != null ? (
+                  <span className="whitespace-nowrap">
+                    <span>{formatPrice(estimatedPrice)}</span>
+                    <span className="ml-2 text-sm font-medium text-accent-500">
+                      (sélection actuelle)
+                    </span>
+                  </span>
+                ) : (
+                  `À partir de ${formatPrice(stay.priceFrom)}`
+                )}
               </p>
 
               <form className="mt-6 space-y-4" onSubmit={(e) => e.preventDefault()}>
                 <div>
-                  <label htmlFor="dates" className="mb-1 block text-sm font-medium text-slate-700">
-                    Dates du séjour
+                  <label htmlFor="session" className="mb-1 block text-sm font-medium text-slate-700">
+                    Session
                   </label>
                   <select
-                    id="dates"
+                    id="session"
+                    value={selectedSessionId}
+                    onChange={(event) => setSelectedSessionId(event.target.value)}
                     className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700"
+                    disabled={!hasSessions}
                   >
-                    <option>Sélectionner une date</option>
-                    <option>Été 2025</option>
-                    <option>Toussaint 2025</option>
+                    <option value="">{hasSessions ? 'Sélectionner une session' : 'Aucune session disponible'}</option>
+                    {availableSessions.map((sessionItem) => (
+                      <option key={sessionItem.id} value={sessionItem.id}>
+                        {formatSessionLabel(sessionItem)}
+                      </option>
+                    ))}
                   </select>
                 </div>
+                {transportMode === 'Aller/Retour différencié' ? (
+                  <>
+                    <div>
+                      <label htmlFor="transport-outbound" className="mb-1 block text-sm font-medium text-slate-700">
+                        Transport Aller
+                      </label>
+                      <select
+                        id="transport-outbound"
+                        value={selectedDepartureCity}
+                        onChange={(event) => setSelectedDepartureCity(event.target.value)}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700"
+                        disabled={!selectedSession || !departureCities.length}
+                      >
+                        <option value="">
+                          {!selectedSession
+                            ? 'Sélectionnez d’abord une session'
+                            : departureCities.length
+                              ? 'Sélectionner un transport aller'
+                              : 'Aucun transport aller'}
+                        </option>
+                        {departureCities.map((city) => (
+                          <option key={city} value={city}>
+                            {city}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label htmlFor="transport-return" className="mb-1 block text-sm font-medium text-slate-700">
+                        Transport Retour
+                      </label>
+                      <select
+                        id="transport-return"
+                        value={selectedReturnCity}
+                        onChange={(event) => setSelectedReturnCity(event.target.value)}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700"
+                        disabled={!selectedSession || !returnCities.length}
+                      >
+                        <option value="">
+                          {!selectedSession
+                            ? 'Sélectionnez d’abord une session'
+                            : returnCities.length
+                              ? 'Sélectionner un transport retour'
+                              : 'Aucun transport retour'}
+                        </option>
+                        {returnCities.map((city) => (
+                          <option key={city} value={city}>
+                            {city}
+                          </option>
+                        ))}
+                      </select>
+                      {(selectedDepartureTransportOption || selectedReturnTransportOption) && (
+                        <p className="mt-1 text-xs text-slate-500">
+                          Tarif transport : {formatPrice(selectedTransportAmount)}
+                        </p>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <div>
+                    <label htmlFor="transport" className="mb-1 block text-sm font-medium text-slate-700">
+                      Transport
+                    </label>
+                    <select
+                      id="transport"
+                      value={transportMode === 'Sans transport' ? 'Sans transport' : selectedTransportId}
+                      onChange={(event) => setSelectedTransportId(event.target.value)}
+                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700"
+                      disabled={transportMode === 'Sans transport' || !selectedSession || !sessionTransportOptions.length}
+                    >
+                      {transportMode === 'Sans transport' ? (
+                        <option value="Sans transport">Sans transport</option>
+                      ) : (
+                        <>
+                          <option value="">
+                            {!selectedSession
+                              ? 'Sélectionnez d’abord une session'
+                              : sessionTransportOptions.length
+                                ? 'Sélectionner un transport'
+                                : 'Aucune option de transport'}
+                          </option>
+                          {sessionTransportOptions.map((option) => (
+                            <option key={option.id} value={option.id}>
+                              {formatTransportLabel(option)}
+                            </option>
+                          ))}
+                        </>
+                      )}
+                    </select>
+                  </div>
+                )}
                 <div>
-                  <label htmlFor="participants" className="mb-1 block text-sm font-medium text-slate-700">
-                    Nombre de participants
+                  <label htmlFor="insurance" className="mb-1 block text-sm font-medium text-slate-700">
+                    Assurance
                   </label>
                   <select
-                    id="participants"
+                    id="insurance"
+                    value={selectedInsuranceId}
+                    onChange={(event) => setSelectedInsuranceId(event.target.value)}
                     className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700"
+                    disabled={!insuranceOptions.length}
                   >
-                    {[1, 2, 3, 4, 5].map((n) => (
-                      <option key={n} value={n}>
-                        {n}
+                    <option value="">
+                      {insuranceOptions.length ? 'Aucune assurance' : 'Aucune assurance disponible'}
+                    </option>
+                    {insuranceOptions.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {formatInsuranceLabel(option)}
                       </option>
                     ))}
                   </select>
                 </div>
                 <div>
-                  <label htmlFor="options" className="mb-1 block text-sm font-medium text-slate-700">
+                  <label htmlFor="extra-options" className="mb-1 block text-sm font-medium text-slate-700">
                     Options supplémentaires
                   </label>
                   <select
-                    id="options"
+                    id="extra-options"
+                    value={selectedExtraOptionId}
+                    onChange={(event) => setSelectedExtraOptionId(event.target.value)}
                     className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700"
+                    disabled={!extraOptions.length}
                   >
-                    <option>Aucune</option>
+                    <option value="">
+                      {extraOptions.length ? 'Aucune option supplémentaire' : 'Aucune option disponible'}
+                    </option>
+                    {extraOptions.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.label} · {formatPrice(option.amount)}
+                      </option>
+                    ))}
                   </select>
                 </div>
-                <div>
-                  <label htmlFor="age" className="mb-1 block text-sm font-medium text-slate-700">
-                    Âge des participants
-                  </label>
-                  <input
-                    id="age"
-                    type="text"
-                    placeholder="Ex. 10 ans"
-                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 placeholder:text-slate-400"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="promo" className="mb-1 block text-sm font-medium text-slate-700">
-                    Code promo
-                  </label>
-                  <input
-                    id="promo"
-                    type="text"
-                    placeholder="Optionnel"
-                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 placeholder:text-slate-400"
-                  />
-                </div>
+                {bookingError && <p className="text-sm text-rose-600">{bookingError}</p>}
                 <button
                   type="button"
                   onClick={handleReserver}
-                  className="mt-4 flex w-full items-center justify-center rounded-xl bg-accent-500 px-6 py-3.5 text-base font-semibold text-white shadow-md transition-colors hover:bg-accent-600"
+                  disabled={!hasSessions}
+                  className="mt-4 flex w-full items-center justify-center rounded-xl bg-accent-500 px-6 py-3.5 text-base font-semibold text-white shadow-md transition-colors hover:bg-accent-600 disabled:cursor-not-allowed disabled:bg-slate-300"
                 >
                   Réserver maintenant
                 </button>

@@ -1,14 +1,18 @@
 import { revalidatePath } from 'next/cache';
-import Link from 'next/link';
 import { redirect } from 'next/navigation';
+import ErrorToast from '@/components/common/ErrorToast';
 import GoogleMapsCityInput from '@/components/common/GoogleMapsCityInput';
 import SavedToast from '@/components/common/SavedToast';
+import StayInsuranceForm from '@/components/organisme/StayInsuranceForm';
 import StayEditorialTabs from '@/components/organisme/StayEditorialTabs';
+import StayFloatingSaveButton from '@/components/organisme/StayFloatingSaveButton';
 import { requireRole } from '@/lib/auth/require';
 import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers';
+import { normalizeStayCategories, STAY_CATEGORY_OPTIONS } from '@/lib/stay-categories';
 import { formatStayAgeRange, getStayAgeBounds, normalizeStayAges, parseStayAges, STAY_AGE_OPTIONS } from '@/lib/stay-ages';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { sessionStatusLabel, stayStatusLabel } from '@/lib/ui/labels';
+import { slugify } from '@/lib/utils';
 
 type PageProps = {
   params: { id: string };
@@ -21,6 +25,71 @@ type PageProps = {
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+const SEASON_ORDER = ['Hiver', 'Printemps', 'Été', 'Automne', "Fin d'année"];
+
+function parseOptionalEuros(value: FormDataEntryValue | null) {
+  const raw = String(value ?? '').trim().replace(',', '.');
+  if (!raw) return null;
+  const parsed = Number(raw);
+  if (Number.isNaN(parsed) || parsed < 0) return null;
+  return parsed;
+}
+
+function getSessionPriceAmountCents(
+  sessionItem: {
+    session_prices?:
+      | {
+          amount_cents: number;
+          currency: string;
+        }
+      | {
+          amount_cents: number;
+          currency: string;
+        }[]
+      | null;
+  }
+) {
+  if (!sessionItem.session_prices) return null;
+  if (Array.isArray(sessionItem.session_prices)) {
+    return sessionItem.session_prices[0]?.amount_cents ?? null;
+  }
+  return sessionItem.session_prices.amount_cents ?? null;
+}
+
+function formatSessionDateRange(sessionItem: { start_date: string; end_date: string }) {
+  return `${new Date(sessionItem.start_date).toLocaleDateString('fr-FR')} - ${new Date(
+    sessionItem.end_date
+  ).toLocaleDateString('fr-FR')}`;
+}
+
+function formatInsuranceOptionLabel(option: {
+  label: string;
+  pricing_mode: string;
+  amount_cents: number | null;
+  percent_value: number | null;
+}) {
+  if (option.pricing_mode === 'PERCENT' && option.percent_value != null) {
+    return `${option.label} (${option.percent_value}%)`;
+  }
+  if (option.amount_cents != null) {
+    return `${option.label} (${(option.amount_cents / 100).toLocaleString('fr-FR', {
+      style: 'currency',
+      currency: 'EUR'
+    })})`;
+  }
+  return option.label;
+}
+
+function getNextAvailablePosition(positions: number[]) {
+  const taken = new Set(
+    positions.filter((position) => Number.isInteger(position) && position > 0)
+  );
+  let nextPosition = 1;
+  while (taken.has(nextPosition)) {
+    nextPosition += 1;
+  }
+  return nextPosition;
+}
 
 export default async function OrganizerStayDetailPage({ params, searchParams }: PageProps) {
   const session = requireRole('ORGANISATEUR');
@@ -40,7 +109,7 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
   const { data: stay } = await supabase
     .from('stays')
     .select(
-      'id,title,status,season_id,description,summary,activities_text,program_text,supervision_text,required_documents_text,transport_text,ages,age_min,age_max,location_text,transport_mode,organizer_id'
+      'id,title,status,season_id,description,summary,activities_text,program_text,supervision_text,required_documents_text,transport_text,categories,ages,age_min,age_max,location_text,transport_mode,organizer_id'
     )
     .eq('id', params.id)
     .maybeSingle();
@@ -56,12 +125,16 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
     { data: sessionsRaw },
     { data: mediaRaw },
     { data: accommodationsRaw },
-    { data: stayAccommodationLinksRaw }
+    { data: stayAccommodationLinksRaw },
+    { data: extraOptionsRaw },
+    { data: insuranceOptionsRaw }
   ] = await Promise.all([
     supabase.from('seasons').select('id,name').order('name', { ascending: true }),
     supabase
       .from('sessions')
-      .select('id,start_date,end_date,capacity_total,capacity_reserved,status')
+      .select(
+        'id,start_date,end_date,capacity_total,capacity_reserved,status,session_prices(amount_cents,currency),transport_options(id,departure_city,return_city,amount_cents)'
+      )
       .eq('stay_id', currentStay.id)
       .order('start_date', { ascending: true }),
     supabase
@@ -72,28 +145,48 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
     supabase
       .from('accommodations')
       .select(
-        'id,name,accommodation_type,description,capacity_total,room_count,bed_info,bathroom_info,indoor_features,outdoor_features,medical_proximity,catering_info,accessibility_info,status'
+        'id,name,accommodation_type,description,bed_info,bathroom_info,catering_info,accessibility_info,status'
       )
       .eq('organizer_id', selectedOrganizerId)
       .order('name', { ascending: true }),
     supabase
       .from('stay_accommodations')
-      .select('accommodation_id,position')
+      .select('accommodation_id')
+      .eq('stay_id', currentStay.id),
+    supabase
+      .from('stay_extra_options')
+      .select('id,label,amount_cents,position')
       .eq('stay_id', currentStay.id)
-      .order('position', { ascending: true })
+      .order('position', { ascending: true }),
+    supabase
+      .from('insurance_options')
+      .select('id,label,amount_cents,percent_value,pricing_mode')
+      .eq('stay_id', currentStay.id)
   ]);
 
-  const seasons = seasonsRaw ?? [];
+  const seasons = [...(seasonsRaw ?? [])].sort((a, b) => {
+    const indexA = SEASON_ORDER.indexOf(a.name);
+    const indexB = SEASON_ORDER.indexOf(b.name);
+    if (indexA === -1 && indexB === -1) {
+      return a.name.localeCompare(b.name, 'fr');
+    }
+    if (indexA === -1) return 1;
+    if (indexB === -1) return -1;
+    return indexA - indexB;
+  });
   const sessions = sessionsRaw ?? [];
   const media = mediaRaw ?? [];
   const accommodations = accommodationsRaw ?? [];
   const stayAccommodationLinks = stayAccommodationLinksRaw ?? [];
-  const linkedAccommodationIds = new Set(
-    stayAccommodationLinks.map((link) => link.accommodation_id)
+  const extraOptions = extraOptionsRaw ?? [];
+  const insuranceOptions = insuranceOptionsRaw ?? [];
+  const hasTransportOptions = sessions.some(
+    (sessionItem) => (sessionItem.transport_options ?? []).length > 0
   );
   const linkedAccommodations = stayAccommodationLinks
     .map((link) => accommodations.find((item) => item.id === link.accommodation_id))
     .filter((item): item is NonNullable<typeof item> => Boolean(item));
+  const linkedAccommodation = linkedAccommodations[0] ?? null;
 
   async function updateStay(formData: FormData) {
     'use server';
@@ -106,11 +199,47 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
     const programText = String(formData.get('program_text') ?? '').trim();
     const supervisionText = String(formData.get('supervision_text') ?? '').trim();
     const requiredDocumentsText = String(formData.get('required_documents_text') ?? '').trim();
+    const categories = normalizeStayCategories(
+      formData
+        .getAll('categories')
+        .map((value) => String(value).trim())
+        .filter(Boolean)
+    );
     const selectedAges = parseStayAges(formData);
     const { ages, ageMin, ageMax } = getStayAgeBounds(selectedAges);
     const location = String(formData.get('location') ?? '').trim();
     const transportMode = String(formData.get('transport_mode') ?? '').trim();
     const transportText = String(formData.get('transport_text') ?? '').trim();
+    const requestedTransportMode = transportMode || currentStay.transport_mode || 'Sans transport';
+    const { data: organizer } = await supabase
+      .from('organizers')
+      .select('name')
+      .eq('id', currentStay.organizer_id)
+      .maybeSingle();
+    const organizerName = organizer?.name ?? '';
+    const previousSlug = slugify(`${organizerName}-${currentStay.title}`) || currentStay.id;
+    const nextSlug = slugify(`${organizerName}-${title}`) || currentStay.id;
+    const { data: sessionsWithTransport } = await supabase
+      .from('sessions')
+      .select('id,transport_options(id)')
+      .eq('stay_id', currentStay.id);
+    const hasExistingTransportOptions = (sessionsWithTransport ?? []).some(
+      (sessionItem) => (sessionItem.transport_options ?? []).length > 0
+    );
+
+    if (
+      hasExistingTransportOptions &&
+      requestedTransportMode !== (currentStay.transport_mode || 'Sans transport')
+    ) {
+      redirect(
+        withOrganizerQuery(
+          `/organisme/sejours/${currentStay.id}?error=${encodeURIComponent(
+            'Impossible de modifier le type de transport tant que des villes de transport existent.'
+          )}`,
+          selectedOrganizerId
+        )
+      );
+    }
 
     await supabase
       .from('stays')
@@ -123,11 +252,12 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
         program_text: programText || null,
         supervision_text: supervisionText || null,
         required_documents_text: requiredDocumentsText || null,
+        categories,
         ages,
         age_min: ageMin,
         age_max: ageMax,
         location_text: location || null,
-        transport_mode: transportMode || currentStay.transport_mode,
+        transport_mode: requestedTransportMode,
         transport_text: transportText || null
       })
       .eq('id', currentStay.id);
@@ -136,6 +266,9 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
     revalidatePath(`/organisme/stays/${currentStay.id}`);
     revalidatePath('/organisme/sejours');
     revalidatePath('/organisme/stays');
+    revalidatePath('/sejours');
+    revalidatePath(`/sejours/${previousSlug}`);
+    revalidatePath(`/sejours/${nextSlug}`);
     redirect(withOrganizerQuery(`/organisme/sejours/${currentStay.id}?saved=1`, selectedOrganizerId));
   }
 
@@ -145,18 +278,66 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
     const startDate = String(formData.get('startDate') ?? '').trim();
     const endDate = String(formData.get('endDate') ?? '').trim();
     const capacityTotal = Number(formData.get('capacityTotal') ?? 0);
-    if (!startDate || !endDate || !capacityTotal) {
-      redirect(withOrganizerQuery(`/organisme/sejours/${currentStay.id}`, selectedOrganizerId));
+    const amountEuros = parseOptionalEuros(formData.get('amount_euros'));
+    const rawAmount = String(formData.get('amount_euros') ?? '').trim();
+
+    if (
+      !startDate ||
+      !endDate ||
+      Number.isNaN(capacityTotal) ||
+      capacityTotal < 0 ||
+      (rawAmount && amountEuros === null)
+    ) {
+      redirect(
+        withOrganizerQuery(
+          `/organisme/sejours/${currentStay.id}?error=invalid-session`,
+          selectedOrganizerId
+        )
+      );
     }
 
-    await supabase.from('sessions').insert({
-      stay_id: currentStay.id,
-      start_date: startDate,
-      end_date: endDate,
-      capacity_total: capacityTotal,
-      capacity_reserved: 0,
-      status: 'OPEN'
-    });
+    const { data: createdSession, error: sessionError } = await supabase
+      .from('sessions')
+      .insert({
+        stay_id: currentStay.id,
+        start_date: startDate,
+        end_date: endDate,
+        capacity_total: capacityTotal,
+        capacity_reserved: 0,
+        status: 'OPEN'
+      })
+      .select('id')
+      .single();
+
+    if (sessionError || !createdSession) {
+      const message = sessionError?.message ?? 'Impossible de creer la session.';
+      console.error('Erreur Supabase (add session)', message);
+      redirect(
+        withOrganizerQuery(
+          `/organisme/sejours/${currentStay.id}?error=${encodeURIComponent(message)}`,
+          selectedOrganizerId
+        )
+      );
+    }
+
+    if (amountEuros !== null) {
+      const { error: priceError } = await supabase.from('session_prices').insert({
+        session_id: createdSession.id,
+        amount_cents: Math.round(amountEuros * 100),
+        currency: 'EUR'
+      });
+
+      if (priceError) {
+        await supabase.from('sessions').delete().eq('id', createdSession.id).eq('stay_id', currentStay.id);
+        console.error('Erreur Supabase (add session price)', priceError.message);
+        redirect(
+          withOrganizerQuery(
+            `/organisme/sejours/${currentStay.id}?error=${encodeURIComponent(priceError.message)}`,
+            selectedOrganizerId
+          )
+        );
+      }
+    }
 
     revalidatePath(`/organisme/sejours/${currentStay.id}`);
     revalidatePath(`/organisme/stays/${currentStay.id}`);
@@ -165,46 +346,514 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
     redirect(withOrganizerQuery(`/organisme/sejours/${currentStay.id}`, selectedOrganizerId));
   }
 
+  async function deleteSession(formData: FormData) {
+    'use server';
+    const supabase = getServerSupabaseClient();
+    const sessionId = String(formData.get('session_id') ?? '').trim();
+
+    if (!sessionId) {
+      redirect(withOrganizerQuery(`/organisme/sejours/${currentStay.id}`, selectedOrganizerId));
+    }
+
+    const { error } = await supabase
+      .from('sessions')
+      .delete()
+      .eq('id', sessionId)
+      .eq('stay_id', currentStay.id);
+
+    if (error) {
+      console.error('Erreur Supabase (delete session)', error.message);
+      redirect(
+        withOrganizerQuery(
+          `/organisme/sejours/${currentStay.id}?error=${encodeURIComponent(error.message)}`,
+          selectedOrganizerId
+        )
+      );
+    }
+
+    revalidatePath(`/organisme/sejours/${currentStay.id}`);
+    revalidatePath(`/organisme/stays/${currentStay.id}`);
+    revalidatePath('/organisme/sejours');
+    revalidatePath('/organisme/stays');
+    redirect(withOrganizerQuery(`/organisme/sejours/${currentStay.id}?saved=1`, selectedOrganizerId));
+  }
+
+  async function addInsuranceOption(formData: FormData) {
+    'use server';
+    const supabase = getServerSupabaseClient();
+    const label = String(formData.get('label') ?? '').trim();
+    const pricingMode = String(formData.get('pricing_mode') ?? 'FIXED').trim().toUpperCase();
+    const amountEuros = parseOptionalEuros(formData.get('amount_euros'));
+    const percentRaw = String(formData.get('percent_value') ?? '').trim().replace(',', '.');
+    const percentValue = percentRaw ? Number(percentRaw) : null;
+
+    const normalizedPricingMode = pricingMode === 'PERCENT' ? 'PERCENT' : 'FIXED';
+    const invalidPercent =
+      normalizedPricingMode === 'PERCENT' &&
+      (percentValue === null || Number.isNaN(percentValue) || percentValue < 0);
+    const invalidFixedAmount = normalizedPricingMode === 'FIXED' && amountEuros === null;
+
+    if (!label || invalidPercent || invalidFixedAmount) {
+      redirect(
+        withOrganizerQuery(
+          `/organisme/sejours/${currentStay.id}?error=invalid-insurance-option`,
+          selectedOrganizerId
+        )
+      );
+    }
+
+    const { error } = await supabase.from('insurance_options').insert({
+      stay_id: currentStay.id,
+      session_id: null,
+      label,
+      pricing_mode: normalizedPricingMode,
+      amount_cents: normalizedPricingMode === 'FIXED' ? Math.round((amountEuros ?? 0) * 100) : null,
+      percent_value: normalizedPricingMode === 'PERCENT' ? percentValue : null,
+      rules_json: {}
+    });
+
+    if (error) {
+      console.error('Erreur Supabase (add insurance option)', error.message);
+      redirect(
+        withOrganizerQuery(
+          `/organisme/sejours/${currentStay.id}?error=${encodeURIComponent(error.message)}`,
+          selectedOrganizerId
+        )
+      );
+    }
+
+    const { data: organizer } = await supabase
+      .from('organizers')
+      .select('name')
+      .eq('id', currentStay.organizer_id)
+      .maybeSingle();
+    const organizerName = organizer?.name ?? '';
+    const staySlug = slugify(`${organizerName}-${currentStay.title}`) || currentStay.id;
+
+    revalidatePath(`/organisme/sejours/${currentStay.id}`);
+    revalidatePath(`/organisme/stays/${currentStay.id}`);
+    revalidatePath('/organisme/sejours');
+    revalidatePath('/organisme/stays');
+    revalidatePath('/sejours');
+    revalidatePath(`/sejours/${staySlug}`);
+    redirect(withOrganizerQuery(`/organisme/sejours/${currentStay.id}?saved=1`, selectedOrganizerId));
+  }
+
+  async function addTransportOption(formData: FormData) {
+    'use server';
+    const supabase = getServerSupabaseClient();
+    const sessionId = String(formData.get('session_id') ?? '').trim();
+    const city = String(formData.get('city') ?? formData.get('departure_city') ?? '').trim();
+    const amountEuros = parseOptionalEuros(formData.get('amount_euros'));
+    const transportMode = currentStay.transport_mode ?? 'Sans transport';
+    const availableOutbound = formData.get('available_outbound') === 'on';
+    const availableReturn = formData.get('available_return') === 'on';
+
+    const { data: validSession } = await supabase
+      .from('sessions')
+      .select('id')
+      .eq('id', sessionId)
+      .eq('stay_id', currentStay.id)
+      .maybeSingle();
+
+    const isDifferentiated = transportMode === 'Aller/Retour différencié';
+    const departureCity = isDifferentiated ? (availableOutbound ? city : '') : city;
+    const returnCity = isDifferentiated ? (availableReturn ? city : '') : city;
+
+    if (
+      !validSession ||
+      transportMode === 'Sans transport' ||
+      !city ||
+      (isDifferentiated && !availableOutbound && !availableReturn) ||
+      (!isDifferentiated && (!departureCity || !returnCity)) ||
+      amountEuros === null
+    ) {
+      redirect(
+        withOrganizerQuery(
+          `/organisme/sejours/${currentStay.id}?error=invalid-transport-option`,
+          selectedOrganizerId
+        )
+      );
+    }
+
+    const { error } = await supabase.from('transport_options').insert({
+      session_id: sessionId,
+      departure_city: departureCity,
+      return_city: returnCity,
+      amount_cents: Math.round(amountEuros * 100)
+    });
+
+    if (error) {
+      console.error('Erreur Supabase (add transport option)', error.message);
+      redirect(
+        withOrganizerQuery(
+          `/organisme/sejours/${currentStay.id}?error=${encodeURIComponent(error.message)}`,
+          selectedOrganizerId
+        )
+      );
+    }
+
+    const { data: organizer } = await supabase
+      .from('organizers')
+      .select('name')
+      .eq('id', currentStay.organizer_id)
+      .maybeSingle();
+    const organizerName = organizer?.name ?? '';
+    const staySlug = slugify(`${organizerName}-${currentStay.title}`) || currentStay.id;
+
+    revalidatePath(`/organisme/sejours/${currentStay.id}`);
+    revalidatePath(`/organisme/stays/${currentStay.id}`);
+    revalidatePath('/organisme/sejours');
+    revalidatePath('/organisme/stays');
+    revalidatePath('/sejours');
+    revalidatePath(`/sejours/${staySlug}`);
+    redirect(withOrganizerQuery(`/organisme/sejours/${currentStay.id}?saved=1`, selectedOrganizerId));
+  }
+
+  async function deleteTransportOption(formData: FormData) {
+    'use server';
+    const supabase = getServerSupabaseClient();
+    const optionId = String(formData.get('transport_option_id') ?? '').trim();
+
+    if (!optionId) {
+      redirect(withOrganizerQuery(`/organisme/sejours/${currentStay.id}`, selectedOrganizerId));
+    }
+
+    const { data: option } = await supabase
+      .from('transport_options')
+      .select('id,session_id')
+      .eq('id', optionId)
+      .maybeSingle();
+
+    if (!option) {
+      redirect(
+        withOrganizerQuery(
+          `/organisme/sejours/${currentStay.id}?error=invalid-transport-option`,
+          selectedOrganizerId
+        )
+      );
+    }
+
+    const { data: validSession } = await supabase
+      .from('sessions')
+      .select('id')
+      .eq('id', option.session_id)
+      .eq('stay_id', currentStay.id)
+      .maybeSingle();
+
+    if (!validSession) {
+      redirect(
+        withOrganizerQuery(
+          `/organisme/sejours/${currentStay.id}?error=invalid-transport-option`,
+          selectedOrganizerId
+        )
+      );
+    }
+
+    const { error } = await supabase.from('transport_options').delete().eq('id', optionId);
+
+    if (error) {
+      console.error('Erreur Supabase (delete transport option)', error.message);
+      redirect(
+        withOrganizerQuery(
+          `/organisme/sejours/${currentStay.id}?error=${encodeURIComponent(error.message)}`,
+          selectedOrganizerId
+        )
+      );
+    }
+
+    const { data: organizer } = await supabase
+      .from('organizers')
+      .select('name')
+      .eq('id', currentStay.organizer_id)
+      .maybeSingle();
+    const organizerName = organizer?.name ?? '';
+    const staySlug = slugify(`${organizerName}-${currentStay.title}`) || currentStay.id;
+
+    revalidatePath(`/organisme/sejours/${currentStay.id}`);
+    revalidatePath(`/organisme/stays/${currentStay.id}`);
+    revalidatePath('/organisme/sejours');
+    revalidatePath('/organisme/stays');
+    revalidatePath('/sejours');
+    revalidatePath(`/sejours/${staySlug}`);
+    redirect(withOrganizerQuery(`/organisme/sejours/${currentStay.id}?saved=1`, selectedOrganizerId));
+  }
+
+  async function deleteInsuranceOption(formData: FormData) {
+    'use server';
+    const supabase = getServerSupabaseClient();
+    const optionId = String(formData.get('insurance_option_id') ?? '').trim();
+
+    if (!optionId) {
+      redirect(withOrganizerQuery(`/organisme/sejours/${currentStay.id}`, selectedOrganizerId));
+    }
+
+    const { data: option } = await supabase
+      .from('insurance_options')
+      .select('id,stay_id')
+      .eq('id', optionId)
+      .maybeSingle();
+
+    if (!option || option.stay_id !== currentStay.id) {
+      redirect(
+        withOrganizerQuery(
+          `/organisme/sejours/${currentStay.id}?error=invalid-insurance-option`,
+          selectedOrganizerId
+        )
+      );
+    }
+
+    const { error } = await supabase.from('insurance_options').delete().eq('id', optionId);
+
+    if (error) {
+      console.error('Erreur Supabase (delete insurance option)', error.message);
+      redirect(
+        withOrganizerQuery(
+          `/organisme/sejours/${currentStay.id}?error=${encodeURIComponent(error.message)}`,
+          selectedOrganizerId
+        )
+      );
+    }
+
+    const { data: organizer } = await supabase
+      .from('organizers')
+      .select('name')
+      .eq('id', currentStay.organizer_id)
+      .maybeSingle();
+    const organizerName = organizer?.name ?? '';
+    const staySlug = slugify(`${organizerName}-${currentStay.title}`) || currentStay.id;
+
+    revalidatePath(`/organisme/sejours/${currentStay.id}`);
+    revalidatePath(`/organisme/stays/${currentStay.id}`);
+    revalidatePath('/organisme/sejours');
+    revalidatePath('/organisme/stays');
+    revalidatePath('/sejours');
+    revalidatePath(`/sejours/${staySlug}`);
+    redirect(withOrganizerQuery(`/organisme/sejours/${currentStay.id}?saved=1`, selectedOrganizerId));
+  }
+
+  async function addExtraOption(formData: FormData) {
+    'use server';
+    const supabase = getServerSupabaseClient();
+    const label = String(formData.get('label') ?? '').trim();
+    const amountEuros = Number(String(formData.get('amount_euros') ?? '').trim().replace(',', '.'));
+    const amountCents = Math.round(amountEuros * 100);
+
+    if (!label || Number.isNaN(amountEuros) || amountEuros < 0) {
+      redirect(
+        withOrganizerQuery(
+          `/organisme/sejours/${currentStay.id}?error=invalid-extra-option`,
+          selectedOrganizerId
+        )
+      );
+    }
+
+    const { data: existingOption } = await supabase
+      .from('stay_extra_options')
+      .select('id')
+      .eq('stay_id', currentStay.id)
+      .eq('label', label)
+      .eq('amount_cents', amountCents)
+      .limit(1)
+      .maybeSingle();
+
+    if (existingOption) {
+      redirect(
+        withOrganizerQuery(
+          `/organisme/sejours/${currentStay.id}?error=${encodeURIComponent('Cette option existe déjà')}`,
+          selectedOrganizerId
+        )
+      );
+    }
+
+    const { data: optionPositions } = await supabase
+      .from('stay_extra_options')
+      .select('position')
+      .eq('stay_id', currentStay.id)
+      .order('position', { ascending: true });
+
+    const nextPosition = getNextAvailablePosition(
+      (optionPositions ?? []).map((option) => option.position)
+    );
+
+    const { error } = await supabase.from('stay_extra_options').insert({
+      stay_id: currentStay.id,
+      label,
+      amount_cents: amountCents,
+      position: nextPosition,
+      created_at: new Date().toISOString()
+    });
+
+    if (error) {
+      console.error('Erreur Supabase (add stay extra option)', error.message);
+      const message =
+        error.message.includes('stay_extra_options_position_check')
+          ? "Impossible d'ajouter l'option pour le moment."
+          : error.message;
+      redirect(
+        withOrganizerQuery(
+          `/organisme/sejours/${currentStay.id}?error=${encodeURIComponent(message)}`,
+          selectedOrganizerId
+        )
+      );
+    }
+
+    revalidatePath(`/organisme/sejours/${currentStay.id}`);
+    revalidatePath(`/organisme/stays/${currentStay.id}`);
+    revalidatePath('/organisme/sejours');
+    revalidatePath('/organisme/stays');
+    redirect(withOrganizerQuery(`/organisme/sejours/${currentStay.id}?saved=1`, selectedOrganizerId));
+  }
+
+  async function deleteExtraOption(formData: FormData) {
+    'use server';
+    const supabase = getServerSupabaseClient();
+    const optionId = String(formData.get('option_id') ?? '').trim();
+
+    if (!optionId) {
+      redirect(withOrganizerQuery(`/organisme/sejours/${currentStay.id}`, selectedOrganizerId));
+    }
+
+    const { error } = await supabase
+      .from('stay_extra_options')
+      .delete()
+      .eq('id', optionId)
+      .eq('stay_id', currentStay.id);
+
+    if (error) {
+      console.error('Erreur Supabase (delete stay extra option)', error.message);
+      redirect(
+        withOrganizerQuery(
+          `/organisme/sejours/${currentStay.id}?error=${encodeURIComponent(error.message)}`,
+          selectedOrganizerId
+        )
+      );
+    }
+
+    const { data: remainingOptions } = await supabase
+      .from('stay_extra_options')
+      .select('id,position')
+      .eq('stay_id', currentStay.id)
+      .order('position', { ascending: true });
+
+    await Promise.all(
+      (remainingOptions ?? []).map((option, index) =>
+        supabase
+          .from('stay_extra_options')
+          .update({ position: index + 1 })
+          .eq('id', option.id)
+          .eq('stay_id', currentStay.id)
+      )
+    );
+
+    revalidatePath(`/organisme/sejours/${currentStay.id}`);
+    revalidatePath(`/organisme/stays/${currentStay.id}`);
+    revalidatePath('/organisme/sejours');
+    revalidatePath('/organisme/stays');
+    redirect(withOrganizerQuery(`/organisme/sejours/${currentStay.id}?saved=1`, selectedOrganizerId));
+  }
+
   async function syncAccommodations(formData: FormData) {
     'use server';
     const supabase = getServerSupabaseClient();
-    const selectedIds = formData
-      .getAll('accommodation_ids')
-      .map((value) => String(value))
-      .filter(Boolean);
+    const selectedId = String(formData.get('accommodation_id') ?? '').trim();
 
     const { data: validRows } = await supabase
       .from('accommodations')
       .select('id')
       .eq('organizer_id', selectedOrganizerId);
     const validIds = new Set((validRows ?? []).map((row) => row.id));
-    const filteredIds = selectedIds.filter((id) => validIds.has(id));
+    const nextAccommodationId = validIds.has(selectedId) ? selectedId : null;
+    const { data: organizer } = await supabase
+      .from('organizers')
+      .select('name')
+      .eq('id', currentStay.organizer_id)
+      .maybeSingle();
+    const organizerName = organizer?.name ?? '';
+    const staySlug = slugify(`${organizerName}-${currentStay.title}`) || currentStay.id;
 
-    await supabase.from('stay_accommodations').delete().eq('stay_id', currentStay.id);
+    const { error: deleteError } = await supabase
+      .from('stay_accommodations')
+      .delete()
+      .eq('stay_id', currentStay.id);
 
-    if (filteredIds.length > 0) {
-      await supabase.from('stay_accommodations').insert(
-        filteredIds.map((accommodationId, index) => ({
+    if (deleteError) {
+      console.error('Erreur Supabase (delete stay accommodations)', deleteError.message);
+      redirect(
+        withOrganizerQuery(
+          `/organisme/sejours/${currentStay.id}?error=${encodeURIComponent(deleteError.message)}`,
+          selectedOrganizerId
+        )
+      );
+    }
+
+    if (nextAccommodationId) {
+      const { error: insertError } = await supabase.from('stay_accommodations').insert(
+        {
           stay_id: currentStay.id,
-          accommodation_id: accommodationId,
-          position: index
-        }))
+          accommodation_id: nextAccommodationId
+        }
+      );
+
+      if (insertError) {
+        console.error('Erreur Supabase (insert stay accommodations)', insertError.message);
+        redirect(
+          withOrganizerQuery(
+            `/organisme/sejours/${currentStay.id}?error=${encodeURIComponent(insertError.message)}`,
+            selectedOrganizerId
+          )
+        );
+      }
+    }
+
+    revalidatePath(`/organisme/sejours/${currentStay.id}`);
+    revalidatePath(`/organisme/stays/${currentStay.id}`);
+    revalidatePath('/organisme/sejours');
+    revalidatePath('/organisme/stays');
+    revalidatePath('/sejours');
+    revalidatePath(`/sejours/${staySlug}`);
+    redirect(withOrganizerQuery(`/organisme/sejours/${currentStay.id}?saved=1`, selectedOrganizerId));
+  }
+
+  async function unlinkAccommodation() {
+    'use server';
+    const supabase = getServerSupabaseClient();
+    const { data: organizer } = await supabase
+      .from('organizers')
+      .select('name')
+      .eq('id', currentStay.organizer_id)
+      .maybeSingle();
+    const organizerName = organizer?.name ?? '';
+    const staySlug = slugify(`${organizerName}-${currentStay.title}`) || currentStay.id;
+
+    const { error } = await supabase
+      .from('stay_accommodations')
+      .delete()
+      .eq('stay_id', currentStay.id);
+
+    if (error) {
+      console.error('Erreur Supabase (unlink stay accommodation)', error.message);
+      redirect(
+        withOrganizerQuery(
+          `/organisme/sejours/${currentStay.id}?error=${encodeURIComponent(error.message)}`,
+          selectedOrganizerId
+        )
       );
     }
 
     revalidatePath(`/organisme/sejours/${currentStay.id}`);
     revalidatePath(`/organisme/stays/${currentStay.id}`);
-    redirect(withOrganizerQuery(`/organisme/sejours/${currentStay.id}`, selectedOrganizerId));
+    revalidatePath('/organisme/sejours');
+    revalidatePath('/organisme/stays');
+    revalidatePath('/sejours');
+    revalidatePath(`/sejours/${staySlug}`);
+    redirect(withOrganizerQuery(`/organisme/sejours/${currentStay.id}?saved=1`, selectedOrganizerId));
   }
 
   return (
     <div className="space-y-6">
       {showSavedBanner && <SavedToast message="La fiche séjour a bien été enregistrée." />}
-      {errorParam && (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-          Impossible d&apos;enregistrer l&apos;hébergement : {decodeURIComponent(errorParam)}
-        </div>
-      )}
+      {errorParam && <ErrorToast message={decodeURIComponent(errorParam)} />}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">{currentStay.title}</h1>
@@ -212,18 +861,9 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
             Saison: {seasons.find((season) => season.id === currentStay.season_id)?.name ?? '-'}
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-            {stayStatusLabel(currentStay.status)}
-          </span>
-          <button
-            type="submit"
-            form="stay-form"
-            className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white"
-          >
-            Enregistrer le séjour
-          </button>
-        </div>
+        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+          {stayStatusLabel(currentStay.status)}
+        </span>
       </div>
 
       <form
@@ -271,14 +911,56 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
           description={currentStay.description ?? ''}
           activitiesText={currentStay.activities_text ?? ''}
           programText={currentStay.program_text ?? ''}
+          linkedAccommodation={
+            linkedAccommodation
+              ? {
+                  id: linkedAccommodation.id,
+                  name: linkedAccommodation.name,
+                  accommodationType: linkedAccommodation.accommodation_type,
+                  description: linkedAccommodation.description
+                }
+              : null
+          }
+          accommodations={accommodations.map((accommodation) => ({
+            id: accommodation.id,
+            name: accommodation.name,
+            accommodationType: accommodation.accommodation_type,
+            description: accommodation.description
+          }))}
+          syncAccommodationAction={syncAccommodations}
+          unlinkAccommodationAction={unlinkAccommodation}
           supervisionText={currentStay.supervision_text ?? ''}
           requiredDocumentsText={currentStay.required_documents_text ?? ''}
           transportMode={currentStay.transport_mode ?? 'Sans transport'}
           transportText={currentStay.transport_text ?? ''}
+          transportModeLocked={hasTransportOptions}
         />
 
         <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
           <h2 className="text-lg font-semibold text-slate-900">Paramètres du séjour</h2>
+          <div className="space-y-3">
+            <div>
+              <div className="text-sm font-medium text-slate-700">Catégories du séjour</div>
+              <p className="mt-1 text-xs text-slate-500">Tu peux en sélectionner plusieurs.</p>
+            </div>
+            <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+              {STAY_CATEGORY_OPTIONS.map((category) => (
+                <label
+                  key={category.value}
+                  className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700"
+                >
+                  <input
+                    type="checkbox"
+                    name="categories"
+                    value={category.value}
+                    defaultChecked={(currentStay.categories ?? []).includes(category.value)}
+                    className="cursor-pointer"
+                  />
+                  <span>{category.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
           <div className="space-y-3">
             <div>
               <div className="text-sm font-medium text-slate-700">Âges</div>
@@ -307,70 +989,198 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
           </div>
           <GoogleMapsCityInput
             name="location"
-            label="Ville du séjour"
+            label="Ville ou pays du séjour"
             defaultValue={currentStay.location_text ?? ''}
           />
-          <div className="flex justify-end">
-            <button
-              type="submit"
-              className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white"
-            >
-              Enregistrer le séjour
-            </button>
-          </div>
         </section>
       </form>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <section className="rounded-2xl border border-slate-200 bg-white p-6">
-          <h2 className="text-lg font-semibold text-slate-900">Hébergements liés</h2>
-          <p className="mt-1 text-sm text-slate-600">
-            Sélectionne les hébergements réutilisables à rattacher à ce séjour.
+      <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
+        <h2 className="text-lg font-semibold text-slate-900">Transport</h2>
+        <p className="text-sm text-slate-600">{currentStay.transport_mode || 'Non renseigné'}</p>
+        <p className="whitespace-pre-line text-sm text-slate-600">
+          {currentStay.transport_text || 'Aucun texte transport saisi.'}
+        </p>
+
+        {currentStay.transport_mode === 'Sans transport' ? (
+          <p className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-3 text-sm text-slate-500">
+            Aucune option de transport à ajouter tant que le séjour est en `Sans transport`.
           </p>
-          <form action={syncAccommodations} className="mt-4 space-y-3">
-            <div className="space-y-2">
-              {accommodations.map((accommodation) => (
-                <label
-                  key={accommodation.id}
-                  className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-100 px-3 py-3 text-sm"
-                >
-                  <input
-                    type="checkbox"
-                    name="accommodation_ids"
-                    value={accommodation.id}
-                    defaultChecked={linkedAccommodationIds.has(accommodation.id)}
-                    className="mt-1 cursor-pointer"
-                  />
-                  <span>
-                    <span className="block font-medium text-slate-900">{accommodation.name}</span>
-                    <span className="block text-slate-600">
-                      {accommodation.accommodation_type || 'Type non renseigné'}
-                    </span>
-                  </span>
-                </label>
-              ))}
-              {accommodations.length === 0 && (
-                <p className="text-sm text-slate-500">Aucun hébergement créé pour cet organisme.</p>
+        ) : (
+          <>
+            <div className="space-y-3">
+              {sessions.length > 0 ? (
+                sessions.map((sessionItem) => {
+                  const transportOptions = sessionItem.transport_options ?? [];
+
+                  return (
+                    <div key={sessionItem.id} className="rounded-lg border border-slate-100 px-3 py-3">
+                      <div className="text-sm font-medium text-slate-900">
+                        {formatSessionDateRange(sessionItem)}
+                      </div>
+                      {transportOptions.length > 0 ? (
+                        <div className="mt-3 rounded-lg border border-slate-100">
+                          <div className="max-h-48 overflow-y-auto">
+                            <table className="w-full text-left text-sm">
+                              <thead className="sticky top-0 bg-slate-50 text-xs uppercase text-slate-500">
+                                <tr>
+                                  <th className="px-3 py-2">Ville</th>
+                                  <th className="px-3 py-2">Aller</th>
+                                  <th className="px-3 py-2">Retour</th>
+                                  <th className="px-3 py-2">Prix</th>
+                                  <th className="px-3 py-2"></th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {transportOptions.map((option) => {
+                                  const displayCity =
+                                    option.departure_city || option.return_city || 'Non renseignée';
+                                  const hasOutbound = Boolean(option.departure_city?.trim());
+                                  const hasReturn = Boolean(option.return_city?.trim());
+
+                                  return (
+                                    <tr key={option.id} className="border-t border-slate-100">
+                                      <td className="px-3 py-2 text-slate-700">{displayCity}</td>
+                                      <td className="px-3 py-2 text-slate-700">{hasOutbound ? 'Oui' : 'Non'}</td>
+                                      <td className="px-3 py-2 text-slate-700">{hasReturn ? 'Oui' : 'Non'}</td>
+                                      <td className="px-3 py-2 text-slate-700">
+                                        {(option.amount_cents / 100).toLocaleString('fr-FR', {
+                                          style: 'currency',
+                                          currency: 'EUR'
+                                        })}
+                                      </td>
+                                      <td className="px-3 py-2 text-right">
+                                        <form action={deleteTransportOption}>
+                                          <input type="hidden" name="transport_option_id" value={option.id} />
+                                          <button className="rounded-lg border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-700">
+                                            Supprimer
+                                          </button>
+                                        </form>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="mt-2 text-sm text-slate-500">Aucune option de transport pour cette session.</p>
+                      )}
+                    </div>
+                  );
+                })
+              ) : (
+                <p className="text-sm text-slate-500">Crée d&apos;abord une session pour ajouter un transport.</p>
               )}
             </div>
-            <div className="flex justify-end">
-              <button className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white">
-                Enregistrer les liaisons
-              </button>
-            </div>
-          </form>
-          {linkedAccommodations.length > 0 && (
-            <ul className="mt-4 space-y-2 text-sm text-slate-600">
-              {linkedAccommodations.map((accommodation) => (
-                <li key={accommodation.id} className="rounded-lg border border-slate-100 px-3 py-2">
-                  <div className="font-medium text-slate-900">{accommodation.name}</div>
-                  <div>{accommodation.accommodation_type || 'Type non renseigné'}</div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
 
+            <form action={addTransportOption} className="space-y-3 border-t border-slate-100 pt-4">
+              <label className="text-sm font-medium text-slate-700">
+                Session
+                <select
+                  name="session_id"
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+                  required
+                  defaultValue=""
+                  disabled={sessions.length === 0}
+                >
+                  <option value="">Sélectionner une session</option>
+                  {sessions.map((sessionItem) => (
+                    <option key={sessionItem.id} value={sessionItem.id}>
+                      {formatSessionDateRange(sessionItem)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              {currentStay.transport_mode === 'Aller/Retour différencié' ? (
+                <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_auto_minmax(180px,220px)] md:items-end">
+                  <label className="text-sm font-medium text-slate-700">
+                    Ville
+                    <input
+                      name="city"
+                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+                      placeholder="Ex. Paris"
+                      required
+                      disabled={sessions.length === 0}
+                    />
+                  </label>
+                  <label className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700">
+                    <input
+                      type="checkbox"
+                      name="available_outbound"
+                      className="cursor-pointer"
+                      defaultChecked
+                      disabled={sessions.length === 0}
+                    />
+                    <span>Disponible à l&apos;aller</span>
+                  </label>
+                  <label className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700">
+                    <input
+                      type="checkbox"
+                      name="available_return"
+                      className="cursor-pointer"
+                      defaultChecked
+                      disabled={sessions.length === 0}
+                    />
+                    <span>Disponible au retour</span>
+                  </label>
+                  <label className="text-sm font-medium text-slate-700">
+                    Prix en euro
+                    <input
+                      name="amount_euros"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+                      placeholder="0,00"
+                      required
+                      disabled={sessions.length === 0}
+                    />
+                  </label>
+                </div>
+              ) : (
+                <div className="grid gap-3 md:grid-cols-2">
+                  <label className="text-sm font-medium text-slate-700">
+                    Ville
+                    <input
+                      name="city"
+                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+                      placeholder="Ex. Paris"
+                      required
+                      disabled={sessions.length === 0}
+                    />
+                  </label>
+                  <label className="text-sm font-medium text-slate-700">
+                    Prix en euro
+                    <input
+                      name="amount_euros"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+                      placeholder="0,00"
+                      required
+                      disabled={sessions.length === 0}
+                    />
+                  </label>
+                </div>
+              )}
+              <div className="flex justify-end">
+                <button
+                  className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-300"
+                  disabled={sessions.length === 0}
+                >
+                  Ajouter le transport
+                </button>
+              </div>
+            </form>
+          </>
+        )}
+      </section>
+
+      <div className="grid gap-6 lg:grid-cols-2">
         <section className="rounded-2xl border border-slate-200 bg-white p-6">
           <h2 className="text-lg font-semibold text-slate-900">Médias</h2>
           <ul className="mt-4 space-y-2 text-sm text-slate-600">
@@ -384,38 +1194,124 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
         </section>
 
         <section className="rounded-2xl border border-slate-200 bg-white p-6">
-          <h2 className="text-lg font-semibold text-slate-900">Transport</h2>
-          <p className="mt-4 text-sm text-slate-600">
-            {currentStay.transport_mode || 'Non renseigné'}
+          <h2 className="text-lg font-semibold text-slate-900">Options payantes</h2>
+          <p className="mt-1 text-sm text-slate-600">
+            Ajoute des options facturables en supplément pour ce séjour.
           </p>
-          <p className="mt-3 whitespace-pre-line text-sm text-slate-600">
-            {currentStay.transport_text || 'Aucun texte transport saisi.'}
-          </p>
+
+          <div className="mt-4 rounded-lg border border-slate-100">
+            {extraOptions.length > 0 ? (
+              <div className="max-h-56 overflow-y-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="sticky top-0 bg-slate-50 text-xs uppercase text-slate-500">
+                    <tr>
+                      <th className="px-3 py-2">Libellé</th>
+                      <th className="px-3 py-2">Prix</th>
+                      <th className="px-3 py-2"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {extraOptions.map((option) => (
+                      <tr key={option.id} className="border-t border-slate-100">
+                        <td className="px-3 py-2 font-medium text-slate-900">{option.label}</td>
+                        <td className="px-3 py-2 text-slate-600">
+                          {(option.amount_cents / 100).toLocaleString('fr-FR', {
+                            style: 'currency',
+                            currency: 'EUR'
+                          })}
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          <form action={deleteExtraOption}>
+                            <input type="hidden" name="option_id" value={option.id} />
+                            <button className="rounded-lg border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-700">
+                              Supprimer
+                            </button>
+                          </form>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="px-3 py-3 text-sm text-slate-500">Aucune option payante pour le moment.</p>
+            )}
+          </div>
+
+          <form action={addExtraOption} className="mt-4 space-y-3 border-t border-slate-100 pt-4">
+            <div className="grid gap-3 md:grid-cols-2">
+              <label className="text-sm font-medium text-slate-700">
+                Libellé
+                <input
+                  name="label"
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+                  placeholder="Ex. Navette depuis Paris"
+                  required
+                />
+              </label>
+              <label className="text-sm font-medium text-slate-700">
+                Montant TTC en euro
+                <input
+                  name="amount_euros"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+                  placeholder="0,00"
+                  required
+                />
+              </label>
+            </div>
+            <div className="flex justify-end">
+              <button className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white">
+                Ajouter l&apos;option
+              </button>
+            </div>
+          </form>
         </section>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
+        <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6 lg:col-span-2">
           <h2 className="text-lg font-semibold text-slate-900">Sessions</h2>
           <ul className="space-y-2 text-sm text-slate-600">
             {sessions.map((sessionItem) => (
-              <li key={sessionItem.id} className="flex items-center justify-between">
-                <span>
-                  {new Date(sessionItem.start_date).toLocaleDateString('fr-FR')} -{' '}
-                  {new Date(sessionItem.end_date).toLocaleDateString('fr-FR')}
-                </span>
-                <span className="text-xs text-slate-500">
-                  {sessionItem.capacity_reserved}/{sessionItem.capacity_total} (
-                  {sessionStatusLabel(sessionItem.status)})
-                </span>
+              <li
+                key={sessionItem.id}
+                className="flex items-center justify-between gap-3 rounded-lg border border-slate-100 px-3 py-2"
+              >
+                <div>
+                  <div>
+                    {new Date(sessionItem.start_date).toLocaleDateString('fr-FR')} -{' '}
+                    {new Date(sessionItem.end_date).toLocaleDateString('fr-FR')}
+                  </div>
+                  <div className="text-xs text-slate-500">
+                    {sessionItem.capacity_reserved}/{sessionItem.capacity_total} (
+                    {sessionStatusLabel(sessionItem.status)})
+                  </div>
+                  {getSessionPriceAmountCents(sessionItem) !== null && (
+                    <div className="text-xs text-slate-500">
+                      Prix: {(getSessionPriceAmountCents(sessionItem)! / 100).toLocaleString('fr-FR', {
+                        style: 'currency',
+                        currency: 'EUR'
+                      })}
+                    </div>
+                  )}
+                </div>
+                <form action={deleteSession}>
+                  <input type="hidden" name="session_id" value={sessionItem.id} />
+                  <button className="rounded-lg border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-700">
+                    Supprimer
+                  </button>
+                </form>
               </li>
             ))}
             {sessions.length === 0 && <li>Aucune session.</li>}
           </ul>
           <form action={addSession} className="space-y-3 border-t border-slate-100 pt-4">
-            <div className="grid gap-3 md:grid-cols-3">
+            <div className="grid gap-3 md:grid-cols-4">
               <label className="text-xs font-medium text-slate-600">
-                Debut
+                Début
                 <input
                   name="startDate"
                   type="date"
@@ -433,12 +1329,24 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
                 />
               </label>
               <label className="text-xs font-medium text-slate-600">
-                Capacite
+                Capacité
                 <input
                   name="capacityTotal"
                   type="number"
+                  min="0"
                   className="mt-1 w-full rounded border border-slate-200 px-2 py-1"
                   required
+                />
+              </label>
+              <label className="text-xs font-medium text-slate-600">
+                Prix en euro
+                <input
+                  name="amount_euros"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className="mt-1 w-full rounded border border-slate-200 px-2 py-1"
+                  placeholder="0,00"
                 />
               </label>
             </div>
@@ -447,62 +1355,37 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
             </button>
           </form>
         </div>
-
-        <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
-          <h2 className="text-lg font-semibold text-slate-900">Réservations liées</h2>
-          <p className="text-sm text-slate-600">
-            Cette section sera branchée quand le flux de réservation organisateur sera connecté.
-          </p>
-        </div>
       </div>
 
       <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
-        <div>
-          <h2 className="text-lg font-semibold text-slate-900">Créer un hébergement</h2>
-          <p className="text-sm text-slate-600">
-            La création et la modification détaillées se font maintenant depuis la page dédiée des hébergements.
-          </p>
+        <h2 className="text-lg font-semibold text-slate-900">Assurances</h2>
+        <p className="text-sm text-slate-600">Ajoute une assurance au niveau du séjour, au forfait ou en pourcentage du prix.</p>
+
+        <div className="space-y-3">
+          {insuranceOptions.length > 0 ? (
+            insuranceOptions.map((option) => (
+              <div
+                key={option.id}
+                className="flex items-center justify-between gap-3 rounded-lg border border-slate-100 px-3 py-3 text-sm"
+              >
+                <span className="text-slate-700">{formatInsuranceOptionLabel(option)}</span>
+                <form action={deleteInsuranceOption}>
+                  <input type="hidden" name="insurance_option_id" value={option.id} />
+                  <button className="rounded-lg border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-700">
+                    Supprimer
+                  </button>
+                </form>
+              </div>
+            ))
+          ) : (
+            <p className="text-sm text-slate-500">Aucune assurance pour ce séjour.</p>
+          )}
         </div>
-        <div className="flex justify-end">
-          <Link
-            href={withOrganizerQuery('/organisme/hebergements', selectedOrganizerId)}
-            className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
-          >
-            Gérer les hébergements
-          </Link>
-        </div>
+
+        <StayInsuranceForm action={addInsuranceOption} />
       </section>
 
-      {accommodations.length > 0 && (
-        <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
-          <div>
-            <h2 className="text-lg font-semibold text-slate-900">Bibliothèque des hébergements</h2>
-            <p className="text-sm text-slate-600">
-              Pour modifier une fiche, utilise la page dédiée des hébergements.
-            </p>
-          </div>
-          <div className="space-y-4">
-            {accommodations.map((accommodation) => (
-              <div key={accommodation.id} className="rounded-xl border border-slate-100 p-4">
-                <div className="font-medium text-slate-900">{accommodation.name}</div>
-                <div className="text-sm text-slate-600">
-                  {accommodation.accommodation_type || 'Type non renseigné'}
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      <div className="sticky bottom-4 z-10 flex justify-end">
-        <button
-          type="submit"
-          form="stay-form"
-          className="rounded-full bg-emerald-600 px-5 py-3 text-sm font-semibold text-white shadow-lg"
-        >
-          Enregistrer le séjour
-        </button>
-      </div>
+      <StayFloatingSaveButton formId="stay-form" />
     </div>
   );
 }

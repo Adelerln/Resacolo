@@ -20,16 +20,16 @@ export const ORGANIZERS: OrganizerInfo[] = [
 
 export const FILTER_LABELS = {
   categories: {
-    nature: 'Nature',
-    sport: 'Sport',
-    culture: 'Culture',
-    langues: 'Langues',
-    mer: 'Mer',
-    montagne: 'Montagne',
-    'multi-activites': 'Multi-activités',
-    solidarite: 'Solidarité',
-    science: 'Sciences',
-    arts: 'Arts'
+    mer: 'Séjour à la mer',
+    montagne: 'Séjour à la montagne',
+    campagne: 'Séjour à la campagne',
+    artistique: 'Séjour artistique',
+    equestre: 'Séjour équestre',
+    linguistique: 'Séjour linguistique',
+    scientifique: 'Séjour scientifique',
+    sportif: 'Séjour sportif',
+    itinerant: 'Séjour itinérant',
+    etranger: "Séjour à l'étranger"
   },
   audiences: {
     '6-9': '6-9 ans',

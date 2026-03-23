@@ -1,29 +1,24 @@
 import { revalidatePath } from 'next/cache';
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import SavedToast from '@/components/common/SavedToast';
+import { formatAccommodationType } from '@/components/organisme/AccommodationFormFields';
 import { requireRole } from '@/lib/auth/require';
+import { deleteAccommodationForOrganizer } from '@/lib/accommodations';
 import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
-import { slugify } from '@/lib/utils';
 
 type PageProps = {
   searchParams?: {
     organizerId?: string | string[];
     saved?: string | string[];
+    deleted?: string | string[];
     error?: string | string[];
   };
 };
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
-
-const ACCOMMODATION_TYPE_OPTIONS = [
-  'centre',
-  'auberge de jeunesse',
-  'camping',
-  "famille d'accueil",
-  'mixte'
-] as const;
 
 export default async function OrganizerAccommodationsPage({ searchParams }: PageProps) {
   const session = requireRole('ORGANISATEUR');
@@ -33,8 +28,10 @@ export default async function OrganizerAccommodationsPage({ searchParams }: Page
     session.tenantId ?? null
   );
   const savedParam = Array.isArray(searchParams?.saved) ? searchParams?.saved[0] : searchParams?.saved;
+  const deletedParam = Array.isArray(searchParams?.deleted) ? searchParams?.deleted[0] : searchParams?.deleted;
   const errorParam = Array.isArray(searchParams?.error) ? searchParams?.error[0] : searchParams?.error;
   const showSavedBanner = savedParam === '1';
+  const showDeletedBanner = deletedParam === '1';
 
   if (!selectedOrganizerId) {
     redirect('/organisme/sejours');
@@ -44,7 +41,7 @@ export default async function OrganizerAccommodationsPage({ searchParams }: Page
     supabase
       .from('accommodations')
       .select(
-        'id,name,accommodation_type,description,capacity_total,room_count,bed_info,bathroom_info,indoor_features,outdoor_features,medical_proximity,catering_info,accessibility_info,status,updated_at'
+        'id,name,accommodation_type,description,bed_info,bathroom_info,catering_info,accessibility_info,status,updated_at'
       )
       .eq('organizer_id', selectedOrganizerId)
       .order('name', { ascending: true }),
@@ -78,457 +75,124 @@ export default async function OrganizerAccommodationsPage({ searchParams }: Page
     mediaCount: mediaCountByAccommodationId.get(accommodation.id) ?? 0
   }));
 
-  async function createAccommodation(formData: FormData) {
+  async function deleteAccommodation(formData: FormData) {
     'use server';
-    const supabase = getServerSupabaseClient();
-    const name = String(formData.get('name') ?? '').trim();
-    const accommodationType = String(formData.get('accommodation_type') ?? '').trim();
+    const accommodationId = String(formData.get('accommodation_id') ?? '').trim();
 
-    if (!name || !accommodationType) {
-      redirect(withOrganizerQuery('/organisme/hebergements?error=missing-required-fields', selectedOrganizerId));
+    if (!accommodationId) {
+      redirect(withOrganizerQuery('/organisme/hebergements?error=missing-accommodation-id', selectedOrganizerId));
     }
 
-    const now = new Date().toISOString();
-    const { error } = await supabase.from('accommodations').insert({
-      organizer_id: selectedOrganizerId,
-      name,
-      accommodation_type: accommodationType,
-      description: String(formData.get('description') ?? '').trim() || null,
-      capacity_total: Number(formData.get('capacity_total') ?? 0) || null,
-      room_count: Number(formData.get('room_count') ?? 0) || null,
-      bed_info: String(formData.get('bed_info') ?? '').trim() || null,
-      bathroom_info: String(formData.get('bathroom_info') ?? '').trim() || null,
-      indoor_features: String(formData.get('indoor_features') ?? '').trim() || null,
-      outdoor_features: String(formData.get('outdoor_features') ?? '').trim() || null,
-      medical_proximity: String(formData.get('medical_proximity') ?? '').trim() || null,
-      catering_info: String(formData.get('catering_info') ?? '').trim() || null,
-      accessibility_info: String(formData.get('accessibility_info') ?? '').trim() || null,
-      slug: slugify(name),
-      ai_extracted_data: null,
-      status: 'DRAFT',
-      validated_at: null,
-      validated_by_user_id: null,
-      created_at: now,
-      updated_at: now
+    const { error } = await deleteAccommodationForOrganizer({
+      accommodationId,
+      organizerId: selectedOrganizerId
     });
 
     if (error) {
-      console.error('Erreur Supabase (create accommodation)', error.message);
-      redirect(withOrganizerQuery(`/organisme/hebergements?error=${encodeURIComponent(error.message)}`, selectedOrganizerId));
+      redirect(
+        withOrganizerQuery(
+          `/organisme/hebergements?error=${encodeURIComponent(error)}`,
+          selectedOrganizerId
+        )
+      );
     }
 
     revalidatePath('/organisme/hebergements');
     revalidatePath('/organisme/sejours');
     revalidatePath('/organisme/stays');
-    redirect(withOrganizerQuery('/organisme/hebergements?saved=1', selectedOrganizerId));
-  }
-
-  async function updateAccommodation(formData: FormData) {
-    'use server';
-    const supabase = getServerSupabaseClient();
-    const accommodationId = String(formData.get('accommodation_id') ?? '').trim();
-    const name = String(formData.get('name') ?? '').trim();
-    const accommodationType = String(formData.get('accommodation_type') ?? '').trim();
-
-    if (!accommodationId || !name || !accommodationType) {
-      redirect(withOrganizerQuery('/organisme/hebergements?error=missing-fields', selectedOrganizerId));
-    }
-
-    const { error } = await supabase
-      .from('accommodations')
-      .update({
-        name,
-        accommodation_type: accommodationType,
-        description: String(formData.get('description') ?? '').trim() || null,
-        capacity_total: Number(formData.get('capacity_total') ?? 0) || null,
-        room_count: Number(formData.get('room_count') ?? 0) || null,
-        bed_info: String(formData.get('bed_info') ?? '').trim() || null,
-        bathroom_info: String(formData.get('bathroom_info') ?? '').trim() || null,
-        indoor_features: String(formData.get('indoor_features') ?? '').trim() || null,
-        outdoor_features: String(formData.get('outdoor_features') ?? '').trim() || null,
-        medical_proximity: String(formData.get('medical_proximity') ?? '').trim() || null,
-        catering_info: String(formData.get('catering_info') ?? '').trim() || null,
-        accessibility_info: String(formData.get('accessibility_info') ?? '').trim() || null,
-        slug: slugify(name),
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', accommodationId)
-      .eq('organizer_id', selectedOrganizerId);
-
-    if (error) {
-      console.error('Erreur Supabase (update accommodation)', error.message);
-      redirect(withOrganizerQuery(`/organisme/hebergements?error=${encodeURIComponent(error.message)}`, selectedOrganizerId));
-    }
-
-    revalidatePath('/organisme/hebergements');
-    revalidatePath('/organisme/sejours');
-    revalidatePath('/organisme/stays');
-    redirect(withOrganizerQuery('/organisme/hebergements?saved=1', selectedOrganizerId));
+    redirect(withOrganizerQuery('/organisme/hebergements?deleted=1', selectedOrganizerId));
   }
 
   return (
     <div className="space-y-6">
       {showSavedBanner && <SavedToast message="La fiche hébergement a bien été enregistrée." />}
+      {showDeletedBanner && <SavedToast message="La fiche hébergement a bien été supprimée." />}
       {errorParam && (
         <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-          Impossible d&apos;enregistrer l&apos;hébergement : {decodeURIComponent(errorParam)}
+          {decodeURIComponent(errorParam)}
         </div>
       )}
 
-      <div>
-        <h1 className="text-2xl font-semibold text-slate-900">Hébergements</h1>
-        <p className="text-sm text-slate-600">
-          {selectedOrganizer
-            ? `Gestion des hébergements réutilisables pour ${selectedOrganizer.name}.`
-            : 'Gestion des hébergements réutilisables.'}
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold text-slate-900">Hébergements</h1>
+          <p className="text-sm text-slate-600">
+            {selectedOrganizer
+              ? `Gestion des hébergements réutilisables pour ${selectedOrganizer.name}.`
+              : 'Gestion des hébergements réutilisables.'}
+          </p>
+        </div>
+        <Link
+          href={withOrganizerQuery('/organisme/hebergements/new', selectedOrganizerId)}
+          className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white"
+        >
+          Ajouter un hébergement
+        </Link>
       </div>
 
-      <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
-        <div>
-          <h2 className="text-lg font-semibold text-slate-900">Ajouter un hébergement</h2>
-          <p className="mt-1 text-sm text-slate-600">
-            Seuls le nom et le type sont obligatoires. Le reste peut être complété plus tard.
-          </p>
-        </div>
-        <form action={createAccommodation} className="grid gap-4 md:grid-cols-2">
-          <div className="md:col-span-2 grid gap-4 md:grid-cols-2">
-            <label className="block text-sm font-medium text-slate-700">
-              Nom de l&apos;hébergement
-              <input
-                name="name"
-                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-                required
-              />
-            </label>
-            <label className="block text-sm font-medium text-slate-700">
-              Type d&apos;hébergement
-              <select
-                name="accommodation_type"
-                defaultValue=""
-                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-                required
-              >
-                <option value="">Sélectionner</option>
-                {ACCOMMODATION_TYPE_OPTIONS.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-          <label className="block text-sm font-medium text-slate-700 md:col-span-2">
-            Description
-            <textarea
-              name="description"
-              rows={3}
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-            />
-          </label>
-
-          <div className="md:col-span-2 rounded-xl border border-slate-100 p-4">
-            <h3 className="text-sm font-semibold text-slate-900">Capacité & couchage</h3>
-            <div className="mt-3 grid gap-4 md:grid-cols-2">
-              <label className="block text-sm font-medium text-slate-700">
-                Capacité totale
-                <input
-                  name="capacity_total"
-                  type="number"
-                  min="0"
-                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-                />
-              </label>
-              <label className="block text-sm font-medium text-slate-700">
-                Nombre de chambres
-                <input
-                  name="room_count"
-                  type="number"
-                  min="0"
-                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-                />
-              </label>
-              <label className="block text-sm font-medium text-slate-700 md:col-span-2">
-                Informations couchage
-                <textarea
-                  name="bed_info"
-                  rows={3}
-                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-                />
-              </label>
-            </div>
-          </div>
-
-          <div className="md:col-span-2 rounded-xl border border-slate-100 p-4">
-            <h3 className="text-sm font-semibold text-slate-900">Sanitaires & confort</h3>
-            <div className="mt-3 grid gap-4 md:grid-cols-2">
-              <label className="block text-sm font-medium text-slate-700">
-                Sanitaires
-                <textarea
-                  name="bathroom_info"
-                  rows={3}
-                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-                />
-              </label>
-              <label className="block text-sm font-medium text-slate-700">
-                Confort intérieur
-                <textarea
-                  name="indoor_features"
-                  rows={3}
-                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-                />
-              </label>
-            </div>
-          </div>
-
-          <div className="md:col-span-2 rounded-xl border border-slate-100 p-4">
-            <h3 className="text-sm font-semibold text-slate-900">Extérieurs & environnement</h3>
-            <div className="mt-3 grid gap-4 md:grid-cols-2">
-              <label className="block text-sm font-medium text-slate-700">
-                Espaces extérieurs
-                <textarea
-                  name="outdoor_features"
-                  rows={3}
-                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-                />
-              </label>
-              <label className="block text-sm font-medium text-slate-700">
-                Proximité médicale
-                <textarea
-                  name="medical_proximity"
-                  rows={3}
-                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-                />
-              </label>
-            </div>
-          </div>
-
-          <div className="md:col-span-2 rounded-xl border border-slate-100 p-4">
-            <h3 className="text-sm font-semibold text-slate-900">Restauration</h3>
-            <label className="mt-3 block text-sm font-medium text-slate-700">
-              Informations restauration
-              <textarea
-                name="catering_info"
-                rows={3}
-                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-              />
-            </label>
-          </div>
-
-          <div className="md:col-span-2 rounded-xl border border-slate-100 p-4">
-            <h3 className="text-sm font-semibold text-slate-900">Accessibilité</h3>
-            <label className="mt-3 block text-sm font-medium text-slate-700">
-              Informations accessibilité
-              <textarea
-                name="accessibility_info"
-                rows={3}
-                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-              />
-            </label>
-          </div>
-
-          <div className="md:col-span-2 rounded-xl border border-slate-100 p-4">
-            <h3 className="text-sm font-semibold text-slate-900">Médias</h3>
-            <p className="mt-2 text-sm text-slate-500">
-              Les photos seront rattachées à la fiche une fois l&apos;hébergement créé.
-            </p>
-          </div>
-          <div className="md:col-span-2 flex justify-end">
-            <button className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">
-              Créer l&apos;hébergement
-            </button>
-          </div>
-        </form>
-      </section>
-
-      <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
-        <div>
-          <h2 className="text-lg font-semibold text-slate-900">Hébergements existants</h2>
-          <p className="mt-1 text-sm text-slate-600">
-            Les modifications faites ici seront visibles depuis les séjours qui utilisent ces fiches.
-          </p>
-        </div>
-
-        {accommodations.length === 0 ? (
-          <p className="text-sm text-slate-500">Aucun hébergement créé pour cet organisateur.</p>
-        ) : (
-          <div className="space-y-4">
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+        <table className="w-full text-left text-sm">
+          <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+            <tr>
+              <th className="px-4 py-3">Hébergement</th>
+              <th className="px-4 py-3">Type</th>
+              <th className="px-4 py-3">Séjours liés</th>
+              <th className="px-4 py-3">Médias</th>
+              <th className="px-4 py-3">Statut</th>
+              <th className="px-4 py-3">Mis à jour</th>
+              <th className="px-4 py-3"></th>
+            </tr>
+          </thead>
+          <tbody>
             {accommodations.map((accommodation) => (
-              <form
-                key={accommodation.id}
-                action={updateAccommodation}
-                className="grid gap-4 rounded-2xl border border-slate-100 p-4 md:grid-cols-2"
-              >
-                <input type="hidden" name="accommodation_id" value={accommodation.id} />
-                <div className="md:col-span-2 flex items-start justify-between gap-4">
-                  <div>
-                    <h3 className="text-base font-semibold text-slate-900">{accommodation.name}</h3>
-                    <p className="text-xs text-slate-500">
-                      Mis à jour le {new Date(accommodation.updated_at).toLocaleDateString('fr-FR')}
-                    </p>
-                    <p className="mt-1 text-xs text-slate-500">
-                      Type : {accommodation.accommodation_type || 'Non renseigné'} · Statut : {accommodation.status}
-                    </p>
-                    {accommodation.linkedStayTitles.length > 0 && (
-                      <p className="mt-1 text-xs text-slate-500">
-                        Utilisé dans : {accommodation.linkedStayTitles.join(', ')}
-                      </p>
-                    )}
-                    <p className="mt-1 text-xs text-slate-500">
-                      Médias liés : {accommodation.mediaCount}
-                    </p>
+              <tr key={accommodation.id} className="border-t border-slate-100 align-top">
+                <td className="px-4 py-3">
+                  <div className="font-medium text-slate-900">{accommodation.name}</div>
+                  <div className="mt-1 max-w-md text-xs text-slate-500">
+                    {accommodation.description || 'Aucune description'}
                   </div>
-                </div>
-                <div className="md:col-span-2 grid gap-4 md:grid-cols-2">
-                  <label className="block text-sm font-medium text-slate-700">
-                    Nom de l&apos;hébergement
-                    <input
-                      name="name"
-                      defaultValue={accommodation.name}
-                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-                      required
-                    />
-                  </label>
-                  <label className="block text-sm font-medium text-slate-700">
-                    Type d&apos;hébergement
-                    <select
-                      name="accommodation_type"
-                      defaultValue={accommodation.accommodation_type ?? ''}
-                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-                      required
+                </td>
+                <td className="px-4 py-3 text-slate-600">
+                  {formatAccommodationType(accommodation.accommodation_type)}
+                </td>
+                <td className="px-4 py-3 text-slate-600">
+                  {accommodation.linkedStayTitles.length > 0
+                    ? accommodation.linkedStayTitles.join(', ')
+                    : 'Aucun'}
+                </td>
+                <td className="px-4 py-3 text-slate-600">{accommodation.mediaCount}</td>
+                <td className="px-4 py-3 text-slate-600">{accommodation.status}</td>
+                <td className="px-4 py-3 text-slate-600">
+                  {new Date(accommodation.updated_at).toLocaleDateString('fr-FR')}
+                </td>
+                <td className="px-4 py-3 text-right">
+                  <div className="flex items-center justify-end gap-2">
+                    <Link
+                      href={withOrganizerQuery(`/organisme/hebergements/${accommodation.id}`, selectedOrganizerId)}
+                      className="rounded-lg border border-emerald-200 px-3 py-1 text-xs font-semibold text-emerald-700"
                     >
-                      <option value="">Sélectionner</option>
-                      {ACCOMMODATION_TYPE_OPTIONS.map((option) => (
-                        <option key={option} value={option}>
-                          {option}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-                <label className="block text-sm font-medium text-slate-700 md:col-span-2">
-                  Description
-                  <textarea
-                    name="description"
-                    rows={3}
-                    defaultValue={accommodation.description ?? ''}
-                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-                  />
-                </label>
-                <div className="md:col-span-2 rounded-xl border border-slate-100 p-4">
-                  <h4 className="text-sm font-semibold text-slate-900">Capacité & couchage</h4>
-                  <div className="mt-3 grid gap-4 md:grid-cols-2">
-                    <label className="block text-sm font-medium text-slate-700">
-                      Capacité totale
-                      <input
-                        name="capacity_total"
-                        type="number"
-                        min="0"
-                        defaultValue={accommodation.capacity_total ?? ''}
-                        className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-                      />
-                    </label>
-                    <label className="block text-sm font-medium text-slate-700">
-                      Nombre de chambres
-                      <input
-                        name="room_count"
-                        type="number"
-                        min="0"
-                        defaultValue={accommodation.room_count ?? ''}
-                        className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-                      />
-                    </label>
-                    <label className="block text-sm font-medium text-slate-700 md:col-span-2">
-                      Informations couchage
-                      <textarea
-                        name="bed_info"
-                        rows={3}
-                        defaultValue={accommodation.bed_info ?? ''}
-                        className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-                      />
-                    </label>
+                      Éditer
+                    </Link>
+                    <form action={deleteAccommodation}>
+                      <input type="hidden" name="accommodation_id" value={accommodation.id} />
+                      <button className="rounded-lg border border-rose-200 px-3 py-1 text-xs font-semibold text-rose-700">
+                        Supprimer
+                      </button>
+                    </form>
                   </div>
-                </div>
-                <div className="md:col-span-2 rounded-xl border border-slate-100 p-4">
-                  <h4 className="text-sm font-semibold text-slate-900">Sanitaires & confort</h4>
-                  <div className="mt-3 grid gap-4 md:grid-cols-2">
-                    <label className="block text-sm font-medium text-slate-700">
-                      Sanitaires
-                      <textarea
-                        name="bathroom_info"
-                        rows={3}
-                        defaultValue={accommodation.bathroom_info ?? ''}
-                        className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-                      />
-                    </label>
-                    <label className="block text-sm font-medium text-slate-700">
-                      Confort intérieur
-                      <textarea
-                        name="indoor_features"
-                        rows={3}
-                        defaultValue={accommodation.indoor_features ?? ''}
-                        className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-                      />
-                    </label>
-                  </div>
-                </div>
-                <div className="md:col-span-2 rounded-xl border border-slate-100 p-4">
-                  <h4 className="text-sm font-semibold text-slate-900">Extérieurs & environnement</h4>
-                  <div className="mt-3 grid gap-4 md:grid-cols-2">
-                    <label className="block text-sm font-medium text-slate-700">
-                      Espaces extérieurs
-                      <textarea
-                        name="outdoor_features"
-                        rows={3}
-                        defaultValue={accommodation.outdoor_features ?? ''}
-                        className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-                      />
-                    </label>
-                    <label className="block text-sm font-medium text-slate-700">
-                      Proximité médicale
-                      <textarea
-                        name="medical_proximity"
-                        rows={3}
-                        defaultValue={accommodation.medical_proximity ?? ''}
-                        className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-                      />
-                    </label>
-                  </div>
-                </div>
-                <div className="md:col-span-2 rounded-xl border border-slate-100 p-4">
-                  <h4 className="text-sm font-semibold text-slate-900">Restauration</h4>
-                  <label className="mt-3 block text-sm font-medium text-slate-700">
-                    Informations restauration
-                    <textarea
-                      name="catering_info"
-                      rows={3}
-                      defaultValue={accommodation.catering_info ?? ''}
-                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-                    />
-                  </label>
-                </div>
-                <div className="md:col-span-2 rounded-xl border border-slate-100 p-4">
-                  <h4 className="text-sm font-semibold text-slate-900">Accessibilité</h4>
-                  <label className="mt-3 block text-sm font-medium text-slate-700">
-                    Informations accessibilité
-                    <textarea
-                      name="accessibility_info"
-                      rows={3}
-                      defaultValue={accommodation.accessibility_info ?? ''}
-                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-                    />
-                  </label>
-                </div>
-                <div className="md:col-span-2 flex justify-end">
-                  <button className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white">
-                    Enregistrer l&apos;hébergement
-                  </button>
-                </div>
-              </form>
+                </td>
+              </tr>
             ))}
-          </div>
-        )}
-      </section>
+            {accommodations.length === 0 && (
+              <tr>
+                <td className="px-4 py-6 text-slate-500" colSpan={7}>
+                  Aucun hébergement créé pour cet organisateur.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

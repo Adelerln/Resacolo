@@ -51,16 +51,38 @@ export default function GoogleMapsCityInput({
   className
 }: GoogleMapsCityInputProps) {
   const containerRef = useRef<HTMLLabelElement | null>(null);
+  const hasUserTypedRef = useRef(false);
+  const skipNextLookupRef = useRef(false);
   const [value, setValue] = useState(defaultValue);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
+    hasUserTypedRef.current = false;
+    skipNextLookupRef.current = false;
     setValue(defaultValue);
+    setSuggestions([]);
+    setIsOpen(false);
+    setIsLoading(false);
   }, [defaultValue]);
 
   useEffect(() => {
+    if (!hasUserTypedRef.current) {
+      setSuggestions([]);
+      setIsOpen(false);
+      setIsLoading(false);
+      return;
+    }
+
+    if (skipNextLookupRef.current) {
+      skipNextLookupRef.current = false;
+      setSuggestions([]);
+      setIsOpen(false);
+      setIsLoading(false);
+      return;
+    }
+
     if (value.trim().length < 2) {
       setSuggestions([]);
       setIsOpen(false);
@@ -131,9 +153,12 @@ export default function GoogleMapsCityInput({
         <input
           name={name}
           value={value}
-          onChange={(event) => setValue(event.target.value)}
+          onChange={(event) => {
+            hasUserTypedRef.current = true;
+            setValue(event.target.value);
+          }}
           onFocus={() => {
-            if (suggestions.length > 0) {
+            if (hasUserTypedRef.current && suggestions.length > 0) {
               setIsOpen(true);
             }
           }}
@@ -155,7 +180,9 @@ export default function GoogleMapsCityInput({
                   <button
                     type="button"
                     onClick={() => {
+                      skipNextLookupRef.current = true;
                       setValue(suggestion.city);
+                      setSuggestions([]);
                       setIsOpen(false);
                     }}
                     className="flex w-full cursor-pointer flex-col px-3 py-2 text-left hover:bg-slate-50"

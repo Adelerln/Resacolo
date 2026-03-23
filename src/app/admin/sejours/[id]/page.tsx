@@ -17,6 +17,35 @@ type PageProps = {
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+function parseOptionalEuros(value: FormDataEntryValue | null) {
+  const raw = String(value ?? '').trim().replace(',', '.');
+  if (!raw) return null;
+  const parsed = Number(raw);
+  if (Number.isNaN(parsed) || parsed < 0) return null;
+  return parsed;
+}
+
+function getSessionPriceAmountCents(
+  sessionItem: {
+    session_prices?:
+      | {
+          amount_cents: number;
+          currency: string;
+        }
+      | {
+          amount_cents: number;
+          currency: string;
+        }[]
+      | null;
+  }
+) {
+  if (!sessionItem.session_prices) return null;
+  if (Array.isArray(sessionItem.session_prices)) {
+    return sessionItem.session_prices[0]?.amount_cents ?? null;
+  }
+  return sessionItem.session_prices.amount_cents ?? null;
+}
+
 export default async function AdminStayDetailPage({ params, searchParams }: PageProps) {
   requireRole('ADMIN');
   const supabase = getServerSupabaseClient();
@@ -44,7 +73,7 @@ export default async function AdminStayDetailPage({ params, searchParams }: Page
       supabase.from('seasons').select('id,name').order('name', { ascending: true }),
       supabase
         .from('sessions')
-        .select('id,start_date,end_date,capacity_total,capacity_reserved,status')
+        .select('id,start_date,end_date,capacity_total,capacity_reserved,status,session_prices(amount_cents,currency)')
         .eq('stay_id', currentStay.id)
         .order('start_date', { ascending: true }),
       supabase
@@ -100,20 +129,70 @@ export default async function AdminStayDetailPage({ params, searchParams }: Page
     const startDate = String(formData.get('startDate') ?? '').trim();
     const endDate = String(formData.get('endDate') ?? '').trim();
     const capacityTotal = Number(formData.get('capacityTotal') ?? 0);
-    if (!startDate || !endDate || !capacityTotal) {
+    const amountEuros = parseOptionalEuros(formData.get('amount_euros'));
+    const rawAmount = String(formData.get('amount_euros') ?? '').trim();
+
+    if (
+      !startDate ||
+      !endDate ||
+      Number.isNaN(capacityTotal) ||
+      capacityTotal < 0 ||
+      (rawAmount && amountEuros === null)
+    ) {
       redirect(`/admin/sejours/${currentStay.id}`);
     }
 
-    await supabase.from('sessions').insert({
-      stay_id: currentStay.id,
-      start_date: startDate,
-      end_date: endDate,
-      capacity_total: capacityTotal,
-      capacity_reserved: 0,
-      status: 'OPEN'
-    });
+    const { data: createdSession, error: sessionError } = await supabase
+      .from('sessions')
+      .insert({
+        stay_id: currentStay.id,
+        start_date: startDate,
+        end_date: endDate,
+        capacity_total: capacityTotal,
+        capacity_reserved: 0,
+        status: 'OPEN'
+      })
+      .select('id')
+      .single();
+
+    if (sessionError || !createdSession) {
+      console.error('Erreur Supabase (admin add session)', sessionError?.message ?? 'unknown');
+      redirect(`/admin/sejours/${currentStay.id}`);
+    }
+
+    if (amountEuros !== null) {
+      const { error: priceError } = await supabase.from('session_prices').insert({
+        session_id: createdSession.id,
+        amount_cents: Math.round(amountEuros * 100),
+        currency: 'EUR'
+      });
+
+      if (priceError) {
+        await supabase.from('sessions').delete().eq('id', createdSession.id).eq('stay_id', currentStay.id);
+        console.error('Erreur Supabase (admin add session price)', priceError.message);
+        redirect(`/admin/sejours/${currentStay.id}`);
+      }
+    }
 
     redirect(`/admin/sejours/${currentStay.id}`);
+  }
+
+  async function deleteSession(formData: FormData) {
+    'use server';
+    const supabase = getServerSupabaseClient();
+    const sessionId = String(formData.get('session_id') ?? '').trim();
+
+    if (!sessionId) {
+      redirect(`/admin/sejours/${currentStay.id}`);
+    }
+
+    await supabase
+      .from('sessions')
+      .delete()
+      .eq('id', sessionId)
+      .eq('stay_id', currentStay.id);
+
+    redirect(`/admin/sejours/${currentStay.id}?saved=1`);
   }
 
   return (
@@ -270,20 +349,36 @@ export default async function AdminStayDetailPage({ params, searchParams }: Page
           <ul className="mt-4 space-y-2 text-sm text-slate-600">
             {sessions.map((sessionItem) => (
               <li key={sessionItem.id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-100 px-3 py-2">
-                <span>
-                  {new Date(sessionItem.start_date).toLocaleDateString('fr-FR')} -{' '}
-                  {new Date(sessionItem.end_date).toLocaleDateString('fr-FR')}
-                </span>
-                <span className="text-xs text-slate-500">
-                  {sessionItem.capacity_reserved}/{sessionItem.capacity_total} ({sessionStatusLabel(sessionItem.status)})
-                </span>
+                <div>
+                  <div>
+                    {new Date(sessionItem.start_date).toLocaleDateString('fr-FR')} -{' '}
+                    {new Date(sessionItem.end_date).toLocaleDateString('fr-FR')}
+                  </div>
+                  <div className="text-xs text-slate-500">
+                    {sessionItem.capacity_reserved}/{sessionItem.capacity_total} ({sessionStatusLabel(sessionItem.status)})
+                  </div>
+                  {getSessionPriceAmountCents(sessionItem) !== null && (
+                    <div className="text-xs text-slate-500">
+                      Prix: {(getSessionPriceAmountCents(sessionItem)! / 100).toLocaleString('fr-FR', {
+                        style: 'currency',
+                        currency: 'EUR'
+                      })}
+                    </div>
+                  )}
+                </div>
+                <form action={deleteSession}>
+                  <input type="hidden" name="session_id" value={sessionItem.id} />
+                  <button className="rounded-lg border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-700">
+                    Supprimer
+                  </button>
+                </form>
               </li>
             ))}
             {sessions.length === 0 && <li>Aucune session.</li>}
           </ul>
 
           <form action={addSession} className="mt-4 space-y-3 border-t border-slate-100 pt-4">
-            <div className="grid gap-3 md:grid-cols-3">
+            <div className="grid gap-3 md:grid-cols-4">
               <label className="text-xs font-medium text-slate-600">
                 Debut
                 <input
@@ -307,8 +402,20 @@ export default async function AdminStayDetailPage({ params, searchParams }: Page
                 <input
                   name="capacityTotal"
                   type="number"
+                  min="0"
                   className="mt-1 w-full rounded border border-slate-200 px-2 py-1"
                   required
+                />
+              </label>
+              <label className="text-xs font-medium text-slate-600">
+                Prix en euros
+                <input
+                  name="amount_euros"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className="mt-1 w-full rounded border border-slate-200 px-2 py-1"
+                  placeholder="0,00"
                 />
               </label>
             </div>

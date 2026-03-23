@@ -1,10 +1,20 @@
 import { cache } from 'react';
 import { NextRequest } from 'next/server';
+import { formatAccommodationType } from '@/components/organisme/AccommodationFormFields';
 import { FILTER_LABELS } from '@/lib/constants';
+import { normalizeStayCategories } from '@/lib/stay-categories';
 import { deriveStayAudiences, formatStayAgeRange } from '@/lib/stay-ages';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { slugify } from '@/lib/utils';
-import type { Stay, StayDuration, StaySearchParams } from '@/types/stay';
+import type {
+  Stay,
+  StayDuration,
+  StaySearchParams,
+  StaySessionOption,
+  StayExtraOption,
+  StayInsuranceOption,
+  StayTransportOption
+} from '@/types/stay';
 import type { Database } from '@/types/supabase';
 
 type PeriodKey = keyof typeof FILTER_LABELS.periods;
@@ -12,32 +22,50 @@ type TransportKey = keyof typeof FILTER_LABELS.transport;
 type OrganizerRow = Pick<Database['public']['Tables']['organizers']['Row'], 'id' | 'name' | 'logo_path'>;
 type StayMediaRow = Pick<Database['public']['Tables']['stay_media']['Row'], 'url' | 'position' | 'media_type'>;
 type SessionRow = Pick<Database['public']['Tables']['sessions']['Row'], 'start_date' | 'end_date'>;
+type SessionPriceRow = Pick<
+  Database['public']['Tables']['session_prices']['Row'],
+  'amount_cents' | 'currency'
+>;
+type TransportOptionRow = Pick<
+  Database['public']['Tables']['transport_options']['Row'],
+  'id' | 'departure_city' | 'return_city' | 'amount_cents'
+>;
+type InsuranceOptionRow = Pick<
+  Database['public']['Tables']['insurance_options']['Row'],
+  'id' | 'label' | 'amount_cents' | 'percent_value' | 'pricing_mode' | 'stay_id'
+>;
+type ExtraOptionRow = Pick<
+  Database['public']['Tables']['stay_extra_options']['Row'],
+  'id' | 'stay_id' | 'label' | 'amount_cents' | 'position'
+>;
+type SessionWithOptionsRow = Pick<
+  Database['public']['Tables']['sessions']['Row'],
+  'id' | 'stay_id' | 'start_date' | 'end_date' | 'status' | 'capacity_total' | 'capacity_reserved'
+> & {
+  session_prices: SessionPriceRow[] | SessionPriceRow | null;
+  transport_options: TransportOptionRow[] | null;
+};
 type AccommodationRow = Pick<
   Database['public']['Tables']['accommodations']['Row'],
   | 'id'
   | 'name'
   | 'accommodation_type'
   | 'description'
-  | 'capacity_total'
-  | 'room_count'
   | 'bed_info'
   | 'bathroom_info'
-  | 'indoor_features'
-  | 'outdoor_features'
-  | 'medical_proximity'
   | 'catering_info'
   | 'accessibility_info'
 >;
 type StayAccommodationRow = Pick<
   Database['public']['Tables']['stay_accommodations']['Row'],
-  'stay_id' | 'accommodation_id' | 'position'
+  'stay_id' | 'accommodation_id'
 >;
 
 const DAY_MS = 1000 * 60 * 60 * 24;
 
-function deriveDurationDays(sessions: SessionRow[] | null | undefined) {
-  if (!sessions || sessions.length === 0) return null;
-  const days = sessions
+function deriveSessionDurations(sessions: SessionRow[] | null | undefined) {
+  if (!sessions || sessions.length === 0) return [];
+  return sessions
     .map((session) => {
       const start = new Date(session.start_date).getTime();
       const end = new Date(session.end_date).getTime();
@@ -46,22 +74,41 @@ function deriveDurationDays(sessions: SessionRow[] | null | undefined) {
       return diff + 1;
     })
     .filter((value): value is number => typeof value === 'number' && value > 0);
+}
 
+function deriveDurationBounds(days: number[]) {
   if (!days.length) return null;
-  return Math.min(...days);
+  return {
+    min: Math.min(...days),
+    max: Math.max(...days)
+  };
 }
 
-function formatDurationLabel(days: number | null) {
-  if (!days) return 'Durée à venir';
-  return days === 1 ? '1 jour' : `${days} jours`;
+function formatDurationLabel(days: number[]) {
+  const bounds = deriveDurationBounds(days);
+  if (!bounds) return 'Durée à venir';
+  if (bounds.min === bounds.max) {
+    return bounds.min === 1 ? '1 jour' : `${bounds.min} jours`;
+  }
+  return `${bounds.min} à ${bounds.max} jours`;
 }
 
-function deriveDurationFilters(days: number | null): StayDuration[] {
-  if (!days) return [];
-  if (days <= 4) return ['mini-sejour'];
-  if (days <= 7) return ['semaine'];
-  if (days <= 14) return ['quinzaine'];
-  return ['long'];
+function deriveDurationFilters(days: number[]): StayDuration[] {
+  const durations = new Set<StayDuration>();
+
+  for (const dayCount of days) {
+    if (dayCount <= 4) {
+      durations.add('mini-sejour');
+    } else if (dayCount <= 7) {
+      durations.add('semaine');
+    } else if (dayCount <= 14) {
+      durations.add('quinzaine');
+    } else {
+      durations.add('long');
+    }
+  }
+
+  return Array.from(durations);
 }
 
 function derivePeriods(sessions: SessionRow[] | null | undefined): {
@@ -127,15 +174,10 @@ function buildAccommodationText(accommodations: AccommodationRow[]) {
   return accommodations
     .map((accommodation) => {
       const details = [
-        accommodation.accommodation_type,
+        formatAccommodationType(accommodation.accommodation_type),
         accommodation.description,
-        accommodation.capacity_total ? `Capacité totale : ${accommodation.capacity_total}` : null,
-        accommodation.room_count ? `Nombre de chambres : ${accommodation.room_count}` : null,
         accommodation.bed_info,
         accommodation.bathroom_info,
-        accommodation.indoor_features,
-        accommodation.outdoor_features,
-        accommodation.medical_proximity,
         accommodation.catering_info,
         accommodation.accessibility_info
       ]
@@ -153,7 +195,7 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
   const { data, error } = await supabase
     .from('stays')
     .select(
-      'id,title,summary,description,activities_text,program_text,supervision_text,required_documents_text,transport_text,location_text,ages,age_min,age_max,transport_mode,updated_at,status,organizer_id'
+      'id,title,summary,description,activities_text,program_text,supervision_text,required_documents_text,transport_text,location_text,categories,ages,age_min,age_max,transport_mode,updated_at,status,organizer_id'
     )
     .order('created_at', { ascending: false });
 
@@ -173,7 +215,9 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
     { data: mediaRaw },
     { data: sessionsRaw },
     { data: stayAccommodationRows },
-    { data: accommodationsRaw }
+    { data: accommodationsRaw },
+    { data: extraOptionsRaw },
+    { data: insuranceOptionsRaw }
   ] = await Promise.all([
     organizerIds.length
       ? supabase.from('organizers').select('id,name,logo_path').in('id', organizerIds)
@@ -187,28 +231,43 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
     stayIds.length
       ? supabase
           .from('sessions')
-          .select('stay_id,start_date,end_date')
+          .select(
+            'id,stay_id,start_date,end_date,status,capacity_total,capacity_reserved,session_prices(amount_cents,currency),transport_options(id,departure_city,return_city,amount_cents)'
+          )
           .in('stay_id', stayIds)
-      : Promise.resolve({ data: [] as Array<SessionRow & { stay_id: string }> | null }),
+      : Promise.resolve({ data: [] as SessionWithOptionsRow[] | null }),
     stayIds.length
       ? supabase
           .from('stay_accommodations')
-          .select('stay_id,accommodation_id,position')
+          .select('stay_id,accommodation_id')
           .in('stay_id', stayIds)
       : Promise.resolve({ data: [] as StayAccommodationRow[] | null }),
     stayIds.length
       ? supabase
           .from('accommodations')
-          .select(
-            'id,name,accommodation_type,description,capacity_total,room_count,bed_info,bathroom_info,indoor_features,outdoor_features,medical_proximity,catering_info,accessibility_info'
-          )
-      : Promise.resolve({ data: [] as AccommodationRow[] | null })
+          .select('id,name,accommodation_type,description,bed_info,bathroom_info,catering_info,accessibility_info')
+      : Promise.resolve({ data: [] as AccommodationRow[] | null }),
+    stayIds.length
+      ? supabase
+          .from('stay_extra_options')
+          .select('id,stay_id,label,amount_cents,position')
+          .in('stay_id', stayIds)
+          .order('position', { ascending: true })
+      : Promise.resolve({ data: [] as ExtraOptionRow[] | null }),
+    stayIds.length
+      ? supabase
+          .from('insurance_options')
+          .select('id,label,amount_cents,percent_value,pricing_mode,stay_id')
+          .in('stay_id', stayIds)
+      : Promise.resolve({ data: [] as InsuranceOptionRow[] | null })
   ]);
 
   const organizersById = new Map((organizersRaw ?? []).map((organizer) => [organizer.id, organizer]));
   const mediaByStayId = new Map<string, Array<StayMediaRow & { stay_id: string }>>();
-  const sessionsByStayId = new Map<string, Array<SessionRow & { stay_id: string }>>();
-  const accommodationIdsByStayId = new Map<string, Array<{ accommodation_id: string; position: number }>>();
+  const sessionsByStayId = new Map<string, SessionWithOptionsRow[]>();
+  const accommodationIdsByStayId = new Map<string, string[]>();
+  const extraOptionsByStayId = new Map<string, ExtraOptionRow[]>();
+  const insuranceOptionsByStayId = new Map<string, InsuranceOptionRow[]>();
   const accommodationsById = new Map((accommodationsRaw ?? []).map((accommodation) => [accommodation.id, accommodation]));
 
   for (const item of mediaRaw ?? []) {
@@ -223,9 +282,22 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
     sessionsByStayId.set(item.stay_id, group);
   }
 
+  for (const item of extraOptionsRaw ?? []) {
+    const group = extraOptionsByStayId.get(item.stay_id) ?? [];
+    group.push(item);
+    extraOptionsByStayId.set(item.stay_id, group);
+  }
+
+  for (const item of insuranceOptionsRaw ?? []) {
+    if (!item.stay_id) continue;
+    const group = insuranceOptionsByStayId.get(item.stay_id) ?? [];
+    group.push(item);
+    insuranceOptionsByStayId.set(item.stay_id, group);
+  }
+
   for (const item of stayAccommodationRows ?? []) {
     const group = accommodationIdsByStayId.get(item.stay_id) ?? [];
-    group.push({ accommodation_id: item.accommodation_id, position: item.position });
+    group.push(item.accommodation_id);
     accommodationIdsByStayId.set(item.stay_id, group);
   }
 
@@ -253,22 +325,60 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
 
       const sessionItems = sessionsByStayId.get(stay.id) ?? [];
       const stayAccommodations = [...(accommodationIdsByStayId.get(stay.id) ?? [])]
-        .sort((a, b) => a.position - b.position)
-        .map((item) => accommodationsById.get(item.accommodation_id))
+        .map((accommodationId) => accommodationsById.get(accommodationId))
         .filter((item): item is AccommodationRow => Boolean(item));
       const accommodationText = buildAccommodationText(stayAccommodations);
-      const durationDays = deriveDurationDays(sessionItems);
+      const durationDays = deriveSessionDurations(sessionItems);
       const { keys: periodKeys, labels: periodLabels } = derivePeriods(sessionItems);
       const audiences = deriveStayAudiences(stay.ages, stay.age_min, stay.age_max);
       const durations = deriveDurationFilters(durationDays);
       const transport = mapTransport(stay.transport_mode);
+      const categories = normalizeStayCategories(stay.categories ?? []);
+      const bookingSessions: StaySessionOption[] = sessionItems
+        .filter((sessionItem) => sessionItem.status !== 'CLOSED')
+        .map((sessionItem) => {
+          const sessionPrice = Array.isArray(sessionItem.session_prices)
+            ? sessionItem.session_prices[0] ?? null
+            : sessionItem.session_prices;
+          const transportOptions: StayTransportOption[] = (sessionItem.transport_options ?? []).map((option) => ({
+            id: option.id,
+            departureCity: option.departure_city,
+            returnCity: option.return_city,
+            amount: option.amount_cents / 100
+          }));
+
+          return {
+            id: sessionItem.id,
+            startDate: sessionItem.start_date,
+            endDate: sessionItem.end_date,
+            price: sessionPrice ? sessionPrice.amount_cents / 100 : null,
+            transportOptions
+          };
+        })
+        .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());
+      const insuranceOptions: StayInsuranceOption[] = (insuranceOptionsByStayId.get(stay.id) ?? []).map((option) => ({
+        id: option.id,
+        label: option.label,
+        amount: option.amount_cents != null ? option.amount_cents / 100 : null,
+        percentValue: option.percent_value,
+        pricingMode: option.pricing_mode
+      }));
+      const extraOptions: StayExtraOption[] = (extraOptionsByStayId.get(stay.id) ?? []).map((option) => ({
+        id: option.id,
+        label: option.label,
+        amount: option.amount_cents / 100
+      }));
+      const sessionPrices = bookingSessions
+        .map((sessionItem) => sessionItem.price)
+        .filter((price): price is number => price != null);
+      const minSessionPrice = sessionPrices.length ? Math.min(...sessionPrices) : null;
 
       return {
         id: stay.id,
         title: stay.title,
         slug: slugify(`${organizerName}-${stay.title}`) || stay.id,
         summary: stay.summary?.trim() || buildSummary(stay.title, stay.description),
-        description: stay.program_text?.trim() || stay.description || '',
+        description: stay.description?.trim() || stay.program_text?.trim() || '',
         organizer: {
           name: organizerName,
           website: '',
@@ -278,11 +388,17 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
         country: '',
         ageRange: formatStayAgeRange(stay.ages, stay.age_min, stay.age_max),
         duration: formatDurationLabel(durationDays),
-        priceFrom: null,
+        priceFrom: minSessionPrice,
         period: periodLabels,
-        categories: [],
+        categories,
         highlights: [],
         coverImage,
+        bookingOptions: {
+          transportMode: stay.transport_mode ?? 'Sans transport',
+          sessions: bookingSessions,
+          insuranceOptions,
+          extraOptions
+        },
         rawContext: {
           presentation: stay.description ?? '',
           activites: stay.activities_text ?? '',
@@ -293,7 +409,7 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
           transport: stay.transport_text ?? ''
         },
         filters: {
-          categories: [],
+          categories,
           audiences,
           durations,
           periods: periodKeys,

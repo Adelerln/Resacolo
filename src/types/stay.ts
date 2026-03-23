@@ -1,14 +1,14 @@
 export type StayCategory =
-  | 'nature'
-  | 'sport'
-  | 'culture'
-  | 'langues'
   | 'mer'
   | 'montagne'
-  | 'multi-activites'
-  | 'solidarite'
-  | 'science'
-  | 'arts';
+  | 'campagne'
+  | 'artistique'
+  | 'equestre'
+  | 'linguistique'
+  | 'scientifique'
+  | 'sportif'
+  | 'itinerant'
+  | 'etranger';
 
 export type StayAudience = '6-9' | '10-12' | '13-15' | '16-17';
 
@@ -30,6 +30,42 @@ export interface OrganizerInfo {
   description?: string;
 }
 
+export interface StayTransportOption {
+  id: string;
+  departureCity: string;
+  returnCity: string;
+  amount: number;
+}
+
+export interface StayInsuranceOption {
+  id: string;
+  label: string;
+  amount: number | null;
+  percentValue: number | null;
+  pricingMode: string;
+}
+
+export interface StayExtraOption {
+  id: string;
+  label: string;
+  amount: number;
+}
+
+export interface StaySessionOption {
+  id: string;
+  startDate: string;
+  endDate: string;
+  price: number | null;
+  transportOptions: StayTransportOption[];
+}
+
+export interface StayBookingOptions {
+  transportMode: string;
+  sessions: StaySessionOption[];
+  insuranceOptions: StayInsuranceOption[];
+  extraOptions: StayExtraOption[];
+}
+
 export interface Stay {
   id: string;
   title: string;
@@ -47,6 +83,7 @@ export interface Stay {
   highlights: string[];
   coverImage?: string;
   filters: StayFilters;
+  bookingOptions?: StayBookingOptions;
   sourceUrl?: string;
   rawContext?: Record<string, unknown>;
   updatedAt: string;

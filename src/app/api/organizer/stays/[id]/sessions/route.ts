@@ -8,7 +8,7 @@ const sessionSchema = z.object({
   seasonId: z.string(),
   startDate: z.string().datetime(),
   endDate: z.string().datetime(),
-  capacityTotal: z.number().int().positive()
+  capacityTotal: z.number().int().nonnegative()
 });
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {

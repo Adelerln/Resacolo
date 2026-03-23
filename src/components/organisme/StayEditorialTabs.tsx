@@ -12,6 +12,8 @@ type TabKey =
   | 'transport'
   | 'accommodation';
 
+type TextTabKey = Exclude<TabKey, 'accommodation'>;
+
 type AccommodationOption = {
   id: string;
   name: string;
@@ -60,7 +62,7 @@ export default function StayEditorialTabs({
 }: StayEditorialTabsProps) {
   const [activeTab, setActiveTab] = useState<TabKey>('description');
 
-  const values: Record<TabKey, string> = {
+  const values: Record<TextTabKey, string> = {
     description,
     activities_text: activitiesText,
     program_text: programText,

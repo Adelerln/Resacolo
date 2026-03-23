@@ -335,7 +335,7 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
       const transport = mapTransport(stay.transport_mode);
       const categories = normalizeStayCategories(stay.categories ?? []);
       const bookingSessions: StaySessionOption[] = sessionItems
-        .filter((sessionItem) => sessionItem.status !== 'CLOSED')
+        .filter((sessionItem) => sessionItem.status === 'OPEN')
         .map((sessionItem) => {
           const sessionPrice = Array.isArray(sessionItem.session_prices)
             ? sessionItem.session_prices[0] ?? null

@@ -1318,7 +1318,8 @@ export type Database = {
           departure_city: string
           id: string
           return_city: string
-          session_id: string
+          session_id: string | null
+          stay_id: string | null
         }
         Insert: {
           amount_cents?: number
@@ -1326,7 +1327,8 @@ export type Database = {
           departure_city: string
           id?: string
           return_city: string
-          session_id: string
+          session_id?: string | null
+          stay_id?: string | null
         }
         Update: {
           amount_cents?: number
@@ -1334,7 +1336,8 @@ export type Database = {
           departure_city?: string
           id?: string
           return_city?: string
-          session_id?: string
+          session_id?: string | null
+          stay_id?: string | null
         }
         Relationships: [
           {
@@ -1342,6 +1345,13 @@ export type Database = {
             columns: ["session_id"]
             isOneToOne: false
             referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transport_options_stay_id_fkey"
+            columns: ["stay_id"]
+            isOneToOne: false
+            referencedRelation: "stays"
             referencedColumns: ["id"]
           },
         ]

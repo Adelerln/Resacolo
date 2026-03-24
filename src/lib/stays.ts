@@ -28,7 +28,7 @@ type SessionPriceRow = Pick<
 >;
 type TransportOptionRow = Pick<
   Database['public']['Tables']['transport_options']['Row'],
-  'id' | 'departure_city' | 'return_city' | 'amount_cents'
+  'id' | 'departure_city' | 'return_city' | 'amount_cents' | 'stay_id'
 >;
 type InsuranceOptionRow = Pick<
   Database['public']['Tables']['insurance_options']['Row'],
@@ -43,7 +43,6 @@ type SessionWithOptionsRow = Pick<
   'id' | 'stay_id' | 'start_date' | 'end_date' | 'status' | 'capacity_total' | 'capacity_reserved'
 > & {
   session_prices: SessionPriceRow[] | SessionPriceRow | null;
-  transport_options: TransportOptionRow[] | null;
 };
 type AccommodationRow = Pick<
   Database['public']['Tables']['accommodations']['Row'],
@@ -217,7 +216,8 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
     { data: stayAccommodationRows },
     { data: accommodationsRaw },
     { data: extraOptionsRaw },
-    { data: insuranceOptionsRaw }
+    { data: insuranceOptionsRaw },
+    { data: transportOptionsRaw }
   ] = await Promise.all([
     organizerIds.length
       ? supabase.from('organizers').select('id,name,logo_path').in('id', organizerIds)
@@ -231,9 +231,7 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
     stayIds.length
       ? supabase
           .from('sessions')
-          .select(
-            'id,stay_id,start_date,end_date,status,capacity_total,capacity_reserved,session_prices(amount_cents,currency),transport_options(id,departure_city,return_city,amount_cents)'
-          )
+          .select('id,stay_id,start_date,end_date,status,capacity_total,capacity_reserved,session_prices(amount_cents,currency)')
           .in('stay_id', stayIds)
       : Promise.resolve({ data: [] as SessionWithOptionsRow[] | null }),
     stayIds.length
@@ -259,7 +257,13 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
           .from('insurance_options')
           .select('id,label,amount_cents,percent_value,pricing_mode,stay_id')
           .in('stay_id', stayIds)
-      : Promise.resolve({ data: [] as InsuranceOptionRow[] | null })
+      : Promise.resolve({ data: [] as InsuranceOptionRow[] | null }),
+    stayIds.length
+      ? supabase
+          .from('transport_options')
+          .select('id,departure_city,return_city,amount_cents,stay_id')
+          .in('stay_id', stayIds)
+      : Promise.resolve({ data: [] as TransportOptionRow[] | null })
   ]);
 
   const organizersById = new Map((organizersRaw ?? []).map((organizer) => [organizer.id, organizer]));
@@ -268,6 +272,7 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
   const accommodationIdsByStayId = new Map<string, string[]>();
   const extraOptionsByStayId = new Map<string, ExtraOptionRow[]>();
   const insuranceOptionsByStayId = new Map<string, InsuranceOptionRow[]>();
+  const transportOptionsByStayId = new Map<string, StayTransportOption[]>();
   const accommodationsById = new Map((accommodationsRaw ?? []).map((accommodation) => [accommodation.id, accommodation]));
 
   for (const item of mediaRaw ?? []) {
@@ -293,6 +298,18 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
     const group = insuranceOptionsByStayId.get(item.stay_id) ?? [];
     group.push(item);
     insuranceOptionsByStayId.set(item.stay_id, group);
+  }
+
+  for (const item of transportOptionsRaw ?? []) {
+    if (!item.stay_id) continue;
+    const group = transportOptionsByStayId.get(item.stay_id) ?? [];
+    group.push({
+      id: item.id,
+      departureCity: item.departure_city,
+      returnCity: item.return_city,
+      amount: item.amount_cents / 100
+    });
+    transportOptionsByStayId.set(item.stay_id, group);
   }
 
   for (const item of stayAccommodationRows ?? []) {
@@ -334,44 +351,52 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
       const durations = deriveDurationFilters(durationDays);
       const transport = mapTransport(stay.transport_mode);
       const categories = normalizeStayCategories(stay.categories ?? []);
-      const bookingSessions: StaySessionOption[] = sessionItems
-        .filter((sessionItem) => sessionItem.status === 'OPEN')
+      const sharedTransportOptions = transportOptionsByStayId.get(stay.id) ?? [];
+      const visibleBookingSessionItems = sessionItems.filter(
+        (sessionItem) => sessionItem.status !== 'COMPLETED' && sessionItem.status !== 'ARCHIVED'
+      );
+      const bookingSessions: StaySessionOption[] = visibleBookingSessionItems
         .map((sessionItem) => {
           const sessionPrice = Array.isArray(sessionItem.session_prices)
             ? sessionItem.session_prices[0] ?? null
             : sessionItem.session_prices;
-          const transportOptions: StayTransportOption[] = (sessionItem.transport_options ?? []).map((option) => ({
-            id: option.id,
-            departureCity: option.departure_city,
-            returnCity: option.return_city,
-            amount: option.amount_cents / 100
-          }));
 
           return {
             id: sessionItem.id,
             startDate: sessionItem.start_date,
             endDate: sessionItem.end_date,
             price: sessionPrice ? sessionPrice.amount_cents / 100 : null,
-            transportOptions
+            status: sessionItem.status,
+            transportOptions: sharedTransportOptions
           };
         })
         .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());
-      const insuranceOptions: StayInsuranceOption[] = (insuranceOptionsByStayId.get(stay.id) ?? []).map((option) => ({
-        id: option.id,
-        label: option.label,
-        amount: option.amount_cents != null ? option.amount_cents / 100 : null,
-        percentValue: option.percent_value,
-        pricingMode: option.pricing_mode
-      }));
+      const insuranceOptions: StayInsuranceOption[] = (insuranceOptionsByStayId.get(stay.id) ?? []).map(
+        (option) => ({
+          id: option.id,
+          label: option.label,
+          amount: option.amount_cents != null ? option.amount_cents / 100 : null,
+          percentValue: option.percent_value,
+          pricingMode: option.pricing_mode
+        })
+      );
       const extraOptions: StayExtraOption[] = (extraOptionsByStayId.get(stay.id) ?? []).map((option) => ({
         id: option.id,
         label: option.label,
         amount: option.amount_cents / 100
       }));
       const sessionPrices = bookingSessions
+        .filter((sessionItem) => sessionItem.status === 'OPEN')
         .map((sessionItem) => sessionItem.price)
         .filter((price): price is number => price != null);
-      const minSessionPrice = sessionPrices.length ? Math.min(...sessionPrices) : null;
+      const fallbackSessionPrices = bookingSessions
+        .map((sessionItem) => sessionItem.price)
+        .filter((price): price is number => price != null);
+      const minSessionPrice = sessionPrices.length
+        ? Math.min(...sessionPrices)
+        : fallbackSessionPrices.length
+          ? Math.min(...fallbackSessionPrices)
+          : null;
 
       return {
         id: stay.id,

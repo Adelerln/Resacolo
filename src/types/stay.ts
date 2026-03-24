@@ -56,6 +56,7 @@ export interface StaySessionOption {
   startDate: string;
   endDate: string;
   price: number | null;
+  status: string;
   transportOptions: StayTransportOption[];
 }
 

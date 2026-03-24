@@ -1,14 +1,9 @@
 {
   "pages": {
-    "/organisme/sejours/[id]/page": [
+    "/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/organisme/sejours/[id]/page.js"
-    ],
-    "/organisme/layout": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/organisme/layout.js"
+      "static/chunks/app/page.js"
     ],
     "/layout": [
       "static/chunks/webpack.js",
@@ -21,6 +16,31 @@
       "static/chunks/main-app.js",
       "static/chunks/app/not-found.js"
     ],
+    "/organisme/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/organisme/page.js"
+    ],
+    "/organisme/layout": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/organisme/layout.js"
+    ],
+    "/organisme/sejours/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/organisme/sejours/page.js"
+    ],
+    "/organisme/sejours/[id]/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/organisme/sejours/[id]/page.js"
+    ],
+    "/sejours/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/sejours/page.js"
+    ],
     "/sejours/[slug]/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
@@ -31,55 +51,10 @@
       "static/chunks/main-app.js",
       "static/chunks/app/sejours/[slug]/loading.js"
     ],
-    "/organisme/hebergements/page": [
+    "/login/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/organisme/hebergements/page.js"
-    ],
-    "/organisme/sejours/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/organisme/sejours/page.js"
-    ],
-    "/organisme/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/organisme/page.js"
-    ],
-    "/organisme/sejours/new/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/organisme/sejours/new/page.js"
-    ],
-    "/organisme/reservations/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/organisme/reservations/page.js"
-    ],
-    "/sejours/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/sejours/page.js"
-    ],
-    "/_not-found/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/_not-found/page.js"
-    ],
-    "/organisme/hebergements/[id]/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/organisme/hebergements/[id]/page.js"
-    ],
-    "/organisme/hebergements/new/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/organisme/hebergements/new/page.js"
-    ],
-    "/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/page.js"
+      "static/chunks/app/login/page.js"
     ],
     "/admin/page": [
       "static/chunks/webpack.js",
@@ -96,11 +71,6 @@
       "static/chunks/main-app.js",
       "static/chunks/app/admin/sejours/page.js"
     ],
-    "/admin/sejours/[id]/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/admin/sejours/[id]/page.js"
-    ],
     "/admin/dashboard/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
@@ -115,6 +85,11 @@
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/admin/utilisateurs/page.js"
+    ],
+    "/admin/organisateurs/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/admin/organisateurs/page.js"
     ]
   }
 }

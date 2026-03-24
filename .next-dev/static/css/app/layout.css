@@ -1420,6 +1420,9 @@ video {
 .z-\[150\]{
   z-index: 150;
 }
+.z-30{
+  z-index: 30;
+}
 .mx-1{
   margin-left: 0.25rem;
   margin-right: 0.25rem;
@@ -1623,6 +1626,12 @@ video {
 .max-h-24{
   max-height: 6rem;
 }
+.max-h-48{
+  max-height: 12rem;
+}
+.max-h-56{
+  max-height: 14rem;
+}
 .max-h-72{
   max-height: 18rem;
 }
@@ -1634,12 +1643,6 @@ video {
 }
 .max-h-\[90vh\]{
   max-height: 90vh;
-}
-.max-h-56{
-  max-height: 14rem;
-}
-.max-h-48{
-  max-height: 12rem;
 }
 .min-h-\[120px\]{
   min-height: 120px;
@@ -2289,6 +2292,17 @@ video {
 .bg-white\/90{
   background-color: rgb(255 255 255 / 0.9);
 }
+.bg-emerald-100{
+  --tw-bg-opacity: 1;
+  background-color: rgb(209 250 229 / var(--tw-bg-opacity, 1));
+}
+.bg-slate-50\/70{
+  background-color: rgb(248 250 252 / 0.7);
+}
+.bg-rose-100{
+  --tw-bg-opacity: 1;
+  background-color: rgb(255 228 230 / var(--tw-bg-opacity, 1));
+}
 .bg-gradient-to-br{
   background-image: linear-gradient(to bottom right, var(--tw-gradient-stops));
 }
@@ -2701,9 +2715,17 @@ video {
   --tw-text-opacity: 1;
   color: rgb(185 28 28 / var(--tw-text-opacity, 1));
 }
+.text-rose-600{
+  --tw-text-opacity: 1;
+  color: rgb(225 29 72 / var(--tw-text-opacity, 1));
+}
 .text-rose-700{
   --tw-text-opacity: 1;
   color: rgb(190 18 60 / var(--tw-text-opacity, 1));
+}
+.text-rose-800{
+  --tw-text-opacity: 1;
+  color: rgb(159 18 57 / var(--tw-text-opacity, 1));
 }
 .text-slate-300{
   --tw-text-opacity: 1;
@@ -2749,14 +2771,6 @@ video {
 }
 .text-white\/95{
   color: rgb(255 255 255 / 0.95);
-}
-.text-rose-600{
-  --tw-text-opacity: 1;
-  color: rgb(225 29 72 / var(--tw-text-opacity, 1));
-}
-.text-rose-800{
-  --tw-text-opacity: 1;
-  color: rgb(159 18 57 / var(--tw-text-opacity, 1));
 }
 .placeholder-slate-400::-moz-placeholder{
   --tw-placeholder-opacity: 1;
@@ -3047,6 +3061,10 @@ button,
   --tw-border-opacity: 1;
   border-color: rgb(203 213 225 / var(--tw-border-opacity, 1));
 }
+.hover\:border-rose-300:hover{
+  --tw-border-opacity: 1;
+  border-color: rgb(253 164 175 / var(--tw-border-opacity, 1));
+}
 .hover\:bg-\[\#ea580c\]:hover{
   --tw-bg-opacity: 1;
   background-color: rgb(234 88 12 / var(--tw-bg-opacity, 1));
@@ -3059,10 +3077,6 @@ button,
   --tw-bg-opacity: 1;
   background-color: rgb(18 92 160 / var(--tw-bg-opacity, 1));
 }
-.hover\:bg-emerald-700:hover{
-  --tw-bg-opacity: 1;
-  background-color: rgb(4 120 87 / var(--tw-bg-opacity, 1));
-}
 .hover\:bg-slate-100:hover{
   --tw-bg-opacity: 1;
   background-color: rgb(241 245 249 / var(--tw-bg-opacity, 1));
@@ -3073,6 +3087,10 @@ button,
 }
 .hover\:bg-slate-50\/50:hover{
   background-color: rgb(248 250 252 / 0.5);
+}
+.hover\:bg-rose-50:hover{
+  --tw-bg-opacity: 1;
+  background-color: rgb(255 241 242 / var(--tw-bg-opacity, 1));
 }
 .hover\:text-\[\#3B82F6\]:hover{
   --tw-text-opacity: 1;
@@ -3101,6 +3119,10 @@ button,
 .hover\:text-slate-900:hover{
   --tw-text-opacity: 1;
   color: rgb(15 23 42 / var(--tw-text-opacity, 1));
+}
+.hover\:text-rose-800:hover{
+  --tw-text-opacity: 1;
+  color: rgb(159 18 57 / var(--tw-text-opacity, 1));
 }
 .hover\:underline:hover{
   text-decoration-line: underline;
@@ -3314,6 +3336,10 @@ button,
     gap: 2rem;
   }
 
+  .sm\:gap-4{
+    gap: 1rem;
+  }
+
   .sm\:p-10{
     padding: 2.5rem;
   }
@@ -3453,6 +3479,10 @@ button,
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
+  .md\:grid-cols-4{
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
   .md\:grid-cols-5{
     grid-template-columns: repeat(5, minmax(0, 1fr));
   }
@@ -3467,10 +3497,6 @@ button,
 
   .md\:grid-cols-\[280px_1fr\]{
     grid-template-columns: 280px 1fr;
-  }
-
-  .md\:grid-cols-4{
-    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .md\:grid-cols-\[minmax\(0\2c 1fr\)_auto_auto_minmax\(180px\2c 220px\)\]{
@@ -3561,12 +3587,12 @@ button,
     grid-column: span 1 / span 1;
   }
 
-  .lg\:col-span-3{
-    grid-column: span 3 / span 3;
-  }
-
   .lg\:col-span-2{
     grid-column: span 2 / span 2;
+  }
+
+  .lg\:col-span-3{
+    grid-column: span 3 / span 3;
   }
 
   .lg\:mx-0{
@@ -3668,6 +3694,10 @@ button,
 
   .lg\:justify-end{
     justify-content: flex-end;
+  }
+
+  .lg\:justify-between{
+    justify-content: space-between;
   }
 
   .lg\:gap-12{

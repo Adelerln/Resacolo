@@ -3,13 +3,16 @@ import { redirect } from 'next/navigation';
 import ErrorToast from '@/components/common/ErrorToast';
 import GoogleMapsCityInput from '@/components/common/GoogleMapsCityInput';
 import SavedToast from '@/components/common/SavedToast';
+import RemainingPlacesEditor from '@/components/organisme/RemainingPlacesEditor';
 import StayInsuranceForm from '@/components/organisme/StayInsuranceForm';
 import StayEditorialTabs from '@/components/organisme/StayEditorialTabs';
 import StayFloatingSaveButton from '@/components/organisme/StayFloatingSaveButton';
+import StayTransportCardEffects from '@/components/organisme/StayTransportCardEffects';
 import { requireRole } from '@/lib/auth/require';
 import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers';
 import { normalizeStayCategories, STAY_CATEGORY_OPTIONS } from '@/lib/stay-categories';
 import { formatStayAgeRange, getStayAgeBounds, normalizeStayAges, parseStayAges, STAY_AGE_OPTIONS } from '@/lib/stay-ages';
+import { getReservedSessionCounts } from '@/lib/session-reservations';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { sessionStatusLabel, stayStatusLabel } from '@/lib/ui/labels';
 import { slugify } from '@/lib/utils';
@@ -20,6 +23,7 @@ type PageProps = {
     organizerId?: string | string[];
     saved?: string | string[];
     error?: string | string[];
+    transportSaved?: string | string[];
   };
 };
 
@@ -56,12 +60,6 @@ function getSessionPriceAmountCents(
   return sessionItem.session_prices.amount_cents ?? null;
 }
 
-function formatSessionDateRange(sessionItem: { start_date: string; end_date: string }) {
-  return `${new Date(sessionItem.start_date).toLocaleDateString('fr-FR')} - ${new Date(
-    sessionItem.end_date
-  ).toLocaleDateString('fr-FR')}`;
-}
-
 function formatInsuranceOptionLabel(option: {
   label: string;
   pricing_mode: string;
@@ -78,6 +76,16 @@ function formatInsuranceOptionLabel(option: {
     })})`;
   }
   return option.label;
+}
+
+function formatReservedPlacesLabel(count: number, total: number) {
+  const reservedWord = count > 1 ? 'places réservées' : 'place réservée';
+  return `${count} ${reservedWord} /${total}`;
+}
+
+function formatRemainingPlacesLabel(count: number) {
+  const remainingWord = count > 1 ? 'places restantes' : 'place restante';
+  return `${count} ${remainingWord}`;
 }
 
 function getNextAvailablePosition(positions: number[]) {
@@ -100,6 +108,9 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
   );
   const savedParam = Array.isArray(searchParams?.saved) ? searchParams?.saved[0] : searchParams?.saved;
   const errorParam = Array.isArray(searchParams?.error) ? searchParams?.error[0] : searchParams?.error;
+  const transportSavedParam = Array.isArray(searchParams?.transportSaved)
+    ? searchParams?.transportSaved[0]
+    : searchParams?.transportSaved;
   const showSavedBanner = savedParam === '1';
 
   if (!selectedOrganizerId) {
@@ -127,14 +138,13 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
     { data: accommodationsRaw },
     { data: stayAccommodationLinksRaw },
     { data: extraOptionsRaw },
-    { data: insuranceOptionsRaw }
+    { data: insuranceOptionsRaw },
+    { data: transportOptionsRaw }
   ] = await Promise.all([
     supabase.from('seasons').select('id,name').order('name', { ascending: true }),
     supabase
       .from('sessions')
-      .select(
-        'id,start_date,end_date,capacity_total,capacity_reserved,status,session_prices(amount_cents,currency),transport_options(id,departure_city,return_city,amount_cents)'
-      )
+      .select('id,start_date,end_date,capacity_total,capacity_reserved,status,session_prices(amount_cents,currency)')
       .eq('stay_id', currentStay.id)
       .order('start_date', { ascending: true }),
     supabase
@@ -161,6 +171,10 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
     supabase
       .from('insurance_options')
       .select('id,label,amount_cents,percent_value,pricing_mode')
+      .eq('stay_id', currentStay.id),
+    supabase
+      .from('transport_options')
+      .select('id,departure_city,return_city,amount_cents,stay_id')
       .eq('stay_id', currentStay.id)
   ]);
 
@@ -175,14 +189,17 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
     return indexA - indexB;
   });
   const sessions = sessionsRaw ?? [];
+  const reservedSessionCounts = await getReservedSessionCounts(
+    supabase,
+    sessions.map((sessionItem) => sessionItem.id)
+  );
   const media = mediaRaw ?? [];
   const accommodations = accommodationsRaw ?? [];
   const stayAccommodationLinks = stayAccommodationLinksRaw ?? [];
   const extraOptions = extraOptionsRaw ?? [];
   const insuranceOptions = insuranceOptionsRaw ?? [];
-  const hasTransportOptions = sessions.some(
-    (sessionItem) => (sessionItem.transport_options ?? []).length > 0
-  );
+  const transportOptions = transportOptionsRaw ?? [];
+  const hasTransportOptions = transportOptions.length > 0;
   const linkedAccommodations = stayAccommodationLinks
     .map((link) => accommodations.find((item) => item.id === link.accommodation_id))
     .filter((item): item is NonNullable<typeof item> => Boolean(item));
@@ -219,13 +236,11 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
     const organizerName = organizer?.name ?? '';
     const previousSlug = slugify(`${organizerName}-${currentStay.title}`) || currentStay.id;
     const nextSlug = slugify(`${organizerName}-${title}`) || currentStay.id;
-    const { data: sessionsWithTransport } = await supabase
-      .from('sessions')
-      .select('id,transport_options(id)')
+    const { data: existingTransportOptions } = await supabase
+      .from('transport_options')
+      .select('id')
       .eq('stay_id', currentStay.id);
-    const hasExistingTransportOptions = (sessionsWithTransport ?? []).some(
-      (sessionItem) => (sessionItem.transport_options ?? []).length > 0
-    );
+    const hasExistingTransportOptions = (existingTransportOptions ?? []).length > 0;
 
     if (
       hasExistingTransportOptions &&
@@ -269,7 +284,12 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
     revalidatePath('/sejours');
     revalidatePath(`/sejours/${previousSlug}`);
     revalidatePath(`/sejours/${nextSlug}`);
-    redirect(withOrganizerQuery(`/organisme/sejours/${currentStay.id}?saved=1`, selectedOrganizerId));
+    redirect(
+      withOrganizerQuery(
+        `/organisme/sejours/${currentStay.id}?saved=1&transportSaved=${Date.now()}`,
+        selectedOrganizerId
+      )
+    );
   }
 
   async function addSession(formData: FormData) {
@@ -378,6 +398,74 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
     redirect(withOrganizerQuery(`/organisme/sejours/${currentStay.id}?saved=1`, selectedOrganizerId));
   }
 
+  async function updateSessionRemainingPlaces(formData: FormData) {
+    'use server';
+    const supabase = getServerSupabaseClient();
+    const sessionId = String(formData.get('session_id') ?? '').trim();
+    const remainingPlaces = Number(formData.get('remaining_places') ?? NaN);
+
+    if (!sessionId || Number.isNaN(remainingPlaces) || remainingPlaces < 0) {
+      redirect(
+        withOrganizerQuery(
+          `/organisme/sejours/${currentStay.id}?error=invalid-session-capacity`,
+          selectedOrganizerId
+        )
+      );
+    }
+
+    const { data: sessionItem } = await supabase
+      .from('sessions')
+      .select('id,stay_id,capacity_total,status')
+      .eq('id', sessionId)
+      .eq('stay_id', currentStay.id)
+      .maybeSingle();
+
+    if (!sessionItem) {
+      redirect(
+        withOrganizerQuery(
+          `/organisme/sejours/${currentStay.id}?error=invalid-session-capacity`,
+          selectedOrganizerId
+        )
+      );
+    }
+
+    const reservedCount = (await getReservedSessionCounts(supabase, [sessionId])).get(sessionId) ?? 0;
+    const capacityTotal = reservedCount + remainingPlaces;
+    const nextStatus =
+      sessionItem.status === 'COMPLETED' || sessionItem.status === 'ARCHIVED'
+        ? sessionItem.status
+        : reservedCount >= capacityTotal
+          ? 'FULL'
+          : 'OPEN';
+
+    const { error } = await supabase
+      .from('sessions')
+      .update({
+        capacity_total: capacityTotal,
+        capacity_reserved: reservedCount,
+        status: nextStatus
+      })
+      .eq('id', sessionId)
+      .eq('stay_id', currentStay.id);
+
+    if (error) {
+      console.error('Erreur Supabase (update remaining places)', error.message);
+      redirect(
+        withOrganizerQuery(
+          `/organisme/sejours/${currentStay.id}?error=${encodeURIComponent(error.message)}`,
+          selectedOrganizerId
+        )
+      );
+    }
+
+    revalidatePath(`/organisme/sejours/${currentStay.id}`);
+    revalidatePath(`/organisme/stays/${currentStay.id}`);
+    revalidatePath('/organisme/sejours');
+    revalidatePath('/organisme/stays');
+    revalidatePath('/sejours');
+    redirect(withOrganizerQuery(`/organisme/sejours/${currentStay.id}?saved=1`, selectedOrganizerId));
+  }
+
   async function addInsuranceOption(formData: FormData) {
     'use server';
     const supabase = getServerSupabaseClient();
@@ -442,26 +530,17 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
   async function addTransportOption(formData: FormData) {
     'use server';
     const supabase = getServerSupabaseClient();
-    const sessionId = String(formData.get('session_id') ?? '').trim();
     const city = String(formData.get('city') ?? formData.get('departure_city') ?? '').trim();
     const amountEuros = parseOptionalEuros(formData.get('amount_euros'));
     const transportMode = currentStay.transport_mode ?? 'Sans transport';
     const availableOutbound = formData.get('available_outbound') === 'on';
     const availableReturn = formData.get('available_return') === 'on';
 
-    const { data: validSession } = await supabase
-      .from('sessions')
-      .select('id')
-      .eq('id', sessionId)
-      .eq('stay_id', currentStay.id)
-      .maybeSingle();
-
     const isDifferentiated = transportMode === 'Aller/Retour différencié';
     const departureCity = isDifferentiated ? (availableOutbound ? city : '') : city;
     const returnCity = isDifferentiated ? (availableReturn ? city : '') : city;
 
     if (
-      !validSession ||
       transportMode === 'Sans transport' ||
       !city ||
       (isDifferentiated && !availableOutbound && !availableReturn) ||
@@ -476,8 +555,33 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
       );
     }
 
+    const normalizedDepartureCity = departureCity.trim().toLocaleLowerCase('fr');
+    const normalizedReturnCity = returnCity.trim().toLocaleLowerCase('fr');
+    const { data: existingTransportOptions } = await supabase
+      .from('transport_options')
+      .select('id,departure_city,return_city')
+      .eq('stay_id', currentStay.id);
+
+    const duplicateTransportOption = (existingTransportOptions ?? []).find(
+      (option) =>
+        option.departure_city.trim().toLocaleLowerCase('fr') === normalizedDepartureCity &&
+        option.return_city.trim().toLocaleLowerCase('fr') === normalizedReturnCity
+    );
+
+    if (duplicateTransportOption) {
+      redirect(
+        withOrganizerQuery(
+          `/organisme/sejours/${currentStay.id}?error=${encodeURIComponent(
+            'Cette ville de transport existe déjà.'
+          )}`,
+          selectedOrganizerId
+        )
+      );
+    }
+
     const { error } = await supabase.from('transport_options').insert({
-      session_id: sessionId,
+      stay_id: currentStay.id,
+      session_id: null,
       departure_city: departureCity,
       return_city: returnCity,
       amount_cents: Math.round(amountEuros * 100)
@@ -521,27 +625,11 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
 
     const { data: option } = await supabase
       .from('transport_options')
-      .select('id,session_id')
+      .select('id,stay_id')
       .eq('id', optionId)
       .maybeSingle();
 
-    if (!option) {
-      redirect(
-        withOrganizerQuery(
-          `/organisme/sejours/${currentStay.id}?error=invalid-transport-option`,
-          selectedOrganizerId
-        )
-      );
-    }
-
-    const { data: validSession } = await supabase
-      .from('sessions')
-      .select('id')
-      .eq('id', option.session_id)
-      .eq('stay_id', currentStay.id)
-      .maybeSingle();
-
-    if (!validSession) {
+    if (!option || option.stay_id !== currentStay.id) {
       redirect(
         withOrganizerQuery(
           `/organisme/sejours/${currentStay.id}?error=invalid-transport-option`,
@@ -996,6 +1084,11 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
       </form>
 
       <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
+        <StayTransportCardEffects
+          formId="stay-transport-form"
+          scrollContainerId="stay-transport-table-scroll"
+          trigger={transportSavedParam}
+        />
         <h2 className="text-lg font-semibold text-slate-900">Transport</h2>
         <p className="text-sm text-slate-600">{currentStay.transport_mode || 'Non renseigné'}</p>
         <p className="whitespace-pre-line text-sm text-slate-600">
@@ -1008,92 +1101,65 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
           </p>
         ) : (
           <>
-            <div className="space-y-3">
-              {sessions.length > 0 ? (
-                sessions.map((sessionItem) => {
-                  const transportOptions = sessionItem.transport_options ?? [];
+            <div className="rounded-lg border border-slate-100">
+              {transportOptions.length > 0 ? (
+                <div id="stay-transport-table-scroll" className="max-h-48 overflow-y-auto">
+                  <table className="w-full text-left text-sm">
+                    <thead className="sticky top-0 bg-slate-50 text-xs uppercase text-slate-500">
+                      <tr>
+                        <th className="px-3 py-2">Ville</th>
+                        <th className="px-3 py-2">Aller</th>
+                        <th className="px-3 py-2">Retour</th>
+                        <th className="px-3 py-2">Prix</th>
+                        <th className="px-3 py-2"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {transportOptions.map((option) => {
+                        const displayCity =
+                          option.departure_city || option.return_city || 'Non renseignée';
+                        const hasOutbound = Boolean(option.departure_city?.trim());
+                        const hasReturn = Boolean(option.return_city?.trim());
 
-                  return (
-                    <div key={sessionItem.id} className="rounded-lg border border-slate-100 px-3 py-3">
-                      <div className="text-sm font-medium text-slate-900">
-                        {formatSessionDateRange(sessionItem)}
-                      </div>
-                      {transportOptions.length > 0 ? (
-                        <div className="mt-3 rounded-lg border border-slate-100">
-                          <div className="max-h-48 overflow-y-auto">
-                            <table className="w-full text-left text-sm">
-                              <thead className="sticky top-0 bg-slate-50 text-xs uppercase text-slate-500">
-                                <tr>
-                                  <th className="px-3 py-2">Ville</th>
-                                  <th className="px-3 py-2">Aller</th>
-                                  <th className="px-3 py-2">Retour</th>
-                                  <th className="px-3 py-2">Prix</th>
-                                  <th className="px-3 py-2"></th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {transportOptions.map((option) => {
-                                  const displayCity =
-                                    option.departure_city || option.return_city || 'Non renseignée';
-                                  const hasOutbound = Boolean(option.departure_city?.trim());
-                                  const hasReturn = Boolean(option.return_city?.trim());
-
-                                  return (
-                                    <tr key={option.id} className="border-t border-slate-100">
-                                      <td className="px-3 py-2 text-slate-700">{displayCity}</td>
-                                      <td className="px-3 py-2 text-slate-700">{hasOutbound ? 'Oui' : 'Non'}</td>
-                                      <td className="px-3 py-2 text-slate-700">{hasReturn ? 'Oui' : 'Non'}</td>
-                                      <td className="px-3 py-2 text-slate-700">
-                                        {(option.amount_cents / 100).toLocaleString('fr-FR', {
-                                          style: 'currency',
-                                          currency: 'EUR'
-                                        })}
-                                      </td>
-                                      <td className="px-3 py-2 text-right">
-                                        <form action={deleteTransportOption}>
-                                          <input type="hidden" name="transport_option_id" value={option.id} />
-                                          <button className="rounded-lg border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-700">
-                                            Supprimer
-                                          </button>
-                                        </form>
-                                      </td>
-                                    </tr>
-                                  );
-                                })}
-                              </tbody>
-                            </table>
-                          </div>
-                        </div>
-                      ) : (
-                        <p className="mt-2 text-sm text-slate-500">Aucune option de transport pour cette session.</p>
-                      )}
-                    </div>
-                  );
-                })
+                        return (
+                          <tr key={option.id} className="border-t border-slate-100">
+                            <td className="px-3 py-2 text-slate-700">{displayCity}</td>
+                            <td className="px-3 py-2 text-slate-700">{hasOutbound ? 'Oui' : 'Non'}</td>
+                            <td className="px-3 py-2 text-slate-700">{hasReturn ? 'Oui' : 'Non'}</td>
+                            <td className="px-3 py-2 text-slate-700">
+                              {(option.amount_cents / 100).toLocaleString('fr-FR', {
+                                style: 'currency',
+                                currency: 'EUR'
+                              })}
+                            </td>
+                            <td className="px-3 py-2 text-right">
+                              <form action={deleteTransportOption}>
+                                <input type="hidden" name="transport_option_id" value={option.id} />
+                                <button className="rounded-lg border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-700">
+                                  Supprimer
+                                </button>
+                              </form>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               ) : (
-                <p className="text-sm text-slate-500">Crée d&apos;abord une session pour ajouter un transport.</p>
+                <p className="px-3 py-3 text-sm text-slate-500">
+                  Aucune ville de transport définie pour ce séjour.
+                </p>
               )}
             </div>
 
-            <form action={addTransportOption} className="space-y-3 border-t border-slate-100 pt-4">
-              <label className="text-sm font-medium text-slate-700">
-                Session
-                <select
-                  name="session_id"
-                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-                  required
-                  defaultValue=""
-                  disabled={sessions.length === 0}
-                >
-                  <option value="">Sélectionner une session</option>
-                  {sessions.map((sessionItem) => (
-                    <option key={sessionItem.id} value={sessionItem.id}>
-                      {formatSessionDateRange(sessionItem)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
+            <form
+              id="stay-transport-form"
+              key={transportSavedParam ?? 'idle'}
+              action={addTransportOption}
+              className="space-y-3 border-t border-slate-100 pt-4"
+              autoComplete="off"
+            >
               {currentStay.transport_mode === 'Aller/Retour différencié' ? (
                 <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_auto_minmax(180px,220px)] md:items-end">
                   <label className="text-sm font-medium text-slate-700">
@@ -1103,7 +1169,6 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
                       className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
                       placeholder="Ex. Paris"
                       required
-                      disabled={sessions.length === 0}
                     />
                   </label>
                   <label className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700">
@@ -1112,7 +1177,6 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
                       name="available_outbound"
                       className="cursor-pointer"
                       defaultChecked
-                      disabled={sessions.length === 0}
                     />
                     <span>Disponible à l&apos;aller</span>
                   </label>
@@ -1122,12 +1186,11 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
                       name="available_return"
                       className="cursor-pointer"
                       defaultChecked
-                      disabled={sessions.length === 0}
                     />
                     <span>Disponible au retour</span>
                   </label>
                   <label className="text-sm font-medium text-slate-700">
-                    Prix en euro
+                    Prix A/R en euros
                     <input
                       name="amount_euros"
                       type="number"
@@ -1136,7 +1199,6 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
                       className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
                       placeholder="0,00"
                       required
-                      disabled={sessions.length === 0}
                     />
                   </label>
                 </div>
@@ -1149,11 +1211,10 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
                       className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
                       placeholder="Ex. Paris"
                       required
-                      disabled={sessions.length === 0}
                     />
                   </label>
                   <label className="text-sm font-medium text-slate-700">
-                    Prix en euro
+                    Prix A/R en euros
                     <input
                       name="amount_euros"
                       type="number"
@@ -1162,16 +1223,12 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
                       className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
                       placeholder="0,00"
                       required
-                      disabled={sessions.length === 0}
                     />
                   </label>
                 </div>
               )}
               <div className="flex justify-end">
-                <button
-                  className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-300"
-                  disabled={sessions.length === 0}
-                >
+                <button className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white">
                   Ajouter le transport
                 </button>
               </div>
@@ -1275,37 +1332,66 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
         <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6 lg:col-span-2">
           <h2 className="text-lg font-semibold text-slate-900">Sessions</h2>
           <ul className="space-y-2 text-sm text-slate-600">
-            {sessions.map((sessionItem) => (
-              <li
-                key={sessionItem.id}
-                className="flex items-center justify-between gap-3 rounded-lg border border-slate-100 px-3 py-2"
-              >
-                <div>
+            {sessions.map((sessionItem) => {
+              const reservedCount = reservedSessionCounts.get(sessionItem.id) ?? 0;
+              const remainingPlaces = Math.max(
+                0,
+                sessionItem.capacity_total - reservedCount
+              );
+              const displayStatus =
+                sessionItem.status === 'COMPLETED' || sessionItem.status === 'ARCHIVED'
+                  ? sessionItem.status
+                  : remainingPlaces === 0
+                    ? 'FULL'
+                    : 'OPEN';
+
+              return (
+                <li
+                  key={sessionItem.id}
+                  className="flex flex-col gap-4 rounded-lg border border-slate-100 px-3 py-3 md:flex-row md:items-center md:justify-between"
+                >
                   <div>
-                    {new Date(sessionItem.start_date).toLocaleDateString('fr-FR')} -{' '}
-                    {new Date(sessionItem.end_date).toLocaleDateString('fr-FR')}
-                  </div>
-                  <div className="text-xs text-slate-500">
-                    {sessionItem.capacity_reserved}/{sessionItem.capacity_total} (
-                    {sessionStatusLabel(sessionItem.status)})
-                  </div>
-                  {getSessionPriceAmountCents(sessionItem) !== null && (
-                    <div className="text-xs text-slate-500">
-                      Prix: {(getSessionPriceAmountCents(sessionItem)! / 100).toLocaleString('fr-FR', {
-                        style: 'currency',
-                        currency: 'EUR'
-                      })}
+                    <div>
+                      {new Date(sessionItem.start_date).toLocaleDateString('fr-FR')} -{' '}
+                      {new Date(sessionItem.end_date).toLocaleDateString('fr-FR')}
                     </div>
-                  )}
-                </div>
-                <form action={deleteSession}>
-                  <input type="hidden" name="session_id" value={sessionItem.id} />
-                  <button className="rounded-lg border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-700">
-                    Supprimer
-                  </button>
-                </form>
-              </li>
-            ))}
+                    <div className="text-xs text-slate-500">
+                      {formatReservedPlacesLabel(
+                        reservedCount,
+                        sessionItem.capacity_total
+                      )}{' '}
+                      ({sessionStatusLabel(displayStatus)})
+                    </div>
+                    {getSessionPriceAmountCents(sessionItem) !== null && (
+                      <div className="text-xs text-slate-500">
+                        Prix: {(getSessionPriceAmountCents(sessionItem)! / 100).toLocaleString('fr-FR', {
+                          style: 'currency',
+                          currency: 'EUR'
+                        })}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex flex-col gap-3 md:items-end">
+                    <div className="text-sm font-medium text-slate-700">
+                      {formatRemainingPlacesLabel(remainingPlaces)}
+                    </div>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                      <RemainingPlacesEditor
+                        action={updateSessionRemainingPlaces}
+                        initialValue={remainingPlaces}
+                        hiddenFields={{ session_id: sessionItem.id }}
+                      />
+                      <form action={deleteSession}>
+                        <input type="hidden" name="session_id" value={sessionItem.id} />
+                        <button className="rounded-lg border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-700 transition hover:border-rose-300 hover:bg-rose-50 hover:text-rose-800">
+                          Supprimer
+                        </button>
+                      </form>
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
             {sessions.length === 0 && <li>Aucune session.</li>}
           </ul>
           <form action={addSession} className="space-y-3 border-t border-slate-100 pt-4">
@@ -1358,8 +1444,7 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
       </div>
 
       <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
-        <h2 className="text-lg font-semibold text-slate-900">Assurances</h2>
-        <p className="text-sm text-slate-600">Ajoute une assurance au niveau du séjour, au forfait ou en pourcentage du prix.</p>
+        <h2 className="text-lg font-semibold text-slate-900">Assurances du séjour</h2>
 
         <div className="space-y-3">
           {insuranceOptions.length > 0 ? (
@@ -1378,7 +1463,7 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
               </div>
             ))
           ) : (
-            <p className="text-sm text-slate-500">Aucune assurance pour ce séjour.</p>
+            <p className="text-sm text-slate-500">Aucune assurance définie pour ce séjour.</p>
           )}
         </div>
 

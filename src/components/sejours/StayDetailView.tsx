@@ -47,8 +47,9 @@ function formatPrice(price?: number | null) {
 function formatSessionLabel(session: StaySessionOption) {
   const start = new Date(session.startDate).toLocaleDateString('fr-FR');
   const end = new Date(session.endDate).toLocaleDateString('fr-FR');
+  const status = session.status === 'FULL' ? ' (COMPLET)' : '';
   const price = session.price != null ? ` · ${formatPrice(session.price)}` : '';
-  return `${start} - ${end}${price}`;
+  return `${start} - ${end}${status}${price}`;
 }
 
 function formatTransportLabel(option: StayTransportOption) {
@@ -208,7 +209,8 @@ export function StayDetailView({ stay }: { stay: Stay }) {
     if (transportMode === 'Sans transport') return 0;
     if (isDifferentiatedTransport) {
       return (
-        (selectedDepartureTransportOption?.amount ?? 0) + (selectedReturnTransportOption?.amount ?? 0)
+        (selectedDepartureTransportOption?.amount ?? 0) / 2 +
+        (selectedReturnTransportOption?.amount ?? 0) / 2
       );
     }
     return selectedTransportOption?.amount ?? 0;
@@ -227,6 +229,7 @@ export function StayDetailView({ stay }: { stay: Stay }) {
     () => extraOptions.find((option) => option.id === selectedExtraOptionId) ?? null,
     [extraOptions, selectedExtraOptionId]
   );
+  const isSelectedSessionFull = selectedSession?.status === 'FULL';
   const estimatedPrice = useMemo(() => {
     const basePrice = selectedSession?.price ?? stay.priceFrom;
     if (basePrice == null) return stay.priceFrom;
@@ -283,6 +286,11 @@ export function StayDetailView({ stay }: { stay: Stay }) {
   const handleReserver = () => {
     if (hasSessions && !selectedSession) {
       setBookingError('Sélectionnez une session.');
+      return;
+    }
+
+    if (isSelectedSessionFull) {
+      setBookingError('Cette session est complète.');
       return;
     }
 
@@ -733,14 +741,20 @@ export function StayDetailView({ stay }: { stay: Stay }) {
                   </select>
                 </div>
                 {bookingError && <p className="text-sm text-rose-600">{bookingError}</p>}
-                <button
-                  type="button"
-                  onClick={handleReserver}
-                  disabled={!hasSessions}
-                  className="mt-4 flex w-full items-center justify-center rounded-xl bg-accent-500 px-6 py-3.5 text-base font-semibold text-white shadow-md transition-colors hover:bg-accent-600 disabled:cursor-not-allowed disabled:bg-slate-300"
-                >
-                  Réserver maintenant
-                </button>
+                {isSelectedSessionFull ? (
+                  <p className="mt-4 flex w-full items-center justify-center rounded-xl bg-rose-50 px-6 py-3.5 text-base font-semibold text-rose-700">
+                    Complet
+                  </p>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleReserver}
+                    disabled={!hasSessions}
+                    className="mt-4 flex w-full items-center justify-center rounded-xl bg-accent-500 px-6 py-3.5 text-base font-semibold text-white shadow-md transition-colors hover:bg-accent-600 disabled:cursor-not-allowed disabled:bg-slate-300"
+                  >
+                    Réserver maintenant
+                  </button>
+                )}
               </form>
 
               <div className="mt-6 flex items-center gap-3 text-sm text-slate-600">

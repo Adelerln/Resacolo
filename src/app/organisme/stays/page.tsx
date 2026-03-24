@@ -1,17 +1,34 @@
+import { revalidatePath } from 'next/cache';
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
+import ErrorToast from '@/components/common/ErrorToast';
+import SavedToast from '@/components/common/SavedToast';
+import OrganizerStaysTable from '@/components/organisme/OrganizerStaysTable';
 import { requireRole } from '@/lib/auth/require';
 import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers';
-import { stayStatusLabel } from '@/lib/ui/labels';
+import { getReservedSessionCounts } from '@/lib/session-reservations';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 
 type PageProps = {
   searchParams?: {
     organizerId?: string | string[];
+    saved?: string | string[];
+    error?: string | string[];
+    openStay?: string | string[];
   };
 };
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+
+function formatRedirectValue(value?: string | string[]) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function formatRedirectValues(value?: string | string[]) {
+  if (!value) return [];
+  return Array.isArray(value) ? value : [value];
+}
 
 export default async function OrganizerStaysPage({ searchParams }: PageProps) {
   const session = requireRole('ORGANISATEUR');
@@ -21,6 +38,9 @@ export default async function OrganizerStaysPage({ searchParams }: PageProps) {
     session.tenantId ?? null
   );
   const organizerId = selectedOrganizerId;
+  const savedParam = formatRedirectValue(searchParams?.saved);
+  const errorParam = formatRedirectValue(searchParams?.error);
+  const openStayParams = formatRedirectValues(searchParams?.openStay);
 
   const { data: stays, error: staysError } = organizerId
     ? await supabase
@@ -30,15 +50,136 @@ export default async function OrganizerStaysPage({ searchParams }: PageProps) {
         .order('created_at', { ascending: false })
     : { data: [], error: null };
   const safeStays = stays ?? [];
+  const stayIds = safeStays.map((stay) => stay.id);
 
   const { data: seasons } = await supabase
     .from('seasons')
     .select('id,name');
   const seasonsById = new Map((seasons ?? []).map((season) => [season.id, season]));
   const loadError = staysError?.message ?? null;
+  const { data: sessions } = stayIds.length
+    ? await supabase
+        .from('sessions')
+        .select('id,stay_id,start_date,end_date,capacity_total,capacity_reserved,status')
+        .in('stay_id', stayIds)
+        .order('start_date', { ascending: true })
+    : { data: [] };
+  const reservedSessionCounts = await getReservedSessionCounts(
+    supabase,
+    (sessions ?? []).map((sessionItem) => sessionItem.id)
+  );
+  const sessionsByStayId = new Map<string, NonNullable<typeof sessions>[number][]>();
+
+  for (const sessionItem of sessions ?? []) {
+    if (sessionItem.status === 'COMPLETED' || sessionItem.status === 'ARCHIVED') continue;
+    const group = sessionsByStayId.get(sessionItem.stay_id) ?? [];
+    group.push(sessionItem);
+    sessionsByStayId.set(sessionItem.stay_id, group);
+  }
+
+  async function updateSessionRemainingPlaces(formData: FormData) {
+    'use server';
+    const supabase = getServerSupabaseClient();
+    const sessionId = String(formData.get('session_id') ?? '').trim();
+    const stayId = String(formData.get('stay_id') ?? '').trim();
+    const remainingPlaces = Number(formData.get('remaining_places') ?? NaN);
+
+    if (!sessionId || !stayId || Number.isNaN(remainingPlaces) || remainingPlaces < 0) {
+      redirect(
+        withOrganizerQuery(
+          `/organisme/sejours?error=invalid-session-capacity&openStay=${encodeURIComponent(stayId)}`,
+          organizerId
+        )
+      );
+    }
+
+    const { data: stay } = await supabase
+      .from('stays')
+      .select('id')
+      .eq('id', stayId)
+      .eq('organizer_id', organizerId)
+      .maybeSingle();
+
+    if (!stay) {
+      redirect(withOrganizerQuery('/organisme/sejours?error=invalid-session-capacity', organizerId));
+    }
+
+    const { data: sessionItem } = await supabase
+      .from('sessions')
+      .select('id,stay_id,capacity_total,status')
+      .eq('id', sessionId)
+      .eq('stay_id', stayId)
+      .maybeSingle();
+
+    if (!sessionItem) {
+      redirect(
+        withOrganizerQuery(
+          `/organisme/sejours?error=invalid-session-capacity&openStay=${encodeURIComponent(stayId)}`,
+          organizerId
+        )
+      );
+    }
+
+    const reservedCount = (await getReservedSessionCounts(supabase, [sessionId])).get(sessionId) ?? 0;
+    const capacityTotal = reservedCount + remainingPlaces;
+    const nextStatus =
+      sessionItem.status === 'COMPLETED' || sessionItem.status === 'ARCHIVED'
+        ? sessionItem.status
+        : reservedCount >= capacityTotal
+          ? 'FULL'
+          : 'OPEN';
+
+    const { error } = await supabase
+      .from('sessions')
+      .update({
+        capacity_total: capacityTotal,
+        capacity_reserved: reservedCount,
+        status: nextStatus
+      })
+      .eq('id', sessionId)
+      .eq('stay_id', stayId);
+
+    if (error) {
+      redirect(
+        withOrganizerQuery(
+          `/organisme/sejours?error=${encodeURIComponent(error.message)}&openStay=${encodeURIComponent(stayId)}`,
+          organizerId
+        )
+      );
+    }
+
+    revalidatePath('/organisme/sejours');
+    revalidatePath('/organisme/stays');
+    revalidatePath(`/organisme/sejours/${stayId}`);
+    revalidatePath(`/organisme/stays/${stayId}`);
+    revalidatePath('/sejours');
+    redirect(
+      withOrganizerQuery(
+        `/organisme/sejours?saved=1&openStay=${encodeURIComponent(stayId)}`,
+        organizerId
+      )
+    );
+  }
+
+  const stayRows = safeStays.map((stay) => ({
+    id: stay.id,
+    title: stay.title,
+    status: stay.status,
+    seasonName: seasonsById.get(stay.season_id)?.name ?? '-',
+    sessions: sessionsByStayId.get(stay.id)?.map((sessionItem) => ({
+      id: sessionItem.id,
+      startDate: sessionItem.start_date,
+      endDate: sessionItem.end_date,
+      capacityTotal: sessionItem.capacity_total,
+      capacityReserved: reservedSessionCounts.get(sessionItem.id) ?? 0,
+      status: sessionItem.status
+    })) ?? []
+  }));
 
   return (
     <div className="space-y-6">
+      {savedParam === '1' && <SavedToast message="Le stock de la session a bien été mis à jour." />}
+      {errorParam && <ErrorToast message={decodeURIComponent(errorParam)} />}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Séjours</h1>
@@ -56,54 +197,18 @@ export default async function OrganizerStaysPage({ searchParams }: PageProps) {
         </Link>
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-            <tr>
-              <th className="px-4 py-3">Séjour</th>
-              <th className="px-4 py-3">Saison</th>
-              <th className="px-4 py-3">Statut</th>
-              <th className="px-4 py-3">Qualité</th>
-              <th className="px-4 py-3"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {safeStays.map((stay) => (
-              <tr key={stay.id} className="border-t border-slate-100">
-                <td className="px-4 py-3 font-medium text-slate-900">{stay.title}</td>
-                <td className="px-4 py-3 text-slate-600">
-                  {seasonsById.get(stay.season_id)?.name ?? '-'}
-                </td>
-                <td className="px-4 py-3 text-slate-600">{stayStatusLabel(stay.status)}</td>
-                <td className="px-4 py-3 text-slate-600">-</td>
-                <td className="px-4 py-3 text-right">
-                  <div className="flex items-center justify-end gap-3">
-                    <Link
-                      href={withOrganizerQuery(`/organisme/sejours/${stay.id}`, organizerId)}
-                      className="text-emerald-600"
-                    >
-                      Ouvrir
-                    </Link>
-                    <Link
-                      href={withOrganizerQuery(`/organisme/sejours/${stay.id}`, organizerId)}
-                      className="rounded-lg border border-emerald-200 px-3 py-1 text-xs font-semibold text-emerald-700"
-                    >
-                      Éditer
-                    </Link>
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {safeStays.length === 0 && (
-              <tr>
-                <td className="px-4 py-6 text-slate-500" colSpan={5}>
-                  {loadError ? `Erreur: ${loadError}` : 'Aucun séjour pour le moment.'}
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      {stayRows.length > 0 ? (
+        <OrganizerStaysTable
+          stays={stayRows}
+          organizerId={organizerId}
+          updateSessionRemainingPlacesAction={updateSessionRemainingPlaces}
+          defaultOpenStayIds={openStayParams}
+        />
+      ) : (
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white px-4 py-6 text-sm text-slate-500">
+          {loadError ? `Erreur: ${loadError}` : 'Aucun séjour pour le moment.'}
+        </div>
+      )}
     </div>
   );
 }

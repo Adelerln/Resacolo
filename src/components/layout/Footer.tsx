@@ -25,7 +25,7 @@ export function Footer() {
                   RESACOLO
                 </span>
               </Link>
-              <div className="mt-4 space-y-3 text-[15px] leading-6 text-white/92">
+              <div className="mt-4 space-y-3 text-[15px] leading-6 text-white">
                 <p>
                   Plateforme de référencement et de réservation de colonies de vacances élaborée par des organisateurs
                   de séjours.
@@ -43,7 +43,7 @@ export function Footer() {
                 <ul className="mt-4 space-y-3 text-[15px] font-semibold leading-5 text-white">
                   {helpLinks.map((link) => (
                     <li key={link.href}>
-                      <Link href={link.href} className="transition hover:text-white/80">
+                      <Link href={link.href} className="text-white transition hover:text-white">
                         {link.label}
                       </Link>
                     </li>
@@ -56,7 +56,7 @@ export function Footer() {
                 <ul className="mt-4 space-y-3 text-[15px] font-semibold leading-5 text-white">
                   {legalLinks.map((link) => (
                     <li key={link.href}>
-                      <Link href={link.href} className="transition hover:text-white/80">
+                      <Link href={link.href} className="text-white transition hover:text-white">
                         {link.label}
                       </Link>
                     </li>

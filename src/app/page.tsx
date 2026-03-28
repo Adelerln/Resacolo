@@ -211,6 +211,7 @@ export default function HomePage() {
   const [inspiIndex, setInspiIndex] = useState(inspiCards.length);
   const [inspiTransitionEnabled, setInspiTransitionEnabled] = useState(true);
   const [inspiStepPx, setInspiStepPx] = useState(0);
+  const [inspiCardWidthPx, setInspiCardWidthPx] = useState(0);
   const inspiViewportRef = useRef<HTMLDivElement | null>(null);
   const leftAids = aids.filter((_, index) => index % 2 === 0);
   const rightAids = aids.filter((_, index) => index % 2 === 1);
@@ -233,7 +234,9 @@ export default function HomePage() {
       }
 
       const gapPx = 24;
-      setInspiStepPx((viewportWidth + gapPx) / 3);
+      const cardWidthPx = (viewportWidth - gapPx * 2) / 3;
+      setInspiCardWidthPx(cardWidthPx);
+      setInspiStepPx(cardWidthPx + gapPx);
     }
 
     updateInspiStep();
@@ -459,7 +462,7 @@ export default function HomePage() {
                   <div
                     key={`${card.src}-${index}`}
                     className="group relative shrink-0 overflow-hidden rounded-[14px] bg-slate-100 shadow-md"
-                    style={{ width: 'calc((100% - 3rem) / 3)' }}
+                    style={{ width: inspiCardWidthPx > 0 ? `${inspiCardWidthPx}px` : 'calc((100% - 3rem) / 3)' }}
                   >
                     <div className="relative aspect-[4/5]">
                       <Image

@@ -82,7 +82,7 @@ export function OrganizerDetailModal({ slug, onClose }: OrganizerDetailModalProp
         <div className="flex-1 overflow-y-auto">
           {loading && (
             <div className="flex items-center justify-center py-16">
-              <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#3B82F6] border-t-transparent" />
+              <div className="h-8 w-8 animate-spin rounded-full border-2 border-brand-600 border-t-transparent" />
             </div>
           )}
 
@@ -92,7 +92,7 @@ export function OrganizerDetailModal({ slug, onClose }: OrganizerDetailModalProp
               <button
                 type="button"
                 onClick={onClose}
-                className="mt-4 text-sm font-medium text-[#3B82F6] hover:underline"
+                className="mt-4 text-sm font-medium text-brand-600 hover:underline"
               >
                 Fermer
               </button>
@@ -118,7 +118,7 @@ export function OrganizerDetailModal({ slug, onClose }: OrganizerDetailModalProp
                 <div>
                   <h2
                     id="organizer-modal-title"
-                    className="font-display text-xl font-bold uppercase text-[#3B82F6] sm:text-2xl"
+                    className="font-display text-xl font-bold uppercase text-brand-600 sm:text-2xl"
                   >
                     {data.organizer.name}
                   </h2>
@@ -146,7 +146,7 @@ export function OrganizerDetailModal({ slug, onClose }: OrganizerDetailModalProp
                             href={data.organizer.website}
                             target="_blank"
                             rel="noreferrer"
-                            className="font-medium text-[#3B82F6] hover:underline"
+                            className="font-medium text-brand-600 hover:underline"
                           >
                             Visiter le site
                           </a>
@@ -174,7 +174,7 @@ export function OrganizerDetailModal({ slug, onClose }: OrganizerDetailModalProp
                     <p>Aucun séjour référencé pour le moment.</p>
                     <Link
                       href="/sejours"
-                      className="mt-3 inline-block font-medium text-[#3B82F6] hover:underline"
+                      className="mt-3 inline-block font-medium text-brand-600 hover:underline"
                     >
                       Voir tous les séjours
                     </Link>

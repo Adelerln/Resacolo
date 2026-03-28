@@ -10,28 +10,34 @@ const config: Config = {
     extend: {
       colors: {
         brand: {
-          50: '#eff7ff',
-          100: '#d0ebff',
-          200: '#98d3ff',
-          300: '#63c1ff',
-          400: '#39a9ff',
-          500: '#1b8de8',
-          600: '#0f70c3',
-          700: '#125ca0',
-          800: '#134d83',
-          900: '#123f6d'
+          50: '#f2fbff',
+          100: '#def4ff',
+          200: '#bee8ff',
+          300: '#9fdcff',
+          400: '#83d1ff',
+          500: '#6ec7ff',
+          600: '#52b0ea',
+          700: '#3898d1',
+          800: '#2a7caf',
+          900: '#245f84'
         },
         accent: {
-          50: '#fff5eb',
-          100: '#ffe4c4',
-          200: '#ffca89',
-          300: '#ffac4d',
-          400: '#ff931f',
-          500: '#ff7a00',
-          600: '#db5f00',
-          700: '#b74600',
-          800: '#923500',
-          900: '#772c00'
+          50: '#fff4ea',
+          100: '#ffe5cf',
+          200: '#ffd0a8',
+          300: '#ffb274',
+          400: '#ff993d',
+          500: '#fa8500',
+          600: '#f48200',
+          700: '#d86c00',
+          800: '#b85a00',
+          900: '#924700'
+        },
+        surface: {
+          50: '#f8f8f8'
+        },
+        ink: {
+          500: '#404040'
         },
         slate: {
           950: '#1d1f25'
@@ -42,7 +48,7 @@ const config: Config = {
         display: ['var(--font-display)', 'system-ui', 'sans-serif']
       },
       boxShadow: {
-        brand: '0 30px 60px -40px rgba(18, 92, 160, 0.4)'
+        brand: '0 30px 60px -40px rgba(82, 176, 234, 0.35)'
       },
       keyframes: {
         marquee: {

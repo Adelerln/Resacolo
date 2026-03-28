@@ -85,7 +85,7 @@ export const AccordionTrigger = React.forwardRef<HTMLButtonElement, React.Button
         ref={ref}
         type="button"
         className={cn(
-          'flex w-full items-center justify-between py-4 text-left text-sm font-semibold uppercase tracking-wide text-slate-800 transition hover:text-[#3B82F6]',
+          'flex w-full items-center justify-between py-4 text-left text-sm font-semibold uppercase tracking-wide text-slate-800 transition hover:text-brand-600',
           className
         )}
         onClick={() => accordion.toggleValue(item.value)}

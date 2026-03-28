@@ -1,9 +1,9 @@
 'use client';
 
-const BLUE = '#3B82F6';
-const ORANGE = '#F97316';
-const BLUE_LIGHT = '#93C5FD';
-const ORANGE_LIGHT = '#FDBA74';
+const BLUE = '#52B0EA';
+const ORANGE = '#FA8500';
+const BLUE_LIGHT = '#6EC7FF';
+const ORANGE_LIGHT = '#FFD0A8';
 const AMBER = '#FDE68A';
 const GRAY = '#94A3B8';
 
@@ -28,7 +28,7 @@ export function NotFoundIllustration() {
         <rect x="28" y="18" width="24" height="32" rx="6" fill={ORANGE} />
         <circle cx="40" cy="28" r="5" fill={ORANGE_LIGHT} />
         {/* Head with scratching gesture */}
-        <circle cx="40" cy="0" r="18" fill={AMBER} stroke="#F59E0B" strokeWidth="1.5" />
+        <circle cx="40" cy="0" r="18" fill={AMBER} stroke={ORANGE} strokeWidth="1.5" />
         <circle cx="36" cy="-4" r="3" fill="#78716C" />
         <circle cx="44" cy="-4" r="3" fill="#78716C" />
         <path d="M58 -2 Q68 0 70 8" stroke="#78716C" strokeWidth="2" fill="none" strokeLinecap="round" />

@@ -4,7 +4,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
-import { ChevronDown, Heart, Menu, ShoppingCart, UserRound, X } from 'lucide-react';
+import { ChevronDown, Menu, X } from 'lucide-react';
 import clsx from 'clsx';
 import { useCart } from '@/context/CartContext';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -30,6 +30,12 @@ const backOfficeLinks = [
   { href: '/organisme', label: 'Organisateur' },
   { href: '/partenaire', label: 'Collectivité' }
 ];
+
+const headerLinkClass = 'text-[17px] font-bold tracking-[1px] !text-[#37b5f4] transition-opacity hover:opacity-80';
+const headerDropdownItemClass =
+  'block whitespace-nowrap px-4 py-2 text-[15px] font-bold tracking-[1px] !text-[#37b5f4] hover:bg-slate-50 hover:opacity-80';
+const headerIconButtonClass =
+  'flex h-7 w-7 items-center justify-center bg-transparent transition hover:opacity-80';
 
 function isLinkItem(
   item: (typeof links)[number]
@@ -115,7 +121,7 @@ export function MainNavigation() {
             priority
           />
         </Link>
-        <nav className="hidden items-center gap-8 overflow-visible text-sm font-medium text-slate-600 md:flex">
+        <nav className="hidden items-center gap-8 overflow-visible font-medium md:flex">
           {links.map((link) => {
             if (isDropdownItem(link)) {
               const isActive = link.children.some((c) => pathname === c.href);
@@ -131,8 +137,9 @@ export function MainNavigation() {
                     aria-expanded={dropdownOpen}
                     aria-haspopup="menu"
                     className={clsx(
-                      'flex items-center gap-1 transition hover:text-brand-500',
-                      isActive && 'text-brand-500'
+                      'flex items-center gap-1',
+                      headerLinkClass,
+                      isActive && 'opacity-100'
                     )}
                   >
                     {link.label}
@@ -147,7 +154,7 @@ export function MainNavigation() {
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, y: 6, scale: 0.98 }}
                         transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-                        className="absolute left-0 top-full z-50 min-w-[180px] pt-1"
+                        className="absolute left-0 top-full z-50 min-w-[260px] pt-1"
                       >
                         <div className="rounded-xl border border-slate-200 bg-white py-2 shadow-lg">
                           {link.children.map((child) => (
@@ -155,8 +162,8 @@ export function MainNavigation() {
                               key={child.href}
                               href={child.href}
                               className={clsx(
-                                'block px-4 py-2 text-slate-700 hover:bg-slate-50 hover:text-brand-500',
-                                pathname === child.href && 'bg-brand-50 text-brand-600'
+                                headerDropdownItemClass,
+                                pathname === child.href && 'bg-brand-50'
                               )}
                             >
                               {child.label}
@@ -176,7 +183,7 @@ export function MainNavigation() {
                 <Link
                   key={link.href}
                   href={link.href}
-                  className={clsx('transition hover:text-brand-500', isActive && 'text-brand-500')}
+                  className={clsx(headerLinkClass, isActive && 'opacity-100')}
                 >
                   {link.label}
                 </Link>
@@ -188,25 +195,43 @@ export function MainNavigation() {
         <div className="hidden items-center gap-5 md:flex">
           <Link
             href="/mon-compte"
-            className="rounded-full border border-slate-200 p-2 text-slate-500 hover:border-brand-200 hover:text-brand-500"
+            className={headerIconButtonClass}
             aria-label="Mon compte"
           >
-            <UserRound className="h-4 w-4" />
+            <Image
+              src="/image/header/pictos_header/icon-mon-compte.png"
+              alt=""
+              width={16}
+              height={16}
+              className="h-4 w-4 object-contain"
+            />
           </Link>
-          <button className="rounded-full border border-slate-200 p-2 text-slate-500 hover:border-brand-200 hover:text-brand-500">
-            <Heart className="h-4 w-4" />
+          <button className={headerIconButtonClass} aria-label="Favoris" type="button">
+            <Image
+              src="/image/header/pictos_header/icon-favoris.png"
+              alt=""
+              width={16}
+              height={16}
+              className="h-4 w-4 object-contain"
+            />
           </button>
           <Link
             href="/panier"
-            className="relative rounded-full border border-slate-200 p-2 text-slate-500 hover:border-brand-200 hover:text-brand-500"
+            className={clsx(headerIconButtonClass, 'relative')}
             aria-label="Panier"
           >
-            <ShoppingCart className="h-4 w-4" />
+            <Image
+              src="/image/header/pictos_header/icon-panier.png"
+              alt=""
+              width={16}
+              height={16}
+              className="h-4 w-4 object-contain"
+            />
             {cartCount > 0 && (
               <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-accent-500 text-[10px] font-semibold text-white">
-            {cartCount > 99 ? '99+' : cartCount}
-            </span>
-          )}
+                {cartCount > 99 ? '99+' : cartCount}
+              </span>
+            )}
           </Link>
           <div
             className="relative"
@@ -217,7 +242,7 @@ export function MainNavigation() {
               type="button"
               aria-expanded={backOfficeOpen}
               aria-haspopup="menu"
-              className="btn btn-sm btn-accent-outline"
+              className="btn btn-sm btn-accent-outline text-[17px] font-bold tracking-[1px] !text-[#37b5f4]"
             >
               Back Office
               <ChevronDown className={clsx('h-4 w-4 transition', backOfficeOpen && 'rotate-180')} />
@@ -267,12 +292,12 @@ export function MainNavigation() {
             transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
             className="overflow-hidden border-t border-slate-200 bg-white px-6 py-4 md:hidden"
           >
-            <ul className="flex flex-col gap-4 text-sm font-medium text-slate-700">
+            <ul className="flex flex-col gap-4 font-medium text-slate-700">
               {links.map((link) => {
                 if (isDropdownItem(link)) {
                   return (
                     <li key={link.label}>
-                      <span className="block font-medium text-slate-500">{link.label}</span>
+                      <span className="block text-[17px] font-bold tracking-[1px] !text-[#37b5f4]">{link.label}</span>
                       <ul className="mt-2 flex flex-col gap-2 pl-3">
                         {link.children.map((child) => (
                           <li key={child.href}>
@@ -280,8 +305,8 @@ export function MainNavigation() {
                               href={child.href}
                               onClick={close}
                               className={clsx(
-                                'block transition hover:text-brand-600',
-                                pathname === child.href && 'text-brand-600'
+                                headerLinkClass,
+                                pathname === child.href && 'opacity-100'
                               )}
                             >
                               {child.label}
@@ -300,7 +325,7 @@ export function MainNavigation() {
                       <Link
                         href={link.href}
                         onClick={close}
-                        className={clsx('block transition hover:text-brand-600', isActive && 'text-brand-600')}
+                        className={clsx(headerLinkClass, isActive && 'opacity-100')}
                       >
                         {link.label}
                       </Link>
@@ -310,7 +335,7 @@ export function MainNavigation() {
                 return null;
               })}
               <li>
-                <span className="block font-medium text-slate-500">Back Office</span>
+                <span className="block text-[17px] font-bold tracking-[1px] !text-[#37b5f4]">Back Office</span>
                 <ul className="mt-2 flex flex-col gap-2 pl-3">
                   {backOfficeLinks.map((item) => (
                     <li key={item.href}>
@@ -318,8 +343,8 @@ export function MainNavigation() {
                         href={item.href}
                         onClick={close}
                         className={clsx(
-                          'block transition hover:text-brand-600',
-                          pathname === item.href && 'text-brand-600'
+                          headerLinkClass,
+                          pathname === item.href && 'opacity-100'
                         )}
                       >
                         {item.label}

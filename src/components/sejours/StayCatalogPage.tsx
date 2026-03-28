@@ -2,6 +2,7 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { useState } from 'react';
 import { Compass, Clock3, Filter, MapPin, Search, ShoppingCart, Sun } from 'lucide-react';
 import { getMockImageUrl, mockImages } from '@/lib/mockImages';
@@ -30,6 +31,8 @@ type StayCardData = {
 };
 
 type NormalizedStay = StayCardData & {
+  categoryValues: string[];
+  periodValues: string[];
   seasonLabels: string[];
   ageLabels: string[];
 };
@@ -54,14 +57,14 @@ function FiltersPanel({
   return (
     <aside className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <h2 className="text-2xl font-semibold text-slate-900">
-        Filtrez <span className="text-[#F97316]">les séjours</span>
+        Filtrez <span className="text-accent-500">les séjours</span>
       </h2>
       <div className="relative mt-4">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#3B82F6]" />
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-brand-600" />
         <input
           type="text"
           placeholder="Chercher un séjour..."
-          className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm text-slate-700 outline-none transition focus:border-[#3B82F6]"
+          className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm text-slate-700 outline-none transition focus:border-brand-600"
         />
       </div>
 
@@ -76,7 +79,7 @@ function FiltersPanel({
                     <label className="flex items-center gap-2 text-sm text-slate-600">
                       <input
                         type="checkbox"
-                        className="h-4 w-4 rounded border-slate-300 text-[#3B82F6]"
+                        className="h-4 w-4 rounded border-slate-300 text-brand-600"
                         checked={filters[group.id as keyof FilterState].has(option)}
                         onChange={() => onToggle(group.id as keyof FilterState, option)}
                       />
@@ -118,17 +121,17 @@ function StayCard({ stay }: { stay: StayCardData }) {
               sizes="44px"
             />
           </div>
-          <span className="absolute bottom-3 left-3 rounded-full bg-[#F97316] px-3 py-1 text-xs font-semibold text-white">
+          <span className="absolute bottom-3 left-3 rounded-full bg-accent-500 px-3 py-1 text-xs font-semibold text-white">
             {stay.age}
           </span>
-          <span className="absolute bottom-3 right-3 inline-flex items-center gap-1 rounded-full bg-white px-3 py-1 text-xs font-semibold text-[#F97316]">
+          <span className="absolute bottom-3 right-3 inline-flex items-center gap-1 rounded-full bg-white px-3 py-1 text-xs font-semibold text-accent-500">
             <Sun className="h-3.5 w-3.5" />
             {stay.season}
           </span>
         </div>
 
         <CardContent className="space-y-4 p-4 pt-6">
-          <div className="flex items-center justify-between gap-3 whitespace-nowrap text-xs font-medium text-[#3B82F6]">
+          <div className="flex items-center justify-between gap-3 whitespace-nowrap text-xs font-medium text-brand-600">
             <span className="inline-flex min-w-0 items-center gap-1.5">
               <MapPin className="h-3.5 w-3.5" />
               <span className="min-w-0 truncate">{stay.location}</span>
@@ -154,7 +157,7 @@ function StayCard({ stay }: { stay: StayCardData }) {
               {stay.description}
             </p>
           </div>
-          <p className="text-center text-xl font-bold text-[#F97316]">{priceLabel}</p>
+          <p className="text-center text-xl font-bold text-accent-500">{priceLabel}</p>
         </CardContent>
       </Card>
     </Link>
@@ -163,6 +166,7 @@ function StayCard({ stay }: { stay: StayCardData }) {
 
 export function StayCatalogPage({ stays = [] }: { stays?: Stay[] }) {
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  const searchParams = useSearchParams();
   const [filters, setFilters] = useState<FilterState>({
     season: new Set(),
     age: new Set()
@@ -219,23 +223,42 @@ export function StayCatalogPage({ stays = [] }: { stays?: Stay[] }) {
       priceFrom: stay.priceFrom,
       image: stay.coverImage || getMockImageUrl(mockImages.sejours.fallbackCover, 1200, 80),
       organizerLogo: stay.organizer.logoUrl ?? null,
+      categoryValues: stay.filters.categories,
+      periodValues: stay.filters.periods,
       seasonLabels,
       ageLabels
     };
   });
 
+  const routeCategories = searchParams
+    .getAll('categories')
+    .flatMap((value) => value.split(',').map((item) => item.trim()).filter(Boolean));
+  const routePeriods = searchParams
+    .getAll('periods')
+    .flatMap((value) => value.split(',').map((item) => item.trim()).filter(Boolean));
+  const routeQuery = searchParams.get('q')?.trim().toLowerCase() ?? '';
+
   const filteredStays = normalizedStays.filter((stay) => {
     const seasonActive = filters.season.size > 0;
     const ageActive = filters.age.size > 0;
-
-    if (!seasonActive && !ageActive) return true;
+    const routeCategoriesActive = routeCategories.length > 0;
+    const routePeriodsActive = routePeriods.length > 0;
+    const routeQueryActive = routeQuery.length > 0;
 
     const seasonOk =
       !seasonActive || stay.seasonLabels.some((label: string) => filters.season.has(label));
     const ageOk =
       !ageActive || stay.ageLabels.some((label: string) => filters.age.has(label));
+    const routeCategoriesOk =
+      !routeCategoriesActive ||
+      routeCategories.some((category) => stay.categoryValues.includes(category));
+    const routePeriodsOk =
+      !routePeriodsActive || routePeriods.some((period) => stay.periodValues.includes(period));
+    const routeQueryOk =
+      !routeQueryActive ||
+      `${stay.title} ${stay.subtitle} ${stay.location} ${stay.description}`.toLowerCase().includes(routeQuery);
 
-    return seasonOk && ageOk;
+    return seasonOk && ageOk && routeCategoriesOk && routePeriodsOk && routeQueryOk;
   });
 
   return (
@@ -281,7 +304,7 @@ export function StayCatalogPage({ stays = [] }: { stays?: Stay[] }) {
             onClick={() => setMobileFiltersOpen(true)}
             className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700"
           >
-            <Filter className="h-4 w-4 text-[#3B82F6]" />
+            <Filter className="h-4 w-4 text-brand-600" />
             Filtres
           </button>
           <select className="rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-600">
@@ -343,11 +366,11 @@ export function StayCatalogPage({ stays = [] }: { stays?: Stay[] }) {
 
       <button
         type="button"
-        className="fixed bottom-6 right-6 z-[110] flex h-14 w-14 items-center justify-center rounded-full bg-[#F97316] text-white shadow-xl transition hover:bg-[#ea580c]"
+        className="fixed bottom-6 right-6 z-[110] flex h-14 w-14 items-center justify-center rounded-full bg-accent-500 text-white shadow-xl transition hover:bg-accent-600"
         aria-label="Panier"
       >
         <ShoppingCart className="h-6 w-6" />
-        <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-[#3B82F6] text-xs font-semibold text-white">
+        <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-brand-600 text-xs font-semibold text-white">
           0
         </span>
       </button>

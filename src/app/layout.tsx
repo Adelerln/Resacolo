@@ -6,18 +6,19 @@ import { SiteShell } from '@/components/layout/SiteShell';
 
 const raleway = localFont({
   src: [
-    { path: './fonts/raleway-latin.woff2', weight: '400', style: 'normal' },
-    { path: './fonts/raleway-latin.woff2', weight: '500', style: 'normal' },
-    { path: './fonts/raleway-latin.woff2', weight: '600', style: 'normal' },
-    { path: './fonts/raleway-latin.woff2', weight: '700', style: 'normal' }
+    { path: '../../public/fonts/Raleway-Regular.ttf', weight: '400', style: 'normal' },
+    { path: '../../public/fonts/Raleway-Medium.ttf', weight: '500', style: 'normal' },
+    { path: '../../public/fonts/Raleway-SemiBold.ttf', weight: '600', style: 'normal' },
+    { path: '../../public/fonts/Raleway-Bold.ttf', weight: '700', style: 'normal' }
   ],
   variable: '--font-sans',
   display: 'swap'
 });
 const baloo = localFont({
   src: [
-    { path: './fonts/baloo2-latin.woff2', weight: '700', style: 'normal' },
-    { path: './fonts/baloo2-latin.woff2', weight: '800', style: 'normal' }
+    { path: '../../public/fonts/BalooBhaijaan2-SemiBold.ttf', weight: '600', style: 'normal' },
+    { path: '../../public/fonts/BalooBhaijaan2-Bold.ttf', weight: '700', style: 'normal' },
+    { path: '../../public/fonts/BalooBhaijaan2-ExtraBold.ttf', weight: '800', style: 'normal' }
   ],
   variable: '--font-display',
   display: 'swap'

@@ -1,9 +1,9 @@
 import Link from 'next/link';
 import { FaqAccordion } from '@/components/faq/FaqAccordion';
 
-const BLUE = '#3B82F6';
-const LIGHT_BLUE = '#60A5FA';
-const ORANGE = '#F97316';
+const BLUE = '#52B0EA';
+const LIGHT_BLUE = '#6EC7FF';
+const ORANGE = '#FA8500';
 
 export const metadata = {
   title: 'FAQ | ResaColo',
@@ -30,7 +30,7 @@ export default function FaqPage() {
       {/* Section 2: Contact Banner */}
       <section
         className="border-t border-slate-100 py-16 md:py-20"
-        style={{ backgroundColor: '#F7F8FA' }}
+        style={{ backgroundColor: '#F8F8F8' }}
       >
         <div className="mx-auto flex max-w-6xl flex-col items-center gap-10 px-4 sm:px-6 lg:flex-row lg:items-center lg:gap-16">
           {/* Visual: Airplane + wavy lines */}
@@ -106,7 +106,7 @@ export default function FaqPage() {
             <div className="mt-8 w-full lg:flex lg:justify-end">
               <Link
                 href="/contact"
-                className="inline-flex w-full items-center justify-center rounded-xl bg-[#F97316] px-8 py-4 font-semibold uppercase tracking-wide text-white shadow-md transition hover:opacity-95 sm:w-auto"
+                className="inline-flex w-full items-center justify-center rounded-xl bg-accent-500 px-8 py-4 font-semibold uppercase tracking-wide text-white shadow-md transition hover:bg-accent-600 sm:w-auto"
               >
                 Contactez un des organisateurs
               </Link>

@@ -45,7 +45,7 @@ export function PourquoiChoisirTabs() {
           >
             <span
               className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-lg font-bold text-white"
-              style={{ backgroundColor: '#3B82F6' }}
+              style={{ backgroundColor: 'var(--resacolo-blue-strong)' }}
             >
               {tab.id}
             </span>
@@ -56,7 +56,7 @@ export function PourquoiChoisirTabs() {
 
       <div className="relative flex-1 overflow-hidden rounded-xl border border-slate-200 bg-white p-6 shadow-sm lg:p-10">
         <span
-          className="pointer-events-none absolute -left-2 top-4 text-[180px] font-serif leading-none text-amber-100/80 select-none"
+          className="pointer-events-none absolute -left-2 top-4 select-none font-serif text-[180px] leading-none text-accent-100/80"
           aria-hidden
         >
           ❝

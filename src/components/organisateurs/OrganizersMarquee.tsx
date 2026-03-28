@@ -1,7 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 
 type OrganizerLogo = {
   id: string;
@@ -42,11 +41,6 @@ export function OrganizersMarquee({ embedded = false }: OrganizersMarqueeProps) 
     };
   }, []);
 
-  const repeated = useMemo(() => {
-    if (logos.length === 0) return [];
-    return [...logos, ...logos];
-  }, [logos]);
-
   const shouldAnimate = logos.length > 0;
 
   // Défilement continu, fluide, façon bandeau
@@ -56,78 +50,62 @@ export function OrganizersMarquee({ embedded = false }: OrganizersMarqueeProps) 
     if (!track) return;
 
     let frameId: number;
+    let offset = 0;
     const speed = 0.4; // pixels par frame (~24px/s à 60fps)
 
     const loop = () => {
-      if (!track) return;
-      track.scrollLeft += speed;
-      const halfWidth = track.scrollWidth / 2;
-      if (track.scrollLeft >= halfWidth) {
-        track.scrollLeft = 0;
+      const firstGroup = track.firstElementChild as HTMLDivElement | null;
+      if (!firstGroup) return;
+
+      offset -= speed;
+      if (Math.abs(offset) >= firstGroup.offsetWidth) {
+        offset = 0;
       }
+
+      track.style.transform = `translate3d(${offset}px, 0, 0)`;
       frameId = window.requestAnimationFrame(loop);
     };
 
     frameId = window.requestAnimationFrame(loop);
 
-    return () => window.cancelAnimationFrame(frameId);
-  }, [shouldAnimate, repeated.length]);
-
-  const scrollByAmount = (direction: 'left' | 'right') => {
-    const track = trackRef.current;
-    if (!track) return;
-    const delta = direction === 'left' ? -220 : 220;
-    track.scrollTo({
-      left: track.scrollLeft + delta,
-      behavior: 'smooth'
-    });
-  };
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      track.style.transform = 'translate3d(0, 0, 0)';
+    };
+  }, [shouldAnimate, logos.length]);
 
   const content = (
-    <div className="mx-auto max-w-5xl rounded-3xl border border-slate-200 bg-white/80 px-6 py-6 shadow-sm">
+    <div
+      className={`rounded-3xl border border-slate-200 bg-white/80 px-6 py-6 shadow-sm ${
+        embedded ? 'w-full' : 'mx-auto max-w-5xl'
+      }`}
+    >
       <p className="text-xs uppercase tracking-wide text-slate-500">Organisateurs partenaires</p>
       {loading && logos.length === 0 ? (
         <p className="mt-4 text-sm text-slate-500">Chargement des logos…</p>
       ) : (
-        <div className="mt-6 flex items-center justify-between gap-4">
-          <button
-            type="button"
-            onClick={() => scrollByAmount('left')}
-            className="rounded-full border border-slate-200 bg-white/90 p-2 text-slate-600 shadow-sm transition hover:text-slate-900"
-            aria-label="Faire défiler vers la gauche"
-          >
-            <ChevronLeft size={20} />
-          </button>
-          <div ref={trackRef} className="flex-1 overflow-hidden">
-            <div className="flex w-max items-center gap-8">
-              {repeated.map((org, index) => {
-                const isDuplicate = index >= logos.length;
-                return (
+        <div className="mt-6 overflow-hidden">
+          <div ref={trackRef} className="flex w-max items-center will-change-transform">
+            {[0, 1].map((copyIndex) => (
+              <div key={copyIndex} className="flex shrink-0 items-center gap-8 pr-8">
+                {logos.map((org) => (
                   <div
-                    key={`${org.id}-${index}`}
+                    key={`${org.id}-${copyIndex}`}
                     className="flex h-[108px] w-[150px] items-center justify-center"
-                    aria-hidden={isDuplicate ? true : undefined}
+                    aria-hidden={copyIndex === 1 ? true : undefined}
                   >
                     <img
                       src={org.logoUrl}
-                      alt={isDuplicate ? '' : org.name}
+                      alt={copyIndex === 1 ? '' : org.name}
                       className="max-h-[88px] w-auto object-contain opacity-95"
                       loading="lazy"
                       decoding="async"
                     />
                   </div>
-                );
-              })}
-            </div>
+                ))}
+              </div>
+            ))}
           </div>
-          <button
-            type="button"
-            onClick={() => scrollByAmount('right')}
-            className="rounded-full border border-slate-200 bg-white/90 p-2 text-slate-600 shadow-sm transition hover:text-slate-900"
-            aria-label="Faire défiler vers la droite"
-          >
-            <ChevronRight size={20} />
-          </button>
         </div>
       )}
     </div>
@@ -143,4 +121,3 @@ export function OrganizersMarquee({ embedded = false }: OrganizersMarqueeProps) 
     </section>
   );
 }
-

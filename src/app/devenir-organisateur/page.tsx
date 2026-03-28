@@ -18,7 +18,7 @@ export default function DevenirOrganisateurPage() {
               À PROPOS
             </p>
             <h1 className="text-4xl font-bold leading-tight text-slate-900 sm:text-5xl">
-              Présenter vos <span className="text-[#F97316]">séjours</span> sur Resacolo
+              Présenter vos <span className="text-accent-500">séjours</span> sur Resacolo
             </h1>
             <p className="max-w-2xl text-base leading-7 text-slate-600">
               Vous portez des colonies de vacances ou des séjours jeunesse&nbsp;? Rejoignez le collectif Resacolo pour
@@ -29,23 +29,23 @@ export default function DevenirOrganisateurPage() {
             </p>
             <ul className="mt-4 space-y-2 text-sm text-slate-600">
               <li className="flex items-center gap-2">
-                <Users className="h-4 w-4 text-[#F97316]" />
+                <Users className="h-4 w-4 text-accent-500" />
                 Intégrer un collectif d&apos;organisateurs engagés.
               </li>
               <li className="flex items-center gap-2">
-                <MapPin className="h-4 w-4 text-[#F97316]" />
+                <MapPin className="h-4 w-4 text-accent-500" />
                 Valoriser vos destinations et vos projets éducatifs.
               </li>
               <li className="flex items-center gap-2">
-                <ClipboardList className="h-4 w-4 text-[#F97316]" />
+                <ClipboardList className="h-4 w-4 text-accent-500" />
                 Centraliser la présentation de votre catalogue.
               </li>
             </ul>
           </div>
 
           <div className="flex justify-center lg:justify-end">
-            <div className="flex h-56 w-56 items-center justify-center rounded-3xl bg-orange-50 shadow-md ring-1 ring-[#F97316]/20 md:h-72 md:w-72">
-              <Users className="h-28 w-28 text-[#F97316] md:h-36 md:w-36" />
+            <div className="flex h-56 w-56 items-center justify-center rounded-3xl bg-accent-50 shadow-md ring-1 ring-accent-200 md:h-72 md:w-72">
+              <Users className="h-28 w-28 text-accent-500 md:h-36 md:w-36" />
             </div>
           </div>
         </div>
@@ -68,7 +68,7 @@ export default function DevenirOrganisateurPage() {
                 <label className="mb-2 block text-sm font-semibold text-slate-700">
                   Nom de l&apos;organisme *
                 </label>
-                <input className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 shadow-sm outline-none focus:border-[#3B82F6]" />
+                <input className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 shadow-sm outline-none focus:border-brand-600" />
               </div>
               <div>
                 <label className="mb-2 block text-sm font-semibold text-slate-700">
@@ -76,7 +76,7 @@ export default function DevenirOrganisateurPage() {
                 </label>
                 <input
                   placeholder="ex : IM012345678"
-                  className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 shadow-sm outline-none focus:border-[#3B82F6]"
+                  className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 shadow-sm outline-none focus:border-brand-600"
                 />
               </div>
             </div>
@@ -90,7 +90,7 @@ export default function DevenirOrganisateurPage() {
                   placeholder="ex : 123ORG4567"
                   pattern="^[0-9]{3}ORG[0-9]{4}$"
                   title="Format attendu : 123ORG4567"
-                  className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 uppercase shadow-sm outline-none focus:border-[#3B82F6]"
+                  className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 uppercase shadow-sm outline-none focus:border-brand-600"
                   required
                 />
               </div>
@@ -98,18 +98,18 @@ export default function DevenirOrganisateurPage() {
                 <label className="mb-2 block text-sm font-semibold text-slate-700">
                   Site web (facultatif)
                 </label>
-                <input className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 shadow-sm outline-none focus:border-[#3B82F6]" />
+                <input className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 shadow-sm outline-none focus:border-brand-600" />
               </div>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <label className="mb-2 block text-sm font-semibold text-slate-700">Nom *</label>
-                <input className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 shadow-sm outline-none focus:border-[#3B82F6]" />
+                <input className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 shadow-sm outline-none focus:border-brand-600" />
               </div>
               <div>
                 <label className="mb-2 block text-sm font-semibold text-slate-700">Prénom *</label>
-                <input className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 shadow-sm outline-none focus:border-[#3B82F6]" />
+                <input className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 shadow-sm outline-none focus:border-brand-600" />
               </div>
             </div>
 
@@ -118,14 +118,14 @@ export default function DevenirOrganisateurPage() {
                 <label className="mb-2 block text-sm font-semibold text-slate-700">Email *</label>
                 <input
                   type="email"
-                  className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 shadow-sm outline-none focus:border-[#3B82F6]"
+                  className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 shadow-sm outline-none focus:border-brand-600"
                 />
               </div>
               <div>
                 <label className="mb-2 block text-sm font-semibold text-slate-700">
                   Téléphone (facultatif)
                 </label>
-                <input className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 shadow-sm outline-none focus:border-[#3B82F6]" />
+                <input className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 shadow-sm outline-none focus:border-brand-600" />
               </div>
             </div>
 
@@ -135,7 +135,7 @@ export default function DevenirOrganisateurPage() {
               </label>
               <textarea
                 rows={6}
-                className="w-full rounded-xl border border-slate-300 bg-white p-4 shadow-sm outline-none focus:border-[#3B82F6]"
+                className="w-full rounded-xl border border-slate-300 bg-white p-4 shadow-sm outline-none focus:border-brand-600"
                 placeholder="Types de séjours, publics accueillis, périodes, volumes approximatifs, etc."
               />
             </div>
@@ -144,7 +144,7 @@ export default function DevenirOrganisateurPage() {
               <p className="text-sm text-slate-500">* champs obligatoires</p>
               <button
                 type="submit"
-                className="inline-flex items-center gap-2 rounded-xl bg-[#F97316] px-8 py-3 text-sm font-semibold uppercase tracking-wide text-white shadow-sm transition hover:bg-[#ea580c]"
+                className="inline-flex items-center gap-2 rounded-xl bg-accent-500 px-8 py-3 text-sm font-semibold uppercase tracking-wide text-white shadow-sm transition hover:bg-accent-600"
               >
                 <Mail className="h-4 w-4" />
                 Envoyer la demande

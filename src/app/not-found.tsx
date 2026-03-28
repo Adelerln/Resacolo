@@ -2,8 +2,8 @@ import Link from 'next/link';
 import { Home, MapPin } from 'lucide-react';
 import { NotFoundIllustration } from '@/components/404/NotFoundIllustration';
 
-const BLUE = '#3B82F6';
-const ORANGE = '#F97316';
+const BLUE = '#52B0EA';
+const ORANGE = '#FA8500';
 
 export default function NotFound() {
   return (

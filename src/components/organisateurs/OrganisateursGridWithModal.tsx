@@ -1,7 +1,5 @@
 import Link from 'next/link';
 
-const SKY_BLUE = '#60A5FA';
-
 type OrganizerCard = {
   id: string;
   name: string;
@@ -41,7 +39,7 @@ export function OrganisateursGridWithModal({ organizers }: OrganisateursGridWith
               )}
             </div>
             <div className="border-t border-slate-100 px-4 py-4">
-              <h3 className="text-center text-sm font-bold uppercase leading-tight text-[#3B82F6]">
+              <h3 className="text-center text-sm font-bold uppercase leading-tight text-brand-600">
                 {org.name}
               </h3>
               <ul className="mt-3 space-y-1 text-center text-xs text-slate-500">
@@ -56,8 +54,7 @@ export function OrganisateursGridWithModal({ organizers }: OrganisateursGridWith
             </div>
             <Link
               href={`/organisateurs/${org.slug}`}
-              className="flex w-full items-center justify-center rounded-b-xl px-4 py-3 text-sm font-semibold text-white transition hover:opacity-95"
-              style={{ backgroundColor: SKY_BLUE }}
+              className="flex w-full items-center justify-center rounded-b-xl bg-brand-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-brand-600"
             >
               PLUS DE DÉTAILS
             </Link>

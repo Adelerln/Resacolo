@@ -3,8 +3,8 @@
 import { FormEvent, useState } from 'react';
 import { User, Headset, Home, Flag, Key, ChevronDown } from 'lucide-react';
 
-const BLUE = '#3B82F6';
-const ORANGE = '#F97316';
+const BLUE = '#52B0EA';
+const ORANGE = '#FA8500';
 
 const recipients = [
   { value: '', label: 'Sélectionner un destinataire' },
@@ -53,14 +53,14 @@ export default function ContactPage() {
   };
 
   const inputClass =
-    'w-full rounded-md border border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder-slate-400 focus:border-[#3B82F6] focus:outline-none focus:ring-2 focus:ring-[#3B82F6]/20';
+    'w-full rounded-md border border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder-slate-400 focus:border-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-200';
 
   return (
     <div className="min-h-screen bg-white">
       {/* Section 1: Header */}
       <section
         className="border-b border-slate-100 px-4 py-16 sm:px-6 md:py-20"
-        style={{ backgroundColor: '#F9FAFB' }}
+        style={{ backgroundColor: '#F8F8F8' }}
       >
         <div className="mx-auto flex max-w-6xl flex-col gap-12 lg:flex-row lg:items-center lg:gap-16">
           <div className="flex-1 lg:max-w-[60%]">
@@ -207,7 +207,7 @@ export default function ContactPage() {
                       onClick={() => setCaptcha(id)}
                       className={`flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-lg border-2 transition sm:h-16 sm:w-16 ${
                         captcha === id
-                          ? 'border-[#3B82F6] bg-[#3B82F6]/10'
+                          ? 'border-brand-600 bg-brand-50'
                           : 'border-slate-200 bg-white hover:border-slate-300'
                       }`}
                       aria-label={label}

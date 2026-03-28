@@ -35,12 +35,18 @@
   --flow-ease: cubic-bezier(0.22, 1, 0.36, 1);
   --flow-fast: 220ms;
   --flow-medium: 420ms;
+  --resacolo-blue: #6ec7ff;
+  --resacolo-blue-strong: #52b0ea;
+  --resacolo-orange: #fa8500;
+  --resacolo-orange-strong: #f48200;
+  --resacolo-surface: #f8f8f8;
+  --resacolo-ink: #404040;
 
   /* Design tokens */
-  --hero-gradient: linear-gradient(135deg, hsl(210 40% 98%) 0%, hsl(210 30% 96%) 100%);
-  --card-shadow: 0 2px 16px -2px hsl(220 20% 18% / 0.06);
-  --card-shadow-hover: 0 8px 30px -4px hsl(220 20% 18% / 0.1);
-  --financing-watermark: hsl(220 15% 91% / 0.4);
+  --hero-gradient: linear-gradient(135deg, #f2fbff 0%, #def4ff 42%, #ffffff 100%);
+  --card-shadow: 0 2px 18px -4px rgb(82 176 234 / 0.14);
+  --card-shadow-hover: 0 10px 36px -8px rgb(82 176 234 / 0.18);
+  --financing-watermark: rgb(110 199 255 / 0.18);
 }
 
 html {
@@ -49,7 +55,8 @@ html {
 }
 
 body {
-  @apply bg-white text-slate-900 antialiased;
+  @apply bg-white antialiased;
+  color: var(--resacolo-ink);
   text-rendering: geometricPrecision;
 }
 

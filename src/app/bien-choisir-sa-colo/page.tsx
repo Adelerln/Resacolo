@@ -2,8 +2,9 @@ import { ExternalLink, Calendar, User, ShieldCheck } from 'lucide-react';
 import { SlotMachineVisual } from '@/components/bien-choisir/SlotMachineVisual';
 import { ChoisirSaColoLogo } from '@/components/bien-choisir/ChoisirSaColoLogo';
 
-const ORANGE = '#F97316';
-const BLUE = '#3B82F6';
+const ORANGE = '#FA8500';
+const ORANGE_STRONG = '#F48200';
+const BLUE = '#52B0EA';
 
 export const metadata = {
   title: 'Bien choisir sa colo | ResaColo',
@@ -37,7 +38,7 @@ export default function BienChoisirSaColoPage() {
       </section>
 
       {/* Section 2: Spotlight - ChoisirSaColo.fr */}
-      <section className="bg-gradient-to-r from-blue-50 to-white py-20">
+      <section className="bg-gradient-to-r from-brand-50 to-white py-20">
         <div className="mx-auto max-w-5xl px-6 sm:px-8">
           <div className="overflow-hidden rounded-3xl bg-white/80 p-8 shadow-xl backdrop-blur-sm sm:p-10 md:flex md:items-center md:gap-12 md:p-12">
             <div className="flex flex-shrink-0 justify-center md:max-w-[45%]">
@@ -65,7 +66,7 @@ export default function BienChoisirSaColoPage() {
                 rel="noopener noreferrer"
                 className="mt-8 inline-flex w-full items-center justify-center gap-2 rounded-full px-8 py-4 font-semibold text-white shadow-lg transition hover:opacity-95 sm:w-auto"
                 style={{
-                  background: 'linear-gradient(135deg, #F97316 0%, #EA580C 50%, #DC2626 100%)'
+                  background: `linear-gradient(135deg, ${ORANGE} 0%, ${ORANGE_STRONG} 100%)`
                 }}
               >
                 Visiter le site officiel

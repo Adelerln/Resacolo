@@ -45,7 +45,7 @@ export default async function OrganisateursPage() {
               À propos
             </p>
             <h1 className="font-display text-3xl font-bold text-slate-900 sm:text-4xl lg:text-5xl">
-              Les <span className="text-[#F97316]">organisateurs</span> de séjours
+              Les <span className="text-accent-500">organisateurs</span> de séjours
             </h1>
             <p className="max-w-xl text-slate-600 leading-relaxed">
               Initiateurs de ce projet ambitieux, les producteurs de séjours ont à cœur de valoriser leurs compétences
@@ -55,13 +55,13 @@ export default async function OrganisateursPage() {
           </div>
           <div className="relative hidden lg:block">
             <div className="flex flex-wrap gap-4 justify-end">
-              <div className="rounded-2xl bg-[#F97316]/15 p-5 text-[#F97316] shadow-lg">
+              <div className="rounded-2xl bg-accent-50 p-5 text-accent-500 shadow-lg">
                 <Badge className="h-10 w-10" />
               </div>
-              <div className="rounded-2xl bg-[#F97316]/20 p-5 text-[#F97316] shadow-lg mt-8">
+              <div className="mt-8 rounded-2xl bg-accent-100 p-5 text-accent-500 shadow-lg">
                 <User className="h-10 w-10" />
               </div>
-              <div className="rounded-2xl bg-[#F97316]/15 p-5 text-[#F97316] shadow-lg">
+              <div className="rounded-2xl bg-accent-50 p-5 text-accent-500 shadow-lg">
                 <Calendar className="h-10 w-10" />
               </div>
             </div>
@@ -73,11 +73,11 @@ export default async function OrganisateursPage() {
       <section className="section-container pb-20">
         <div className="mb-10 text-center">
           <h2 className="font-display text-2xl font-bold text-slate-900 sm:text-3xl">
-            Ils composent le catalogue <span className="text-[#3B82F6]">RESACOLO</span>
+            Ils composent le catalogue <span className="text-brand-600">RESACOLO</span>
           </h2>
           <p className="mx-auto mt-4 max-w-2xl text-slate-600">
             Faites connaissance avec les organisateurs de colonies de vacances référencés sur la plateforme, tous
-            membres du collectif <span className="text-[#F97316]">ResaColo</span>.
+            membres du collectif <span className="text-accent-500">ResaColo</span>.
           </p>
         </div>
 

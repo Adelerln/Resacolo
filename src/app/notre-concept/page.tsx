@@ -8,9 +8,9 @@ import {
 } from 'lucide-react';
 import { PourquoiChoisirTabs } from '@/components/concept/PourquoiChoisirTabs';
 
-const BLUE = '#3B82F6';
-const ORANGE = '#F97316';
-const LIGHT_BLUE = '#93C5FD';
+const BLUE = '#52B0EA';
+const ORANGE = '#FA8500';
+const LIGHT_BLUE = '#6EC7FF';
 
 const strengths = [
   {
@@ -98,8 +98,8 @@ export default function NotreConceptPage() {
               <div className="flex items-center justify-center gap-6 rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
                 <div className="text-center">
                   <span className="font-display text-2xl font-bold text-slate-800">
-                    Reso<span style={{ color: '#DC2626' }}>C</span>
-                    <span style={{ color: '#EAB308' }}>o</span>lo
+                    Reso<span style={{ color: ORANGE }}>C</span>
+                    <span style={{ color: LIGHT_BLUE }}>o</span>lo
                   </span>
                 </div>
                 <div className="h-16 w-px rotate-[-15deg] bg-slate-300" />

@@ -2,8 +2,9 @@
 
 import { Waves, Camera, MountainSnow } from 'lucide-react';
 
-const ORANGE = '#F97316';
-const BLUE = '#3B82F6';
+const ORANGE = '#FA8500';
+const ORANGE_STRONG = '#F48200';
+const BLUE = '#52B0EA';
 
 export function SlotMachineVisual() {
   return (
@@ -34,7 +35,7 @@ export function SlotMachineVisual() {
         <div
           className="absolute -right-3 top-1/2 h-12 w-6 -translate-y-1/2 rounded-r-full sm:-right-4 sm:h-14 sm:w-7"
           style={{
-            backgroundColor: '#EA580C',
+            backgroundColor: ORANGE_STRONG,
             boxShadow: '2px 0 8px rgba(0,0,0,0.2)'
           }}
         />

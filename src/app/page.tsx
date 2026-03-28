@@ -444,7 +444,7 @@ export default function HomePage() {
             </button>
             <div ref={inspiViewportRef} className="min-w-0 flex-1 overflow-hidden">
               <div
-                className={`flex gap-6 ${
+                className={`flex gap-[24px] ${
                   inspiTransitionEnabled ? 'transition-transform duration-700 ease-out' : 'transition-none'
                 }`}
                 onTransitionEnd={(event) => {
@@ -462,7 +462,7 @@ export default function HomePage() {
                   <div
                     key={`${card.src}-${index}`}
                     className="group relative shrink-0 overflow-hidden rounded-[14px] bg-slate-100 shadow-md"
-                    style={{ width: inspiCardWidthPx > 0 ? `${inspiCardWidthPx}px` : 'calc((100% - 3rem) / 3)' }}
+                    style={{ width: inspiCardWidthPx > 0 ? `${inspiCardWidthPx}px` : 'calc((100% - 48px) / 3)' }}
                   >
                     <div className="relative aspect-[4/5]">
                       <Image

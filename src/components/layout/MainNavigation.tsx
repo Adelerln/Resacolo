@@ -113,7 +113,7 @@ export function MainNavigation() {
       <div className="section-container flex items-center justify-between overflow-visible py-4">
         <Link href="/" className="flex items-center gap-3 text-2xl font-semibold tracking-tight text-slate-900">
           <Image
-            src="/image/logo-resacolo.png"
+            src="/image/accueil/images_accueil/logo-resacolo.png"
             alt="Resacolo"
             width={140}
             height={40}

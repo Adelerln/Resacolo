@@ -28,7 +28,7 @@ export function BackOfficeShell({ children }: { children: React.ReactNode }) {
             className="flex items-center gap-2 text-slate-700 transition hover:text-brand-500"
           >
             <Image
-              src="/image/logo-resacolo.png"
+              src="/image/accueil/images_accueil/logo-resacolo.png"
               alt="Resacolo"
               width={120}
               height={34}

@@ -24,7 +24,7 @@ import { motion } from 'framer-motion';
 
 const benefits = [
   {
-    imageSrc: '/image/pictos_accueil/lordinateur.png',
+    imageSrc: '/image/accueil/pictos_accueil/lordinateur.png',
     imageAlt: 'Pictogramme ordinateur',
     text: (
       <>
@@ -33,7 +33,7 @@ const benefits = [
     )
   },
   {
-    imageSrc: '/image/pictos_accueil/transfer.png',
+    imageSrc: '/image/accueil/pictos_accueil/transfer.png',
     imageAlt: 'Pictogramme transfert',
     text: (
       <>
@@ -42,7 +42,7 @@ const benefits = [
     )
   },
   {
-    imageSrc: '/image/pictos_accueil/caroussel.png',
+    imageSrc: '/image/accueil/pictos_accueil/caroussel.png',
     imageAlt: 'Pictogramme carrousel',
     text: (
       <>
@@ -277,7 +277,7 @@ export default function HomePage() {
       <section id="accueil">
         <div className="relative min-h-[380px] sm:min-h-[450px] lg:min-h-[500px] xl:min-h-[540px]">
           <Image
-            src="/image/banniere-accueil.jpg"
+            src="/image/accueil/images_accueil/banniere-accueil.jpg"
             alt="Bannière d'accueil Resacolo"
             fill
             className="object-cover object-[center_22%] sm:object-[center_18%] lg:object-[center_8%] xl:object-[center_5%]"

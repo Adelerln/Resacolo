@@ -123,7 +123,7 @@ function FiltersPanel({
 }
 
 function StayCard({ stay }: { stay: StayCardData }) {
-  const organizerLogo = stay.organizerLogo ?? '/image/logo-resacolo.png';
+  const organizerLogo = stay.organizerLogo ?? '/image/accueil/images_accueil/logo-resacolo.png';
   const priceLabel =
     typeof stay.priceFrom === 'number' ? `À partir de ${stay.priceFrom} €` : 'Sur demande';
 

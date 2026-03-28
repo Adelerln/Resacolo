@@ -45,7 +45,7 @@ export default async function OrganizerLayout({ children }: { children: React.Re
             </form>
             <div className="mt-4 flex items-center justify-start">
               <Image
-                src="/image/logo-resacolo.png"
+                src="/image/accueil/images_accueil/logo-resacolo.png"
                 alt="Resacolo"
                 width={120}
                 height={32}

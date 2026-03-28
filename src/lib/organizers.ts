@@ -14,7 +14,8 @@ const loadOrganizerOptions = cache(async (): Promise<OrganizerOption[]> => {
     .order('name', { ascending: true });
 
   if (error) {
-    console.error('Erreur Supabase (organizers)', error.message);
+    // Pré-rendu / CI : fetch vers Supabase peut échouer sans bloquer le build (liste vide).
+    console.warn('Supabase (organizers) indisponible :', error.message);
     return [];
   }
 

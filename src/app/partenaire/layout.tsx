@@ -11,7 +11,7 @@ export default function PartnerLayout({ children }: { children: React.ReactNode 
         <div className="section-container flex items-center justify-between py-4">
           <Link href="/partenaire" className="flex items-center gap-3 text-lg font-semibold text-slate-900">
             <Image
-              src="/image/logo-resacolo.png"
+              src="/image/accueil/images_accueil/logo-resacolo.png"
               alt="Resacolo"
               width={120}
               height={32}

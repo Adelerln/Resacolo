@@ -4,8 +4,10 @@ import GoogleMapsCityInput from '@/components/common/GoogleMapsCityInput';
 import SavedToast from '@/components/common/SavedToast';
 import { requireRole } from '@/lib/auth/require';
 import { formatStayAgeRange, getStayAgeBounds, normalizeStayAges, parseStayAges, STAY_AGE_OPTIONS } from '@/lib/stay-ages';
+import { isMissingRegionTextColumnError, normalizeStayRegion, STAY_REGION_OPTIONS } from '@/lib/stay-regions';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { sessionStatusLabel, stayStatusLabel } from '@/lib/ui/labels';
+import type { Database } from '@/types/supabase';
 
 type PageProps = {
   params: { id: string };
@@ -54,9 +56,7 @@ export default async function AdminStayDetailPage({ params, searchParams }: Page
 
   const { data: stay } = await supabase
     .from('stays')
-    .select(
-      'id,title,status,season_id,description,ages,age_min,age_max,location_text,transport_mode,organizer_id'
-    )
+    .select('*')
     .eq('id', params.id)
     .maybeSingle();
 
@@ -99,26 +99,40 @@ export default async function AdminStayDetailPage({ params, searchParams }: Page
     const selectedAges = parseStayAges(formData);
     const { ages, ageMin, ageMax } = getStayAgeBounds(selectedAges);
     const location = String(formData.get('location') ?? '').trim();
+    const region = normalizeStayRegion(formData.get('region_text'));
     const transportMode = String(formData.get('transport_mode') ?? '').trim();
 
-    await supabase
-      .from('stays')
-      .update({
-        title,
-        organizer_id: organizerId || currentStay.organizer_id,
-        season_id: seasonId || currentStay.season_id,
-        status:
-          status === 'DRAFT' || status === 'PUBLISHED' || status === 'HIDDEN' || status === 'ARCHIVED'
-            ? status
-            : currentStay.status,
-        description: description || null,
-        ages,
-        age_min: ageMin,
-        age_max: ageMax,
-        location_text: location || null,
-        transport_mode: transportMode || undefined
-      })
-      .eq('id', currentStay.id);
+    const basePayload: Database['public']['Tables']['stays']['Update'] = {
+      title,
+      organizer_id: organizerId || currentStay.organizer_id,
+      season_id: seasonId || currentStay.season_id,
+      status:
+        status === 'DRAFT' || status === 'PUBLISHED' || status === 'HIDDEN' || status === 'ARCHIVED'
+          ? status
+          : currentStay.status,
+      description: description || null,
+      ages,
+      age_min: ageMin,
+      age_max: ageMax,
+      location_text: location || null,
+      transport_mode: transportMode || undefined
+    };
+
+    const payloadWithRegion = { ...basePayload, region_text: region };
+    let updateError: { message: string } | null = null;
+
+    const firstAttempt = await supabase.from('stays').update(payloadWithRegion).eq('id', currentStay.id);
+    updateError = firstAttempt.error;
+
+    if (updateError && isMissingRegionTextColumnError(updateError.message)) {
+      const fallbackAttempt = await supabase.from('stays').update(basePayload).eq('id', currentStay.id);
+      updateError = fallbackAttempt.error;
+    }
+
+    if (updateError) {
+      console.error('Erreur Supabase (admin update stay)', updateError.message);
+      redirect(`/admin/sejours/${currentStay.id}`);
+    }
 
     redirect(`/admin/sejours/${currentStay.id}?saved=1`);
   }
@@ -322,6 +336,24 @@ export default async function AdminStayDetailPage({ params, searchParams }: Page
             label="Ville du séjour"
             defaultValue={currentStay.location_text ?? ''}
           />
+          <label className="block text-sm font-medium text-slate-700">
+            Région du séjour
+            <select
+              name="region_text"
+              defaultValue={currentStay.region_text ?? ''}
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+            >
+              <option value="">Sélectionner</option>
+              {STAY_REGION_OPTIONS.map((region) => (
+                <option key={region} value={region}>
+                  {region}
+                </option>
+              ))}
+            </select>
+            <span className="mt-1 block text-xs text-slate-500">
+              Choisir “Étranger” si le séjour se déroule hors de France.
+            </span>
+          </label>
         </div>
 
         <div className="flex justify-end">

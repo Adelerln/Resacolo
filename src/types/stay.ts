@@ -75,6 +75,7 @@ export interface Stay {
   description: string;
   organizer: OrganizerInfo;
   location: string;
+  region: string;
   country: string;
   ageRange: string;
   duration: string;

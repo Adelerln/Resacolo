@@ -1,5 +1,3 @@
 {
-  "/bien-choisir-sa-colo/page": "app/bien-choisir-sa-colo/page.js",
-  "/page": "app/page.js",
-  "/sejours/page": "app/sejours/page.js"
+  "/page": "app/page.js"
 }

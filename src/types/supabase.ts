@@ -1236,6 +1236,7 @@ export type Database = {
           description: string | null
           id: string
           location_text: string | null
+          region_text: string | null
           organizer_id: string
           program_text: string | null
           required_documents_text: string | null
@@ -1259,6 +1260,7 @@ export type Database = {
           description?: string | null
           id?: string
           location_text?: string | null
+          region_text?: string | null
           organizer_id: string
           program_text?: string | null
           required_documents_text?: string | null
@@ -1282,6 +1284,7 @@ export type Database = {
           description?: string | null
           id?: string
           location_text?: string | null
+          region_text?: string | null
           organizer_id?: string
           program_text?: string | null
           required_documents_text?: string | null

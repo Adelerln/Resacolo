@@ -2,7 +2,6 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
 import { useState } from 'react';
 import { Compass, Clock3, Filter, MapPin, Search, ShoppingCart, Sun } from 'lucide-react';
 import { getMockImageUrl, mockImages } from '@/lib/mockImages';
@@ -21,6 +20,7 @@ type StayCardData = {
   title: string;
   subtitle: string;
   location: string;
+  region: string;
   age: string;
   season: string;
   duration: string;
@@ -36,6 +36,32 @@ type NormalizedStay = StayCardData & {
   seasonLabels: string[];
   ageLabels: string[];
 };
+
+const REGION_KEYWORDS: Record<string, string[]> = {
+  bretagne: ['bretagne', 'rennes', 'finistere', 'morbihan', 'ille et vilaine', 'cotes d armor'],
+  normandie: ['normandie', 'caen', 'rouen', 'calvados', 'manche', 'orne', 'eure', 'seine maritime'],
+  'hauts-de-france': ['hauts de france', 'lille', 'amiens', 'arras', 'nord', 'somme', 'aisne', 'pas de calais', 'oise'],
+  'ile-de-france': ['ile de france', 'paris', 'versailles', 'yvelines', 'essonne', 'seine et marne', 'val d oise', 'hauts de seine'],
+  'grand-est': ['grand est', 'strasbourg', 'metz', 'nancy', 'reims', 'alsace', 'lorraine', 'champagne'],
+  'pays-de-la-loire': ['pays de la loire', 'nantes', 'angers', 'vendee', 'sarthe', 'mayenne', 'loire atlantique'],
+  'centre-val-de-loire': ['centre val de loire', 'orleans', 'tours', 'blois', 'bourges', 'indre et loire'],
+  'bourgogne-franche-comte': ['bourgogne franche comte', 'dijon', 'besancon', 'yonne', 'nievre', 'saone et loire', 'jura', 'doubs'],
+  'nouvelle-aquitaine': ['nouvelle aquitaine', 'bordeaux', 'biarritz', 'landes', 'gironde', 'poitiers', 'limoges', 'perigord'],
+  occitanie: ['occitanie', 'toulouse', 'montpellier', 'perpignan', 'herault', 'gard', 'aveyron', 'pyrenees'],
+  'auvergne-rhone-alpes': ['auvergne rhone alpes', 'lyon', 'grenoble', 'clermont ferrand', 'annecy', 'savoie', 'haute savoie', 'drome'],
+  'provence-alpes-cote-d-azur': ['provence alpes cote d azur', 'paca', 'marseille', 'nice', 'cannes', 'toulon', 'var', 'alpes maritimes'],
+  corse: ['corse', 'ajaccio', 'bastia']
+};
+
+function normalizeText(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9\s-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
 
 const filterGroups = [
   { id: 'season', label: 'SAISON', options: ['Printemps', 'Été', 'Toussaint', 'Hiver'] },
@@ -164,9 +190,27 @@ function StayCard({ stay }: { stay: StayCardData }) {
   );
 }
 
-export function StayCatalogPage({ stays = [] }: { stays?: Stay[] }) {
+type SearchParamInput = Record<string, string | string[] | undefined> | undefined;
+
+function readSearchParamValues(searchParams: SearchParamInput, key: string) {
+  const value = searchParams?.[key];
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => item.split(',').map((part) => part.trim()).filter(Boolean));
+  }
+  if (typeof value === 'string') {
+    return value.split(',').map((item) => item.trim()).filter(Boolean);
+  }
+  return [];
+}
+
+export function StayCatalogPage({
+  stays = [],
+  searchParams
+}: {
+  stays?: Stay[];
+  searchParams?: SearchParamInput;
+}) {
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
-  const searchParams = useSearchParams();
   const [filters, setFilters] = useState<FilterState>({
     season: new Set(),
     age: new Set()
@@ -216,6 +260,7 @@ export function StayCatalogPage({ stays = [] }: { stays?: Stay[] }) {
       title: stay.title,
       subtitle: stay.organizer.name,
       location: stay.location || 'Lieu à préciser',
+      region: stay.region || '',
       age: stay.ageRange || 'Tous âges',
       season: seasonLabels[0] ?? 'À venir',
       duration: stay.duration || 'Durée à venir',
@@ -230,20 +275,22 @@ export function StayCatalogPage({ stays = [] }: { stays?: Stay[] }) {
     };
   });
 
-  const routeCategories = searchParams
-    .getAll('categories')
-    .flatMap((value) => value.split(',').map((item) => item.trim()).filter(Boolean));
-  const routePeriods = searchParams
-    .getAll('periods')
-    .flatMap((value) => value.split(',').map((item) => item.trim()).filter(Boolean));
-  const routeQuery = searchParams.get('q')?.trim().toLowerCase() ?? '';
+  const routeCategories = readSearchParamValues(searchParams, 'categories');
+  const routePeriods = readSearchParamValues(searchParams, 'periods');
+  const routeRegions = readSearchParamValues(searchParams, 'region');
+  const routeQuery =
+    (typeof searchParams?.q === 'string' ? searchParams.q : Array.isArray(searchParams?.q) ? searchParams?.q[0] : '')?.trim().toLowerCase() ?? '';
 
   const filteredStays = normalizedStays.filter((stay) => {
     const seasonActive = filters.season.size > 0;
     const ageActive = filters.age.size > 0;
     const routeCategoriesActive = routeCategories.length > 0;
     const routePeriodsActive = routePeriods.length > 0;
+    const routeRegionsActive = routeRegions.length > 0;
     const routeQueryActive = routeQuery.length > 0;
+    const normalizedHaystack = normalizeText(
+      `${stay.title} ${stay.subtitle} ${stay.location} ${stay.region} ${stay.description}`
+    );
 
     const seasonOk =
       !seasonActive || stay.seasonLabels.some((label: string) => filters.season.has(label));
@@ -254,11 +301,17 @@ export function StayCatalogPage({ stays = [] }: { stays?: Stay[] }) {
       routeCategories.some((category) => stay.categoryValues.includes(category));
     const routePeriodsOk =
       !routePeriodsActive || routePeriods.some((period) => stay.periodValues.includes(period));
+    const routeRegionsOk =
+      !routeRegionsActive ||
+      routeRegions.some((region) => {
+        const keywords = REGION_KEYWORDS[region] ?? [region];
+        return keywords.some((keyword) => normalizedHaystack.includes(normalizeText(keyword)));
+      });
     const routeQueryOk =
       !routeQueryActive ||
-      `${stay.title} ${stay.subtitle} ${stay.location} ${stay.description}`.toLowerCase().includes(routeQuery);
+      normalizedHaystack.includes(normalizeText(routeQuery));
 
-    return seasonOk && ageOk && routeCategoriesOk && routePeriodsOk && routeQueryOk;
+    return seasonOk && ageOk && routeCategoriesOk && routePeriodsOk && routeRegionsOk && routeQueryOk;
   });
 
   return (

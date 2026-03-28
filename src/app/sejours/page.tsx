@@ -10,11 +10,15 @@ export const metadata: Metadata = {
 
 export const revalidate = 60;
 
-export default async function SejoursPage() {
+export default async function SejoursPage({
+  searchParams
+}: {
+  searchParams?: Record<string, string | string[] | undefined>;
+}) {
   const stays = await getStays();
   return (
     <div style={{ fontFamily: 'Inter, var(--font-sans), sans-serif' }}>
-      <StayCatalogPage stays={stays} />
+      <StayCatalogPage stays={stays} searchParams={searchParams} />
     </div>
   );
 }

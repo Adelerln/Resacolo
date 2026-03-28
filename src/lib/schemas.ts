@@ -13,6 +13,7 @@ export const StaySchema = z.object({
     description: z.string().optional()
   }),
   location: z.string(),
+  region: z.string(),
   country: z.string(),
   ageRange: z.string(),
   duration: z.string(),

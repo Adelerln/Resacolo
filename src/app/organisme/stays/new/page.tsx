@@ -4,7 +4,9 @@ import GoogleMapsCityInput from '@/components/common/GoogleMapsCityInput';
 import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers';
 import { normalizeStayCategories, STAY_CATEGORY_OPTIONS } from '@/lib/stay-categories';
 import { getStayAgeBounds, parseStayAges, STAY_AGE_OPTIONS } from '@/lib/stay-ages';
+import { isMissingRegionTextColumnError, normalizeStayRegion, STAY_REGION_OPTIONS } from '@/lib/stay-regions';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
+import type { Database } from '@/types/supabase';
 
 type PageProps = {
   searchParams?: {
@@ -54,35 +56,54 @@ export default async function NewStayPage({ searchParams }: PageProps) {
     );
     const { ages, ageMin, ageMax } = getStayAgeBounds(selectedAges);
     const location = String(formData.get('location') ?? '').trim();
+    const region = normalizeStayRegion(formData.get('region_text'));
     const status = String(formData.get('status') ?? 'PUBLISHED').trim();
     const transportMode = String(formData.get('transport_mode') ?? 'Sans transport').trim();
+    const normalizedStatus: Database['public']['Enums']['stay_status'] =
+      status === 'DRAFT' || status === 'HIDDEN' || status === 'ARCHIVED' ? status : 'PUBLISHED';
 
     if (!title) {
       redirect(withOrganizerQuery('/organisme/sejours/new', organizerTenantId));
     }
 
-    const { data: insertedStay } = await supabase
-      .from('stays')
-      .insert({
-        organizer_id: organizerTenantId,
-        season_id: seasonId,
-        title,
-        description: description || null,
-        categories,
-        ages,
-        age_min: ageMin,
-        age_max: ageMax,
-        location_text: location || null,
-        transport_mode:
-          transportMode === 'Aller/Retour similaire' ||
-          transportMode === 'Aller/Retour différencié' ||
-          transportMode === 'Sans transport'
-            ? transportMode
-            : 'Sans transport',
-        status: status === 'DRAFT' || status === 'HIDDEN' || status === 'ARCHIVED' ? status : 'PUBLISHED'
-      })
-      .select('id')
-      .single();
+    const basePayload: Database['public']['Tables']['stays']['Insert'] = {
+      organizer_id: organizerTenantId,
+      season_id: seasonId,
+      title,
+      description: description || null,
+      categories,
+      ages,
+      age_min: ageMin,
+      age_max: ageMax,
+      location_text: location || null,
+      transport_mode:
+        transportMode === 'Aller/Retour similaire' ||
+        transportMode === 'Aller/Retour différencié' ||
+        transportMode === 'Sans transport'
+          ? transportMode
+          : 'Sans transport',
+      status: normalizedStatus
+    };
+
+    const payloadWithRegion = region ? { ...basePayload, region_text: region } : basePayload;
+
+    let insertedStay: { id: string } | null = null;
+    let insertError: { message: string } | null = null;
+
+    const firstAttempt = await supabase.from('stays').insert(payloadWithRegion).select('id').single();
+    insertedStay = firstAttempt.data;
+    insertError = firstAttempt.error;
+
+    if (insertError && isMissingRegionTextColumnError(insertError.message)) {
+      const fallbackAttempt = await supabase.from('stays').insert(basePayload).select('id').single();
+      insertedStay = fallbackAttempt.data;
+      insertError = fallbackAttempt.error;
+    }
+
+    if (insertError || !insertedStay) {
+      console.error('Erreur Supabase (create stay)', insertError?.message ?? 'unknown');
+      redirect(withOrganizerQuery('/organisme/sejours/new', organizerTenantId));
+    }
 
     redirect(withOrganizerQuery(`/organisme/sejours/${insertedStay?.id ?? ''}`, organizerTenantId));
   }
@@ -152,6 +173,18 @@ export default async function NewStayPage({ searchParams }: PageProps) {
           </div>
         </div>
         <GoogleMapsCityInput name="location" label="Ville du séjour" />
+        <label className="block text-sm font-medium text-slate-700">
+          Région du séjour
+          <select name="region_text" defaultValue="" className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2">
+            <option value="">Sélectionner</option>
+            {STAY_REGION_OPTIONS.map((region) => (
+              <option key={region} value={region}>
+                {region}
+              </option>
+            ))}
+          </select>
+          <span className="mt-1 block text-xs text-slate-500">Choisir “Étranger” si le séjour se déroule hors de France.</span>
+        </label>
         <label className="block text-sm font-medium text-slate-700">
           Mode de transport
           <select

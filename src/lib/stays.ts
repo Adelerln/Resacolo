@@ -193,9 +193,7 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
 
   const { data, error } = await supabase
     .from('stays')
-    .select(
-      'id,title,summary,description,activities_text,program_text,supervision_text,required_documents_text,transport_text,location_text,categories,ages,age_min,age_max,transport_mode,updated_at,status,organizer_id'
-    )
+    .select('*')
     .order('created_at', { ascending: false });
 
   if (error) {
@@ -410,6 +408,7 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
           logoUrl: logoUrlByOrganizerId.get(stay.organizer_id) ?? undefined
         },
         location: stay.location_text ?? '',
+        region: stay.region_text ?? '',
         country: '',
         ageRange: formatStayAgeRange(stay.ages, stay.age_min, stay.age_max),
         duration: formatDurationLabel(durationDays),
@@ -431,7 +430,8 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
           hebergement: accommodationText,
           encadrement: stay.supervision_text ?? '',
           documents_obligatoires: stay.required_documents_text ?? '',
-          transport: stay.transport_text ?? ''
+          transport: stay.transport_text ?? '',
+          region: stay.region_text ?? ''
         },
         filters: {
           categories,

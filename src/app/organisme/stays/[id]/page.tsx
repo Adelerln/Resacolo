@@ -12,10 +12,12 @@ import { requireRole } from '@/lib/auth/require';
 import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers';
 import { normalizeStayCategories, STAY_CATEGORY_OPTIONS } from '@/lib/stay-categories';
 import { formatStayAgeRange, getStayAgeBounds, normalizeStayAges, parseStayAges, STAY_AGE_OPTIONS } from '@/lib/stay-ages';
+import { isMissingRegionTextColumnError, normalizeStayRegion, STAY_REGION_OPTIONS } from '@/lib/stay-regions';
 import { getReservedSessionCounts } from '@/lib/session-reservations';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { sessionStatusLabel, stayStatusLabel } from '@/lib/ui/labels';
 import { slugify } from '@/lib/utils';
+import type { Database } from '@/types/supabase';
 
 type PageProps = {
   params: { id: string };
@@ -119,9 +121,7 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
 
   const { data: stay } = await supabase
     .from('stays')
-    .select(
-      'id,title,status,season_id,description,summary,activities_text,program_text,supervision_text,required_documents_text,transport_text,categories,ages,age_min,age_max,location_text,transport_mode,organizer_id'
-    )
+    .select('*')
     .eq('id', params.id)
     .maybeSingle();
 
@@ -225,6 +225,7 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
     const selectedAges = parseStayAges(formData);
     const { ages, ageMin, ageMax } = getStayAgeBounds(selectedAges);
     const location = String(formData.get('location') ?? '').trim();
+    const region = normalizeStayRegion(formData.get('region_text'));
     const transportMode = String(formData.get('transport_mode') ?? '').trim();
     const transportText = String(formData.get('transport_text') ?? '').trim();
     const requestedTransportMode = transportMode || currentStay.transport_mode || 'Sans transport';
@@ -256,26 +257,44 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
       );
     }
 
-    await supabase
-      .from('stays')
-      .update({
-        title,
-        summary: summary || null,
-        season_id: seasonId || currentStay.season_id,
-        description: description || null,
-        activities_text: activitiesText || null,
-        program_text: programText || null,
-        supervision_text: supervisionText || null,
-        required_documents_text: requiredDocumentsText || null,
-        categories,
-        ages,
-        age_min: ageMin,
-        age_max: ageMax,
-        location_text: location || null,
-        transport_mode: requestedTransportMode,
-        transport_text: transportText || null
-      })
-      .eq('id', currentStay.id);
+    const basePayload: Database['public']['Tables']['stays']['Update'] = {
+      title,
+      summary: summary || null,
+      season_id: seasonId || currentStay.season_id,
+      description: description || null,
+      activities_text: activitiesText || null,
+      program_text: programText || null,
+      supervision_text: supervisionText || null,
+      required_documents_text: requiredDocumentsText || null,
+      categories,
+      ages,
+      age_min: ageMin,
+      age_max: ageMax,
+      location_text: location || null,
+      transport_mode: requestedTransportMode,
+      transport_text: transportText || null
+    };
+
+    const payloadWithRegion = { ...basePayload, region_text: region };
+    let updateError: { message: string } | null = null;
+
+    const firstAttempt = await supabase.from('stays').update(payloadWithRegion).eq('id', currentStay.id);
+    updateError = firstAttempt.error;
+
+    if (updateError && isMissingRegionTextColumnError(updateError.message)) {
+      const fallbackAttempt = await supabase.from('stays').update(basePayload).eq('id', currentStay.id);
+      updateError = fallbackAttempt.error;
+    }
+
+    if (updateError) {
+      console.error('Erreur Supabase (update stay)', updateError.message);
+      redirect(
+        withOrganizerQuery(
+          `/organisme/sejours/${currentStay.id}?error=${encodeURIComponent(updateError.message)}`,
+          selectedOrganizerId
+        )
+      );
+    }
 
     revalidatePath(`/organisme/sejours/${currentStay.id}`);
     revalidatePath(`/organisme/stays/${currentStay.id}`);
@@ -1080,6 +1099,24 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
             label="Ville ou pays du séjour"
             defaultValue={currentStay.location_text ?? ''}
           />
+          <label className="block text-sm font-medium text-slate-700">
+            Région du séjour
+            <select
+              name="region_text"
+              defaultValue={currentStay.region_text ?? ''}
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+            >
+              <option value="">Sélectionner</option>
+              {STAY_REGION_OPTIONS.map((region) => (
+                <option key={region} value={region}>
+                  {region}
+                </option>
+              ))}
+            </select>
+            <span className="mt-1 block text-xs text-slate-500">
+              Choisir “Étranger” si le séjour se déroule hors de France.
+            </span>
+          </label>
         </section>
       </form>
 

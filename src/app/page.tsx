@@ -3,9 +3,11 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { useEffect, useState } from 'react';
+import { FranceRegionsMap } from '@/components/home/FranceRegionsMap';
 import { OrganizersMarquee } from '@/components/organisateurs/OrganizersMarquee';
 import {
   Briefcase,
+  CheckCircle,
   Home,
   HeartHandshake,
   CreditCard,
@@ -13,6 +15,7 @@ import {
   ArrowRight,
   ChevronLeft,
   ChevronRight,
+  type LucideIcon,
   Send
 } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -145,7 +148,16 @@ const processSteps = [
   }
 ];
 
-const aids = [
+type AidItem = {
+  icon: LucideIcon;
+  label: string;
+  desc: string;
+  href?: string;
+  logoSrc?: string;
+  logoAlt?: string;
+};
+
+const aids: AidItem[] = [
   {
     icon: Building2,
     label: 'Employeur / CSE',
@@ -168,7 +180,7 @@ const aids = [
     icon: HeartHandshake,
     label: 'Jeunesse au Plein Air',
     desc: 'La Jeunesse au Plein Air propose des bourses et aides financières pour les familles à revenus modestes.',
-    href: 'https://jpa.asso.fr/plateforme-aides/',
+    href: 'https://jpa.asso.fr/aide-colonie-de-vacances/',
     logoSrc: '/image/accueil/logos_accueil/JPA_logo.jpg',
     logoAlt: 'Logo Jeunesse au Plein Air'
   },
@@ -577,6 +589,64 @@ export default function HomePage() {
               <ChevronRight className="h-4 w-4" />
             </Link>
           </motion.div>
+        </div>
+      </section>
+
+      {/* ── Destination France ── */}
+      <section id="destination-france" className="bg-white pb-16 pt-8 sm:pb-24 sm:pt-10">
+        <div className="section-container">
+          <div className="grid items-center gap-10 lg:grid-cols-[0.9fr_1.1fr]">
+            <motion.div
+              className="max-w-xl text-left"
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+            >
+              <span
+                style={{
+                  fontWeight: 700,
+                  textTransform: 'uppercase',
+                  fontSize: '15px',
+                  color: '#505050'
+                }}
+              >
+                DESTINATION
+              </span>
+              <h2
+                className="mt-1"
+                style={{
+                  fontWeight: 700,
+                  fontSize: '50px',
+                  color: '#505050',
+                  lineHeight: '1.1em',
+                  marginBottom: 0,
+                  textAlign: 'left'
+                }}
+              >
+                Trouver votre séjour en <span style={{ color: '#37b5f5' }}>France</span>
+              </h2>
+              <p
+                className="mt-2"
+                style={{
+                  color: '#474747',
+                  fontWeight: 400,
+                  textAlign: 'left'
+                }}
+              >
+                Cliquez sur une région pour découvrir les séjours qu’elle accueille.
+              </p>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+            >
+              <div className="bg-transparent p-0 shadow-none">
+                <FranceRegionsMap />
+              </div>
+            </motion.div>
+          </div>
         </div>
       </section>
 

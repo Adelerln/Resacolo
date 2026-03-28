@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import Image from 'next/image';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { FranceRegionsMap } from '@/components/home/FranceRegionsMap';
 import { OrganizersMarquee } from '@/components/organisateurs/OrganizersMarquee';
 import {
@@ -208,11 +208,13 @@ const fadeUp = {
 
 export default function HomePage() {
   const [submitted, setSubmitted] = useState(false);
-  const [inspiIndex, setInspiIndex] = useState(3);
+  const [inspiIndex, setInspiIndex] = useState(inspiCards.length);
   const [inspiTransitionEnabled, setInspiTransitionEnabled] = useState(true);
+  const [inspiStepPx, setInspiStepPx] = useState(0);
+  const inspiViewportRef = useRef<HTMLDivElement | null>(null);
   const leftAids = aids.filter((_, index) => index % 2 === 0);
   const rightAids = aids.filter((_, index) => index % 2 === 1);
-  const inspiLoopCards = [...inspiCards.slice(-3), ...inspiCards, ...inspiCards.slice(0, 3)];
+  const inspiLoopCards = [...inspiCards, ...inspiCards, ...inspiCards];
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -224,42 +226,21 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
-    if (inspiIndex < inspiCards.length + 3) {
-      return;
+    function updateInspiStep() {
+      const viewportWidth = inspiViewportRef.current?.clientWidth ?? 0;
+      if (!viewportWidth) {
+        return;
+      }
+
+      const gapPx = 24;
+      setInspiStepPx((viewportWidth + gapPx) / 3);
     }
 
-    const timeout = window.setTimeout(() => {
-      setInspiTransitionEnabled(false);
-      setInspiIndex(3);
-    }, 700);
+    updateInspiStep();
+    window.addEventListener('resize', updateInspiStep);
 
-    return () => window.clearTimeout(timeout);
-  }, [inspiIndex]);
-
-  useEffect(() => {
-    if (inspiIndex >= 3) {
-      return;
-    }
-
-    const timeout = window.setTimeout(() => {
-      setInspiTransitionEnabled(false);
-      setInspiIndex((current) => current + inspiCards.length);
-    }, 700);
-
-    return () => window.clearTimeout(timeout);
-  }, [inspiIndex]);
-
-  useEffect(() => {
-    if (inspiTransitionEnabled) {
-      return;
-    }
-
-    const frame = window.requestAnimationFrame(() => {
-      setInspiTransitionEnabled(true);
-    });
-
-    return () => window.cancelAnimationFrame(frame);
-  }, [inspiIndex, inspiTransitionEnabled]);
+    return () => window.removeEventListener('resize', updateInspiStep);
+  }, []);
 
   const showPreviousInspiCard = () => {
     setInspiTransitionEnabled(true);
@@ -269,6 +250,29 @@ export default function HomePage() {
   const showNextInspiCard = () => {
     setInspiTransitionEnabled(true);
     setInspiIndex((current) => current + 1);
+  };
+
+  const handleInspiTransitionEnd = () => {
+    if (inspiIndex >= inspiCards.length * 2) {
+      setInspiTransitionEnabled(false);
+      setInspiIndex((current) => current - inspiCards.length);
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          setInspiTransitionEnabled(true);
+        });
+      });
+      return;
+    }
+
+    if (inspiIndex < inspiCards.length) {
+      setInspiTransitionEnabled(false);
+      setInspiIndex((current) => current + inspiCards.length);
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          setInspiTransitionEnabled(true);
+        });
+      });
+    }
   };
 
   return (
@@ -435,13 +439,20 @@ export default function HomePage() {
             >
               <ChevronLeft size={20} />
             </button>
-            <div className="min-w-0 flex-1 overflow-hidden">
+            <div ref={inspiViewportRef} className="min-w-0 flex-1 overflow-hidden">
               <div
                 className={`flex gap-6 ${
                   inspiTransitionEnabled ? 'transition-transform duration-700 ease-out' : 'transition-none'
                 }`}
+                onTransitionEnd={(event) => {
+                  if (event.target !== event.currentTarget || event.propertyName !== 'transform') {
+                    return;
+                  }
+
+                  handleInspiTransitionEnd();
+                }}
                 style={{
-                  transform: `translateX(calc(-${inspiIndex} * ((100% + 1.5rem) / 3)))`
+                  transform: `translateX(-${inspiIndex * inspiStepPx}px)`
                 }}
               >
                 {inspiLoopCards.map((card, index) => (

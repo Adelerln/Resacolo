@@ -1,15 +1,10 @@
-import { PHASE_DEVELOPMENT_SERVER } from 'next/constants.js';
-
 const supabaseHostname = process.env.NEXT_PUBLIC_SUPABASE_URL
   ? new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).hostname
   : null;
 
-export default function nextConfig(phase) {
-  const isDevServer = phase === PHASE_DEVELOPMENT_SERVER;
-
+export default function nextConfig() {
   /** @type {import('next').NextConfig} */
   return {
-    distDir: isDevServer ? '.next-dev' : '.next',
     output: 'standalone',
     images: {
       remotePatterns: [

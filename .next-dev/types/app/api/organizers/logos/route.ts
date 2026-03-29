@@ -1,4 +1,4 @@
-// File: /Users/adelerolin/Resacolo/Resacolo/src/app/api/organizers/logos/route.ts
+// File: /Users/JeanneRolin/resacolo/Resacolo/src/app/api/organizers/logos/route.ts
 import * as entry from '../../../../../../src/app/api/organizers/logos/route.js'
 import type { NextRequest } from 'next/server.js'
 

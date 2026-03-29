@@ -1,3 +1,6 @@
 {
-  "/page": "app/page.js"
+  "/page": "app/page.js",
+  "/notre-concept/page": "app/notre-concept/page.js",
+  "/sejours/page": "app/sejours/page.js",
+  "/bien-choisir-sa-colo/page": "app/bien-choisir-sa-colo/page.js"
 }

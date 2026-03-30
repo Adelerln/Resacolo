@@ -1,0 +1,798 @@
+import { load } from 'cheerio';
+import { z } from 'zod';
+import { createOpenAIClient } from '@/lib/openai';
+import type { Database, Json } from '@/types/supabase';
+
+type StayDraftRow = Database['public']['Tables']['stay_drafts']['Row'];
+type AiUsage = {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  total_tokens?: number;
+};
+
+const DEFAULT_OPENAI_MODEL = process.env.OPENAI_ENRICH_MODEL ?? 'gpt-4o-mini';
+const MAX_MAIN_TEXT_LENGTH = 12_000;
+const MAX_HTML_EXCERPT_LENGTH = 6_000;
+const MAX_AI_LOG_PREVIEW_LENGTH = 1_000;
+export const STAY_DRAFT_AI_PROMPT_VERSION = 'stay-draft-enrich-v1';
+
+const nullableTextSchema = z.preprocess((value) => {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'string') {
+    const normalized = value.trim();
+    return normalized.length > 0 ? normalized : null;
+  }
+  return String(value);
+}, z.string().nullable());
+
+const nullableNumberSchema = z.preprocess((value) => {
+  if (value === null || value === undefined || value === '') return null;
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const normalized = value.replace(',', '.').replace(/\s+/g, '');
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}, z.number().nullable());
+
+const extraOptionSchema = z.object({
+  label: z.string().trim().min(1),
+  price: nullableNumberSchema,
+  currency: nullableTextSchema,
+  description: nullableTextSchema
+}).strict();
+
+const transportOptionSchema = z.object({
+  label: z.string().trim().min(1),
+  price: nullableNumberSchema,
+  currency: nullableTextSchema,
+  description: nullableTextSchema
+}).strict();
+
+const sessionSchema = z.object({
+  label: nullableTextSchema,
+  start_date: nullableTextSchema,
+  end_date: nullableTextSchema,
+  price: nullableNumberSchema,
+  currency: nullableTextSchema,
+  availability: z.enum(['available', 'full', 'unknown']).nullable()
+}).strict();
+
+const aiExtractedSchema = z.object({
+  summary: nullableTextSchema,
+  location_text: nullableTextSchema,
+  region_text: nullableTextSchema,
+  program_text: nullableTextSchema,
+  supervision_text: nullableTextSchema,
+  transport_text: nullableTextSchema,
+  transport_mode: nullableTextSchema,
+  categories: z.array(z.string().trim().min(1)),
+  ages: z.array(z.number().int().nonnegative()),
+  sessions_json: z.array(sessionSchema),
+  extra_options_json: z.array(extraOptionSchema),
+  transport_options_json: z.array(transportOptionSchema),
+  accommodations_json: z.object({
+    title: nullableTextSchema,
+    description: nullableTextSchema
+  }).strict().nullable()
+}).strict();
+
+const AI_EXTRACTED_EXPECTED_ROOT_KEYS = new Set([
+  'summary',
+  'location_text',
+  'region_text',
+  'program_text',
+  'supervision_text',
+  'transport_text',
+  'transport_mode',
+  'categories',
+  'ages',
+  'sessions_json',
+  'extra_options_json',
+  'transport_options_json',
+  'accommodations_json'
+]);
+
+export type StayDraftAiExtracted = z.infer<typeof aiExtractedSchema>;
+
+export class StayDraftAiEnrichmentError extends Error {
+  readonly rawResponse: string | null;
+  readonly model: string | null;
+  readonly promptVersion: string | null;
+  readonly usage: AiUsage | null;
+
+  constructor(
+    message: string,
+    options?: {
+      rawResponse?: string | null;
+      model?: string | null;
+      promptVersion?: string | null;
+      usage?: AiUsage | null;
+    }
+  ) {
+    super(message);
+    this.name = 'StayDraftAiEnrichmentError';
+    this.rawResponse = options?.rawResponse ?? null;
+    this.model = options?.model ?? null;
+    this.promptVersion = options?.promptVersion ?? null;
+    this.usage = options?.usage ?? null;
+  }
+}
+
+export type StayDraftAiEnrichmentResult = {
+  extracted: StayDraftAiExtracted;
+  model: string;
+  promptVersion: string;
+  rawResponse: string;
+  usage: AiUsage | null;
+};
+
+const SYSTEM_PROMPT = `
+Tu es un extracteur de données pour fiches de colonies de vacances.
+Tu dois renvoyer uniquement un JSON strict conforme au schéma demandé.
+
+Règles impératives :
+- N'invente jamais d'information.
+- Si une information est absente, incertaine, ambiguë ou contradictoire : renvoie null (ou tableau vide selon le type).
+- Priorise la fiabilité sur la complétude.
+- Ne renvoie aucune prose, aucun markdown, aucun commentaire : uniquement le JSON.
+- La racine du JSON doit être un objet unique, jamais un tableau.
+- Respecte strictement les clés attendues, sans en ajouter d'autres.
+- Les prix complexes doivent rester dans sessions_json / extra_options_json / transport_options_json.
+- Pour availability dans sessions_json, utilise seulement : "available", "full", "unknown" ou null.
+`.trim();
+
+const MAIN_TEXT_NOISE_KEYS = [
+  'cookies',
+  'mentions legales',
+  'cgv',
+  'conditions generales',
+  'panier',
+  'mon compte',
+  'connexion',
+  'se connecter',
+  'newsletter',
+  'menu',
+  'navigation',
+  'footer',
+  'header',
+  'facebook',
+  'instagram',
+  'linkedin',
+  'whatsapp',
+  'partager'
+];
+
+function normalizeWhitespace(value: string | null | undefined): string {
+  if (!value) return '';
+  return value.replace(/\s+/g, ' ').trim();
+}
+
+function normalizeMultilineText(value: string | null | undefined): string {
+  if (!value) return '';
+  return value
+    .replace(/\u00A0/g, ' ')
+    .split('\n')
+    .map((line) => normalizeWhitespace(line))
+    .filter(Boolean)
+    .join('\n');
+}
+
+function simplifyForMatch(value: string | null | undefined): string {
+  const normalized = normalizeWhitespace(value);
+  if (!normalized) return '';
+  return normalized
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function cleanMainTextForAI(value: string | null | undefined): string | null {
+  const normalized = normalizeMultilineText(value);
+  if (!normalized) return null;
+
+  const lines = normalized
+    .split('\n')
+    .map((line) => normalizeWhitespace(line))
+    .filter((line) => line.length >= 2)
+    .filter((line) => {
+      const key = simplifyForMatch(line);
+      if (!key) return false;
+      return !MAIN_TEXT_NOISE_KEYS.some((noise) => key.includes(noise));
+    });
+
+  if (lines.length === 0) return null;
+  return truncate(lines.join('\n'), MAX_MAIN_TEXT_LENGTH);
+}
+
+function truncate(value: string, maxLength: number): string {
+  if (value.length <= maxLength) return value;
+  return value.slice(0, maxLength);
+}
+
+function asObject(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
+
+function asArray(value: unknown): unknown[] {
+  if (Array.isArray(value)) return value;
+  if (value === null || value === undefined) return [];
+  return [value];
+}
+
+function parseRawPayload(rawPayload: Json | null): Record<string, unknown> {
+  const asRecord = asObject(rawPayload);
+  if (asRecord) return asRecord;
+
+  if (typeof rawPayload === 'string') {
+    try {
+      const parsed = JSON.parse(rawPayload) as unknown;
+      const parsedRecord = asObject(parsed);
+      return parsedRecord ?? {};
+    } catch {
+      return {};
+    }
+  }
+
+  return {};
+}
+
+function extractReadableTextFromHtml(html: string): string {
+  const withBreaks = html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|li|tr|h[1-6]|section|article|ul|ol|table)>/gi, '\n');
+  const $ = load(`<div>${withBreaks}</div>`);
+  return normalizeMultilineText($('div').text());
+}
+
+function extractMainTextFromHtml(html: string): string | null {
+  const $ = load(html);
+  $('script,style,noscript,svg').remove();
+
+  const selectors = [
+    '[itemprop="description"]',
+    'main article',
+    'main',
+    'article',
+    'body'
+  ];
+
+  let bestText = '';
+  for (const selector of selectors) {
+    $(selector).each((_, node) => {
+      const text = normalizeMultilineText($(node).text());
+      if (text.length > bestText.length) {
+        bestText = text;
+      }
+    });
+    if (bestText.length > 3_000) break;
+  }
+
+  if (!bestText) return null;
+  return truncate(bestText, MAX_MAIN_TEXT_LENGTH);
+}
+
+function extractHtmlExcerpt(html: string): string | null {
+  const $ = load(html);
+  const itemProp = $('[itemprop="description"]').first();
+  const selected = itemProp.length ? itemProp : $('main article, main, article').first();
+  if (!selected.length) return null;
+  const excerpt = $.html(selected) ?? '';
+  return excerpt ? truncate(excerpt, MAX_HTML_EXCERPT_LENGTH) : null;
+}
+
+function stripCodeFences(value: string): string {
+  return value
+    .replace(/^```json\s*/i, '')
+    .replace(/^```\s*/i, '')
+    .replace(/\s*```$/, '')
+    .trim();
+}
+
+function valueType(value: unknown): string {
+  if (Array.isArray(value)) return 'array';
+  if (value === null) return 'null';
+  return typeof value;
+}
+
+function previewValue(value: unknown): string {
+  try {
+    if (typeof value === 'string') {
+      return value.slice(0, MAX_AI_LOG_PREVIEW_LENGTH);
+    }
+    const serialized = JSON.stringify(value);
+    return serialized.slice(0, MAX_AI_LOG_PREVIEW_LENGTH);
+  } catch {
+    return String(value).slice(0, MAX_AI_LOG_PREVIEW_LENGTH);
+  }
+}
+
+function normalizeParsedRoot(parsed: unknown, stage = 'root'): unknown {
+  if (Array.isArray(parsed)) {
+    if (parsed.length === 1) {
+      const firstItem = parsed[0];
+      if (firstItem && typeof firstItem === 'object' && !Array.isArray(firstItem)) {
+        return firstItem;
+      }
+      throw new Error(
+        `Réponse OpenAI invalide (${stage}) : le tableau racine contient un élément non objet.`
+      );
+    }
+    throw new Error(
+      `Réponse OpenAI invalide (${stage}) : le JSON racine est un tableau (${parsed.length} éléments). Un objet unique est attendu.`
+    );
+  }
+
+  if (!parsed || typeof parsed !== 'object') {
+    throw new Error(`Réponse OpenAI invalide (${stage}) : la racine JSON doit être un objet.`);
+  }
+
+  return parsed;
+}
+
+function hasExpectedRootKey(value: unknown): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  return Object.keys(value).some((key) => AI_EXTRACTED_EXPECTED_ROOT_KEYS.has(key));
+}
+
+function unwrapIntermediaryPayload(value: unknown): { value: unknown; source: string } {
+  const envelopeKeys = ['data', 'result', 'output', 'response', 'payload', 'ai_extracted'];
+
+  let current: unknown = value;
+  let source = 'direct';
+
+  for (let depth = 0; depth < 3; depth += 1) {
+    if (!current || typeof current !== 'object' || Array.isArray(current)) {
+      return { value: current, source };
+    }
+
+    if (hasExpectedRootKey(current)) {
+      return { value: current, source };
+    }
+
+    const record = current as Record<string, unknown>;
+    let unwrappedByEnvelope = false;
+    for (const key of envelopeKeys) {
+      if (key in record) {
+        current = record[key];
+        source = `envelope:${key}`;
+        unwrappedByEnvelope = true;
+        break;
+      }
+    }
+    if (unwrappedByEnvelope) continue;
+
+    const keys = Object.keys(record);
+    if (keys.length === 1) {
+      const onlyKey = keys[0];
+      const onlyValue = record[onlyKey];
+      if (onlyValue && typeof onlyValue === 'object') {
+        current = onlyValue;
+        source = `single-key:${onlyKey}`;
+        continue;
+      }
+    }
+
+    return { value: current, source };
+  }
+
+  return { value: current, source };
+}
+
+function dedupeStrings(values: string[]): string[] {
+  const seen = new Set<string>();
+  const output: string[] = [];
+  for (const value of values) {
+    const normalized = normalizeWhitespace(value);
+    if (!normalized) continue;
+    const key = normalized.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    output.push(normalized);
+  }
+  return output;
+}
+
+function extractImageUrls(value: unknown): string[] {
+  const urls: string[] = [];
+  const pushIfUrl = (candidate: unknown) => {
+    if (typeof candidate !== 'string') return;
+    const cleaned = normalizeWhitespace(candidate);
+    if (!/^https?:\/\//i.test(cleaned)) return;
+    urls.push(cleaned);
+  };
+
+  if (typeof value === 'string') {
+    for (const token of value.split(/[,\n|]/)) {
+      pushIfUrl(token);
+    }
+  } else if (Array.isArray(value)) {
+    for (const item of value) {
+      pushIfUrl(item);
+      const asRecord = asObject(item);
+      if (asRecord) {
+        pushIfUrl(asRecord.url);
+        pushIfUrl(asRecord.src);
+      }
+    }
+  } else {
+    const asRecord = asObject(value);
+    if (asRecord) {
+      pushIfUrl(asRecord.url);
+      pushIfUrl(asRecord.src);
+    }
+  }
+
+  return dedupeStrings(urls);
+}
+
+function dedupeNumbers(values: number[]): number[] {
+  return Array.from(new Set(values.filter((value) => Number.isFinite(value)))).sort((a, b) => a - b);
+}
+
+function normalizeAiExtracted(data: StayDraftAiExtracted): StayDraftAiExtracted {
+  return {
+    ...data,
+    categories: dedupeStrings(data.categories),
+    ages: dedupeNumbers(data.ages)
+  };
+}
+
+function toNullableString(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'string') {
+    const normalized = normalizeWhitespace(value);
+    return normalized.length > 0 ? normalized : null;
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  return null;
+}
+
+function toNullableNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value === 'string') {
+    const normalized = value.replace(/\s+/g, '').replace(',', '.');
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function toStringArray(value: unknown): string[] {
+  const output: string[] = [];
+  for (const item of asArray(value)) {
+    const text = toNullableString(item);
+    if (text) output.push(text);
+  }
+  return dedupeStrings(output);
+}
+
+function toNumberArray(value: unknown): number[] {
+  const output: number[] = [];
+  for (const item of asArray(value)) {
+    const numberValue = toNullableNumber(item);
+    if (numberValue !== null) output.push(Math.round(numberValue));
+  }
+  return dedupeNumbers(output);
+}
+
+function normalizeAvailability(value: unknown): 'available' | 'full' | 'unknown' | null {
+  const text = simplifyForMatch(toNullableString(value));
+  if (!text) return null;
+  if (/(full|complet|complete|sold out|epuise|épuisé)/i.test(text)) return 'full';
+  if (/(available|disponible|open|ouvert|reste)/i.test(text)) return 'available';
+  return 'unknown';
+}
+
+function normalizeSessionList(value: unknown): StayDraftAiExtracted['sessions_json'] {
+  const output: StayDraftAiExtracted['sessions_json'] = [];
+  for (const item of asArray(value)) {
+    const record = asObject(item);
+    if (!record) continue;
+    output.push({
+      label: toNullableString(record.label),
+      start_date: toNullableString(record.start_date),
+      end_date: toNullableString(record.end_date),
+      price: toNullableNumber(record.price),
+      currency: toNullableString(record.currency),
+      availability: normalizeAvailability(record.availability)
+    });
+  }
+  return output;
+}
+
+function normalizeOptionList(
+  value: unknown
+): StayDraftAiExtracted['extra_options_json'] | StayDraftAiExtracted['transport_options_json'] {
+  const output: Array<{ label: string; price: number | null; currency: string | null; description: string | null }> = [];
+  for (const item of asArray(value)) {
+    const record = asObject(item);
+    if (!record) continue;
+    const label = toNullableString(record.label);
+    if (!label) continue;
+    output.push({
+      label,
+      price: toNullableNumber(record.price),
+      currency: toNullableString(record.currency),
+      description: toNullableString(record.description)
+    });
+  }
+  return output;
+}
+
+function normalizeAccommodations(value: unknown): StayDraftAiExtracted['accommodations_json'] {
+  const record = asObject(value);
+  if (!record) return null;
+  return {
+    title: toNullableString(record.title),
+    description: toNullableString(record.description)
+  };
+}
+
+function normalizeAiExtractedCandidate(value: unknown): StayDraftAiExtracted {
+  const record = asObject(value) ?? {};
+  return {
+    summary: toNullableString(record.summary),
+    location_text: toNullableString(record.location_text),
+    region_text: toNullableString(record.region_text),
+    program_text: toNullableString(record.program_text),
+    supervision_text: toNullableString(record.supervision_text),
+    transport_text: toNullableString(record.transport_text),
+    transport_mode: toNullableString(record.transport_mode),
+    categories: toStringArray(record.categories),
+    ages: toNumberArray(record.ages),
+    sessions_json: normalizeSessionList(record.sessions_json),
+    extra_options_json: normalizeOptionList(record.extra_options_json),
+    transport_options_json: normalizeOptionList(record.transport_options_json),
+    accommodations_json: normalizeAccommodations(record.accommodations_json)
+  };
+}
+
+function buildAiInput(draft: StayDraftRow) {
+  const rawPayload = parseRawPayload(draft.raw_payload);
+  const extracted = asObject(rawPayload.extracted) ?? null;
+  const html = typeof rawPayload.html === 'string' ? rawPayload.html : '';
+  const extractedRawText =
+    extracted && typeof extracted.rawText === 'string'
+      ? normalizeMultilineText(extracted.rawText)
+      : '';
+  const rawPayloadMainText =
+    typeof rawPayload.main_text === 'string'
+      ? normalizeMultilineText(rawPayload.main_text)
+      : '';
+
+  const mainText =
+    cleanMainTextForAI(
+      extractedRawText.length > 300
+        ? extractedRawText
+        : rawPayloadMainText.length > 300
+          ? rawPayloadMainText
+          : html
+            ? extractMainTextFromHtml(html)
+            : null
+    ) ?? null;
+
+  const htmlExcerpt = html ? extractHtmlExcerpt(html) : null;
+  const cleanedHtmlExcerpt = cleanMainTextForAI(
+    htmlExcerpt ? extractReadableTextFromHtml(htmlExcerpt) : null
+  );
+  const draftImages = extractImageUrls(draft.images);
+  const extractedImages = extracted ? extractImageUrls(extracted.images) : [];
+  const images = dedupeStrings([...draftImages, ...extractedImages]).slice(0, 8);
+
+  const technical = extracted ? asObject(extracted.technical) : null;
+  const metaTitle =
+    technical && typeof technical.titleTag === 'string' ? normalizeWhitespace(technical.titleTag) : null;
+  const metaDescription =
+    technical && typeof technical.metaDescription === 'string'
+      ? normalizeWhitespace(technical.metaDescription)
+      : null;
+
+  return {
+    source_url: draft.source_url,
+    title: draft.title,
+    description: draft.description,
+    age_min: draft.age_min,
+    age_max: draft.age_max,
+    images,
+    meta: {
+      title: metaTitle,
+      description: metaDescription
+    },
+    extracted_v1_minimal: extracted
+      ? {
+          title: typeof extracted.title === 'string' ? extracted.title : null,
+          description: typeof extracted.description === 'string' ? extracted.description : null,
+          age_min: typeof extracted.ageMin === 'number' ? extracted.ageMin : null,
+          age_max: typeof extracted.ageMax === 'number' ? extracted.ageMax : null,
+          images: extractImageUrls(extracted.images),
+          main_text: extractedRawText ? truncate(extractedRawText, MAX_MAIN_TEXT_LENGTH) : null
+        }
+      : null,
+    main_text: mainText ?? null,
+    html_excerpt: cleanedHtmlExcerpt ?? null
+  };
+}
+
+export async function enrichStayDraftWithAI(
+  draft: StayDraftRow
+): Promise<StayDraftAiEnrichmentResult> {
+  const openai = createOpenAIClient();
+  const model = DEFAULT_OPENAI_MODEL;
+  const inputPayload = buildAiInput(draft);
+
+  const userPrompt = `
+Analyse les données ci-dessous et renvoie le JSON strict demandé.
+Ne renvoie que ce JSON.
+La sortie doit être un seul objet JSON en racine, jamais un tableau.
+
+Schéma exact attendu :
+{
+  "summary": string | null,
+  "location_text": string | null,
+  "region_text": string | null,
+  "program_text": string | null,
+  "supervision_text": string | null,
+  "transport_text": string | null,
+  "transport_mode": string | null,
+  "categories": string[],
+  "ages": number[],
+  "sessions_json": [
+    {
+      "label": string | null,
+      "start_date": string | null,
+      "end_date": string | null,
+      "price": number | null,
+      "currency": string | null,
+      "availability": "available" | "full" | "unknown" | null
+    }
+  ],
+  "extra_options_json": [
+    {
+      "label": string,
+      "price": number | null,
+      "currency": string | null,
+      "description": string | null
+    }
+  ],
+  "transport_options_json": [
+    {
+      "label": string,
+      "price": number | null,
+      "currency": string | null,
+      "description": string | null
+    }
+  ],
+  "accommodations_json": {
+    "title": string | null,
+    "description": string | null
+  } | null
+}
+
+Contexte :
+${JSON.stringify(inputPayload)}
+`.trim();
+
+  const completion = await openai.chat.completions.create({
+    model,
+    temperature: 0,
+    response_format: { type: 'json_object' },
+    messages: [
+      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'user', content: userPrompt }
+    ]
+  });
+  const usage: AiUsage | null = completion.usage
+    ? {
+        prompt_tokens: completion.usage.prompt_tokens,
+        completion_tokens: completion.usage.completion_tokens,
+        total_tokens: completion.usage.total_tokens
+      }
+    : null;
+
+  const rawContent = completion.choices[0]?.message?.content;
+  if (!rawContent) {
+    throw new StayDraftAiEnrichmentError('Réponse OpenAI vide.', {
+      rawResponse: null,
+      model,
+      promptVersion: STAY_DRAFT_AI_PROMPT_VERSION,
+      usage
+    });
+  }
+  console.info('[stay-draft-ai-enrichment] raw OpenAI preview', {
+    preview: rawContent.slice(0, MAX_AI_LOG_PREVIEW_LENGTH)
+  });
+
+  let parsedRoot: unknown;
+  try {
+    parsedRoot = JSON.parse(stripCodeFences(rawContent));
+  } catch {
+    throw new StayDraftAiEnrichmentError('Réponse OpenAI invalide (JSON non parsable).', {
+      rawResponse: rawContent,
+      model,
+      promptVersion: STAY_DRAFT_AI_PROMPT_VERSION,
+      usage
+    });
+  }
+  console.info('[stay-draft-ai-enrichment] parsed root shape', {
+    type: valueType(parsedRoot),
+    isArray: Array.isArray(parsedRoot),
+    arrayLength: Array.isArray(parsedRoot) ? parsedRoot.length : null
+  });
+
+  let parsedForValidation: unknown;
+  let unwrappedSource = 'direct';
+  try {
+    const normalizedRoot = normalizeParsedRoot(parsedRoot, 'root');
+    const unwrapped = unwrapIntermediaryPayload(normalizedRoot);
+    unwrappedSource = unwrapped.source;
+    parsedForValidation = normalizeParsedRoot(unwrapped.value, unwrapped.source);
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : 'Réponse OpenAI invalide (normalisation racine).';
+    throw new StayDraftAiEnrichmentError(message, {
+      rawResponse: rawContent,
+      model,
+      promptVersion: STAY_DRAFT_AI_PROMPT_VERSION,
+      usage
+    });
+  }
+
+  console.info('[stay-draft-ai-enrichment] parsed value before zod', {
+    source: unwrappedSource,
+    type: valueType(parsedForValidation),
+    isArray: Array.isArray(parsedForValidation),
+    arrayLength: Array.isArray(parsedForValidation) ? parsedForValidation.length : null,
+    preview: previewValue(parsedForValidation)
+  });
+
+  const firstValidation = aiExtractedSchema.safeParse(parsedForValidation);
+  let extracted: StayDraftAiExtracted;
+
+  if (firstValidation.success) {
+    extracted = firstValidation.data;
+  } else {
+    const normalizedCandidate = normalizeAiExtractedCandidate(parsedForValidation);
+    console.info('[stay-draft-ai-enrichment] schema fallback candidate', {
+      preview: previewValue(normalizedCandidate)
+    });
+    const secondValidation = aiExtractedSchema.safeParse(normalizedCandidate);
+
+    if (!secondValidation.success) {
+      const firstIssue = firstValidation.error.issues[0];
+      const firstPath = firstIssue?.path?.length ? firstIssue.path.join('.') : '(root)';
+      const secondIssue = secondValidation.error.issues[0];
+      const secondPath = secondIssue?.path?.length ? secondIssue.path.join('.') : '(root)';
+      throw new StayDraftAiEnrichmentError(
+        `Réponse OpenAI invalide (schéma) [path=${firstPath}] : ${firstIssue?.message ?? 'erreur inconnue'} | fallback [path=${secondPath}] : ${secondIssue?.message ?? 'erreur inconnue'}`,
+        {
+          rawResponse: rawContent,
+          model,
+          promptVersion: STAY_DRAFT_AI_PROMPT_VERSION,
+          usage
+        }
+      );
+    }
+
+    extracted = secondValidation.data;
+  }
+
+  return {
+    extracted: normalizeAiExtracted(extracted),
+    model,
+    promptVersion: STAY_DRAFT_AI_PROMPT_VERSION,
+    rawResponse: rawContent,
+    usage
+  };
+}

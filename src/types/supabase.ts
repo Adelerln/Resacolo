@@ -1154,6 +1154,110 @@ export type Database = {
           },
         ]
       }
+      stay_drafts: {
+        Row: {
+          age_max: number | null
+          age_min: number | null
+          ages: number[] | null
+          accommodations_json: Json | null
+          activities_text: string | null
+          categories: string[] | null
+          created_at: string
+          description: string | null
+          extra_options_json: Json | null
+          id: string
+          images: Json | null
+          location_text: string | null
+          organizer_id: string
+          program_text: string | null
+          raw_payload: Json | null
+          region_text: string | null
+          required_documents_text: string | null
+          sessions_json: Json | null
+          source_url: string
+          status: string
+          summary: string | null
+          supervision_text: string | null
+          title: string | null
+          transport_mode: string | null
+          transport_options_json: Json | null
+          transport_text: string | null
+          updated_at: string
+          validated_at: string | null
+          validated_by_user_id: string | null
+        }
+        Insert: {
+          age_max?: number | null
+          age_min?: number | null
+          ages?: number[] | null
+          accommodations_json?: Json | null
+          activities_text?: string | null
+          categories?: string[] | null
+          created_at?: string
+          description?: string | null
+          extra_options_json?: Json | null
+          id?: string
+          images?: Json | null
+          location_text?: string | null
+          organizer_id: string
+          program_text?: string | null
+          raw_payload?: Json | null
+          region_text?: string | null
+          required_documents_text?: string | null
+          sessions_json?: Json | null
+          source_url: string
+          status?: string
+          summary?: string | null
+          supervision_text?: string | null
+          title?: string | null
+          transport_mode?: string | null
+          transport_options_json?: Json | null
+          transport_text?: string | null
+          updated_at?: string
+          validated_at?: string | null
+          validated_by_user_id?: string | null
+        }
+        Update: {
+          age_max?: number | null
+          age_min?: number | null
+          ages?: number[] | null
+          accommodations_json?: Json | null
+          activities_text?: string | null
+          categories?: string[] | null
+          created_at?: string
+          description?: string | null
+          extra_options_json?: Json | null
+          id?: string
+          images?: Json | null
+          location_text?: string | null
+          organizer_id?: string
+          program_text?: string | null
+          raw_payload?: Json | null
+          region_text?: string | null
+          required_documents_text?: string | null
+          sessions_json?: Json | null
+          source_url?: string
+          status?: string
+          summary?: string | null
+          supervision_text?: string | null
+          title?: string | null
+          transport_mode?: string | null
+          transport_options_json?: Json | null
+          transport_text?: string | null
+          updated_at?: string
+          validated_at?: string | null
+          validated_by_user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stay_drafts_organizer_id_fkey"
+            columns: ["organizer_id"]
+            isOneToOne: false
+            referencedRelation: "organizers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       stay_extra_options: {
         Row: {
           amount_cents: number

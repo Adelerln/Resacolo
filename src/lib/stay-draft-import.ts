@@ -11,6 +11,7 @@ const MAX_ACTIVITIES = 12;
 const MAX_SECTION_TEXT_LENGTH = 8_000;
 const MAX_SESSION_SNIPPET_LENGTH = 400;
 const MAX_SUMMARY_BLOCK_LENGTH = 2_200;
+const MAX_TRANSPORT_VARIANT_FETCHES = 80;
 
 const NON_FOREIGN_REGIONS = STAY_REGION_OPTIONS.filter((region) => region !== 'Étranger');
 
@@ -145,6 +146,40 @@ export type DraftSessionItem = {
 export type DraftAccommodation = {
   title: string;
   description: string;
+};
+
+export type DraftTransportVariant = {
+  departure_city: string;
+  return_city: string;
+  amount_cents: number | null;
+  currency: 'EUR';
+  source_url: string;
+  departure_label_raw?: string | null;
+  return_label_raw?: string | null;
+  page_price_cents?: number | null;
+  base_price_cents?: number | null;
+  pricing_method?: 'delta_from_base' | 'absolute_price' | 'unresolved';
+  confidence?: 'high' | 'medium' | 'low';
+  reason?: string;
+};
+
+export type DraftTransportPriceDebug = {
+  variant_url: string;
+  departure_city: string | null;
+  return_city: string | null;
+  page_price_cents: number | null;
+  base_price_cents: number | null;
+  amount_cents: number | null;
+  pricing_method: 'delta_from_base' | 'absolute_price' | 'unresolved';
+  confidence: 'high' | 'medium' | 'low';
+  reason: string;
+  departure_label_raw?: string | null;
+  return_label_raw?: string | null;
+};
+
+export type ExtractTransportVariantsResult = {
+  transportVariants: DraftTransportVariant[];
+  transportPriceDebug: DraftTransportPriceDebug[];
 };
 
 export type FetchedHtml = {
@@ -1101,6 +1136,639 @@ function detectTransportMode(transportText: string | null, visibleText: string):
   }
 
   return modes.size === 1 ? Array.from(modes)[0] : null;
+}
+
+type TransportSelectDirection = 'outbound' | 'return' | 'generic';
+
+type TransportOptionCandidate = {
+  label: string;
+  rawLabel: string;
+  url: string | null;
+  selected: boolean;
+};
+
+type TransportSelectCandidate = {
+  direction: TransportSelectDirection;
+  context: string;
+  options: TransportOptionCandidate[];
+  selectedLabel: string | null;
+  selectedLabelRaw: string | null;
+};
+
+type ParsedTransportPage = {
+  sourceUrl: string;
+  selectedOutbound: string | null;
+  selectedReturn: string | null;
+  selectedOutboundRaw: string | null;
+  selectedReturnRaw: string | null;
+  outboundSelect: TransportSelectCandidate | null;
+  returnSelect: TransportSelectCandidate | null;
+  currentPriceCents: number | null;
+  outboundOptionCount: number;
+  returnOptionCount: number;
+  variantUrls: string[];
+};
+
+const TRANSPORT_PLACEHOLDER_KEYS = [
+  'choisir',
+  'selectionner',
+  'sélectionner',
+  'selection',
+  'ville de depart',
+  'ville de départ',
+  'ville de retour',
+  'transport aller',
+  'transport retour',
+  'aucun transport',
+  'sans transport',
+  'none',
+  'tous'
+];
+
+const TRANSPORT_BASE_REFERENCE_KEYS = [
+  'depose centre',
+  'depose sur le centre',
+  'depose au centre',
+  'reprise centre',
+  'reprise sur le centre',
+  'reprise au centre',
+  'sans transport',
+  'sans acheminement',
+  'sans convoyage',
+  'rendez vous sur place',
+  'rdv sur place',
+  'sur place',
+  'depart centre',
+  'retour centre'
+];
+
+function sanitizeTransportLabel(value: string | null | undefined): string {
+  if (!value) return '';
+  return normalizeWhitespace(value)
+    .replace(/\u00A0/g, ' ')
+    .replace(/\s*[\(\[]?\+?\s*[0-9][0-9\s.,]*\s*(?:€|euros?)[^\)\]]*[\)\]]?/gi, '')
+    .replace(/\s*-\s*\+?\s*[0-9][0-9\s.,]*\s*(?:€|euros?)/gi, '')
+    .replace(/^transport\s*(aller|retour)?\s*[:\-]\s*/i, '')
+    .trim();
+}
+
+function normalizeTransportCityLabel(value: string | null | undefined): string | null {
+  const normalized = sanitizeTransportLabel(value);
+  if (!normalized) return null;
+  const key = simplifyForMatch(normalized);
+  if (!key) return null;
+  if (TRANSPORT_PLACEHOLDER_KEYS.some((item) => key.includes(simplifyForMatch(item)))) {
+    return null;
+  }
+  return normalized.length > 80 ? normalized.slice(0, 80).trim() : normalized;
+}
+
+function getOptionVariantUrl($: CheerioAPI, option: AnyNode, pageUrl: string): string | null {
+  const attrs = ['url', 'data-url', 'data-href', 'href', 'value'];
+  for (const attr of attrs) {
+    const raw = normalizeWhitespace($(option).attr(attr) ?? '');
+    if (!raw || raw === '#') continue;
+    if (attr === 'value' && !/[/?=&]|https?:/i.test(raw)) continue;
+    const resolved = toAbsoluteUrl(raw, pageUrl);
+    if (resolved) return resolved;
+  }
+  return null;
+}
+
+function detectTransportDirection(context: string): TransportSelectDirection | null {
+  const key = simplifyForMatch(context);
+  if (!key) return null;
+
+  const hasTransport = /\btransport|acheminement|depart|départ|retour|reprise\b/i.test(key);
+  const hasOutbound = /\baller|depart|départ|outbound\b/i.test(key);
+  const hasReturn = /\bretour|arrivee|arrivée|reprise|inbound\b/i.test(key);
+
+  if (hasOutbound && !hasReturn) return 'outbound';
+  if (hasReturn && !hasOutbound) return 'return';
+  if (hasTransport) return 'generic';
+  return null;
+}
+
+function buildTransportSelectContext($: CheerioAPI, select: AnyNode): string {
+  const node = $(select);
+  const id = normalizeWhitespace(node.attr('id') ?? '');
+  const name = normalizeWhitespace(node.attr('name') ?? '');
+  const ariaLabel = normalizeWhitespace(node.attr('aria-label') ?? '');
+  const title = normalizeWhitespace(node.attr('title') ?? '');
+  const className = normalizeWhitespace(node.attr('class') ?? '');
+  const linkedLabel = id
+    ? normalizeWhitespace($(`label[for="${id}"]`).first().text())
+    : '';
+  const parentText = normalizeWhitespace(node.closest('td,th,tr,div,fieldset,section,form').first().text());
+
+  return normalizeWhitespace([id, name, ariaLabel, title, className, linkedLabel, parentText].join(' '));
+}
+
+function getTransportSelectCandidates(
+  $: CheerioAPI,
+  pageUrl: string
+): { outbound: TransportSelectCandidate | null; returnSelect: TransportSelectCandidate | null } {
+  const candidates: TransportSelectCandidate[] = [];
+
+  $('select').each((_, select) => {
+    const context = buildTransportSelectContext($, select);
+    const direction = detectTransportDirection(context);
+    if (!direction) return;
+
+    const options: TransportOptionCandidate[] = [];
+    let selectedLabel: string | null = null;
+    let selectedLabelRaw: string | null = null;
+
+    $(select)
+      .find('option')
+      .each((__, option) => {
+        const rawLabel = normalizeWhitespace($(option).text());
+        const label = normalizeTransportCityLabel(rawLabel);
+        const url = getOptionVariantUrl($, option, pageUrl);
+        const selected = $(option).is(':selected') || $(option).attr('selected') !== undefined;
+        if (selected && label) {
+          selectedLabel = label;
+          selectedLabelRaw = rawLabel || label;
+        }
+        if (!label && !url) return;
+        options.push({
+          label: label ?? rawLabel,
+          rawLabel,
+          url,
+          selected
+        });
+      });
+
+    if (options.length === 0) return;
+    if (!selectedLabel) {
+      const selectedOption =
+        options.find((option) => option.selected) ??
+        options.find((option) => Boolean(normalizeTransportCityLabel(option.label))) ??
+        null;
+      selectedLabel = selectedOption?.label ?? null;
+      selectedLabelRaw = selectedOption?.rawLabel ?? selectedOption?.label ?? null;
+    }
+
+    candidates.push({
+      direction,
+      context,
+      options,
+      selectedLabel: normalizeTransportCityLabel(selectedLabel) ?? null,
+      selectedLabelRaw: selectedLabelRaw ? normalizeWhitespace(selectedLabelRaw) : null
+    });
+  });
+
+  const scoreCandidate = (candidate: TransportSelectCandidate) =>
+    candidate.options.filter((option) => Boolean(option.url)).length * 10 + candidate.options.length;
+
+  const outboundDirect = candidates
+    .filter((candidate) => candidate.direction === 'outbound')
+    .sort((a, b) => scoreCandidate(b) - scoreCandidate(a))[0] ?? null;
+  const returnDirect = candidates
+    .filter((candidate) => candidate.direction === 'return')
+    .sort((a, b) => scoreCandidate(b) - scoreCandidate(a))[0] ?? null;
+  const generic = candidates
+    .filter((candidate) => candidate.direction === 'generic')
+    .sort((a, b) => scoreCandidate(b) - scoreCandidate(a));
+
+  const outbound = outboundDirect ?? generic[0] ?? null;
+  const returnSelect =
+    returnDirect ??
+    (generic.length > 1 ? generic[1] : null);
+
+  return { outbound, returnSelect };
+}
+
+function extractCurrentPriceEur($: CheerioAPI, visibleText: string): number | null {
+  const selectors = [
+    '[itemprop="price"]',
+    '[class*="prix"]',
+    '[id*="prix"]',
+    '[class*="price"]',
+    '[id*="price"]',
+    '.prix',
+    '.price'
+  ];
+
+  for (const selector of selectors) {
+    const nodes = $(selector).toArray().slice(0, 20);
+    for (const node of nodes) {
+      const content = normalizeWhitespace(
+        [
+          $(node).attr('content') ?? '',
+          $(node).attr('value') ?? '',
+          $(node).text()
+        ].join(' ')
+      );
+      if (!content) continue;
+      const price = findPriceInText(content);
+      if (price !== null) return price;
+    }
+  }
+
+  return findPriceInText(visibleText);
+}
+
+function extractCurrentPriceCents($: CheerioAPI, visibleText: string): number | null {
+  const priceEur = extractCurrentPriceEur($, visibleText);
+  if (priceEur === null) return null;
+  return Math.round(priceEur * 100);
+}
+
+function listVariantUrls(page: ParsedTransportPage): string[] {
+  const urls = [
+    ...(page.outboundSelect?.options ?? []).map((option) => option.url),
+    ...(page.returnSelect?.options ?? []).map((option) => option.url)
+  ].filter((url): url is string => Boolean(url));
+
+  return unique(urls);
+}
+
+function parseTransportPage(html: string, sourceUrl: string): ParsedTransportPage {
+  const $ = load(html);
+  const visibleText = extractVisibleText($);
+  const { outbound, returnSelect } = getTransportSelectCandidates($, sourceUrl);
+
+  let selectedOutbound = normalizeTransportCityLabel(outbound?.selectedLabel);
+  let selectedReturn = normalizeTransportCityLabel(returnSelect?.selectedLabel);
+  let selectedOutboundRaw = normalizeWhitespace(outbound?.selectedLabelRaw ?? selectedOutbound ?? '');
+  let selectedReturnRaw = normalizeWhitespace(returnSelect?.selectedLabelRaw ?? selectedReturn ?? '');
+
+  if (!selectedReturn && selectedOutbound && !returnSelect) {
+    selectedReturn = selectedOutbound;
+    selectedReturnRaw = selectedOutboundRaw;
+  } else if (!selectedOutbound && selectedReturn && !outbound) {
+    selectedOutbound = selectedReturn;
+    selectedOutboundRaw = selectedReturnRaw;
+  }
+
+  const parsed: ParsedTransportPage = {
+    sourceUrl,
+    selectedOutbound,
+    selectedReturn,
+    selectedOutboundRaw: selectedOutboundRaw || selectedOutbound || null,
+    selectedReturnRaw: selectedReturnRaw || selectedReturn || null,
+    outboundSelect: outbound,
+    returnSelect,
+    currentPriceCents: extractCurrentPriceCents($, visibleText),
+    outboundOptionCount: outbound?.options.length ?? 0,
+    returnOptionCount: returnSelect?.options.length ?? 0,
+    variantUrls: []
+  };
+  parsed.variantUrls = listVariantUrls(parsed);
+  return parsed;
+}
+
+function isTransportBaseReference(value: string | null | undefined): boolean {
+  const key = simplifyForMatch(value ?? '');
+  if (!key) return false;
+  return TRANSPORT_BASE_REFERENCE_KEYS.some((candidate) =>
+    key.includes(simplifyForMatch(candidate))
+  );
+}
+
+function normalizeTransportPair(page: ParsedTransportPage): {
+  departureCity: string | null;
+  returnCity: string | null;
+  fallbackReason: string | null;
+} {
+  let departureCity = normalizeTransportCityLabel(page.selectedOutbound);
+  let returnCity = normalizeTransportCityLabel(page.selectedReturn);
+  let fallbackReason: string | null = null;
+
+  if (!returnCity && departureCity && !page.returnSelect) {
+    returnCity = departureCity;
+    fallbackReason = 'symmetry-fallback-return';
+  } else if (!departureCity && returnCity && !page.outboundSelect) {
+    departureCity = returnCity;
+    fallbackReason = 'symmetry-fallback-departure';
+  }
+
+  return {
+    departureCity,
+    returnCity,
+    fallbackReason
+  };
+}
+
+function resolveBaseTransportPrice(
+  pages: ParsedTransportPage[]
+): {
+  basePriceCents: number | null;
+  sourceUrl: string | null;
+  reason: string;
+} {
+  const scored = pages
+    .filter((page) => typeof page.currentPriceCents === 'number')
+    .map((page) => {
+      const outboundBase = isTransportBaseReference(page.selectedOutbound);
+      const returnBase = isTransportBaseReference(page.selectedReturn);
+      let score = 0;
+      if (outboundBase) score += 2;
+      if (returnBase) score += 2;
+      if ((outboundBase || returnBase) && (!page.selectedOutbound || !page.selectedReturn)) score += 1;
+
+      return {
+        page,
+        score,
+        outboundBase,
+        returnBase
+      };
+    })
+    .filter((candidate) => candidate.score > 0)
+    .sort((left, right) => {
+      if (right.score !== left.score) return right.score - left.score;
+      return (left.page.currentPriceCents ?? Number.MAX_SAFE_INTEGER) - (right.page.currentPriceCents ?? Number.MAX_SAFE_INTEGER);
+    });
+
+  const best = scored[0];
+  if (!best || typeof best.page.currentPriceCents !== 'number') {
+    return {
+      basePriceCents: null,
+      sourceUrl: null,
+      reason: 'no-base-reference-variant-found'
+    };
+  }
+
+  const reliable = best.score >= 3;
+  if (!reliable) {
+    return {
+      basePriceCents: null,
+      sourceUrl: null,
+      reason: 'base-reference-too-weak'
+    };
+  }
+
+  return {
+    basePriceCents: best.page.currentPriceCents,
+    sourceUrl: best.page.sourceUrl,
+    reason: 'base-reference-found'
+  };
+}
+
+function toTransportConfidence(
+  pricingMethod: DraftTransportPriceDebug['pricing_method'],
+  amountCents: number | null,
+  departureCity: string | null,
+  returnCity: string | null
+): DraftTransportPriceDebug['confidence'] {
+  if (pricingMethod === 'delta_from_base' && amountCents !== null) {
+    if (departureCity && returnCity) return 'high';
+    return 'medium';
+  }
+  return 'low';
+}
+
+function buildTransportDebugRows(
+  pages: ParsedTransportPage[],
+  base: { basePriceCents: number | null; sourceUrl: string | null; reason: string }
+): DraftTransportPriceDebug[] {
+  return pages.map((page) => {
+    const { departureCity, returnCity, fallbackReason } = normalizeTransportPair(page);
+    const hasCity = Boolean(departureCity || returnCity);
+    const pagePriceCents = page.currentPriceCents;
+
+    let amountCents: number | null = null;
+    let pricingMethod: DraftTransportPriceDebug['pricing_method'] = 'unresolved';
+    let reason = fallbackReason ? `ok-${fallbackReason}` : 'ok';
+
+    if (!hasCity) {
+      reason = 'excluded-missing-transport-city';
+    } else if (typeof pagePriceCents !== 'number') {
+      reason = 'excluded-missing-page-price';
+    } else if (typeof base.basePriceCents === 'number') {
+      const delta = pagePriceCents - base.basePriceCents;
+      if (delta < 0) {
+        reason = `excluded-negative-delta:${delta}`;
+      } else {
+        amountCents = delta;
+        pricingMethod = 'delta_from_base';
+      }
+    } else {
+      pricingMethod = 'absolute_price';
+      reason = `excluded-${base.reason}`;
+    }
+
+    const confidence = toTransportConfidence(pricingMethod, amountCents, departureCity, returnCity);
+
+    return {
+      variant_url: page.sourceUrl,
+      departure_city: departureCity,
+      return_city: returnCity,
+      page_price_cents: pagePriceCents,
+      base_price_cents: base.basePriceCents,
+      amount_cents: amountCents,
+      pricing_method: pricingMethod,
+      confidence,
+      reason,
+      departure_label_raw: page.selectedOutboundRaw,
+      return_label_raw: page.selectedReturnRaw
+    };
+  });
+}
+
+function debugToTransportVariant(row: DraftTransportPriceDebug): DraftTransportVariant | null {
+  const departureCity = normalizeTransportCityLabel(row.departure_city);
+  const returnCity = normalizeTransportCityLabel(row.return_city);
+  if (!departureCity && !returnCity) return null;
+
+  const safeDeparture = departureCity ?? returnCity ?? '';
+  const safeReturn = returnCity ?? departureCity ?? '';
+
+  return {
+    departure_city: safeDeparture,
+    return_city: safeReturn,
+    amount_cents: row.amount_cents,
+    currency: 'EUR',
+    source_url: row.variant_url,
+    departure_label_raw: row.departure_label_raw ?? null,
+    return_label_raw: row.return_label_raw ?? null,
+    page_price_cents: row.page_price_cents,
+    base_price_cents: row.base_price_cents,
+    pricing_method: row.pricing_method,
+    confidence: row.confidence,
+    reason: row.reason
+  };
+}
+
+function transportVariantScore(row: DraftTransportVariant): number {
+  let score = 0;
+  if (typeof row.amount_cents === 'number') score += 100;
+  if (row.confidence === 'high') score += 30;
+  if (row.confidence === 'medium') score += 20;
+  if (row.confidence === 'low') score += 10;
+  if (row.reason?.includes('symmetry-fallback')) score -= 1;
+  return score;
+}
+
+function dedupeTransportVariants(rows: DraftTransportVariant[]): DraftTransportVariant[] {
+  const map = new Map<string, DraftTransportVariant>();
+
+  for (const row of rows) {
+    const departure = normalizeTransportCityLabel(row.departure_city);
+    const returning = normalizeTransportCityLabel(row.return_city);
+    if (!departure && !returning) continue;
+
+    const departureCity = departure ?? returning ?? '';
+    const returnCity = returning ?? departure ?? '';
+    const key = `${simplifyForMatch(departureCity)}|${simplifyForMatch(returnCity)}`;
+    const existing = map.get(key);
+    if (!existing) {
+      map.set(key, {
+        ...row,
+        departure_city: departureCity,
+        return_city: returnCity
+      });
+      continue;
+    }
+
+    if (transportVariantScore(row) > transportVariantScore(existing)) {
+      map.set(key, {
+        ...row,
+        departure_city: departureCity,
+        return_city: returnCity
+      });
+    }
+  }
+
+  return Array.from(map.values()).sort((a, b) =>
+    `${a.departure_city}|${a.return_city}`.localeCompare(`${b.departure_city}|${b.return_city}`, 'fr')
+  );
+}
+
+export async function extractTransportVariants(
+  html: string,
+  sourceUrl: string
+): Promise<ExtractTransportVariantsResult> {
+  const cache = new Map<string, FetchedHtml | null>();
+  const visitedUrls = new Set<string>();
+  const queuedUrls = new Set<string>();
+  const queue: string[] = [];
+  const pagesByUrl = new Map<string, ParsedTransportPage>();
+  let fetchCount = 0;
+
+  function enqueueUrl(url: string | null | undefined) {
+    const normalizedUrl = normalizeWhitespace(url ?? '');
+    if (!normalizedUrl) return;
+    if (visitedUrls.has(normalizedUrl) || queuedUrls.has(normalizedUrl)) return;
+    queuedUrls.add(normalizedUrl);
+    queue.push(normalizedUrl);
+  }
+
+  async function getVariantPage(url: string): Promise<FetchedHtml | null> {
+    const normalizedUrl = normalizeWhitespace(url);
+    if (!normalizedUrl) return null;
+    if (cache.has(normalizedUrl)) return cache.get(normalizedUrl) ?? null;
+    if (fetchCount >= MAX_TRANSPORT_VARIANT_FETCHES) {
+      console.warn('[transport-scraping] limite de fetch atteinte', {
+        maxFetches: MAX_TRANSPORT_VARIANT_FETCHES,
+        blockedUrl: normalizedUrl
+      });
+      cache.set(normalizedUrl, null);
+      return null;
+    }
+
+    fetchCount += 1;
+    try {
+      const fetched = await fetchHtml(normalizedUrl);
+      cache.set(normalizedUrl, fetched);
+      if (!cache.has(fetched.finalUrl)) {
+        cache.set(fetched.finalUrl, fetched);
+      }
+      return fetched;
+    } catch {
+      cache.set(normalizedUrl, null);
+      return null;
+    }
+  }
+
+  const initialPage = parseTransportPage(html, sourceUrl);
+  pagesByUrl.set(initialPage.sourceUrl, initialPage);
+
+  const initialOutboundWithUrl = (initialPage.outboundSelect?.options ?? []).filter((option) =>
+    Boolean(option.url)
+  );
+  const initialReturnWithUrl = (initialPage.returnSelect?.options ?? []).filter((option) =>
+    Boolean(option.url)
+  );
+  for (const url of initialPage.variantUrls) {
+    enqueueUrl(url);
+  }
+
+  while (queue.length > 0) {
+    const nextUrl = queue.shift() ?? '';
+    queuedUrls.delete(nextUrl);
+    if (!nextUrl || visitedUrls.has(nextUrl)) continue;
+    visitedUrls.add(nextUrl);
+
+    const fetched = await getVariantPage(nextUrl);
+    if (!fetched) {
+      console.warn('[transport-scraping] variante ignorée (fetch impossible)', {
+        requestedUrl: nextUrl
+      });
+      continue;
+    }
+
+    const parsed = parseTransportPage(fetched.html, fetched.finalUrl);
+    pagesByUrl.set(parsed.sourceUrl, parsed);
+
+    for (const discoveredUrl of parsed.variantUrls) {
+      enqueueUrl(discoveredUrl);
+    }
+  }
+
+  const pages = Array.from(pagesByUrl.values());
+  const base = resolveBaseTransportPrice(pages);
+  const transportPriceDebug = buildTransportDebugRows(pages, base).sort((left, right) =>
+    left.variant_url.localeCompare(right.variant_url, 'fr')
+  );
+
+  const rawVariants = transportPriceDebug
+    .map((row) => debugToTransportVariant(row))
+    .filter((row): row is DraftTransportVariant => Boolean(row));
+  const transportVariants = dedupeTransportVariants(rawVariants);
+
+  console.info('[transport-scraping] résumé', {
+    sourceUrl,
+    outboundOptionsDetected: initialPage.outboundOptionCount,
+    returnOptionsDetected: initialPage.returnOptionCount,
+    outboundOptionsWithVariantUrl: initialOutboundWithUrl.length,
+    returnOptionsWithVariantUrl: initialReturnWithUrl.length,
+    variantsFetched: fetchCount,
+    parsedVariantPages: pages.length,
+    basePriceCents: base.basePriceCents,
+    baseSourceUrl: base.sourceUrl,
+    baseReason: base.reason,
+    usableTransportVariants: transportVariants.filter(
+      (row) => typeof row.amount_cents === 'number'
+    ).length
+  });
+
+  for (const row of transportPriceDebug) {
+    console.info('[transport-scraping] variante', {
+      variantUrl: row.variant_url,
+      departureCity: row.departure_city,
+      returnCity: row.return_city,
+      pagePriceCents: row.page_price_cents,
+      basePriceCents: row.base_price_cents,
+      amountCents: row.amount_cents,
+      pricingMethod: row.pricing_method,
+      confidence: row.confidence,
+      reason: row.reason
+    });
+
+    if (typeof row.amount_cents !== 'number') {
+      console.warn('[transport-scraping] variante exclue (pas de montant fiable)', {
+        variantUrl: row.variant_url,
+        reason: row.reason
+      });
+    }
+  }
+
+  return {
+    transportVariants,
+    transportPriceDebug
+  };
 }
 
 function extractAccommodation(sections: SectionBlock[]): DraftAccommodation | null {

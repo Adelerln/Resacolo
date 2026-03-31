@@ -2,7 +2,13 @@ import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth/session';
 import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers.server';
 import { mockOrganizerTenant } from '@/lib/mocks';
-import { extractStayData, fetchHtml } from '@/lib/stay-draft-import';
+import {
+  extractStayData,
+  extractTransportVariants,
+  fetchHtml,
+  type DraftTransportPriceDebug,
+  type DraftTransportVariant
+} from '@/lib/stay-draft-import';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 
 export const runtime = 'nodejs';
@@ -60,7 +66,9 @@ function buildRawPayload(
   finalUrl: string,
   contentType: string | null,
   status: number,
-  extracted: ReturnType<typeof extractStayData>
+  extracted: ReturnType<typeof extractStayData>,
+  transportVariants: DraftTransportVariant[],
+  transportPriceDebug: DraftTransportPriceDebug[]
 ) {
   return {
     html,
@@ -69,14 +77,40 @@ function buildRawPayload(
     final_url: finalUrl,
     content_type: contentType,
     status_code: status,
-    extracted
+    extracted,
+    transport_variants: transportVariants,
+    transport_matrix: transportVariants,
+    transport_price_debug: transportPriceDebug
   };
+}
+
+function buildDraftTransportOptionsFromVariants(transportVariants: DraftTransportVariant[]) {
+  return transportVariants
+    .filter((variant) => typeof variant.amount_cents === 'number' && Number.isFinite(variant.amount_cents))
+    .map((variant) => ({
+      label:
+        variant.departure_city === variant.return_city
+          ? variant.departure_city
+          : `${variant.departure_city} / ${variant.return_city}`,
+      departure_city: variant.departure_city,
+      return_city: variant.return_city,
+      amount_cents: variant.amount_cents,
+      price:
+        typeof variant.amount_cents === 'number'
+          ? Number((variant.amount_cents / 100).toFixed(2))
+          : null,
+      currency: variant.currency ?? 'EUR',
+      source_url: variant.source_url,
+      departure_label_raw: variant.departure_label_raw ?? null,
+      return_label_raw: variant.return_label_raw ?? null
+    }));
 }
 
 function buildDraftUpdatePayload(
   columns: Set<string>,
   extracted: ReturnType<typeof extractStayData>,
-  rawPayload: ReturnType<typeof buildRawPayload>
+  rawPayload: ReturnType<typeof buildRawPayload>,
+  transportVariants: DraftTransportVariant[]
 ) {
   const payload: Record<string, unknown> = {};
 
@@ -99,6 +133,10 @@ function buildDraftUpdatePayload(
   }
   if (columns.has('raw_payload')) {
     payload.raw_payload = rawPayload;
+  }
+  if (columns.has('transport_options_json')) {
+    const transportOptions = buildDraftTransportOptionsFromVariants(transportVariants);
+    payload.transport_options_json = transportOptions.length > 0 ? transportOptions : null;
   }
   if (columns.has('status')) {
     payload.status = 'pending';
@@ -149,6 +187,7 @@ async function updateDraftWithFallbacks(
   delete strippedAttempt.activities;
   delete strippedAttempt.images;
   delete strippedAttempt.sessions_json;
+  delete strippedAttempt.transport_options_json;
   delete strippedAttempt.accommodations_json;
   if (Object.keys(strippedAttempt).length > 0) {
     attempts.push(strippedAttempt);
@@ -252,6 +291,12 @@ export async function POST(req: Request) {
   }
 
   const extracted = extractStayData(fetchedHtml.html, fetchedHtml.finalUrl);
+  const transportExtraction = await extractTransportVariants(
+    fetchedHtml.html,
+    fetchedHtml.finalUrl
+  );
+  const transportVariants = transportExtraction.transportVariants;
+  const transportPriceDebug = transportExtraction.transportPriceDebug;
   const rawPayload = buildRawPayload(
     fetchedHtml.html,
     fetchedHtml.fetchedAt,
@@ -259,9 +304,16 @@ export async function POST(req: Request) {
     fetchedHtml.finalUrl,
     fetchedHtml.contentType,
     fetchedHtml.status,
-    extracted
+    extracted,
+    transportVariants,
+    transportPriceDebug
   );
-  const updatePayload = buildDraftUpdatePayload(draftColumns, extracted, rawPayload);
+  const updatePayload = buildDraftUpdatePayload(
+    draftColumns,
+    extracted,
+    rawPayload,
+    transportVariants
+  );
   const updateError = await updateDraftWithFallbacks(insertedDraft.id, updatePayload);
 
   if (updateError) {

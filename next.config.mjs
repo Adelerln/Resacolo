@@ -13,6 +13,22 @@ export default function nextConfig() {
           hostname: 'images.unsplash.com'
         },
         {
+          protocol: 'http',
+          hostname: 'www.thalie.eu'
+        },
+        {
+          protocol: 'https',
+          hostname: 'www.thalie.eu'
+        },
+        {
+          protocol: 'http',
+          hostname: 'thalie.eu'
+        },
+        {
+          protocol: 'https',
+          hostname: 'thalie.eu'
+        },
+        {
           protocol: 'https',
           hostname: 'resacolo.com'
         },

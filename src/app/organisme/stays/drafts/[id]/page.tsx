@@ -233,7 +233,7 @@ export default async function StayDraftReviewPage({ params, searchParams }: Page
 
       <StayDraftReviewForm
         draftId={draft.id}
-        organizerId={selectedOrganizerId}
+        organizerId={draft.organizer_id}
         backHref={backHref}
         initialPayload={initialPayload}
         initialStatus={draft.status}

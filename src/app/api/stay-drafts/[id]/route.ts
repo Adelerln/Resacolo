@@ -4,6 +4,7 @@ import { getSession } from '@/lib/auth/session';
 import { resolveOrganizerSelection } from '@/lib/organizers.server';
 import { mockOrganizerTenant } from '@/lib/mocks';
 import { publishStayDraftToLive, PublishStayDraftError } from '@/lib/publish-stay-draft';
+import { mapToCanonicalStayRegion } from '@/lib/stay-regions';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import type { Database, Json } from '@/types/supabase';
 import type { StayDraftReviewFieldErrors, StayDraftReviewPayload } from '@/types/stay-draft-review';
@@ -178,7 +179,7 @@ async function parseBody(req: Request): Promise<{ payload: StayDraftReviewPayloa
     title: normalizeString(data.title),
     summary: normalizeString(data.summary),
     location_text: normalizeString(data.location_text),
-    region_text: normalizeString(data.region_text),
+    region_text: mapToCanonicalStayRegion(data.region_text) ?? '',
     description: normalizeString(data.description),
     program_text: normalizeString(data.program_text),
     supervision_text: normalizeString(data.supervision_text),

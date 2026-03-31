@@ -215,6 +215,7 @@ export default function StayDraftReviewForm({
             liveStayId?: string | null;
             fieldErrors?: StayDraftReviewFieldErrors;
             draft?: {
+              organizer_id?: string | null;
               status?: string;
               validated_at?: string | null;
               validated_by_user_id?: string | null;
@@ -245,6 +246,30 @@ export default function StayDraftReviewForm({
       setStatus(data?.draft?.status ?? status);
       setValidatedAt(data?.draft?.validated_at ?? validatedAt);
       setValidatedByUserId(data?.draft?.validated_by_user_id ?? validatedByUserId);
+
+      if (mode === 'validate') {
+        const organizerIdFromResponse =
+          typeof data?.draft?.organizer_id === 'string' && data.draft.organizer_id.trim().length > 0
+            ? data.draft.organizer_id
+            : null;
+        const targetOrganizerId =
+          organizerIdFromResponse ??
+          (typeof organizerId === 'string' && organizerId.trim().length > 0 ? organizerId : null);
+
+        if (!targetOrganizerId) {
+          console.error('[stay-drafts/review] redirection impossible: organizerId absent', {
+            draftId
+          });
+          setGlobalError(
+            'Validation réussie, mais redirection impossible: organizerId manquant.'
+          );
+          return;
+        }
+
+        router.push(`/organisme/sejours?organizerId=${encodeURIComponent(targetOrganizerId)}`);
+        return;
+      }
+
       router.refresh();
     } catch {
       setGlobalError("Une erreur réseau est survenue pendant l'enregistrement.");

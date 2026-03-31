@@ -119,6 +119,10 @@ export default function AccommodationFormFields({
             defaultValue={values.accessibility_info ?? ''}
             className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
           />
+          <span className="mt-1 block text-xs font-normal text-slate-500">
+            Cette rubrique sert à mentionner si le lieu d&apos;hébergement est accessible aux
+            personnes à mobilité réduite (PMR)
+          </span>
         </label>
       </div>
 

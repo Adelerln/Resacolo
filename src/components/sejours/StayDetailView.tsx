@@ -208,9 +208,19 @@ export function StayDetailView({ stay }: { stay: Stay }) {
   const selectedTransportAmount = useMemo(() => {
     if (transportMode === 'Sans transport') return 0;
     if (isDifferentiatedTransport) {
+      const outboundAmount = selectedDepartureTransportOption
+        ? selectedDepartureTransportOption.returnCity
+          ? selectedDepartureTransportOption.amount / 2
+          : selectedDepartureTransportOption.amount
+        : 0;
+      const returnAmount = selectedReturnTransportOption
+        ? selectedReturnTransportOption.departureCity
+          ? selectedReturnTransportOption.amount / 2
+          : selectedReturnTransportOption.amount
+        : 0;
       return (
-        (selectedDepartureTransportOption?.amount ?? 0) / 2 +
-        (selectedReturnTransportOption?.amount ?? 0) / 2
+        outboundAmount +
+        returnAmount
       );
     }
     return selectedTransportOption?.amount ?? 0;

@@ -237,7 +237,13 @@ export default async function OrganizerStaysPage({ searchParams }: PageProps) {
         {prefillParam === 'created' && draftIdParam && (
           <p className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
             Brouillon créé et pré-rempli avec succès. ID du draft :{' '}
-            <span className="font-semibold">{draftIdParam}</span>
+            <span className="font-semibold">{draftIdParam}</span>.{' '}
+            <Link
+              href={withOrganizerQuery(`/organisme/sejours/drafts/${draftIdParam}`, organizerId)}
+              className="font-semibold underline"
+            >
+              Ouvrir la review
+            </Link>
           </p>
         )}
 
@@ -283,7 +289,13 @@ export default async function OrganizerStaysPage({ searchParams }: PageProps) {
           {aiParam === 'success' && aiDraftIdParam && (
             <p className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
               Enrichissement IA terminé avec succès. ID du draft :{' '}
-              <span className="font-semibold">{aiDraftIdParam}</span>
+              <span className="font-semibold">{aiDraftIdParam}</span>.{' '}
+              <Link
+                href={withOrganizerQuery(`/organisme/sejours/drafts/${aiDraftIdParam}`, organizerId)}
+                className="font-semibold underline"
+              >
+                Ouvrir la review
+              </Link>
             </p>
           )}
         </div>

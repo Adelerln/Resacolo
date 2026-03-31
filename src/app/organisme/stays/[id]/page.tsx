@@ -9,7 +9,7 @@ import StayEditorialTabs from '@/components/organisme/StayEditorialTabs';
 import StayFloatingSaveButton from '@/components/organisme/StayFloatingSaveButton';
 import StayTransportCardEffects from '@/components/organisme/StayTransportCardEffects';
 import { requireRole } from '@/lib/auth/require';
-import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers';
+import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers.server';
 import { normalizeStayCategories, STAY_CATEGORY_OPTIONS } from '@/lib/stay-categories';
 import { formatStayAgeRange, getStayAgeBounds, normalizeStayAges, parseStayAges, STAY_AGE_OPTIONS } from '@/lib/stay-ages';
 import { isMissingRegionTextColumnError, normalizeStayRegion, STAY_REGION_OPTIONS } from '@/lib/stay-regions';

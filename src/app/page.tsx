@@ -4,6 +4,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useEffect, useRef, useState } from 'react';
 import { FranceRegionsMap } from '@/components/home/FranceRegionsMap';
+import { WorldMap } from '@/components/home/WorldMap';
 import { OrganizersMarquee } from '@/components/organisateurs/OrganizersMarquee';
 import {
   Briefcase,
@@ -208,6 +209,7 @@ const fadeUp = {
 
 export default function HomePage() {
   const [submitted, setSubmitted] = useState(false);
+  const [destinationMap, setDestinationMap] = useState<'france' | 'world'>('france');
   const [inspiIndex, setInspiIndex] = useState(inspiCards.length);
   const [inspiTransitionEnabled, setInspiTransitionEnabled] = useState(true);
   const [inspiStepPx, setInspiStepPx] = useState(0);
@@ -609,46 +611,52 @@ export default function HomePage() {
       {/* ── Destination France ── */}
       <section id="destination-france" className="bg-white pb-16 pt-8 sm:pb-24 sm:pt-10">
         <div className="section-container">
-          <div className="grid items-center gap-10 lg:grid-cols-[0.9fr_1.1fr]">
+          <div className="space-y-8">
             <motion.div
-              className="max-w-xl text-left"
+              className="flex flex-col items-center text-center"
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
             >
-              <span
-                style={{
-                  fontWeight: 700,
-                  textTransform: 'uppercase',
-                  fontSize: '15px',
-                  color: '#505050'
-                }}
-              >
-                DESTINATION
-              </span>
               <h2
-                className="mt-1"
                 style={{
                   fontWeight: 700,
                   fontSize: '50px',
                   color: '#505050',
                   lineHeight: '1.1em',
                   marginBottom: 0,
-                  textAlign: 'left'
+                  textAlign: 'center'
                 }}
               >
-                Trouver votre séjour en <span style={{ color: '#37b5f5' }}>France</span>
+                Trouver un séjour
               </h2>
-              <p
-                className="mt-2"
-                style={{
-                  color: '#474747',
-                  fontWeight: 400,
-                  textAlign: 'left'
-                }}
-              >
-                Cliquez sur une région pour découvrir les séjours qu’elle accueille.
-              </p>
+
+              <div className="mt-6 flex flex-wrap items-center justify-center gap-4">
+                <button
+                  type="button"
+                  onClick={() => setDestinationMap('france')}
+                  className="rounded-full border px-6 py-3 text-base font-semibold transition hover:opacity-90"
+                  style={{
+                    backgroundColor: destinationMap === 'france' ? '#37b5f5' : '#ffffff',
+                    color: destinationMap === 'france' ? '#ffffff' : '#37b5f5',
+                    borderColor: '#37b5f5'
+                  }}
+                >
+                  En France
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDestinationMap('world')}
+                  className="rounded-full border px-6 py-3 text-base font-semibold transition hover:opacity-90"
+                  style={{
+                    backgroundColor: destinationMap === 'world' ? '#37b5f5' : '#ffffff',
+                    color: destinationMap === 'world' ? '#ffffff' : '#37b5f5',
+                    borderColor: '#37b5f5'
+                  }}
+                >
+                  À l&apos;étranger
+                </button>
+              </div>
             </motion.div>
 
             <motion.div
@@ -656,9 +664,13 @@ export default function HomePage() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
             >
-              <div className="bg-transparent p-0 shadow-none">
-                <FranceRegionsMap />
-              </div>
+              {destinationMap === 'france' ? (
+                <div className="bg-transparent p-0 shadow-none">
+                  <FranceRegionsMap />
+                </div>
+              ) : (
+                <WorldMap onFranceSelect={() => setDestinationMap('france')} />
+              )}
             </motion.div>
           </div>
         </div>

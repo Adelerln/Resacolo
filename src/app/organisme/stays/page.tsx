@@ -5,7 +5,7 @@ import ErrorToast from '@/components/common/ErrorToast';
 import SavedToast from '@/components/common/SavedToast';
 import OrganizerStaysTable from '@/components/organisme/OrganizerStaysTable';
 import { requireRole } from '@/lib/auth/require';
-import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers';
+import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers.server';
 import { getReservedSessionCounts } from '@/lib/session-reservations';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 

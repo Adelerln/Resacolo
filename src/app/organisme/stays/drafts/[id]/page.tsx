@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import StayDraftReviewForm from '@/components/organisme/StayDraftReviewForm';
 import { requireRole } from '@/lib/auth/require';
-import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers';
+import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers.server';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import type { Json } from '@/types/supabase';
 import type { StayDraftReviewPayload } from '@/types/stay-draft-review';

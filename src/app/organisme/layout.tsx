@@ -7,11 +7,14 @@ import {
   OrganizerWorkspaceNav,
   OrganizerWorkspaceSelector
 } from '@/components/organisme/OrganizerWorkspaceControls';
-import { getOrganizerOptions } from '@/lib/organizers';
+import { resolveOrganizerSelection } from '@/lib/organizers.server';
 
 export default async function OrganizerLayout({ children }: { children: React.ReactNode }) {
-  requireRole('ORGANISATEUR');
-  const organizers = await getOrganizerOptions();
+  const session = requireRole('ORGANISATEUR');
+  const { organizers, selectedOrganizerId } = await resolveOrganizerSelection(
+    undefined,
+    session.tenantId ?? null
+  );
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -35,7 +38,10 @@ export default async function OrganizerLayout({ children }: { children: React.Re
             </div>
           </div>
           <Suspense fallback={<div className="px-3 text-sm text-slate-500">Chargement...</div>}>
-            <OrganizerWorkspaceNav organizers={organizers} />
+            <OrganizerWorkspaceNav
+              organizers={organizers}
+              initialSelectedOrganizerId={selectedOrganizerId}
+            />
           </Suspense>
           <div className="mt-auto px-6 pb-6 pt-4">
             <form action="/api/auth/logout" method="post">
@@ -58,7 +64,10 @@ export default async function OrganizerLayout({ children }: { children: React.Re
           <Suspense
             fallback={<div className="mb-6 rounded-2xl border border-slate-200 bg-white px-4 py-4" />}
           >
-            <OrganizerWorkspaceSelector organizers={organizers} />
+            <OrganizerWorkspaceSelector
+              organizers={organizers}
+              initialSelectedOrganizerId={selectedOrganizerId}
+            />
           </Suspense>
           {children}
         </main>

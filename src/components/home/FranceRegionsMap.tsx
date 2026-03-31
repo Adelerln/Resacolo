@@ -45,9 +45,9 @@ const CURRENT_REGION_HREFS: Record<string, string> = {
 const DISPLAY_REGION_NAMES: Record<string, string> = {
   FRHDF: 'Hauts-de-France',
   FRGES: 'Grand Est',
-  FRPAC: "Provence-Alpes-Cote d'Azur",
+  FRPAC: "Provence-Alpes-Côte d'Azur",
   FRARA: 'Auvergne-Rhône-Alpes',
-  FRBFC: 'Bourgogne-Franche-Comte',
+  FRBFC: 'Bourgogne-Franche-Comté',
   FROCC: 'Occitanie',
   FRPDL: 'Pays de la Loire',
   FRBRE: 'Bretagne',

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth/session';
-import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers';
+import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers.server';
 import { mockOrganizerTenant } from '@/lib/mocks';
 import { extractStayData, fetchHtml } from '@/lib/stay-draft-import';
 import { getServerSupabaseClient } from '@/lib/supabase/server';

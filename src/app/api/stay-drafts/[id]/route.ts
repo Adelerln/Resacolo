@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getSession } from '@/lib/auth/session';
-import { resolveOrganizerSelection } from '@/lib/organizers';
+import { resolveOrganizerSelection } from '@/lib/organizers.server';
 import { mockOrganizerTenant } from '@/lib/mocks';
 import { publishStayDraftToLive, PublishStayDraftError } from '@/lib/publish-stay-draft';
 import { getServerSupabaseClient } from '@/lib/supabase/server';

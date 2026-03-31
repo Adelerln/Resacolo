@@ -5,7 +5,7 @@ import SavedToast from '@/components/common/SavedToast';
 import { formatAccommodationType } from '@/components/organisme/AccommodationFormFields';
 import { requireRole } from '@/lib/auth/require';
 import { deleteAccommodationForOrganizer } from '@/lib/accommodations';
-import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers';
+import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers.server';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 
 type PageProps = {

@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { requireRole } from '@/lib/auth/require';
 import GoogleMapsCityInput from '@/components/common/GoogleMapsCityInput';
-import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers';
+import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers.server';
 import { normalizeStayCategories, STAY_CATEGORY_OPTIONS } from '@/lib/stay-categories';
 import { getStayAgeBounds, parseStayAges, STAY_AGE_OPTIONS } from '@/lib/stay-ages';
 import { isMissingRegionTextColumnError, normalizeStayRegion, STAY_REGION_OPTIONS } from '@/lib/stay-regions';

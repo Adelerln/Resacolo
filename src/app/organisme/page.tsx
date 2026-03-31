@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import SavedToast from '@/components/common/SavedToast';
 import OrganizerProfileFormEnhancer from '@/components/organisme/OrganizerProfileFormEnhancer';
 import { requireRole } from '@/lib/auth/require';
-import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers';
+import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers.server';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { slugify } from '@/lib/utils';
 

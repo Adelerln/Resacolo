@@ -1,5 +1,5 @@
 import { requireRole } from '@/lib/auth/require';
-import { resolveOrganizerSelection } from '@/lib/organizers';
+import { resolveOrganizerSelection } from '@/lib/organizers.server';
 import { mockRequests, mockSessions, mockStages, mockStays } from '@/lib/mocks';
 
 type PageProps = {

@@ -1,5 +1,6 @@
 import { load } from 'cheerio';
 import { z } from 'zod';
+import { normalizeStayDraftCategories, STAY_CATEGORY_LABELS } from '@/lib/stay-categories';
 import { createOpenAIClient } from '@/lib/openai';
 import type { Database, Json } from '@/types/supabase';
 
@@ -14,7 +15,7 @@ const DEFAULT_OPENAI_MODEL = process.env.OPENAI_ENRICH_MODEL ?? 'gpt-4o-mini';
 const MAX_MAIN_TEXT_LENGTH = 12_000;
 const MAX_HTML_EXCERPT_LENGTH = 6_000;
 const MAX_AI_LOG_PREVIEW_LENGTH = 1_000;
-export const STAY_DRAFT_AI_PROMPT_VERSION = 'stay-draft-enrich-v1';
+export const STAY_DRAFT_AI_PROMPT_VERSION = 'stay-draft-enrich-v2';
 
 const nullableTextSchema = z.preprocess((value) => {
   if (value === null || value === undefined) return null;
@@ -93,6 +94,10 @@ const AI_EXTRACTED_EXPECTED_ROOT_KEYS = new Set([
   'transport_options_json',
   'accommodations_json'
 ]);
+
+const STAY_CATEGORY_ALLOWED_LIST_FOR_PROMPT = STAY_CATEGORY_LABELS.map((label) => `- ${label}`).join(
+  '\n'
+);
 
 export type StayDraftAiExtracted = z.infer<typeof aiExtractedSchema>;
 
@@ -435,9 +440,10 @@ function dedupeNumbers(values: number[]): number[] {
 }
 
 function normalizeAiExtracted(data: StayDraftAiExtracted): StayDraftAiExtracted {
+  const normalizedCategories = normalizeStayDraftCategories(data.categories);
   return {
     ...data,
-    categories: dedupeStrings(data.categories),
+    categories: normalizedCategories.categories,
     ages: dedupeNumbers(data.ages)
   };
 }
@@ -677,6 +683,16 @@ Schéma exact attendu :
     "description": string | null
   } | null
 }
+
+Catégories autorisées pour "categories" (utiliser exactement ces libellés et rien d'autre) :
+${STAY_CATEGORY_ALLOWED_LIST_FOR_PROMPT}
+
+Règles strictes pour "categories" :
+- Le champ "categories" est une liste de 0 à plusieurs catégories autorisées.
+- Chaque valeur doit être exactement un des libellés autorisés ci-dessus.
+- N'ajoute une catégorie que si elle est explicitement justifiée par le contenu source.
+- Si une catégorie est incertaine ou implicite, ne l'ajoute pas.
+- Si aucune catégorie n'est fiable, renvoie [].
 
 Contexte :
 ${JSON.stringify(inputPayload)}

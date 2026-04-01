@@ -2,8 +2,9 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { useState } from 'react';
-import { Compass, Clock3, Filter, MapPin, Search, ShoppingCart, Sun } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { Compass, Clock3, Filter, MapPin, Search, ShoppingCart, Sun, X } from 'lucide-react';
 import { getMockImageUrl, mockImages } from '@/lib/mockImages';
 import {
   Accordion,
@@ -12,127 +13,82 @@ import {
   AccordionTrigger
 } from '@/components/ui/accordion';
 import { Card, CardContent, CardDescription, CardTitle } from '@/components/ui/card';
-import { FILTER_LABELS } from '@/lib/constants';
+import {
+  EMPTY_STAY_CATALOG_FILTERS,
+  DEFAULT_STAY_CATALOG_SORT,
+  STAY_CATALOG_SORT_OPTIONS,
+  applyStayCatalogFilters,
+  applyStayCatalogSort,
+  buildStayCatalogFilterOptions,
+  countActiveStayCatalogFilters,
+  parseStayCatalogFiltersFromSearchParams,
+  parseStayCatalogSortFromSearchParams,
+  serializeStayCatalogFiltersToSearchParams,
+  stayCatalogFilterStateKey,
+  type StayCatalogFilterOption,
+  type StayCatalogFilterState,
+  type StayCatalogSortValue
+} from '@/lib/stay-catalog-filters';
 import type { Stay } from '@/types/stay';
 
-type StayCardData = {
-  slug: string;
-  title: string;
-  subtitle: string;
-  location: string;
-  region: string;
-  age: string;
-  season: string;
-  duration: string;
-  description: string;
-  priceFrom: number | null;
-  image: string;
-  organizerLogo: string | null;
-};
+type SearchParamInput = Record<string, string | string[] | undefined> | undefined;
+type MultiFilterKey = Exclude<keyof StayCatalogFilterState, 'q'>;
 
-type NormalizedStay = StayCardData & {
-  categoryValues: string[];
-  periodValues: string[];
-  seasonLabels: string[];
-  ageLabels: string[];
-};
+const ACCORDION_DEFAULT_OPEN = ['seasonIds', 'categories', 'ageBands', 'destinations', 'organizerIds'];
 
-const REGION_KEYWORDS: Record<string, string[]> = {
-  bretagne: ['bretagne', 'rennes', 'finistere', 'morbihan', 'ille et vilaine', 'cotes d armor'],
-  normandie: ['normandie', 'caen', 'rouen', 'calvados', 'manche', 'orne', 'eure', 'seine maritime'],
-  'hauts-de-france': ['hauts de france', 'lille', 'amiens', 'arras', 'nord', 'somme', 'aisne', 'pas de calais', 'oise'],
-  'ile-de-france': ['ile de france', 'paris', 'versailles', 'yvelines', 'essonne', 'seine et marne', 'val d oise', 'hauts de seine'],
-  'grand-est': ['grand est', 'strasbourg', 'metz', 'nancy', 'reims', 'alsace', 'lorraine', 'champagne'],
-  'pays-de-la-loire': ['pays de la loire', 'nantes', 'angers', 'vendee', 'sarthe', 'mayenne', 'loire atlantique'],
-  'centre-val-de-loire': ['centre val de loire', 'orleans', 'tours', 'blois', 'bourges', 'indre et loire'],
-  'bourgogne-franche-comte': ['bourgogne franche comte', 'dijon', 'besancon', 'yonne', 'nievre', 'saone et loire', 'jura', 'doubs'],
-  'nouvelle-aquitaine': ['nouvelle aquitaine', 'bordeaux', 'biarritz', 'landes', 'gironde', 'poitiers', 'limoges', 'perigord'],
-  occitanie: ['occitanie', 'toulouse', 'montpellier', 'perpignan', 'herault', 'gard', 'aveyron', 'pyrenees'],
-  'auvergne-rhone-alpes': ['auvergne rhone alpes', 'lyon', 'grenoble', 'clermont ferrand', 'annecy', 'savoie', 'haute savoie', 'drome'],
-  'provence-alpes-cote-d-azur': ['provence alpes cote d azur', 'paca', 'marseille', 'nice', 'cannes', 'toulon', 'var', 'alpes maritimes'],
-  corse: ['corse', 'ajaccio', 'bastia']
-};
+function toUrlSearchParams(input: SearchParamInput) {
+  const params = new URLSearchParams();
+  if (!input) return params;
 
-function normalizeText(value: string) {
-  return value
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-zA-Z0-9\s-]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .toLowerCase();
+  Object.entries(input).forEach(([key, value]) => {
+    if (Array.isArray(value)) {
+      value.forEach((entry) => params.append(key, entry));
+      return;
+    }
+
+    if (typeof value === 'string') {
+      params.append(key, value);
+    }
+  });
+
+  return params;
 }
 
-const filterGroups = [
-  { id: 'season', label: 'SAISON', options: ['Printemps', 'Été', 'Toussaint', 'Hiver'] },
-  { id: 'age', label: 'AGE DU PARTICIPANT', options: ['6-9 ans', '10-13 ans', '14-17 ans'] }
-] as const;
+function useDebouncedValue<TValue>(value: TValue, delayMs = 240) {
+  const [debouncedValue, setDebouncedValue] = useState(value);
 
-type FilterState = {
-  season: Set<string>;
-  age: Set<string>;
-};
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setDebouncedValue(value);
+    }, delayMs);
 
-function FiltersPanel({
-  filters,
-  onToggle
-}: {
-  filters: FilterState;
-  onToggle: (groupId: keyof FilterState, option: string) => void;
-}) {
-  return (
-    <aside className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-      <h2 className="text-2xl font-semibold text-slate-900">
-        Filtrez <span className="text-accent-500">les séjours</span>
-      </h2>
-      <div className="relative mt-4">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-brand-600" />
-        <input
-          type="text"
-          placeholder="Chercher un séjour..."
-          className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm text-slate-700 outline-none transition focus:border-brand-600"
-        />
-      </div>
+    return () => window.clearTimeout(timeout);
+  }, [delayMs, value]);
 
-      <Accordion type="multiple" className="mt-4">
-        {filterGroups.map((group) => (
-          <AccordionItem key={group.id} value={group.id}>
-            <AccordionTrigger>{group.label}</AccordionTrigger>
-            <AccordionContent>
-              <ul className="space-y-2">
-                {group.options.map((option) => (
-                  <li key={option}>
-                    <label className="flex items-center gap-2 text-sm text-slate-600">
-                      <input
-                        type="checkbox"
-                        className="h-4 w-4 rounded border-slate-300 text-brand-600"
-                        checked={filters[group.id as keyof FilterState].has(option)}
-                        onChange={() => onToggle(group.id as keyof FilterState, option)}
-                      />
-                      {option}
-                    </label>
-                  </li>
-                ))}
-              </ul>
-            </AccordionContent>
-          </AccordionItem>
-        ))}
-      </Accordion>
-    </aside>
-  );
+  return debouncedValue;
 }
 
-function StayCard({ stay }: { stay: StayCardData }) {
-  const organizerLogo = stay.organizerLogo ?? '/image/accueil/images_accueil/logo-resacolo.png';
+function toggleListValue<TValue extends string>(list: TValue[], value: TValue) {
+  if (list.includes(value)) {
+    return list.filter((item) => item !== value);
+  }
+  return [...list, value];
+}
+
+function StayCard({ stay }: { stay: Stay }) {
+  const organizerLogo = stay.organizer.logoUrl ?? '/image/accueil/images_accueil/logo-resacolo.png';
   const priceLabel =
     typeof stay.priceFrom === 'number' ? `À partir de ${stay.priceFrom} €` : 'Sur demande';
+  const locationLabel = stay.location || stay.region || 'Lieu à préciser';
+  const seasonLabel = stay.seasonName || (stay.period[0] ?? 'À venir');
+  const description = stay.summary || stay.description || 'Informations à venir';
 
   return (
     <Link href={`/sejours/${stay.slug}`} className="block transition-opacity hover:opacity-95">
-      <Card className="overflow-hidden rounded-3xl">
+      <Card className="overflow-hidden rounded-3xl border-slate-200/90 shadow-[0_14px_30px_-24px_rgba(15,23,42,0.42)]">
         <div className="relative h-56 w-full">
           <Image
-            src={stay.image}
+            src={stay.coverImage || getMockImageUrl(mockImages.sejours.fallbackCover, 1200, 80)}
             alt={stay.title}
             fill
             className="object-cover"
@@ -148,11 +104,11 @@ function StayCard({ stay }: { stay: StayCardData }) {
             />
           </div>
           <span className="absolute bottom-3 left-3 rounded-full bg-accent-500 px-3 py-1 text-xs font-semibold text-white">
-            {stay.age}
+            {stay.ageRange || 'Tous âges'}
           </span>
           <span className="absolute bottom-3 right-3 inline-flex items-center gap-1 rounded-full bg-white px-3 py-1 text-xs font-semibold text-accent-500">
             <Sun className="h-3.5 w-3.5" />
-            {stay.season}
+            {seasonLabel}
           </span>
         </div>
 
@@ -160,17 +116,17 @@ function StayCard({ stay }: { stay: StayCardData }) {
           <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-medium text-brand-600">
             <span className="inline-flex min-w-0 items-center gap-1.5">
               <MapPin className="h-3.5 w-3.5" />
-              <span className="min-w-0 truncate">{stay.location}</span>
+              <span className="min-w-0 truncate">{locationLabel}</span>
             </span>
             <span className="inline-flex shrink-0 items-center gap-1.5">
               <Clock3 className="h-3.5 w-3.5" />
-              {stay.duration}
+              {stay.duration || 'Durée à venir'}
             </span>
           </div>
 
           <div className="space-y-2 pt-1 text-center">
             <CardTitle className="text-lg font-bold text-slate-900 sm:text-xl">{stay.title}</CardTitle>
-            <CardDescription className="text-sm text-slate-500">{stay.subtitle}</CardDescription>
+            <CardDescription className="text-sm text-slate-500">{stay.organizer.name}</CardDescription>
             <p
               className="text-sm leading-6 text-slate-600"
               style={{
@@ -180,7 +136,7 @@ function StayCard({ stay }: { stay: StayCardData }) {
                 overflow: 'hidden'
               }}
             >
-              {stay.description}
+              {description}
             </p>
           </div>
           <p className="text-center text-xl font-bold text-accent-500">{priceLabel}</p>
@@ -190,17 +146,111 @@ function StayCard({ stay }: { stay: StayCardData }) {
   );
 }
 
-type SearchParamInput = Record<string, string | string[] | undefined> | undefined;
+function FiltersPanel({
+  value,
+  options,
+  onSearchChange,
+  onToggle,
+  onReset,
+  className
+}: {
+  value: StayCatalogFilterState;
+  options: ReturnType<typeof buildStayCatalogFilterOptions>;
+  onSearchChange: (value: string) => void;
+  onToggle: (key: MultiFilterKey, option: string) => void;
+  onReset: () => void;
+  className?: string;
+}) {
+  const filterGroups: Array<{
+    key: MultiFilterKey;
+    label: string;
+    options: StayCatalogFilterOption[];
+  }> = [
+    { key: 'seasonIds', label: 'SAISON', options: options.seasons },
+    { key: 'categories', label: 'TYPE DE SÉJOUR', options: options.categories },
+    {
+      key: 'ageBands',
+      label: 'ÂGE DU PARTICIPANT',
+      options: options.ageBands as unknown as StayCatalogFilterOption[]
+    },
+    { key: 'destinations', label: 'DESTINATIONS', options: options.destinations },
+    { key: 'organizerIds', label: 'ORGANISATEURS', options: options.organizers }
+  ];
 
-function readSearchParamValues(searchParams: SearchParamInput, key: string) {
-  const value = searchParams?.[key];
-  if (Array.isArray(value)) {
-    return value.flatMap((item) => item.split(',').map((part) => part.trim()).filter(Boolean));
-  }
-  if (typeof value === 'string') {
-    return value.split(',').map((item) => item.trim()).filter(Boolean);
-  }
-  return [];
+  return (
+    <aside
+      className={`rounded-[1.6rem] border border-slate-200/85 bg-white p-4 shadow-[0_14px_30px_-24px_rgba(15,23,42,0.45)] sm:p-5 ${className ?? ''}`}
+    >
+      <h2 className="text-2xl font-semibold text-slate-900">
+        Filtrez <span className="text-accent-500">les séjours</span>
+      </h2>
+
+      <div className="relative mt-4">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-brand-600" />
+        <input
+          type="search"
+          value={value.q}
+          onChange={(event) => onSearchChange(event.target.value)}
+          placeholder="Titre, destination, activité, organisateur..."
+          className="w-full rounded-xl border border-slate-200 bg-slate-50/60 py-2.5 pl-9 pr-3 text-sm text-slate-700 outline-none transition focus:border-brand-500 focus:bg-white"
+        />
+      </div>
+
+      <Accordion type="multiple" defaultValue={ACCORDION_DEFAULT_OPEN} className="mt-4">
+        {filterGroups.map((group) => {
+          const selectedCount = value[group.key].length;
+          const selectedValues = value[group.key] as string[];
+
+          return (
+            <AccordionItem key={group.key} value={group.key}>
+              <AccordionTrigger className="py-3 text-[13px] tracking-[0.08em] text-slate-900">
+                <span className="inline-flex items-center gap-2">
+                  {group.label}
+                  {selectedCount > 0 && (
+                    <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-brand-100 px-1.5 text-[11px] font-bold text-brand-700">
+                      {selectedCount}
+                    </span>
+                  )}
+                </span>
+              </AccordionTrigger>
+              <AccordionContent className="pb-2">
+                {group.options.length === 0 ? (
+                  <p className="text-xs text-slate-500">Aucune option disponible.</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {group.options.map((option) => (
+                      <li key={option.value}>
+                        <label className="flex items-start gap-2.5 rounded-lg px-1 py-1 text-sm text-slate-700">
+                          <input
+                            type="checkbox"
+                            className="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-600"
+                            checked={selectedValues.includes(option.value)}
+                            onChange={() => onToggle(group.key, option.value)}
+                          />
+                          <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
+                            <span className="min-w-0 truncate">{option.label}</span>
+                            <span className="shrink-0 text-xs text-slate-500">{option.count}</span>
+                          </span>
+                        </label>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </AccordionContent>
+            </AccordionItem>
+          );
+        })}
+      </Accordion>
+
+      <button
+        type="button"
+        onClick={onReset}
+        className="mt-5 inline-flex w-full items-center justify-center rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-brand-300 hover:text-brand-700"
+      >
+        Réinitialisez vos choix
+      </button>
+    </aside>
+  );
 }
 
 export function StayCatalogPage({
@@ -211,108 +261,121 @@ export function StayCatalogPage({
   searchParams?: SearchParamInput;
 }) {
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
-  const [filters, setFilters] = useState<FilterState>({
-    season: new Set(),
-    age: new Set()
-  });
+  const pathname = usePathname();
+  const router = useRouter();
+  const runtimeSearchParams = useSearchParams();
 
-  const toggleFilter = (groupId: keyof FilterState, option: string) => {
-    setFilters((prev) => {
-      const next = new Map<keyof FilterState, Set<string>>([
-        ['season', new Set(prev.season)],
-        ['age', new Set(prev.age)]
-      ]);
-      const set = next.get(groupId)!;
-      if (set.has(option)) {
-        set.delete(option);
-      } else {
-        set.add(option);
-      }
-      return {
-        season: next.get('season')!,
-        age: next.get('age')!
+  const filterOptions = useMemo(() => buildStayCatalogFilterOptions(stays), [stays]);
+  const initialSearchParams = useMemo(() => toUrlSearchParams(searchParams), [searchParams]);
+  const initialFilters = useMemo(
+    () => parseStayCatalogFiltersFromSearchParams(initialSearchParams, filterOptions),
+    [initialSearchParams, filterOptions]
+  );
+  const initialSort = useMemo(
+    () => parseStayCatalogSortFromSearchParams(initialSearchParams),
+    [initialSearchParams]
+  );
+  const [filters, setFilters] = useState<StayCatalogFilterState>(initialFilters);
+  const [sort, setSort] = useState<StayCatalogSortValue>(initialSort);
+  const [randomSeed, setRandomSeed] = useState<number | null>(null);
+
+  const runtimeFilters = useMemo(
+    () => parseStayCatalogFiltersFromSearchParams(runtimeSearchParams, filterOptions),
+    [runtimeSearchParams, filterOptions]
+  );
+  const runtimeSort = useMemo(
+    () => parseStayCatalogSortFromSearchParams(runtimeSearchParams),
+    [runtimeSearchParams]
+  );
+  const runtimeFiltersKey = useMemo(() => stayCatalogFilterStateKey(runtimeFilters), [runtimeFilters]);
+  const runtimeQuery = runtimeSearchParams.toString();
+
+  useEffect(() => {
+    setFilters((previous) =>
+      stayCatalogFilterStateKey(previous) === runtimeFiltersKey ? previous : runtimeFilters
+    );
+  }, [runtimeFilters, runtimeFiltersKey]);
+
+  useEffect(() => {
+    setSort((previous) => (previous === runtimeSort ? previous : runtimeSort));
+  }, [runtimeSort]);
+
+  useEffect(() => {
+    setRandomSeed(Math.floor(Math.random() * 2_147_483_647));
+  }, []);
+
+  useEffect(() => {
+    setFilters((previous) => {
+      const next: StayCatalogFilterState = {
+        ...previous,
+        seasonIds: previous.seasonIds.filter((value) =>
+          filterOptions.seasons.some((option) => option.value === value)
+        ),
+        categories: previous.categories.filter((value) =>
+          filterOptions.categories.some((option) => option.value === value)
+        ),
+        ageBands: previous.ageBands.filter((value) =>
+          filterOptions.ageBands.some((option) => option.value === value)
+        ),
+        destinations: previous.destinations.filter((value) =>
+          filterOptions.destinations.some((option) => option.value === value)
+        ),
+        organizerIds: previous.organizerIds.filter((value) =>
+          filterOptions.organizers.some((option) => option.value === value)
+        )
       };
+
+      return stayCatalogFilterStateKey(previous) === stayCatalogFilterStateKey(next) ? previous : next;
     });
+  }, [filterOptions]);
+
+  const debouncedQuery = useDebouncedValue(filters.q);
+  const urlFilters = useMemo(
+    () => ({
+      ...filters,
+      q: debouncedQuery
+    }),
+    [debouncedQuery, filters]
+  );
+  const urlFiltersKey = useMemo(
+    () => stayCatalogFilterStateKey(urlFilters),
+    [urlFilters]
+  );
+  const activeFilterCount = useMemo(
+    () => countActiveStayCatalogFilters(filters),
+    [filters]
+  );
+
+  useEffect(() => {
+    const params = serializeStayCatalogFiltersToSearchParams(urlFilters);
+    if (sort !== DEFAULT_STAY_CATALOG_SORT) {
+      params.set('sort', sort);
+    }
+    const nextQuery = params.toString();
+    if (nextQuery === runtimeQuery) return;
+
+    router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
+  }, [sort, urlFilters, urlFiltersKey, pathname, router, runtimeQuery]);
+
+  const filteredStays = useMemo(
+    () => applyStayCatalogFilters(stays, filters),
+    [stays, filters]
+  );
+  const sortedStays = useMemo(
+    () => applyStayCatalogSort(filteredStays, sort, { randomSeed }),
+    [filteredStays, randomSeed, sort]
+  );
+
+  const updateMultiFilter = (key: MultiFilterKey, optionValue: string) => {
+    setFilters((previous) => ({
+      ...previous,
+      [key]: toggleListValue(previous[key], optionValue)
+    }));
   };
 
-  const normalizedStays: NormalizedStay[] = stays.map((stay) => {
-    const seasonLabels =
-      stay.filters.periods.length > 0
-        ? stay.filters.periods.map((period) => FILTER_LABELS.periods[period])
-        : stay.period.length > 0
-          ? stay.period
-          : ['À venir'];
-
-    const ageLabels = stay.filters.audiences.length
-      ? stay.filters.audiences
-          .map((audience) => {
-            if (audience === '6-9') return '6-9 ans';
-            if (audience === '10-12') return '10-13 ans';
-            return '14-17 ans';
-          })
-          .filter(Boolean)
-      : stay.ageRange
-        ? [stay.ageRange]
-        : ['Tous âges'];
-
-    return {
-      slug: stay.slug,
-      title: stay.title,
-      subtitle: stay.organizer.name,
-      location: stay.location || 'Lieu à préciser',
-      region: stay.region || '',
-      age: stay.ageRange || 'Tous âges',
-      season: seasonLabels[0] ?? 'À venir',
-      duration: stay.duration || 'Durée à venir',
-      description: stay.summary || stay.description,
-      priceFrom: stay.priceFrom,
-      image: stay.coverImage || getMockImageUrl(mockImages.sejours.fallbackCover, 1200, 80),
-      organizerLogo: stay.organizer.logoUrl ?? null,
-      categoryValues: stay.filters.categories,
-      periodValues: stay.filters.periods,
-      seasonLabels,
-      ageLabels
-    };
-  });
-
-  const routeCategories = readSearchParamValues(searchParams, 'categories');
-  const routePeriods = readSearchParamValues(searchParams, 'periods');
-  const routeRegions = readSearchParamValues(searchParams, 'region');
-  const routeQuery =
-    (typeof searchParams?.q === 'string' ? searchParams.q : Array.isArray(searchParams?.q) ? searchParams?.q[0] : '')?.trim().toLowerCase() ?? '';
-
-  const filteredStays = normalizedStays.filter((stay) => {
-    const seasonActive = filters.season.size > 0;
-    const ageActive = filters.age.size > 0;
-    const routeCategoriesActive = routeCategories.length > 0;
-    const routePeriodsActive = routePeriods.length > 0;
-    const routeRegionsActive = routeRegions.length > 0;
-    const routeQueryActive = routeQuery.length > 0;
-    const normalizedHaystack = normalizeText(
-      `${stay.title} ${stay.subtitle} ${stay.location} ${stay.region} ${stay.description}`
-    );
-
-    const seasonOk =
-      !seasonActive || stay.seasonLabels.some((label: string) => filters.season.has(label));
-    const ageOk =
-      !ageActive || stay.ageLabels.some((label: string) => filters.age.has(label));
-    const routeCategoriesOk =
-      !routeCategoriesActive ||
-      routeCategories.some((category) => stay.categoryValues.includes(category));
-    const routePeriodsOk =
-      !routePeriodsActive || routePeriods.some((period) => stay.periodValues.includes(period));
-    const routeRegionsOk =
-      !routeRegionsActive ||
-      routeRegions.some((region) => {
-        const keywords = REGION_KEYWORDS[region] ?? [region];
-        return keywords.some((keyword) => normalizedHaystack.includes(normalizeText(keyword)));
-      });
-    const routeQueryOk =
-      !routeQueryActive ||
-      normalizedHaystack.includes(normalizeText(routeQuery));
-
-    return seasonOk && ageOk && routeCategoriesOk && routePeriodsOk && routeRegionsOk && routeQueryOk;
-  });
+  const resetFilters = () => {
+    setFilters(EMPTY_STAY_CATALOG_FILTERS);
+  };
 
   return (
     <div className="bg-white">
@@ -345,7 +408,7 @@ export function StayCatalogPage({
             Colonies de vacances et séjours jeunes adultes
           </h1>
           <p className="mt-4 max-w-2xl text-base text-white/85 md:text-lg">
-            Consultez les offres et réservez la colonie de vacances idéale pour votre enfant
+            Consultez les offres et trouvez la colonie idéale en quelques clics.
           </p>
         </div>
       </section>
@@ -359,36 +422,63 @@ export function StayCatalogPage({
           >
             <Filter className="h-4 w-4 text-brand-600" />
             Filtres
+            {activeFilterCount > 0 && (
+              <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-brand-100 px-1.5 text-xs font-bold text-brand-700">
+                {activeFilterCount}
+              </span>
+            )}
           </button>
-          <select className="rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-600">
-            <option>Tri aléatoire</option>
-          </select>
         </div>
 
-        <div className="grid grid-cols-1 gap-6 xl:grid-cols-4 xl:gap-8">
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-[320px_minmax(0,1fr)] xl:gap-8">
           <div className="hidden xl:block">
-            <FiltersPanel filters={filters} onToggle={toggleFilter} />
+            <FiltersPanel
+              value={filters}
+              options={filterOptions}
+              onSearchChange={(nextValue) => setFilters((previous) => ({ ...previous, q: nextValue }))}
+              onToggle={updateMultiFilter}
+              onReset={resetFilters}
+            />
           </div>
 
-          <div className="xl:col-span-3">
-            <div className="mb-5 hidden items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 xl:flex">
-              <p>
-                Affichage de 1-{filteredStays.length} sur {normalizedStays.length} résultats
+          <div>
+            <div className="mb-5 flex flex-col gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-slate-600">
+                {sortedStays.length} séjour{sortedStays.length > 1 ? 's' : ''} trouvé
+                {sortedStays.length > 1 ? 's' : ''} sur {stays.length}
               </p>
-              <select className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700">
-                <option>Tri aléatoire</option>
-              </select>
+              <label className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
+                Trier par
+                <select
+                  value={sort}
+                  onChange={(event) => setSort(event.target.value as StayCatalogSortValue)}
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal text-slate-700 outline-none transition focus:border-brand-500"
+                >
+                  {STAY_CATALOG_SORT_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
 
-            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3">
-              {filteredStays.length === 0 ? (
-                <p className="text-sm text-slate-600">
-                  Aucun séjour disponible pour les filtres sélectionnés.
+            {sortedStays.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/40 p-10 text-center">
+                <p className="text-base font-semibold text-slate-800">
+                  Aucun séjour ne correspond à votre recherche.
                 </p>
-              ) : (
-                filteredStays.map((stay) => <StayCard key={stay.slug} stay={stay} />)
-              )}
-            </div>
+                <p className="mt-2 text-sm text-slate-600">
+                  Modifiez un ou plusieurs filtres pour élargir les résultats.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3">
+                {sortedStays.map((stay) => (
+                  <StayCard key={stay.id} stay={stay} />
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </section>
@@ -407,12 +497,27 @@ export function StayCatalogPage({
               <button
                 type="button"
                 onClick={() => setMobileFiltersOpen(false)}
-                className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600"
+                aria-label="Fermer"
               >
-                Fermer
+                <X className="h-4 w-4" />
               </button>
             </div>
-            <FiltersPanel filters={filters} onToggle={toggleFilter} />
+            <FiltersPanel
+              value={filters}
+              options={filterOptions}
+              className="border-none p-0 shadow-none"
+              onSearchChange={(nextValue) => setFilters((previous) => ({ ...previous, q: nextValue }))}
+              onToggle={updateMultiFilter}
+              onReset={resetFilters}
+            />
+            <button
+              type="button"
+              className="mt-5 inline-flex w-full items-center justify-center rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white"
+              onClick={() => setMobileFiltersOpen(false)}
+            >
+              Voir les résultats
+            </button>
           </div>
         </div>
       )}

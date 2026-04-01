@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth/session';
 import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers.server';
+import { normalizeStayDraftCategories } from '@/lib/stay-categories';
 import { enrichStayDraftWithAI, StayDraftAiEnrichmentError } from '@/lib/stay-draft-ai-enrichment';
 import { mockOrganizerTenant } from '@/lib/mocks';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
@@ -210,6 +211,7 @@ function buildDraftUpdateFromAi(
 ): StayDraftUpdate {
   const patch: StayDraftUpdate = {};
   const extracted = ai.extracted;
+  const normalizedCategories = normalizeStayDraftCategories(extracted.categories).categories;
 
   if ((force || !hasText(draft.summary)) && hasText(extracted.summary)) patch.summary = extracted.summary;
   if ((force || !hasText(draft.location_text)) && hasText(extracted.location_text)) {
@@ -230,8 +232,8 @@ function buildDraftUpdateFromAi(
   if ((force || !hasText(draft.transport_mode)) && hasText(extracted.transport_mode)) {
     patch.transport_mode = extracted.transport_mode;
   }
-  if ((force || !draft.categories || draft.categories.length === 0) && extracted.categories.length > 0) {
-    patch.categories = extracted.categories;
+  if ((force || !draft.categories || draft.categories.length === 0) && normalizedCategories.length > 0) {
+    patch.categories = normalizedCategories;
   }
   if ((force || !draft.ages || draft.ages.length === 0) && extracted.ages.length > 0) {
     patch.ages = extracted.ages;
@@ -254,7 +256,10 @@ function buildDraftUpdateFromAi(
   patch.raw_payload = {
     ...existingRawPayload,
     ai_raw: ai.rawResponse,
-    ai_extracted: extracted,
+    ai_extracted: {
+      ...extracted,
+      categories: normalizedCategories
+    },
     ai_prompt_version: ai.promptVersion,
     ai_model: ai.model,
     ai_enriched_at: aiEnrichedAt,

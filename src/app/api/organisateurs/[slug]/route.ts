@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 import { getOrganizerBySlug } from '@/lib/mockOrganizers';
-import { getStays, filterStays } from '@/lib/stays';
+import {
+  applyStayCatalogFilters,
+  buildStayCatalogFilterOptions,
+  parseStayCatalogFiltersFromSearchParams
+} from '@/lib/stay-catalog-filters';
+import { getStays } from '@/lib/stays';
 
 export const runtime = 'nodejs';
 
@@ -16,7 +21,16 @@ export async function GET(
   }
 
   const allStays = await getStays();
-  const stays = filterStays(allStays, { organizer: organizer.name });
+  const options = buildStayCatalogFilterOptions(allStays);
+  const searchParams = new URLSearchParams();
+  searchParams.set('organizer', organizer.name);
+  const filters = parseStayCatalogFiltersFromSearchParams(searchParams, options);
+  const stays =
+    filters.organizerIds.length > 0
+      ? applyStayCatalogFilters(allStays, filters)
+      : allStays.filter((stay) =>
+          stay.organizer.name.toLowerCase().includes(organizer.name.toLowerCase())
+        );
 
   return NextResponse.json({ organizer, stays });
 }

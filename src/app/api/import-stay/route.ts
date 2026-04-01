@@ -6,6 +6,7 @@ import {
   extractStayData,
   extractTransportVariants,
   fetchHtml,
+  selectBestStayImages,
   type DraftTransportPriceDebug,
   type DraftTransportVariant
 } from '@/lib/stay-draft-import';
@@ -291,10 +292,21 @@ export async function POST(req: Request) {
   }
 
   const extracted = extractStayData(fetchedHtml.html, fetchedHtml.finalUrl);
-  const transportExtraction = await extractTransportVariants(
-    fetchedHtml.html,
-    fetchedHtml.finalUrl
-  );
+  const [selectedImages, transportExtraction] = await Promise.all([
+    selectBestStayImages(fetchedHtml.html, fetchedHtml.finalUrl, extracted.images, {
+      title: extracted.title,
+      description: extracted.description,
+      summary: extracted.summary,
+      locationText: extracted.locationText,
+      regionText: extracted.regionText,
+      activities: extracted.activities
+    }),
+    extractTransportVariants(fetchedHtml.html, fetchedHtml.finalUrl)
+  ]);
+  const extractedWithSmartImages = {
+    ...extracted,
+    images: selectedImages.length > 0 ? selectedImages : extracted.images
+  };
   const transportVariants = transportExtraction.transportVariants;
   const transportPriceDebug = transportExtraction.transportPriceDebug;
   const rawPayload = buildRawPayload(
@@ -304,13 +316,13 @@ export async function POST(req: Request) {
     fetchedHtml.finalUrl,
     fetchedHtml.contentType,
     fetchedHtml.status,
-    extracted,
+    extractedWithSmartImages,
     transportVariants,
     transportPriceDebug
   );
   const updatePayload = buildDraftUpdatePayload(
     draftColumns,
-    extracted,
+    extractedWithSmartImages,
     rawPayload,
     transportVariants
   );

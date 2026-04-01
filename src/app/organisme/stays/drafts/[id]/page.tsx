@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import StayDraftReviewForm from '@/components/organisme/StayDraftReviewForm';
 import { requireRole } from '@/lib/auth/require';
 import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers.server';
+import { normalizeStayDraftCategories } from '@/lib/stay-categories';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import type { Json } from '@/types/supabase';
 import type { StayDraftReviewPayload } from '@/types/stay-draft-review';
@@ -139,7 +140,7 @@ export default async function StayDraftReviewPage({ params, searchParams }: Page
     supervision_text: normalizeString(draft.supervision_text),
     transport_text: normalizeString(draft.transport_text),
     transport_mode: normalizeString(draft.transport_mode),
-    categories: draft.categories ?? [],
+    categories: normalizeStayDraftCategories(draft.categories ?? []).categories,
     ages: draft.ages ?? [],
     sessions_json: asArrayOfObjects(draft.sessions_json),
     extra_options_json: asArrayOfObjects(draft.extra_options_json),

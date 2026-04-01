@@ -4,6 +4,7 @@ import { getSession } from '@/lib/auth/session';
 import { resolveOrganizerSelection } from '@/lib/organizers.server';
 import { mockOrganizerTenant } from '@/lib/mocks';
 import { publishStayDraftToLive, PublishStayDraftError } from '@/lib/publish-stay-draft';
+import { normalizeStayDraftCategories } from '@/lib/stay-categories';
 import { mapToCanonicalStayRegion } from '@/lib/stay-regions';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import type { Database, Json } from '@/types/supabase';
@@ -54,20 +55,6 @@ function normalizeString(value: string | null | undefined): string {
 function toNullableString(value: string | null | undefined): string | null {
   const normalized = normalizeString(value);
   return normalized.length > 0 ? normalized : null;
-}
-
-function normalizeCategories(values: string[]): string[] {
-  const seen = new Set<string>();
-  const output: string[] = [];
-  for (const value of values) {
-    const normalized = normalizeString(value);
-    if (!normalized) continue;
-    const key = normalized.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    output.push(normalized);
-  }
-  return output;
 }
 
 function normalizeAges(values: number[]): number[] {
@@ -173,7 +160,7 @@ async function parseBody(req: Request): Promise<{ payload: StayDraftReviewPayloa
   }
 
   const data = parsed.data;
-  const categories = normalizeCategories(data.categories);
+  const categories = normalizeStayDraftCategories(data.categories).categories;
   const ages = normalizeAges(data.ages);
   const payload: StayDraftReviewPayload = {
     title: normalizeString(data.title),
@@ -232,7 +219,7 @@ async function handleUpdate(req: Request, params: { id: string }, mode: 'save' |
   const supabase = getServerSupabaseClient();
   const now = new Date().toISOString();
   const ages = normalizeAges(parsedBody.payload.ages);
-  const categories = normalizeCategories(parsedBody.payload.categories);
+  const categories = normalizeStayDraftCategories(parsedBody.payload.categories).categories;
   const validatedByUserId = isUuid(session?.userId) ? session?.userId : null;
 
   const updatePayload: Record<string, unknown> = {

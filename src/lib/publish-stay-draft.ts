@@ -1,4 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import {
+  normalizeStayDraftCategories,
+  stayCategoryLabelToValue,
+  stayCategoryValueToLabel,
+  type StayCategoryValue
+} from '@/lib/stay-categories';
 import { mapToCanonicalStayRegion } from '@/lib/stay-regions';
 import type { Database, Json } from '@/types/supabase';
 
@@ -44,70 +50,11 @@ export class PublishStayDraftError extends Error {
   }
 }
 
-const CATEGORY_LABEL_TO_VALUE = {
-  'Séjour à la mer': 'mer',
-  'Séjour à la montagne': 'montagne',
-  'Séjour à la campagne': 'campagne',
-  'Séjour artistique': 'artistique',
-  'Séjour équestre': 'equestre',
-  'Séjour linguistique': 'linguistique',
-  'Séjour scientifique': 'scientifique',
-  'Séjour sportif': 'sportif',
-  'Séjour itinérant': 'itinerant',
-  "Séjour à l'étranger": 'etranger'
-} as const;
-const CATEGORY_VALUE_TO_LABEL = Object.fromEntries(
-  Object.entries(CATEGORY_LABEL_TO_VALUE).map(([label, value]) => [value, label])
-) as Record<(typeof CATEGORY_LABEL_TO_VALUE)[keyof typeof CATEGORY_LABEL_TO_VALUE], string>;
-
-function categoryValueToLabel(value: string): string {
-  return (
-    CATEGORY_VALUE_TO_LABEL[
-      value as (typeof CATEGORY_LABEL_TO_VALUE)[keyof typeof CATEGORY_LABEL_TO_VALUE]
-    ] ?? value
-  );
-}
-
 const LIVE_TRANSPORT_MODES = new Set([
   'Aller/Retour similaire',
   'Aller/Retour différencié',
   'Sans transport'
 ]);
-
-const CATEGORY_NOISE_KEYS = new Set([
-  'colonie de vacances',
-  'colonies de vacances',
-  'colo',
-  'sejour',
-  'sejour enfant',
-  'sejour enfants',
-  'sejour jeunes'
-]);
-
-const CATEGORY_ALIASES: Record<string, (typeof CATEGORY_LABEL_TO_VALUE)[keyof typeof CATEGORY_LABEL_TO_VALUE]> = {
-  mer: 'mer',
-  maritime: 'mer',
-  nautique: 'mer',
-  montagne: 'montagne',
-  campagne: 'campagne',
-  artistique: 'artistique',
-  musique: 'artistique',
-  danse: 'artistique',
-  theatre: 'artistique',
-  'arts plastiques': 'artistique',
-  equestre: 'equestre',
-  equitation: 'equestre',
-  linguistique: 'linguistique',
-  langue: 'linguistique',
-  scientifique: 'scientifique',
-  sciences: 'scientifique',
-  sportif: 'sportif',
-  sport: 'sportif',
-  itinerant: 'itinerant',
-  itinerance: 'itinerant',
-  etranger: 'etranger',
-  international: 'etranger'
-};
 
 const TITLE_LOWERCASE_WORDS = new Set([
   'a',
@@ -146,7 +93,7 @@ const CATERING_INFO_KEYS = ['restauration', 'repas', 'self', 'pension', 'liaison
 const ACCESSIBILITY_KEYS = ['pmr', 'mobilite reduite', 'mobilité réduite', 'accessible', 'accessibilite', 'accessibilité', 'fauteuil roulant'];
 
 const CATEGORY_INFERENCE_RULES: Array<{
-  value: (typeof CATEGORY_LABEL_TO_VALUE)[keyof typeof CATEGORY_LABEL_TO_VALUE];
+  value: StayCategoryValue;
   keys: string[];
 }> = [
   { value: 'mer', keys: ['mer', 'plage', 'voile', 'surf', 'nautique'] },
@@ -209,16 +156,6 @@ const ACCOMMODATION_DESCRIPTIVE_KEYS = [
 function normalizeWhitespace(value: string | null | undefined): string {
   if (!value) return '';
   return value.replace(/\s+/g, ' ').trim();
-}
-
-function normalizeCategoryKey(value: string): string {
-  return normalizeWhitespace(value)
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^\w\s']/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
 }
 
 function simplifyForMatch(value: string | null | undefined): string {
@@ -507,88 +444,40 @@ function isMissingColumnError(message: string | undefined, columnName: string): 
   return normalized.includes('column') && normalized.includes(columnName.toLowerCase());
 }
 
+function categoryValueToLogLabel(value: string): string {
+  return stayCategoryValueToLabel(value) ?? value;
+}
+
 function mapDraftCategoriesToLiveCategories(categories: string[] | null): {
   draftReceived: string[];
-  liveValues: string[];
+  liveValues: StayCategoryValue[];
   liveLabels: string[];
   rejected: string[];
 } {
   const input = categories ?? [];
-  const normalizedLabelMap = new Map<string, (typeof CATEGORY_LABEL_TO_VALUE)[keyof typeof CATEGORY_LABEL_TO_VALUE]>(
-    Object.entries(CATEGORY_LABEL_TO_VALUE).map(([label, value]) => [normalizeCategoryKey(label), value])
+  const normalizedDraftCategories = normalizeStayDraftCategories(input);
+  const liveValues = Array.from(
+    new Set(
+      normalizedDraftCategories.categories
+        .map((label) => stayCategoryLabelToValue(label))
+        .filter((value): value is StayCategoryValue => value !== null)
+    )
   );
-  const mapped: string[] = [];
-  const invalid: string[] = [];
-
-  for (const item of input) {
-    const chunks = String(item)
-      .split(/[,;|/]+/g)
-      .map((chunk) => normalizeWhitespace(chunk))
-      .filter(Boolean);
-
-    for (const chunk of chunks) {
-      const key = normalizeCategoryKey(chunk);
-      if (!key) continue;
-
-      if (CATEGORY_NOISE_KEYS.has(key)) {
-        continue;
-      }
-
-      const valueFromLabel = normalizedLabelMap.get(key);
-      if (valueFromLabel) {
-        mapped.push(valueFromLabel);
-        continue;
-      }
-
-      const valueFromAlias = CATEGORY_ALIASES[key];
-      if (valueFromAlias) {
-        mapped.push(valueFromAlias);
-        continue;
-      }
-
-      let matchedByContains = false;
-      for (const [aliasKey, aliasValue] of Object.entries(CATEGORY_ALIASES)) {
-        if (key.includes(aliasKey)) {
-          mapped.push(aliasValue);
-          matchedByContains = true;
-          break;
-        }
-      }
-      if (matchedByContains) {
-        continue;
-      }
-
-      let isNoiseByContains = false;
-      for (const noiseKey of Array.from(CATEGORY_NOISE_KEYS)) {
-        if (key.includes(noiseKey)) {
-          isNoiseByContains = true;
-          break;
-        }
-      }
-      if (isNoiseByContains) {
-        continue;
-      }
-
-      invalid.push(chunk);
-    }
-  }
-
-  const liveValues = Array.from(new Set(mapped));
-  const liveLabels = liveValues.map((value) => categoryValueToLabel(value));
+  const liveLabels = liveValues.map((value) => categoryValueToLogLabel(value));
 
   return {
     draftReceived: input.map((item) => normalizeWhitespace(item)).filter(Boolean),
     liveValues,
     liveLabels,
-    rejected: Array.from(new Set(invalid))
+    rejected: normalizedDraftCategories.rejected
   };
 }
 
-function inferLiveCategoriesFromContent(content: string): string[] {
+function inferLiveCategoriesFromContent(content: string): StayCategoryValue[] {
   const key = simplifyForMatch(content);
   if (!key) return [];
 
-  const inferred = new Set<string>();
+  const inferred = new Set<StayCategoryValue>();
   for (const rule of CATEGORY_INFERENCE_RULES) {
     if (rule.keys.some((ruleKey) => key.includes(simplifyForMatch(ruleKey)))) {
       inferred.add(rule.value);
@@ -1793,7 +1682,7 @@ export async function publishStayDraftToLive(
     draftId: draft.id,
     draftCategories: categoryMapping.draftReceived,
     liveCategories: categoryMapping.liveLabels,
-    inferredCategories: inferredCategories.map((value) => categoryValueToLabel(value)),
+    inferredCategories: inferredCategories.map((value) => categoryValueToLogLabel(value)),
     rejectedCategories: categoryMapping.rejected
   });
   if (categories.length === 0) {
@@ -1804,7 +1693,7 @@ export async function publishStayDraftToLive(
   }
   console.info('[publish-stay-draft] draft validé, parsing terminé', {
     draftId: draft.id,
-    categories: categories.map((value) => categoryValueToLabel(value)),
+    categories: categories.map((value) => categoryValueToLogLabel(value)),
     ages: ages.length,
     sessions: sessions.length,
     extraOptions: extraOptions.length,

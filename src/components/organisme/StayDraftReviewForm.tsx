@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { normalizeStayDraftCategories, STAY_CATEGORY_OPTIONS } from '@/lib/stay-categories';
 import type { StayDraftReviewFieldErrors, StayDraftReviewPayload } from '@/types/stay-draft-review';
 
 type StayDraftReviewFormProps = {
@@ -52,7 +53,9 @@ export default function StayDraftReviewForm({
   const [supervisionText, setSupervisionText] = useState(initialPayload.supervision_text);
   const [transportText, setTransportText] = useState(initialPayload.transport_text);
   const [transportMode, setTransportMode] = useState(initialPayload.transport_mode);
-  const [categoriesText, setCategoriesText] = useState(initialPayload.categories.join(', '));
+  const [selectedCategories, setSelectedCategories] = useState(() =>
+    normalizeStayDraftCategories(initialPayload.categories).categories
+  );
   const [agesText, setAgesText] = useState(initialPayload.ages.join(', '));
   const [sessionsJsonText, setSessionsJsonText] = useState(prettyJson(initialPayload.sessions_json));
   const [extraOptionsJsonText, setExtraOptionsJsonText] = useState(prettyJson(initialPayload.extra_options_json));
@@ -117,6 +120,15 @@ export default function StayDraftReviewForm({
     }
   }
 
+  function toggleCategory(categoryLabel: string, checked: boolean) {
+    setSelectedCategories((current) => {
+      if (checked) {
+        return normalizeStayDraftCategories([...current, categoryLabel]).categories;
+      }
+      return current.filter((value) => value !== categoryLabel);
+    });
+  }
+
   function buildPayload(): { payload?: StayDraftReviewPayload; errors?: StayDraftReviewFieldErrors } {
     const nextErrors: StayDraftReviewFieldErrors = {};
     const normalizedTitle = title.trim();
@@ -124,7 +136,7 @@ export default function StayDraftReviewForm({
       nextErrors.title = 'Le titre est requis.';
     }
 
-    const categories = parseCommaSeparatedList(categoriesText);
+    const categories = normalizeStayDraftCategories(selectedCategories).categories;
     const ages = parseCommaSeparatedList(agesText)
       .map((item) => Number(item))
       .filter((value) => Number.isFinite(value) && value >= 0)
@@ -398,17 +410,35 @@ export default function StayDraftReviewForm({
         </label>
 
         <div className="grid gap-4 md:grid-cols-2">
-          <label className="block text-sm font-medium text-slate-700">
-            Catégories (séparées par des virgules)
-            <input
-              value={categoriesText}
-              onChange={(event) => setCategoriesText(event.target.value)}
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-            />
+          <div className="block text-sm font-medium text-slate-700">
+            <span>Catégories (multi-sélection)</span>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              {STAY_CATEGORY_OPTIONS.map((category) => {
+                const checked = selectedCategories.includes(category.label);
+                return (
+                  <label
+                    key={category.value}
+                    className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${
+                      checked
+                        ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
+                        : 'border-slate-200 bg-white text-slate-700'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(event) => toggleCategory(category.label, event.target.checked)}
+                      className="h-4 w-4 rounded border-slate-300"
+                    />
+                    <span>{category.label}</span>
+                  </label>
+                );
+              })}
+            </div>
             {fieldErrors.categories && (
               <span className="mt-1 block text-xs text-rose-600">{fieldErrors.categories}</span>
             )}
-          </label>
+          </div>
           <label className="block text-sm font-medium text-slate-700">
             Âges (séparés par des virgules)
             <input

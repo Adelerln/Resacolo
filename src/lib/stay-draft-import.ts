@@ -1,5 +1,6 @@
 import { load, type CheerioAPI } from 'cheerio';
 import type { AnyNode } from 'domhandler';
+import { createHash } from 'crypto';
 import iconv from 'iconv-lite';
 import { STAY_REGION_OPTIONS } from '@/lib/stay-regions';
 
@@ -12,6 +13,16 @@ const MAX_SECTION_TEXT_LENGTH = 8_000;
 const MAX_SESSION_SNIPPET_LENGTH = 400;
 const MAX_SUMMARY_BLOCK_LENGTH = 2_200;
 const MAX_TRANSPORT_VARIANT_FETCHES = 80;
+const MAX_IMAGE_CANDIDATES = 48;
+const MAX_IMAGE_ANALYSIS = 20;
+const IMAGE_ANALYSIS_CONCURRENCY = 4;
+const IMAGE_SELECTION_MIN = 4;
+const IMAGE_FETCH_TIMEOUT_MS = 8_000;
+const IMAGE_FETCH_MAX_BYTES = 6 * 1024 * 1024;
+const IMAGE_MIN_WIDTH = 420;
+const IMAGE_MIN_HEIGHT = 260;
+const IMAGE_MIN_AREA = 420 * 260;
+const IMAGE_MIN_BYTES = 18_000;
 
 const NON_FOREIGN_REGIONS = STAY_REGION_OPTIONS.filter((region) => region !== 'Étranger');
 
@@ -134,6 +145,213 @@ type AddressHint = {
   postalCode: string | null;
   street: string | null;
 };
+
+type ImageCandidateSource = 'og' | 'twitter' | 'img';
+type ImageTheme = 'activity' | 'location' | 'accommodation' | 'group' | 'generic';
+
+type ImageCandidate = {
+  url: string;
+  source: ImageCandidateSource;
+  alt: string;
+  title: string;
+  className: string;
+  widthHint: number | null;
+  heightHint: number | null;
+  index: number;
+};
+
+type AnalyzedImageCandidate = ImageCandidate & {
+  width: number | null;
+  height: number | null;
+  byteLength: number | null;
+  contentType: string | null;
+  contentHash: string | null;
+  weakHash: string | null;
+  familyKey: string;
+  score: number;
+  qualityScore: number;
+  relevanceScore: number;
+  penaltyScore: number;
+  thematicTag: ImageTheme;
+};
+
+export type ImageSelectionContext = {
+  title?: string | null;
+  description?: string | null;
+  summary?: string | null;
+  locationText?: string | null;
+  regionText?: string | null;
+  activities?: string[];
+};
+
+const IMAGE_HARD_IGNORE_TOKENS = [
+  'logo',
+  'icon',
+  'icone',
+  'sprite',
+  'favicon',
+  'emoji',
+  'picto'
+];
+
+const IMAGE_DECORATIVE_TOKENS = [
+  'logo',
+  'icon',
+  'icone',
+  'sprite',
+  'favicon',
+  'avatar',
+  'badge',
+  'label',
+  'watermark',
+  'signature',
+  'newsletter',
+  'popup',
+  'pattern',
+  'texture',
+  'background',
+  'bg',
+  'decor',
+  'separator',
+  'divider',
+  'partner'
+];
+
+const IMAGE_ADVERTISING_TOKENS = [
+  'banner',
+  'hero',
+  'slider',
+  'carousel',
+  'header',
+  'footer',
+  'ads',
+  'advert',
+  'promo',
+  'cover',
+  'template',
+  'cta',
+  'social',
+  'share',
+  'thumbnail',
+  'thumb',
+  'small',
+  'tiny',
+  'placeholder'
+];
+
+const IMAGE_ACTIVITY_TOKENS = [
+  'activite',
+  'activité',
+  'sport',
+  'surf',
+  'ski',
+  'escalade',
+  'canoe',
+  'kayak',
+  'equitation',
+  'équitation',
+  'atelier',
+  'danse',
+  'theatre',
+  'théâtre'
+];
+
+const IMAGE_ACCOMMODATION_TOKENS = [
+  'hebergement',
+  'hébergement',
+  'chambre',
+  'dortoir',
+  'residence',
+  'résidence',
+  'hotel',
+  'hôtel',
+  'camping',
+  'centre',
+  'batiment',
+  'bâtiment'
+];
+
+const IMAGE_GROUP_TOKENS = [
+  'enfant',
+  'enfants',
+  'ado',
+  'ados',
+  'jeune',
+  'jeunes',
+  'groupe',
+  'animateur',
+  'animatrice',
+  'team'
+];
+
+const IMAGE_LOCATION_TOKENS = [
+  'mer',
+  'plage',
+  'montagne',
+  'campagne',
+  'foret',
+  'forêt',
+  'lac',
+  'riviere',
+  'rivière',
+  'village',
+  'nature',
+  'paysage'
+];
+
+const IMAGE_CONTEXT_STOPWORDS = new Set([
+  'le',
+  'la',
+  'les',
+  'de',
+  'du',
+  'des',
+  'un',
+  'une',
+  'et',
+  'ou',
+  'en',
+  'au',
+  'aux',
+  'pour',
+  'avec',
+  'dans',
+  'sur',
+  'sejour',
+  'sejours',
+  'colonie',
+  'colonies',
+  'vacances',
+  'enfant',
+  'enfants',
+  'ado',
+  'ados',
+  'jeune',
+  'jeunes',
+  'resacolo'
+]);
+
+const IMAGE_HARD_IGNORE_KEYWORDS = new Set(
+  IMAGE_HARD_IGNORE_TOKENS.map((token) => simplifyForMatch(token))
+);
+const IMAGE_DECORATIVE_KEYWORDS = new Set(
+  IMAGE_DECORATIVE_TOKENS.map((token) => simplifyForMatch(token))
+);
+const IMAGE_ADVERTISING_KEYWORDS = new Set(
+  IMAGE_ADVERTISING_TOKENS.map((token) => simplifyForMatch(token))
+);
+const IMAGE_ACTIVITY_KEYWORDS = new Set(
+  IMAGE_ACTIVITY_TOKENS.map((token) => simplifyForMatch(token))
+);
+const IMAGE_ACCOMMODATION_KEYWORDS = new Set(
+  IMAGE_ACCOMMODATION_TOKENS.map((token) => simplifyForMatch(token))
+);
+const IMAGE_GROUP_KEYWORDS = new Set(
+  IMAGE_GROUP_TOKENS.map((token) => simplifyForMatch(token))
+);
+const IMAGE_LOCATION_KEYWORDS = new Set(
+  IMAGE_LOCATION_TOKENS.map((token) => simplifyForMatch(token))
+);
 
 export type DraftSessionItem = {
   label: string;
@@ -489,53 +707,709 @@ function parseDuration(text: string): number | null {
 }
 
 function shouldIgnoreImage(source: string, alt: string): boolean {
-  const normalizedSource = source.toLowerCase();
-  const normalizedAlt = alt.toLowerCase();
-  if (normalizedSource.startsWith('data:')) return true;
-  if (normalizedSource.includes('.svg')) return true;
+  const normalizedSourceRaw = source.toLowerCase();
+  if (!normalizedSourceRaw) return true;
+  if (normalizedSourceRaw.startsWith('data:')) return true;
+  if (normalizedSourceRaw.includes('.svg')) return true;
 
-  const decorativeTokens = ['logo', 'icon', 'icone', 'sprite', 'avatar', 'pict'];
-  return decorativeTokens.some(
-    (token) => normalizedSource.includes(token) || normalizedAlt.includes(token)
-  );
+  const normalized = simplifyForMatch(`${source} ${alt}`);
+  if (!normalized) return true;
+
+  for (const token of Array.from(IMAGE_HARD_IGNORE_KEYWORDS)) {
+    if (normalized.includes(token)) return true;
+  }
+
+  return false;
 }
 
-function pickImageCandidate($: CheerioAPI, element: AnyNode): string {
-  const image = $(element);
-  const src = image.attr('src') ?? image.attr('data-src') ?? '';
-  if (src) return src;
+function parseNumericAttribute(value: string | undefined): number | null {
+  if (!value) return null;
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return parsed;
+}
 
-  const srcset = image.attr('srcset') ?? image.attr('data-srcset') ?? '';
-  if (!srcset) return '';
-  const firstCandidate = srcset
+function pickSrcsetBestCandidate(srcset: string): string {
+  const chunks = srcset
     .split(',')
-    .map((chunk) => chunk.trim().split(' ')[0])
-    .find(Boolean);
-  return firstCandidate ?? '';
+    .map((chunk) => normalizeWhitespace(chunk))
+    .filter(Boolean);
+  if (chunks.length === 0) return '';
+
+  const ranked = chunks
+    .map((chunk) => {
+      const [url, descriptor = ''] = chunk.split(/\s+/, 2);
+      const widthDescriptor = descriptor.match(/^(\d{2,5})w$/i);
+      const densityDescriptor = descriptor.match(/^(\d+(?:\.\d+)?)x$/i);
+      const rank = widthDescriptor
+        ? Number(widthDescriptor[1])
+        : densityDescriptor
+          ? Math.round(Number(densityDescriptor[1]) * 1_000)
+          : 0;
+
+      return { url: normalizeWhitespace(url), rank };
+    })
+    .filter((item) => Boolean(item.url))
+    .sort((left, right) => right.rank - left.rank);
+
+  return ranked[0]?.url ?? '';
+}
+
+function pickImageCandidates($: CheerioAPI, element: AnyNode): string[] {
+  const image = $(element);
+  const candidates = [
+    image.attr('src'),
+    image.attr('data-src'),
+    image.attr('data-lazy-src'),
+    image.attr('data-original'),
+    image.attr('data-image')
+  ].filter((candidate): candidate is string => Boolean(candidate && normalizeWhitespace(candidate)));
+
+  const srcsetCandidates = [
+    pickSrcsetBestCandidate(image.attr('srcset') ?? ''),
+    pickSrcsetBestCandidate(image.attr('data-srcset') ?? ''),
+    pickSrcsetBestCandidate(image.attr('data-lazy-srcset') ?? '')
+  ].filter(Boolean);
+
+  return unique([...candidates, ...srcsetCandidates]);
+}
+
+function normalizeImageUrlForDedup(rawUrl: string): string {
+  try {
+    const parsed = new URL(rawUrl);
+    parsed.hash = '';
+    const ignoredSearchParams = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'fbclid', 'gclid'];
+    for (const key of ignoredSearchParams) {
+      parsed.searchParams.delete(key);
+    }
+    return parsed.toString();
+  } catch {
+    return rawUrl;
+  }
+}
+
+function buildImageFamilyKey(rawUrl: string): string {
+  try {
+    const parsed = new URL(rawUrl);
+    const normalizedPath = parsed.pathname
+      .toLowerCase()
+      .replace(/\.[a-z0-9]+$/i, '')
+      .replace(/(?:-|_)?\d{2,5}x\d{2,5}(?=$|[-_])/g, '')
+      .replace(
+        /(?:-|_)?(?:small|medium|large|thumb|thumbnail|preview|mobile|desktop|retina|mini)(?=$|[-_])/g,
+        ''
+      )
+      .replace(/[-_]+/g, '-');
+    return `${parsed.hostname.toLowerCase()}${normalizedPath}`;
+  } catch {
+    return simplifyForMatch(rawUrl).replace(/\s+/g, '-');
+  }
+}
+
+function buildImageFilenameKey(rawUrl: string): string {
+  try {
+    const parsed = new URL(rawUrl);
+    const filename = parsed.pathname.split('/').filter(Boolean).pop() ?? '';
+    const clean = filename
+      .toLowerCase()
+      .replace(/\.[a-z0-9]+$/i, '')
+      .replace(/(?:-|_)?\d{2,5}x\d{2,5}(?=$|[-_])/g, '')
+      .replace(/\d{2,}$/g, '')
+      .replace(/[-_]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+    return clean;
+  } catch {
+    return '';
+  }
+}
+
+function extractContextTokens(value: string | null | undefined): Set<string> {
+  const normalized = simplifyForMatch(value);
+  if (!normalized) return new Set();
+
+  const tokens = normalized
+    .split(' ')
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 3 && !/^\d+$/.test(token) && !IMAGE_CONTEXT_STOPWORDS.has(token));
+  return new Set(tokens);
+}
+
+function hasAnyKeyword(tokens: Set<string>, keywords: Set<string>): boolean {
+  for (const token of Array.from(tokens)) {
+    if (keywords.has(token)) return true;
+  }
+  return false;
+}
+
+function inferImageTheme(tokens: Set<string>): ImageTheme {
+  if (hasAnyKeyword(tokens, IMAGE_ACTIVITY_KEYWORDS)) return 'activity';
+  if (hasAnyKeyword(tokens, IMAGE_ACCOMMODATION_KEYWORDS)) return 'accommodation';
+  if (hasAnyKeyword(tokens, IMAGE_GROUP_KEYWORDS)) return 'group';
+  if (hasAnyKeyword(tokens, IMAGE_LOCATION_KEYWORDS)) return 'location';
+  return 'generic';
+}
+
+function collectImageCandidates($: CheerioAPI, sourceUrl: string): ImageCandidate[] {
+  const candidates: ImageCandidate[] = [];
+  const seen = new Set<string>();
+  let index = 0;
+
+  const addCandidate = (rawUrl: string | null | undefined, source: ImageCandidateSource, metadata?: {
+    alt?: string;
+    title?: string;
+    className?: string;
+    widthHint?: number | null;
+    heightHint?: number | null;
+  }) => {
+    if (!rawUrl || candidates.length >= MAX_IMAGE_CANDIDATES) return;
+    const absoluteUrl = toAbsoluteUrl(rawUrl, sourceUrl);
+    if (!absoluteUrl) return;
+
+    const normalizedUrl = normalizeImageUrlForDedup(absoluteUrl);
+    const alt = normalizeWhitespace(metadata?.alt ?? '');
+    if (shouldIgnoreImage(normalizedUrl, alt)) return;
+    if (seen.has(normalizedUrl)) return;
+
+    seen.add(normalizedUrl);
+    candidates.push({
+      url: normalizedUrl,
+      source,
+      alt,
+      title: normalizeWhitespace(metadata?.title ?? ''),
+      className: normalizeWhitespace(metadata?.className ?? ''),
+      widthHint: metadata?.widthHint ?? null,
+      heightHint: metadata?.heightHint ?? null,
+      index
+    });
+    index += 1;
+  };
+
+  addCandidate($('meta[property="og:image"]').attr('content'), 'og');
+  addCandidate($('meta[name="twitter:image"]').attr('content'), 'twitter');
+
+  $('main img, article img, .content img, img').each((_, element) => {
+    if (candidates.length >= MAX_IMAGE_CANDIDATES) return false;
+
+    const image = $(element);
+    const alt = normalizeWhitespace(image.attr('alt') ?? '');
+    const title = normalizeWhitespace(image.attr('title') ?? '');
+    const className = normalizeWhitespace(image.attr('class') ?? '');
+    const widthHint = parseNumericAttribute(image.attr('width'));
+    const heightHint = parseNumericAttribute(image.attr('height'));
+
+    for (const candidate of pickImageCandidates($, element)) {
+      addCandidate(candidate, 'img', {
+        alt,
+        title,
+        className,
+        widthHint,
+        heightHint
+      });
+      if (candidates.length >= MAX_IMAGE_CANDIDATES) break;
+    }
+    return;
+  });
+
+  return candidates;
 }
 
 function extractImages($: CheerioAPI, sourceUrl: string): string[] {
-  const candidates: string[] = [];
-  const ogImage = $('meta[property="og:image"]').attr('content');
-  const twitterImage = $('meta[name="twitter:image"]').attr('content');
+  return collectImageCandidates($, sourceUrl)
+    .map((candidate) => candidate.url)
+    .slice(0, MAX_IMAGES);
+}
 
-  if (ogImage) candidates.push(ogImage);
-  if (twitterImage) candidates.push(twitterImage);
+function buildImageSelectionContextTokens(context: ImageSelectionContext): Set<string> {
+  const tokens = new Set<string>();
+  const values = [
+    context.title,
+    context.description,
+    context.summary,
+    context.locationText,
+    context.regionText,
+    ...(context.activities ?? [])
+  ];
 
-  $('main img, article img, .content img, img').each((_, element) => {
-    if (candidates.length >= MAX_IMAGES * 3) return false;
-    const src = pickImageCandidate($, element);
-    if (!src) return;
-    const alt = normalizeWhitespace($(element).attr('alt') ?? '');
-    if (shouldIgnoreImage(src, alt)) return;
-    candidates.push(src);
+  for (const value of values) {
+    for (const token of Array.from(extractContextTokens(value))) {
+      tokens.add(token);
+    }
+  }
+
+  return tokens;
+}
+
+function extractImageCandidateTokens(candidate: ImageCandidate): Set<string> {
+  return extractContextTokens([candidate.alt, candidate.title, candidate.className, candidate.url].join(' '));
+}
+
+function countSharedTokens(left: Set<string>, right: Set<string>): number {
+  let total = 0;
+  for (const token of Array.from(left)) {
+    if (right.has(token)) total += 1;
+  }
+  return total;
+}
+
+function computeImagePenalty(
+  candidate: ImageCandidate,
+  candidateTokens: Set<string>,
+  width: number | null,
+  height: number | null,
+  byteLength: number | null
+): number {
+  let penalty = 0;
+
+  if (hasAnyKeyword(candidateTokens, IMAGE_DECORATIVE_KEYWORDS)) penalty += 24;
+  if (hasAnyKeyword(candidateTokens, IMAGE_ADVERTISING_KEYWORDS)) penalty += 16;
+
+  const ratio = width && height ? width / height : null;
+  if (ratio && (ratio < 0.45 || ratio > 2.7)) {
+    penalty += 16;
+  } else if (ratio && (ratio < 0.6 || ratio > 2.2)) {
+    penalty += 8;
+  }
+
+  if (width && width < IMAGE_MIN_WIDTH) penalty += 14;
+  if (height && height < IMAGE_MIN_HEIGHT) penalty += 14;
+  if (width && height && width * height < IMAGE_MIN_AREA) penalty += 16;
+  if (byteLength && byteLength < IMAGE_MIN_BYTES) penalty += 14;
+  if (candidate.className.toLowerCase().includes('lazy')) penalty += 2;
+
+  return penalty;
+}
+
+function computeImageQualityScore(
+  candidate: ImageCandidate,
+  width: number | null,
+  height: number | null,
+  byteLength: number | null
+): number {
+  let score = 0;
+
+  if (candidate.source === 'og') score += 12;
+  if (candidate.source === 'twitter') score += 8;
+
+  if (width && height) {
+    const area = width * height;
+    if (area >= 1_400_000) score += 18;
+    else if (area >= 900_000) score += 14;
+    else if (area >= 500_000) score += 10;
+    else if (area >= IMAGE_MIN_AREA) score += 6;
+    else score -= 8;
+
+    const ratio = width / height;
+    if (ratio >= 0.8 && ratio <= 1.9) score += 8;
+    else if (ratio >= 0.65 && ratio <= 2.2) score += 4;
+    else score -= 4;
+  } else if (candidate.widthHint && candidate.heightHint) {
+    if (candidate.widthHint >= IMAGE_MIN_WIDTH && candidate.heightHint >= IMAGE_MIN_HEIGHT) {
+      score += 4;
+    } else {
+      score -= 6;
+    }
+  }
+
+  if (byteLength) {
+    if (byteLength >= 240_000) score += 8;
+    else if (byteLength >= 120_000) score += 6;
+    else if (byteLength >= 60_000) score += 3;
+    else score -= 6;
+  }
+
+  return score;
+}
+
+function computeImageRelevanceScore(
+  candidateTokens: Set<string>,
+  contextTokens: Set<string>
+): number {
+  if (contextTokens.size === 0 || candidateTokens.size === 0) return 0;
+  const overlap = countSharedTokens(candidateTokens, contextTokens);
+  if (overlap === 0) return 0;
+  return Math.min(16, overlap * 3);
+}
+
+function buildWeakImageHash(buffer: Buffer): string {
+  if (buffer.length === 0) return '';
+  const sampleSize = Math.min(128, buffer.length);
+  const sample = Buffer.allocUnsafe(sampleSize);
+
+  if (sampleSize === 1) {
+    sample[0] = buffer[0];
+  } else {
+    const step = (buffer.length - 1) / (sampleSize - 1);
+    for (let index = 0; index < sampleSize; index += 1) {
+      const sourceIndex = Math.round(index * step);
+      sample[index] = buffer[sourceIndex] ?? 0;
+    }
+  }
+
+  return createHash('sha1').update(sample).digest('hex');
+}
+
+function parsePngDimensions(buffer: Buffer): { width: number; height: number } | null {
+  if (buffer.length < 24) return null;
+  const pngSignature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+  for (let i = 0; i < pngSignature.length; i += 1) {
+    if (buffer[i] !== pngSignature[i]) return null;
+  }
+
+  const width = buffer.readUInt32BE(16);
+  const height = buffer.readUInt32BE(20);
+  if (!width || !height) return null;
+  return { width, height };
+}
+
+function parseGifDimensions(buffer: Buffer): { width: number; height: number } | null {
+  if (buffer.length < 10) return null;
+  const signature = buffer.toString('ascii', 0, 6);
+  if (signature !== 'GIF87a' && signature !== 'GIF89a') return null;
+  const width = buffer.readUInt16LE(6);
+  const height = buffer.readUInt16LE(8);
+  if (!width || !height) return null;
+  return { width, height };
+}
+
+function parseWebpDimensions(buffer: Buffer): { width: number; height: number } | null {
+  if (buffer.length < 30) return null;
+  if (buffer.toString('ascii', 0, 4) !== 'RIFF') return null;
+  if (buffer.toString('ascii', 8, 12) !== 'WEBP') return null;
+
+  const chunkType = buffer.toString('ascii', 12, 16);
+  if (chunkType === 'VP8X' && buffer.length >= 30) {
+    const width = 1 + buffer.readUIntLE(24, 3);
+    const height = 1 + buffer.readUIntLE(27, 3);
+    return width > 0 && height > 0 ? { width, height } : null;
+  }
+
+  if (chunkType === 'VP8L' && buffer.length >= 25) {
+    const bits = buffer.readUInt32LE(21);
+    const width = (bits & 0x3fff) + 1;
+    const height = ((bits >> 14) & 0x3fff) + 1;
+    return width > 0 && height > 0 ? { width, height } : null;
+  }
+
+  if (chunkType === 'VP8 ' && buffer.length >= 30) {
+    const hasStartCode = buffer[23] === 0x9d && buffer[24] === 0x01 && buffer[25] === 0x2a;
+    if (!hasStartCode) return null;
+    const width = buffer.readUInt16LE(26) & 0x3fff;
+    const height = buffer.readUInt16LE(28) & 0x3fff;
+    return width > 0 && height > 0 ? { width, height } : null;
+  }
+
+  return null;
+}
+
+function parseJpegDimensions(buffer: Buffer): { width: number; height: number } | null {
+  if (buffer.length < 4) return null;
+  if (buffer[0] !== 0xff || buffer[1] !== 0xd8) return null;
+
+  let offset = 2;
+  while (offset + 9 < buffer.length) {
+    if (buffer[offset] !== 0xff) {
+      offset += 1;
+      continue;
+    }
+
+    const marker = buffer[offset + 1];
+    offset += 2;
+
+    if (marker === 0xd8 || marker === 0x01) continue;
+    if (marker === 0xd9 || marker === 0xda) break;
+    if (offset + 2 > buffer.length) break;
+
+    const markerSize = buffer.readUInt16BE(offset);
+    if (markerSize < 2 || offset + markerSize > buffer.length) break;
+
+    const isStartOfFrame =
+      (marker >= 0xc0 && marker <= 0xc3) ||
+      (marker >= 0xc5 && marker <= 0xc7) ||
+      (marker >= 0xc9 && marker <= 0xcb) ||
+      (marker >= 0xcd && marker <= 0xcf);
+
+    if (isStartOfFrame) {
+      const height = buffer.readUInt16BE(offset + 3);
+      const width = buffer.readUInt16BE(offset + 5);
+      if (width > 0 && height > 0) return { width, height };
+      break;
+    }
+
+    offset += markerSize;
+  }
+
+  return null;
+}
+
+function parseImageDimensions(buffer: Buffer): { width: number; height: number } | null {
+  return (
+    parsePngDimensions(buffer) ??
+    parseJpegDimensions(buffer) ??
+    parseWebpDimensions(buffer) ??
+    parseGifDimensions(buffer)
+  );
+}
+
+async function readResponseBufferWithLimit(
+  response: Response,
+  maxBytes: number
+): Promise<Buffer | null> {
+  if (!response.body) {
+    const rawBuffer = Buffer.from(await response.arrayBuffer());
+    if (rawBuffer.length > maxBytes) return null;
+    return rawBuffer;
+  }
+
+  const reader = response.body.getReader();
+  const chunks: Buffer[] = [];
+  let totalBytes = 0;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (!value) continue;
+
+    totalBytes += value.byteLength;
+    if (totalBytes > maxBytes) {
+      await reader.cancel().catch(() => undefined);
+      return null;
+    }
+
+    chunks.push(Buffer.from(value));
+  }
+
+  return Buffer.concat(chunks);
+}
+
+async function fetchImagePayload(
+  imageUrl: string
+): Promise<{ buffer: Buffer; contentType: string | null; byteLength: number }> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), IMAGE_FETCH_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(imageUrl, {
+      method: 'GET',
+      redirect: 'follow',
+      signal: controller.signal,
+      headers: {
+        'user-agent':
+          'Mozilla/5.0 (compatible; ResacoloImageBot/1.0; +https://resacolo.com)',
+        accept: 'image/*,*/*;q=0.8'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const contentTypeHeader = normalizeWhitespace(response.headers.get('content-type') ?? '');
+    const contentType = contentTypeHeader ? contentTypeHeader.split(';')[0].toLowerCase() : null;
+    if (!contentType || !contentType.startsWith('image/')) {
+      throw new Error('not-image');
+    }
+
+    const contentLengthRaw = response.headers.get('content-length');
+    const contentLength = contentLengthRaw ? Number(contentLengthRaw) : null;
+    if (contentLength && Number.isFinite(contentLength) && contentLength > IMAGE_FETCH_MAX_BYTES) {
+      throw new Error('too-large');
+    }
+
+    const buffer = await readResponseBufferWithLimit(response, IMAGE_FETCH_MAX_BYTES);
+    if (!buffer || buffer.length === 0) {
+      throw new Error('empty-buffer');
+    }
+
+    const byteLength = Number.isFinite(contentLength) && contentLength ? contentLength : buffer.length;
+    return { buffer, contentType, byteLength };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function analyzeImageCandidate(
+  candidate: ImageCandidate,
+  contextTokens: Set<string>
+): Promise<AnalyzedImageCandidate | null> {
+  try {
+    const payload = await fetchImagePayload(candidate.url);
+    const dimensions = parseImageDimensions(payload.buffer);
+    const width = dimensions?.width ?? candidate.widthHint ?? null;
+    const height = dimensions?.height ?? candidate.heightHint ?? null;
+    const contentHash = createHash('sha1').update(payload.buffer).digest('hex');
+    const weakHash = buildWeakImageHash(payload.buffer);
+    const candidateTokens = extractImageCandidateTokens(candidate);
+    const qualityScore = computeImageQualityScore(candidate, width, height, payload.byteLength);
+    const relevanceScore = computeImageRelevanceScore(candidateTokens, contextTokens);
+    const penaltyScore = computeImagePenalty(candidate, candidateTokens, width, height, payload.byteLength);
+    const score = qualityScore + relevanceScore - penaltyScore;
+
+    return {
+      ...candidate,
+      width,
+      height,
+      byteLength: payload.byteLength,
+      contentType: payload.contentType,
+      contentHash,
+      weakHash,
+      familyKey: buildImageFamilyKey(candidate.url),
+      score,
+      qualityScore,
+      relevanceScore,
+      penaltyScore,
+      thematicTag: inferImageTheme(candidateTokens)
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function analyzeImageCandidates(
+  candidates: ImageCandidate[],
+  contextTokens: Set<string>
+): Promise<AnalyzedImageCandidate[]> {
+  const candidatesToAnalyze = candidates.slice(0, MAX_IMAGE_ANALYSIS);
+  if (candidatesToAnalyze.length === 0) return [];
+
+  const analyzed: AnalyzedImageCandidate[] = [];
+  let cursor = 0;
+  const concurrency = Math.min(IMAGE_ANALYSIS_CONCURRENCY, candidatesToAnalyze.length);
+
+  const workers = Array.from({ length: concurrency }, async () => {
+    while (true) {
+      const currentIndex = cursor;
+      cursor += 1;
+      if (currentIndex >= candidatesToAnalyze.length) break;
+
+      const candidate = candidatesToAnalyze[currentIndex];
+      const result = await analyzeImageCandidate(candidate, contextTokens);
+      if (result) analyzed.push(result);
+    }
   });
 
-  const absolute = candidates
-    .map((candidate) => toAbsoluteUrl(candidate, sourceUrl))
-    .filter((url): url is string => Boolean(url));
+  await Promise.all(workers);
+  return analyzed;
+}
 
-  return unique(absolute).slice(0, MAX_IMAGES);
+function isNearDuplicate(left: AnalyzedImageCandidate, right: AnalyzedImageCandidate): boolean {
+  if (left.contentHash && right.contentHash && left.contentHash === right.contentHash) {
+    return true;
+  }
+
+  if (left.weakHash && right.weakHash && left.weakHash === right.weakHash) {
+    return true;
+  }
+
+  const leftWidth = left.width ?? left.widthHint ?? 0;
+  const rightWidth = right.width ?? right.widthHint ?? 0;
+  const leftHeight = left.height ?? left.heightHint ?? 0;
+  const rightHeight = right.height ?? right.heightHint ?? 0;
+  const leftRatio = leftWidth > 0 && leftHeight > 0 ? leftWidth / leftHeight : null;
+  const rightRatio = rightWidth > 0 && rightHeight > 0 ? rightWidth / rightHeight : null;
+  const ratioDiff =
+    leftRatio && rightRatio ? Math.abs(leftRatio - rightRatio) : Number.POSITIVE_INFINITY;
+  const widthDiff = leftWidth && rightWidth ? Math.abs(leftWidth - rightWidth) / Math.max(leftWidth, rightWidth) : 1;
+  const heightDiff = leftHeight && rightHeight ? Math.abs(leftHeight - rightHeight) / Math.max(leftHeight, rightHeight) : 1;
+
+  if (left.familyKey === right.familyKey && ratioDiff <= 0.06 && widthDiff <= 0.2 && heightDiff <= 0.2) {
+    return true;
+  }
+
+  const leftFilename = buildImageFilenameKey(left.url);
+  const rightFilename = buildImageFilenameKey(right.url);
+  if (leftFilename && rightFilename && leftFilename === rightFilename && ratioDiff <= 0.08) {
+    return true;
+  }
+
+  return false;
+}
+
+function selectBestImageUrls(
+  analyzed: AnalyzedImageCandidate[],
+  fallbackImages: string[]
+): string[] {
+  if (analyzed.length === 0) {
+    return unique(fallbackImages).slice(0, MAX_IMAGES);
+  }
+
+  const sorted = [...analyzed].sort((left, right) => {
+    if (right.score !== left.score) return right.score - left.score;
+    const leftArea = (left.width ?? left.widthHint ?? 0) * (left.height ?? left.heightHint ?? 0);
+    const rightArea = (right.width ?? right.widthHint ?? 0) * (right.height ?? right.heightHint ?? 0);
+    if (rightArea !== leftArea) return rightArea - leftArea;
+    return left.index - right.index;
+  });
+
+  const selected: AnalyzedImageCandidate[] = [];
+  const selectedUrls = new Set<string>();
+  const familyUsage = new Map<string, number>();
+  const themeUsage = new Map<ImageTheme, number>();
+
+  for (const candidate of sorted) {
+    if (selected.length >= MAX_IMAGES) break;
+    if (candidate.score < -14) continue;
+    if (selectedUrls.has(candidate.url)) continue;
+    if (selected.some((item) => isNearDuplicate(candidate, item))) continue;
+
+    const familyCount = familyUsage.get(candidate.familyKey) ?? 0;
+    if (familyCount >= 1 && selected.length >= IMAGE_SELECTION_MIN) continue;
+
+    const themeCount = themeUsage.get(candidate.thematicTag) ?? 0;
+    if (candidate.thematicTag === 'generic' && themeCount >= 3 && selected.length >= IMAGE_SELECTION_MIN) {
+      continue;
+    }
+
+    selected.push(candidate);
+    selectedUrls.add(candidate.url);
+    familyUsage.set(candidate.familyKey, familyCount + 1);
+    themeUsage.set(candidate.thematicTag, themeCount + 1);
+  }
+
+  if (selected.length < IMAGE_SELECTION_MIN) {
+    for (const candidate of sorted) {
+      if (selected.length >= MAX_IMAGES) break;
+      if (selectedUrls.has(candidate.url)) continue;
+      selected.push(candidate);
+      selectedUrls.add(candidate.url);
+    }
+  }
+
+  const selectedUrlsOrdered = selected.map((item) => item.url);
+  const fallbackUnique = unique(fallbackImages);
+  for (const url of fallbackUnique) {
+    if (selectedUrlsOrdered.length >= MAX_IMAGES) break;
+    if (selectedUrls.has(url)) continue;
+    selectedUrlsOrdered.push(url);
+    selectedUrls.add(url);
+  }
+
+  return selectedUrlsOrdered.slice(0, MAX_IMAGES);
+}
+
+export async function selectBestStayImages(
+  html: string,
+  sourceUrl: string,
+  fallbackImages: string[],
+  context: ImageSelectionContext
+): Promise<string[]> {
+  const fallback = unique(fallbackImages).slice(0, MAX_IMAGES);
+
+  try {
+    const $ = load(html);
+    const candidates = collectImageCandidates($, sourceUrl);
+    if (candidates.length === 0) return fallback;
+
+    const contextTokens = buildImageSelectionContextTokens(context);
+    const analyzed = await analyzeImageCandidates(candidates, contextTokens);
+    const selected = selectBestImageUrls(analyzed, fallback);
+    return selected.length > 0 ? selected : fallback;
+  } catch (error) {
+    console.warn('[import-images] sélection intelligente indisponible, fallback utilisé', {
+      sourceUrl,
+      error: error instanceof Error ? error.message : 'unknown'
+    });
+    return fallback;
+  }
 }
 
 function cleanTextCandidate(value: string, maxLength = 80): string | null {

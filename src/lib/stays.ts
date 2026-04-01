@@ -20,6 +20,7 @@ import type { Database } from '@/types/supabase';
 type PeriodKey = keyof typeof FILTER_LABELS.periods;
 type TransportKey = keyof typeof FILTER_LABELS.transport;
 type OrganizerRow = Pick<Database['public']['Tables']['organizers']['Row'], 'id' | 'name' | 'logo_path'>;
+type SeasonRow = Pick<Database['public']['Tables']['seasons']['Row'], 'id' | 'name' | 'start_date'>;
 type StayMediaRow = Pick<Database['public']['Tables']['stay_media']['Row'], 'url' | 'position' | 'media_type'>;
 type SessionRow = Pick<Database['public']['Tables']['sessions']['Row'], 'start_date' | 'end_date'>;
 type SessionPriceRow = Pick<
@@ -201,14 +202,14 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
     return [];
   }
 
-  const visibleStays = (data ?? []).filter(
-    (stay) => stay.status !== 'ARCHIVED' && stay.status !== 'HIDDEN'
-  );
+  const visibleStays = (data ?? []).filter((stay) => stay.status === 'PUBLISHED');
   const stayIds = visibleStays.map((stay) => stay.id);
   const organizerIds = Array.from(new Set(visibleStays.map((stay) => stay.organizer_id)));
+  const seasonIds = Array.from(new Set(visibleStays.map((stay) => stay.season_id)));
 
   const [
     { data: organizersRaw },
+    { data: seasonsRaw },
     { data: mediaRaw },
     { data: sessionsRaw },
     { data: stayAccommodationRows },
@@ -220,6 +221,9 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
     organizerIds.length
       ? supabase.from('organizers').select('id,name,logo_path').in('id', organizerIds)
       : Promise.resolve({ data: [] as OrganizerRow[] | null }),
+    seasonIds.length
+      ? supabase.from('seasons').select('id,name,start_date').in('id', seasonIds)
+      : Promise.resolve({ data: [] as SeasonRow[] | null }),
     stayIds.length
       ? supabase
           .from('stay_media')
@@ -265,6 +269,7 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
   ]);
 
   const organizersById = new Map((organizersRaw ?? []).map((organizer) => [organizer.id, organizer]));
+  const seasonsById = new Map((seasonsRaw ?? []).map((season) => [season.id, season]));
   const mediaByStayId = new Map<string, Array<StayMediaRow & { stay_id: string }>>();
   const sessionsByStayId = new Map<string, SessionWithOptionsRow[]>();
   const accommodationIdsByStayId = new Map<string, string[]>();
@@ -332,6 +337,7 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
     visibleStays.map(async (stay) => {
       const organizer = organizersById.get(stay.organizer_id);
       const organizerName = organizer?.name ?? 'Organisateur';
+      const season = seasonsById.get(stay.season_id);
       const media = [...(mediaByStayId.get(stay.id) ?? [])].sort(
         (a, b) => (a.position ?? 0) - (b.position ?? 0)
       );
@@ -402,6 +408,9 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
         slug: slugify(`${organizerName}-${stay.title}`) || stay.id,
         summary: stay.summary?.trim() || buildSummary(stay.title, stay.description),
         description: stay.description?.trim() || stay.program_text?.trim() || '',
+        seasonId: stay.season_id,
+        seasonName: season?.name?.trim() || 'Saison non précisée',
+        organizerId: stay.organizer_id,
         organizer: {
           name: organizerName,
           website: '',
@@ -410,12 +419,17 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
         location: stay.location_text ?? '',
         region: stay.region_text ?? '',
         country: '',
+        ageMin: stay.age_min,
+        ageMax: stay.age_max,
         ageRange: formatStayAgeRange(stay.ages, stay.age_min, stay.age_max),
         duration: formatDurationLabel(durationDays),
         priceFrom: minSessionPrice,
         period: periodLabels,
         categories,
         highlights: [],
+        activitiesText: stay.activities_text?.trim() ?? '',
+        programText: stay.program_text?.trim() ?? '',
+        transportText: stay.transport_text?.trim() ?? '',
         coverImage,
         bookingOptions: {
           transportMode: stay.transport_mode ?? 'Sans transport',

@@ -20,7 +20,7 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen flex-col">
       <MainNavigation />
-      <main className="flex-1">
+      <main className="flex-1 min-h-0">
         <Suspense fallback={<div className="min-h-screen">{children}</div>}>
           <PageTransition>{children}</PageTransition>
         </Suspense>

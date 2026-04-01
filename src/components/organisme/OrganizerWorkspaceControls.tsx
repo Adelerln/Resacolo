@@ -58,7 +58,8 @@ export function OrganizerWorkspaceNav({ organizers, initialSelectedOrganizerId }
     <nav className="px-3 text-sm text-slate-600">
       {links.map((link) => {
         const href = withOrganizerQuery(link.href, selectedOrganizerId);
-        const isActive = pathname === link.href;
+        const isActive =
+          link.href === '/organisme' ? pathname === link.href : pathname.startsWith(link.href);
         return (
           <Link
             key={link.href}

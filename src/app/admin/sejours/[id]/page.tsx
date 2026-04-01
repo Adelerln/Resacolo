@@ -210,9 +210,9 @@ export default async function AdminStayDetailPage({ params, searchParams }: Page
   }
 
   return (
-    <div className="space-y-6">
+      <div className="space-y-6">
       {showSavedBanner && <SavedToast message="La fiche séjour a bien été enregistrée." />}
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <Link href="/admin/sejours" className="text-sm font-medium text-slate-500 hover:text-slate-800">
             Retour aux sejours
@@ -227,7 +227,7 @@ export default async function AdminStayDetailPage({ params, searchParams }: Page
         </span>
       </div>
 
-      <form action={updateStay} className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
+      <form action={updateStay} className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
         <h2 className="text-lg font-semibold text-slate-900">Infos sejour</h2>
         <div className="grid gap-4 md:grid-cols-2">
           <label className="block text-sm font-medium text-slate-700">
@@ -310,7 +310,7 @@ export default async function AdminStayDetailPage({ params, searchParams }: Page
           <div className="md:col-span-2">
             <div className="text-sm font-medium text-slate-700">Âges</div>
             <p className="mt-1 text-xs text-slate-500">Coche les âges proposés.</p>
-            <div className="mt-3 grid grid-cols-4 gap-2 md:grid-cols-5 lg:grid-cols-6">
+            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
               {STAY_AGE_OPTIONS.map((age) => (
                 <label
                   key={age}
@@ -364,7 +364,7 @@ export default async function AdminStayDetailPage({ params, searchParams }: Page
       </form>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <section className="rounded-2xl border border-slate-200 bg-white p-6">
+        <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
           <h2 className="text-lg font-semibold text-slate-900">Medias</h2>
           <ul className="mt-4 space-y-2 text-sm text-slate-600">
             {media.map((item) => (
@@ -376,11 +376,11 @@ export default async function AdminStayDetailPage({ params, searchParams }: Page
           </ul>
         </section>
 
-        <section className="rounded-2xl border border-slate-200 bg-white p-6">
+        <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
           <h2 className="text-lg font-semibold text-slate-900">Sessions</h2>
           <ul className="mt-4 space-y-2 text-sm text-slate-600">
             {sessions.map((sessionItem) => (
-              <li key={sessionItem.id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-100 px-3 py-2">
+              <li key={sessionItem.id} className="flex flex-col gap-3 rounded-lg border border-slate-100 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <div>
                     {new Date(sessionItem.start_date).toLocaleDateString('fr-FR')} -{' '}

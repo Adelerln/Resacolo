@@ -148,7 +148,7 @@ export function WorldMap({ onFranceSelect }: WorldMapProps) {
 
   if (!svgMap) {
     return (
-      <div className="flex min-h-[730px] items-center justify-center text-sm text-slate-500">
+      <div className="flex min-h-[320px] items-center justify-center text-sm text-slate-500 sm:min-h-[420px] md:min-h-[560px] lg:min-h-[730px]">
         Chargement de la carte…
       </div>
     );
@@ -210,7 +210,7 @@ export function WorldMap({ onFranceSelect }: WorldMapProps) {
             transform: 'translate(-50%, calc(-100% - 8px))'
           }}
         >
-          <div className="relative whitespace-nowrap rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-[15px] font-semibold text-[#232323] shadow-lg">
+          <div className="relative max-w-[calc(100vw-2rem)] rounded-2xl border border-slate-200 bg-white px-3 py-2 text-center text-sm font-semibold text-[#232323] shadow-lg sm:max-w-none sm:whitespace-nowrap sm:px-4 sm:py-2.5 sm:text-[15px]">
             {hoveredCountry.name}
             <span className="absolute left-1/2 top-full h-0 w-0 -translate-x-1/2 border-l-[10px] border-r-[10px] border-t-[12px] border-l-transparent border-r-transparent border-t-white" />
           </div>

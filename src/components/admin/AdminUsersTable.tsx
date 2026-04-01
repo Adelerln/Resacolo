@@ -83,48 +83,50 @@ export function AdminUsersTable({ members }: { members: MemberRow[] }) {
   return (
     <>
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-            <tr>
-              <th className="px-4 py-3">{renderSortableHeader('Prénom', 'first_name')}</th>
-              <th className="px-4 py-3">{renderSortableHeader('Nom', 'last_name')}</th>
-              <th className="px-4 py-3">{renderSortableHeader('Email', 'email')}</th>
-              <th className="px-4 py-3">
-                {renderSortableHeader('Organisme', 'organizerName')}
-              </th>
-              <th className="px-4 py-3">{renderSortableHeader('Rôle', 'role')}</th>
-              <th className="px-4 py-3 text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sortedMembers.map((member) => (
-              <tr key={member.id} className="border-t border-slate-100">
-                <td className="px-4 py-3 text-slate-600">{member.first_name ?? '-'}</td>
-                <td className="px-4 py-3 text-slate-600">{member.last_name ?? '-'}</td>
-                <td className="px-4 py-3 text-slate-600">{member.email ?? '-'}</td>
-                <td className="px-4 py-3 text-slate-600">{member.organizerName ?? '-'}</td>
-                <td className="px-4 py-3 text-slate-600">{ROLE_LABELS[member.role]}</td>
-                <td className="px-4 py-3 text-right">
-                  <button
-                    type="button"
-                    onClick={() => setEditing(member)}
-                    className="inline-flex items-center justify-center rounded-md border border-slate-200 p-2 text-slate-600 hover:text-slate-900"
-                    aria-label="Modifier l'utilisateur"
-                  >
-                    <Pencil size={16} />
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {members.length === 0 && (
+        <div className="overflow-x-auto">
+          <table className="min-w-[760px] w-full text-left text-sm">
+            <thead className="bg-slate-50 text-xs uppercase text-slate-500">
               <tr>
-                <td className="px-4 py-6 text-slate-500" colSpan={6}>
-                  Aucun utilisateur.
-                </td>
+                <th className="px-4 py-3">{renderSortableHeader('Prénom', 'first_name')}</th>
+                <th className="px-4 py-3">{renderSortableHeader('Nom', 'last_name')}</th>
+                <th className="px-4 py-3">{renderSortableHeader('Email', 'email')}</th>
+                <th className="px-4 py-3">
+                  {renderSortableHeader('Organisme', 'organizerName')}
+                </th>
+                <th className="px-4 py-3">{renderSortableHeader('Rôle', 'role')}</th>
+                <th className="px-4 py-3 text-right">Actions</th>
               </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {sortedMembers.map((member) => (
+                <tr key={member.id} className="border-t border-slate-100">
+                  <td className="px-4 py-3 text-slate-600">{member.first_name ?? '-'}</td>
+                  <td className="px-4 py-3 text-slate-600">{member.last_name ?? '-'}</td>
+                  <td className="px-4 py-3 text-slate-600">{member.email ?? '-'}</td>
+                  <td className="px-4 py-3 text-slate-600">{member.organizerName ?? '-'}</td>
+                  <td className="px-4 py-3 text-slate-600">{ROLE_LABELS[member.role]}</td>
+                  <td className="px-4 py-3 text-right">
+                    <button
+                      type="button"
+                      onClick={() => setEditing(member)}
+                      className="inline-flex items-center justify-center rounded-md border border-slate-200 p-2 text-slate-600 hover:text-slate-900"
+                      aria-label="Modifier l'utilisateur"
+                    >
+                      <Pencil size={16} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {members.length === 0 && (
+                <tr>
+                  <td className="px-4 py-6 text-slate-500" colSpan={6}>
+                    Aucun utilisateur.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {editing && (

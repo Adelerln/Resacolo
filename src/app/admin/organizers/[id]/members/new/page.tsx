@@ -21,7 +21,7 @@ export default async function AdminOrganizerMemberNewPage({ params, searchParams
       <form
         action={`/api/admin/organizers/${params.id}/members`}
         method="post"
-        className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6"
+        className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6"
       >
         <div className="grid gap-4 md:grid-cols-2">
           <label className="block text-sm font-medium text-slate-700">

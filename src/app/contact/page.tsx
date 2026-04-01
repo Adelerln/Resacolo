@@ -59,7 +59,7 @@ export default function ContactPage() {
     <div className="min-h-screen bg-white">
       {/* Section 1: Header */}
       <section
-        className="border-b border-slate-100 px-4 py-16 sm:px-6 md:py-20"
+        className="border-b border-slate-100 px-4 py-12 sm:px-6 md:py-20"
         style={{ backgroundColor: '#F8F8F8' }}
       >
         <div className="mx-auto flex max-w-6xl flex-col gap-12 lg:flex-row lg:items-center lg:gap-16">
@@ -94,18 +94,16 @@ export default function ContactPage() {
       </section>
 
       {/* Section 2: Contact Form */}
-      <section className="px-4 py-16 sm:px-6 md:py-20">
+      <section className="px-4 py-12 sm:px-6 md:py-20">
         <div className="mx-auto max-w-2xl">
           <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
             <h2 className="text-center font-display text-2xl font-bold text-slate-900 sm:text-3xl">
               <span style={{ color: BLUE }}>Formulaire</span> de contact
             </h2>
             <p className="mt-4 text-center text-slate-600 text-sm leading-relaxed">
-              Vous souhaitez contacter un organisateur ou joindre notre assistance technique,
-              <br />
-              Complétez les champs ci-dessous et envoyez votre demande.
-              <br />
-              Nous vous répondrons dans les plus brefs délais.
+              Vous souhaitez contacter un organisateur ou joindre notre assistance technique.
+              Complétez les champs ci-dessous et envoyez votre demande. Nous vous répondrons dans
+              les plus brefs délais.
             </p>
 
             <form onSubmit={handleSubmit} className="mt-10 space-y-8">
@@ -195,7 +193,7 @@ export default function ContactPage() {
                   </span>
                   .
                 </p>
-                <div className="flex gap-4">
+                <div className="flex flex-wrap gap-4">
                   {[
                     { id: 'home' as const, Icon: Home, label: 'Maison' },
                     { id: 'flag' as const, Icon: Flag, label: 'Drapeau' },

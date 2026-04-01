@@ -84,7 +84,7 @@ const partnerAdvantages = [
 export default function DevenirPartenairePage() {
   return (
     <div className="bg-white">
-      <section className="mx-auto grid max-w-7xl grid-cols-1 gap-8 px-6 py-14 lg:grid-cols-2 lg:items-center">
+      <section className="mx-auto grid max-w-7xl grid-cols-1 gap-8 px-4 py-14 sm:px-6 lg:grid-cols-2 lg:items-center">
         <div className="space-y-5">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">À PROPOS</p>
           <h1 className="text-4xl font-bold leading-tight text-slate-900">
@@ -104,7 +104,7 @@ export default function DevenirPartenairePage() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-6 pb-12">
+      <section className="mx-auto max-w-7xl px-4 pb-12 sm:px-6">
         <div className="rounded-3xl border border-slate-200 bg-gradient-to-br from-accent-50 via-white to-brand-50 p-6 shadow-sm md:p-10">
           <div className="mx-auto max-w-3xl text-center">
             <h2 className="text-3xl font-bold text-slate-900">
@@ -133,7 +133,7 @@ export default function DevenirPartenairePage() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-6 pb-12">
+      <section className="mx-auto max-w-7xl px-4 pb-12 sm:px-6">
         <div className="rounded-xl bg-white p-6 shadow-md ring-1 ring-slate-200">
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-4 lg:items-stretch">
             {processSteps.map((step, index) => (
@@ -152,7 +152,7 @@ export default function DevenirPartenairePage() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-6 pb-14">
+      <section className="mx-auto max-w-7xl px-4 pb-14 sm:px-6">
         <h2 className="text-center text-3xl font-bold text-slate-900">
           Privilégier <span className="text-brand-600">RESACOLO</span>, c&apos;est valoriser...
         </h2>
@@ -185,7 +185,7 @@ export default function DevenirPartenairePage() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-6 pb-16">
+      <section className="mx-auto max-w-7xl px-4 pb-16 sm:px-6">
         <h2 className="text-center text-3xl font-bold text-slate-900">
           Nos formules <span className="text-brand-600">100% gratuites</span>
         </h2>
@@ -235,9 +235,9 @@ export default function DevenirPartenairePage() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-6 pb-20">
+      <section className="mx-auto max-w-7xl px-4 pb-20 sm:px-6">
         <div className="rounded-2xl bg-slate-50 p-6 md:p-10">
-          <h2 className="text-center text-5xl font-bold leading-tight text-slate-800">
+          <h2 className="text-center text-3xl font-bold leading-tight text-slate-800 sm:text-5xl">
             Demande de <span className="text-brand-600">partenariat</span>
           </h2>
           <p className="mx-auto mt-4 max-w-3xl text-center text-slate-500">
@@ -292,7 +292,7 @@ export default function DevenirPartenairePage() {
               </div>
             </div>
 
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-sm text-slate-500">* obligatoire</p>
               <button
                 type="submit"

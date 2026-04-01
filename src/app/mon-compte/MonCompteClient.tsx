@@ -162,13 +162,13 @@ export default function MonCompteClient() {
               <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-500">
                 <Mail className="h-4 w-4" />
                 {mockUser.email}
-                <span className="mx-1 text-slate-300">|</span>
+                <span className="mx-1 hidden text-slate-300 sm:inline">|</span>
                 <MapPin className="h-4 w-4" />
                 {mockUser.city}
               </p>
             </div>
           </div>
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3">
             <button className="btn btn-secondary btn-sm">
               <Settings className="h-4 w-4" />
               Préférences
@@ -273,7 +273,7 @@ export default function MonCompteClient() {
               <div className="mt-4 space-y-4">
                 <article className="rounded-xl border border-blue-100 bg-blue-100/70 p-4">
                   <h3 className="text-sm font-semibold text-slate-900">Parent 1</h3>
-                  <dl className="mt-3 space-y-2 text-sm text-slate-700">
+                  <dl className="mt-3 space-y-2 text-sm text-slate-700 break-words">
                     <div className="flex items-start justify-between gap-3">
                       <dt className="text-slate-500">Nom</dt>
                       <dd className="font-medium text-slate-900">{accountInfo.parent1Name}</dd>
@@ -294,14 +294,14 @@ export default function MonCompteClient() {
                     </div>
                     <div className="flex items-start justify-between gap-3">
                       <dt className="text-slate-500">Adresse</dt>
-                      <dd className="max-w-[70%] text-right font-medium text-slate-900">{fullAddress}</dd>
+                      <dd className="max-w-[65%] text-right font-medium text-slate-900">{fullAddress}</dd>
                     </div>
                   </dl>
                 </article>
 
                 <article className="rounded-xl border border-orange-100 bg-orange-100/70 p-4">
                   <h3 className="text-sm font-semibold text-slate-900">Parent 2</h3>
-                  <dl className="mt-3 space-y-2 text-sm text-slate-700">
+                  <dl className="mt-3 space-y-2 text-sm text-slate-700 break-words">
                     <div className="flex items-start justify-between gap-3">
                       <dt className="text-slate-500">Nom</dt>
                       <dd className="font-medium text-slate-900">{accountInfo.parent2Name || 'Non renseigné'}</dd>
@@ -326,7 +326,7 @@ export default function MonCompteClient() {
                     </div>
                     <div className="flex items-start justify-between gap-3">
                       <dt className="text-slate-500">Adresse</dt>
-                      <dd className="max-w-[70%] text-right font-medium text-slate-900">
+                      <dd className="max-w-[65%] text-right font-medium text-slate-900">
                         {parent2Address || 'Non renseignée'}
                       </dd>
                     </div>
@@ -368,7 +368,7 @@ export default function MonCompteClient() {
 
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
-          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-xl">
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-4 shadow-xl sm:p-6">
             <div className="flex items-center justify-between gap-4">
               <h3 className="font-display text-xl font-semibold text-slate-900">Mettre à jour les informations</h3>
               <button

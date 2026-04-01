@@ -72,7 +72,7 @@ export default function StayEditorialTabs({
   };
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-6">
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
       <div>
         <h2 className="text-lg font-semibold text-slate-900">Contenu du séjour</h2>
       </div>
@@ -162,40 +162,42 @@ export default function StayEditorialTabs({
                 ) : accommodations.length > 0 ? (
                   <div className="space-y-3">
                     <div className="max-h-72 overflow-y-auto rounded-lg border border-slate-100">
-                      <table className="w-full text-left text-sm">
-                        <thead className="sticky top-0 bg-slate-50 text-xs uppercase text-slate-500">
-                          <tr>
-                            <th className="px-3 py-2"></th>
-                            <th className="px-3 py-2">Nom</th>
-                            <th className="px-3 py-2">Type</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {accommodations.map((accommodation) => (
-                            <tr key={accommodation.id} className="border-t border-slate-100">
-                              <td className="px-3 py-2 align-top">
-                                <input
-                                  type="radio"
-                                  name="accommodation_id"
-                                  value={accommodation.id}
-                                  className="mt-1 cursor-pointer"
-                                />
-                              </td>
-                              <td className="px-3 py-2 align-top">
-                                <div className="font-medium text-slate-900">{accommodation.name}</div>
-                                {accommodation.description && (
-                                  <div className="mt-1 text-xs text-slate-500">
-                                    {accommodation.description}
-                                  </div>
-                                )}
-                              </td>
-                              <td className="px-3 py-2 align-top text-slate-600">
-                                {formatAccommodationType(accommodation.accommodationType)}
-                              </td>
+                      <div className="overflow-x-auto">
+                        <table className="min-w-[560px] w-full text-left text-sm">
+                          <thead className="sticky top-0 bg-slate-50 text-xs uppercase text-slate-500">
+                            <tr>
+                              <th className="px-3 py-2"></th>
+                              <th className="px-3 py-2">Nom</th>
+                              <th className="px-3 py-2">Type</th>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                          </thead>
+                          <tbody>
+                            {accommodations.map((accommodation) => (
+                              <tr key={accommodation.id} className="border-t border-slate-100">
+                                <td className="px-3 py-2 align-top">
+                                  <input
+                                    type="radio"
+                                    name="accommodation_id"
+                                    value={accommodation.id}
+                                    className="mt-1 cursor-pointer"
+                                  />
+                                </td>
+                                <td className="px-3 py-2 align-top">
+                                  <div className="font-medium text-slate-900">{accommodation.name}</div>
+                                  {accommodation.description && (
+                                    <div className="mt-1 text-xs text-slate-500">
+                                      {accommodation.description}
+                                    </div>
+                                  )}
+                                </td>
+                                <td className="px-3 py-2 align-top text-slate-600">
+                                  {formatAccommodationType(accommodation.accommodationType)}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
                     {syncAccommodationAction && (
                       <div className="flex justify-end">

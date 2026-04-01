@@ -53,7 +53,7 @@ export function StayFilters({ value, onChange, onReset }: StayFiltersProps) {
   };
 
   return (
-    <aside className="sticky top-24 flex h-[calc(100vh-8rem)] flex-col gap-6 overflow-auto rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+    <aside className="flex min-w-0 flex-col gap-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 md:sticky md:top-24 md:h-[calc(100vh-8rem)] md:overflow-auto lg:p-6">
       <div className="space-y-2">
         <h2 className="text-lg font-semibold text-slate-800">Rechercher</h2>
         <input

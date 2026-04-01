@@ -13,8 +13,8 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 px-6 py-16">
-      <div className="mx-auto max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+    <div className="min-h-screen bg-slate-50 px-4 py-12 sm:px-6 sm:py-16">
+      <div className="mx-auto max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-8">
         <h1 className="text-2xl font-semibold text-slate-900">Connexion</h1>
         <p className="mt-2 text-sm text-slate-600">
           Accédez aux espaces Resacolo.

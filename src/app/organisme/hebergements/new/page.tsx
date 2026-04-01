@@ -82,7 +82,7 @@ export default async function NewAccommodationPage({ searchParams }: PageProps) 
         </div>
       )}
 
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Nouvel hébergement</h1>
           <p className="text-sm text-slate-600">
@@ -93,13 +93,13 @@ export default async function NewAccommodationPage({ searchParams }: PageProps) 
         </div>
         <Link
           href={withOrganizerQuery('/organisme/hebergements', selectedOrganizerId)}
-          className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700"
+          className="inline-flex min-h-[44px] items-center justify-center rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700"
         >
           Retour à la liste
         </Link>
       </div>
 
-      <form action={createAccommodation} className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
+      <form action={createAccommodation} className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
         <AccommodationFormFields submitLabel="Créer l'hébergement" />
       </form>
     </div>

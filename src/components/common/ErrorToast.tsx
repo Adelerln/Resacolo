@@ -26,7 +26,7 @@ export default function ErrorToast({ message }: ErrorToastProps) {
   if (!visible) return null;
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 max-w-md rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800 shadow-lg">
+    <div className="fixed bottom-4 left-4 right-4 z-50 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800 shadow-lg sm:bottom-6 sm:left-auto sm:right-6 sm:max-w-md">
       {message}
     </div>
   );

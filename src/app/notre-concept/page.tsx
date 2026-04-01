@@ -82,7 +82,7 @@ export default function NotreConceptPage() {
       </section>
 
       <section className="bg-slate-100 py-16 md:py-24">
-        <div className="section-container grid gap-14 lg:grid-cols-[minmax(320px,0.95fr)_minmax(0,1.05fr)] lg:items-start lg:gap-20">
+        <div className="section-container grid gap-14 xl:grid-cols-[minmax(300px,0.95fr)_minmax(0,1.05fr)] xl:items-start xl:gap-20">
           <div>
             <h2
               className="text-left font-display text-3xl font-bold leading-[1.04] sm:text-4xl lg:text-5xl"
@@ -143,12 +143,12 @@ export default function NotreConceptPage() {
       </section>
 
       <section className="section-container py-16 md:py-20">
-        <div className="grid gap-10 lg:grid-cols-[max-content_minmax(360px,1fr)] lg:items-start lg:gap-10">
-          <div className="grid justify-items-start gap-4 sm:grid-cols-2 sm:gap-x-3 sm:gap-y-5">
+        <div className="grid gap-10 xl:grid-cols-[max-content_minmax(0,1fr)] xl:items-start xl:gap-10">
+          <div className="order-2 grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:gap-5 xl:order-1 xl:justify-items-start xl:gap-x-3 xl:gap-y-5">
             {strengths.map((item) => (
               <article
                 key={item.title}
-                className="group flex min-h-[16.5rem] w-full max-w-[15.5rem] flex-col items-center rounded-[28px] border border-slate-200 bg-white px-5 py-6 shadow-[0_18px_40px_-28px_rgba(15,23,42,0.35)] transition-transform duration-300 hover:-translate-y-1"
+                className="group flex min-h-[16.5rem] w-full max-w-none flex-col items-center rounded-[28px] border border-slate-200 bg-white px-5 py-6 shadow-[0_18px_40px_-28px_rgba(15,23,42,0.35)] transition-transform duration-300 hover:-translate-y-1 xl:max-w-[15.5rem]"
               >
                 <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-2xl">
                   <Image
@@ -175,13 +175,13 @@ export default function NotreConceptPage() {
             ))}
           </div>
 
-          <div className="lg:sticky lg:top-24 lg:self-start">
+          <div className="order-1 xl:order-2 xl:sticky xl:top-24 xl:self-start">
             <h2 className="font-display text-3xl font-[800] leading-[1.04] sm:text-4xl lg:text-5xl">
               <span style={{ color: ORIGIN_GRAY }}>Nos </span>
               <span style={{ color: BLUE }}>6 points forts</span>
             </h2>
             <blockquote
-              className="mt-8 whitespace-nowrap border-l-4 pl-6 text-lg italic leading-relaxed"
+              className="mt-8 border-l-4 pl-6 text-lg italic leading-relaxed"
               style={{ borderColor: BLUE, color: ORIGIN_GRAY }}
             >
               « Concevoir des séjours, c’est notre métier et notre passion. »

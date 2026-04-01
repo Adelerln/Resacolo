@@ -9,6 +9,19 @@ import {
 } from '@/components/organisme/OrganizerWorkspaceControls';
 import { resolveOrganizerSelection } from '@/lib/organizers.server';
 
+const organizerNavLinks = [
+  { href: '/organisme', label: 'Organisme' },
+  { href: '/organisme/sejours', label: 'Séjours' },
+  { href: '/organisme/hebergements', label: 'Hébergements' },
+  { href: '/organisme/reservations', label: 'Réservations' }
+];
+
+function withOrganizerQuery(path: string, organizerId?: string | null) {
+  if (!organizerId) return path;
+  const separator = path.includes('?') ? '&' : '?';
+  return `${path}${separator}organizerId=${encodeURIComponent(organizerId)}`;
+}
+
 export default async function OrganizerLayout({ children }: { children: React.ReactNode }) {
   const session = requireRole('ORGANISATEUR');
   const { organizers, selectedOrganizerId } = await resolveOrganizerSelection(
@@ -18,8 +31,33 @@ export default async function OrganizerLayout({ children }: { children: React.Re
 
   return (
     <div className="min-h-screen bg-slate-50">
+      <div className="border-b border-slate-200 bg-white px-4 py-3 lg:hidden">
+        <div className="flex items-center justify-between gap-3">
+          <Link
+            href="/"
+            className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-800"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            Retour
+          </Link>
+          <Link href="/organisme" className="text-base font-semibold text-slate-900">
+            Espace Organisateur
+          </Link>
+        </div>
+        <nav className="mt-3 flex gap-2 overflow-x-auto pb-1 text-sm text-slate-600">
+          {organizerNavLinks.map((item) => (
+            <Link
+              key={item.href}
+              href={withOrganizerQuery(item.href, selectedOrganizerId)}
+              className="inline-flex shrink-0 rounded-full border border-slate-200 px-3 py-1.5 transition hover:border-slate-300 hover:text-slate-900"
+            >
+              {item.label}
+            </Link>
+          ))}
+        </nav>
+      </div>
       <div className="flex min-h-screen">
-        <aside className="w-64 border-r border-slate-200 bg-white">
+        <aside className="hidden w-64 flex-col border-r border-slate-200 bg-white lg:flex">
           <div className="px-6 py-6">
             <div className="mb-3">
               <Link
@@ -60,7 +98,7 @@ export default async function OrganizerLayout({ children }: { children: React.Re
             </div>
           </div>
         </aside>
-        <main className="flex-1 px-6 py-10">
+        <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-10">
           <Suspense
             fallback={<div className="mb-6 rounded-2xl border border-slate-200 bg-white px-4 py-4" />}
           >

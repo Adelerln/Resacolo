@@ -100,7 +100,7 @@ export function OrganizerDetailModal({ slug, onClose }: OrganizerDetailModalProp
           )}
 
           {data && !loading && (
-            <div className="px-6 pb-8">
+            <div className="px-4 pb-6 sm:px-6 sm:pb-8">
               <header className="flex flex-col items-center gap-4 border-b border-slate-200 py-8 text-center">
                 {data.organizer.logoUrl ? (
                   <img

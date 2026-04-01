@@ -6,11 +6,11 @@
 
 @layer components {
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl font-semibold transition-colors;
+    @apply inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl font-semibold transition-colors;
   }
 
   .btn-md {
-    @apply px-6 py-3 text-base;
+    @apply px-5 py-3 text-base sm:px-6;
   }
 
   .btn-sm {
@@ -50,14 +50,16 @@
 }
 
 html {
-  font-size: 18px;
+  font-size: clamp(16px, 0.45vw + 14.5px, 18px);
   scroll-behavior: smooth;
+  overflow-x: clip;
 }
 
 body {
   @apply bg-white antialiased;
   color: var(--resacolo-ink);
   text-rendering: geometricPrecision;
+  overflow-x: clip;
 }
 
 a {
@@ -67,6 +69,8 @@ a {
 
 main {
   @apply min-h-screen;
+  width: 100%;
+  overflow-x: clip;
 }
 
 .font-display {
@@ -94,11 +98,11 @@ button,
 
 /* Layout utilities */
 .section-container {
-  @apply mx-auto max-w-6xl px-6 sm:px-8;
+  @apply mx-auto max-w-6xl px-4 sm:px-6 lg:px-8;
 }
 
 .section-padding {
-  @apply py-16 sm:py-24;
+  @apply py-12 sm:py-16 lg:py-24;
 }
 
 /* Card */
@@ -120,4 +124,22 @@ button,
 .watermark-euro {
   @apply pointer-events-none select-none absolute text-[20rem] font-extrabold leading-none;
   color: var(--financing-watermark);
+}
+
+img,
+video,
+canvas,
+svg {
+  max-width: 100%;
+}
+
+img,
+video,
+canvas {
+  height: auto;
+}
+
+p,
+li {
+  overflow-wrap: anywhere;
 }

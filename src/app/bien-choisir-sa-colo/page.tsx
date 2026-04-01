@@ -55,8 +55,8 @@ export default function BienChoisirSaColoPage() {
             </h2>
           </div>
 
-          <div className="mt-0 grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-stretch">
-            <div className="rounded-[32px] bg-white py-2 pr-6 pl-0 sm:py-3 sm:pr-8 sm:pl-0 lg:py-4 lg:pr-10 lg:pl-0">
+          <div className="mt-0 grid gap-8 xl:grid-cols-[minmax(0,1fr)_320px] xl:items-stretch">
+            <div className="rounded-[32px] bg-white p-4 sm:p-6 lg:p-8">
               <div className="space-y-4 text-sm font-medium leading-7 text-slate-600 sm:text-[15px]">
                 <p>
                   Chaque enfant est unique, avec ses préférences, ses attentes ou ses besoins. Il est
@@ -105,7 +105,7 @@ export default function BienChoisirSaColoPage() {
               </div>
             </div>
 
-            <div className="relative min-h-[380px] overflow-hidden rounded-[32px]">
+            <div className="relative min-h-[280px] overflow-hidden rounded-[32px] sm:min-h-[340px] xl:min-h-[380px]">
               <Image
                 src="/image/choisirsacolo/images_choisirsacolo/bien-choisir-sa-colo.jpg"
                 alt="Enfant montant dans un bus pour partir en colonie de vacances"
@@ -121,8 +121,8 @@ export default function BienChoisirSaColoPage() {
       {/* Section 3: Questions essentielles */}
       <section className="section-container pt-0 pb-12 md:pt-0 md:pb-16">
         <div className="w-full">
-          <div className="grid max-w-6xl gap-8 lg:grid-cols-[320px_minmax(0,1fr)] lg:items-stretch">
-            <div className="relative min-h-[340px] overflow-hidden rounded-[32px] lg:h-full lg:min-h-0">
+          <div className="grid max-w-6xl gap-8 xl:grid-cols-[320px_minmax(0,1fr)] xl:items-stretch">
+            <div className="relative min-h-[260px] overflow-hidden rounded-[32px] sm:min-h-[340px] xl:h-full xl:min-h-0">
               <Image
                 src="/image/choisirsacolo/images_choisirsacolo/bien-choisir-sa-colo-communication.jpg"
                 alt="Jeune en communication pendant un sejour de colonie de vacances"
@@ -147,7 +147,7 @@ export default function BienChoisirSaColoPage() {
                 </h2>
               </div>
 
-              <div className="mt-0 rounded-[32px] bg-white py-2 pr-6 pl-0 sm:py-3 sm:pr-8 lg:py-4 lg:pr-10">
+              <div className="mt-0 rounded-[32px] bg-white p-4 sm:p-6 lg:p-8">
               <div className="space-y-4 text-sm font-medium leading-7 text-slate-600 sm:text-[15px]">
                 <p>
                   Avant de vous décider, l&apos;organisateur du séjour est à votre disposition pour répondre à
@@ -250,7 +250,7 @@ export default function BienChoisirSaColoPage() {
             </div>
           </div>
 
-          <div className="mt-12 grid max-w-6xl gap-8 lg:grid-cols-[minmax(0,1fr)_600px] lg:items-stretch">
+          <div className="mt-12 grid max-w-6xl gap-8 xl:grid-cols-[minmax(0,1fr)_minmax(340px,540px)] xl:items-stretch">
             <div>
               <div className="flex items-center justify-start gap-3 text-left sm:gap-4">
                 <div className="relative -mt-1 h-7 w-7 flex-shrink-0 sm:h-8 sm:w-8">
@@ -266,7 +266,7 @@ export default function BienChoisirSaColoPage() {
                 </h2>
               </div>
 
-              <div className="mt-0 max-w-5xl rounded-[32px] bg-white py-2 pr-6 pl-0 sm:py-3 sm:pr-8 lg:py-4 lg:pr-10">
+              <div className="mt-0 max-w-5xl rounded-[32px] bg-white p-4 sm:p-6 lg:p-8">
               <div className="space-y-4 text-sm font-medium leading-7 text-slate-600 sm:text-[15px]">
                 <p>
                   Pour aider votre enfant à s&apos;épanouir et à vivre pleinement son séjour, Resacolo
@@ -285,7 +285,7 @@ export default function BienChoisirSaColoPage() {
             </div>
             </div>
 
-            <div className="relative min-h-[220px] overflow-hidden rounded-[32px] lg:h-full lg:min-h-0">
+            <div className="relative min-h-[220px] overflow-hidden rounded-[32px] sm:min-h-[280px] xl:h-full xl:min-h-0">
               <Image
                 src="/image/choisirsacolo/images_choisirsacolo/bien-choisir-sa-colo-activite%CC%81s.jpg"
                 alt="Activites pour une colonie de vacances"

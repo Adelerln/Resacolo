@@ -22,7 +22,7 @@ export default async function AdminOrganizerNewPage({ searchParams }: PageProps)
         action="/api/admin/organizers"
         method="post"
         encType="multipart/form-data"
-        className="space-y-6 rounded-2xl border border-slate-200 bg-white p-6"
+        className="space-y-6 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6"
       >
         <div className="space-y-4">
           <h2 className="text-sm font-semibold text-slate-700">Organisme</h2>
@@ -141,7 +141,7 @@ export default async function AdminOrganizerNewPage({ searchParams }: PageProps)
           </label>
         </div>
 
-        <div className="flex items-center justify-end gap-3">
+        <div className="flex items-center justify-start gap-3 sm:justify-end">
           <button className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">
             Créer
           </button>

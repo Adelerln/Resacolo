@@ -139,14 +139,14 @@ export function StayExplorer({ stays }: StayExplorerProps) {
   const filtered = useMemo(() => applyFilters(stays, filters), [stays, filters]);
 
   return (
-    <div className="grid gap-6 md:grid-cols-[280px_1fr]">
+    <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
       <StayFilters
         value={filters}
         onChange={setFilters}
         onReset={() => setFilters(emptyFilters)}
       />
       <div className="space-y-4">
-        <header className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm text-slate-600 shadow-sm">
+        <header className="flex flex-col gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:px-5">
           <p>
             {filtered.length} séjour{filtered.length > 1 ? 's' : ''} trouvé{filtered.length > 1 ? 's' : ''}
           </p>

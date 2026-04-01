@@ -44,34 +44,36 @@ export default function BeneficiairesPage() {
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-            <tr>
-              <th className="px-4 py-3">Nom</th>
-              <th className="px-4 py-3">Email</th>
-              <th className="px-4 py-3">Rattaché le</th>
-              <th className="px-4 py-3">Statut</th>
-              <th className="px-4 py-3">Validité</th>
-              <th className="px-4 py-3"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {beneficiaries.map((beneficiary) => (
-              <tr key={beneficiary.id} className="border-t border-slate-100">
-                <td className="px-4 py-3 font-medium text-slate-900">{beneficiary.name}</td>
-                <td className="px-4 py-3 text-slate-600">{beneficiary.email}</td>
-                <td className="px-4 py-3 text-slate-600">{beneficiary.attachedAt}</td>
-                <td className="px-4 py-3 text-slate-600">{beneficiary.status}</td>
-                <td className="px-4 py-3 text-slate-600">{beneficiary.validUntil}</td>
-                <td className="px-4 py-3 text-right">
-                  <button className="rounded border border-slate-200 px-2 py-1 text-xs text-slate-600">
-                    Modifier
-                  </button>
-                </td>
+        <div className="overflow-x-auto">
+          <table className="min-w-[680px] w-full text-left text-sm">
+            <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+              <tr>
+                <th className="px-4 py-3">Nom</th>
+                <th className="px-4 py-3">Email</th>
+                <th className="px-4 py-3">Rattaché le</th>
+                <th className="px-4 py-3">Statut</th>
+                <th className="px-4 py-3">Validité</th>
+                <th className="px-4 py-3"></th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {beneficiaries.map((beneficiary) => (
+                <tr key={beneficiary.id} className="border-t border-slate-100">
+                  <td className="px-4 py-3 font-medium text-slate-900">{beneficiary.name}</td>
+                  <td className="px-4 py-3 text-slate-600">{beneficiary.email}</td>
+                  <td className="px-4 py-3 text-slate-600">{beneficiary.attachedAt}</td>
+                  <td className="px-4 py-3 text-slate-600">{beneficiary.status}</td>
+                  <td className="px-4 py-3 text-slate-600">{beneficiary.validUntil}</td>
+                  <td className="px-4 py-3 text-right">
+                    <button className="rounded border border-slate-200 px-2 py-1 text-xs text-slate-600">
+                      Modifier
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

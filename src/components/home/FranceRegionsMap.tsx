@@ -196,7 +196,7 @@ export function FranceRegionsMap() {
 
   if (!svgMap) {
     return (
-      <div className="flex min-h-[420px] items-center justify-center rounded-[28px] bg-[#f8fbff] text-sm text-slate-500">
+      <div className="flex min-h-[260px] items-center justify-center rounded-[28px] bg-[#f8fbff] text-sm text-slate-500 sm:min-h-[340px] md:min-h-[420px]">
         Chargement de la carte…
       </div>
     );
@@ -256,7 +256,7 @@ export function FranceRegionsMap() {
           }}
         >
           <div
-            className="relative whitespace-nowrap rounded-2xl border border-slate-200 px-4 py-2.5 text-[17px] font-semibold text-[#232323] shadow-lg"
+            className="relative max-w-[calc(100vw-2rem)] rounded-2xl border border-slate-200 px-3 py-2 text-center text-sm font-semibold text-[#232323] shadow-lg sm:max-w-none sm:whitespace-nowrap sm:px-4 sm:py-2.5 sm:text-[15px]"
             style={{ fontFamily: 'var(--font-primary)', backgroundColor: '#ffffff', opacity: 1 }}
           >
             {hoveredRegion.name}

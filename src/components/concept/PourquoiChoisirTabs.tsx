@@ -89,7 +89,7 @@ export function PourquoiChoisirTabs() {
     <>
       <div className="relative mb-5">
         <span
-          className="pointer-events-none absolute right-0 -top-24 select-none font-serif text-[160px] leading-none text-accent-100/55 rotate-180"
+          className="pointer-events-none absolute right-0 -top-16 hidden select-none font-serif text-[120px] leading-none text-accent-100/55 rotate-180 sm:block lg:-top-24 lg:text-[160px]"
           aria-hidden
         >
           ❝
@@ -99,7 +99,7 @@ export function PourquoiChoisirTabs() {
         </h3>
         <div className="h-0.5 w-full bg-slate-300" aria-hidden />
       </div>
-      <div className="space-y-4 text-justify font-medium leading-relaxed text-slate-600">
+      <div className="space-y-4 text-left font-medium leading-relaxed text-slate-600 sm:text-justify">
         {tab.content}
       </div>
     </>
@@ -107,7 +107,7 @@ export function PourquoiChoisirTabs() {
 
   return (
     <div className="flex flex-col gap-8 lg:flex-row lg:items-center lg:gap-12">
-      <div className="flex flex-col gap-2 lg:min-w-[240px] lg:justify-center">
+      <div className="flex flex-col gap-2 lg:min-w-[220px] lg:justify-center">
         {tabs.map((tab) => (
           <button
             key={tab.id}
@@ -132,7 +132,7 @@ export function PourquoiChoisirTabs() {
         ))}
       </div>
 
-      <div className="relative flex-1 overflow-hidden rounded-xl bg-transparent p-6 shadow-none lg:p-10">
+      <div className="relative flex-1 overflow-hidden rounded-xl bg-transparent p-4 shadow-none sm:p-6 lg:p-10">
         <div className="relative grid min-h-full">
           {tabs.map((tab) => (
             <div

@@ -374,7 +374,7 @@ export function StayDetailView({ stay }: { stay: Stay }) {
   return (
     <div className="min-h-screen bg-white">
       {/* Banner */}
-      <section className="relative h-[280px] w-full overflow-hidden sm:h-[320px] md:h-[380px]">
+      <section className="relative h-[240px] w-full overflow-hidden sm:h-[300px] md:h-[360px]">
         <Image
           src={stay.coverImage || galleryImages[0]}
           alt=""
@@ -385,16 +385,16 @@ export function StayDetailView({ stay }: { stay: Stay }) {
         />
         <div className="absolute inset-0 bg-slate-900/40" />
         <div className="absolute inset-0 flex items-center justify-center">
-          <h1 className="font-display text-4xl font-bold tracking-tight text-white drop-shadow-lg sm:text-5xl md:text-6xl">
+          <h1 className="px-4 text-center font-display text-3xl font-bold tracking-tight text-white drop-shadow-lg sm:text-4xl md:text-5xl">
             {stay.title}
           </h1>
         </div>
       </section>
 
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <div className="grid gap-10 lg:grid-cols-[1fr_380px]">
+        <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_360px] xl:gap-10">
           {/* Main column */}
-          <article>
+          <article className="min-w-0">
             {/* Meta line */}
             <div className="mb-6 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-slate-600">
               <span className="flex items-center gap-1.5">
@@ -435,7 +435,7 @@ export function StayDetailView({ stay }: { stay: Stay }) {
             )}
 
             {/* Gallery */}
-            <div className="mb-10 grid grid-cols-3 gap-2 sm:gap-3">
+            <div className="mb-10 grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3">
               {galleryImages.slice(0, 3).map((src, i) => (
                 <div key={i} className="relative aspect-[4/3] overflow-hidden rounded-xl bg-slate-100">
                   <Image
@@ -579,16 +579,16 @@ export function StayDetailView({ stay }: { stay: Stay }) {
           </article>
 
           {/* Sidebar */}
-          <aside className="lg:sticky lg:top-8 lg:self-start">
-            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <aside className="min-w-0 xl:sticky xl:top-8 xl:self-start">
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
               <h2 className="font-display text-lg font-semibold text-slate-900">
                 Informations & Réservation
               </h2>
               <p className="mt-2 text-2xl font-bold text-accent-600">
                 {hasStartedSelection && estimatedPrice != null ? (
-                  <span className="whitespace-nowrap">
-                    <span>{formatPrice(estimatedPrice)}</span>
-                    <span className="ml-2 text-sm font-medium text-accent-500">
+                  <span>
+                    <span className="inline-block">{formatPrice(estimatedPrice)}</span>
+                    <span className="block text-sm font-medium text-accent-500 sm:inline sm:ml-2">
                       (sélection actuelle)
                     </span>
                   </span>
@@ -774,7 +774,7 @@ export function StayDetailView({ stay }: { stay: Stay }) {
             </div>
 
             {/* Lieux de séjour */}
-            <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
               <h3 className="font-display flex items-center gap-2 text-base font-semibold text-slate-900">
                 <PinIcon className="h-4 w-4 text-accent-500" />
                 Ville du séjour
@@ -786,7 +786,7 @@ export function StayDetailView({ stay }: { stay: Stay }) {
             </div>
 
             {/* Organisateur */}
-            <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
               <h3 className="font-display flex items-center gap-2 text-base font-semibold text-slate-900">
                 <User className="h-4 w-4 text-accent-500" />
                 Organisateur du séjour

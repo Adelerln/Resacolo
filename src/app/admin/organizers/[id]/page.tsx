@@ -64,7 +64,7 @@ export default async function AdminOrganizerDetailPage({ params, searchParams }:
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">{organizer.name}</h1>
           <p className="text-sm text-slate-600">{organizer.contact_email ?? '-'}</p>
@@ -86,7 +86,7 @@ export default async function AdminOrganizerDetailPage({ params, searchParams }:
         action={`/api/admin/organizers/${organizerSlug}`}
         method="post"
         encType="multipart/form-data"
-        className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-600"
+        className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-600 sm:p-6"
       >
         <h2 className="text-lg font-semibold text-slate-900">Fiche organisme</h2>
         <div className="grid gap-2 md:grid-cols-2">
@@ -185,7 +185,7 @@ export default async function AdminOrganizerDetailPage({ params, searchParams }:
           <div className="block text-sm font-medium text-slate-700">
             <span>Projet éducatif (PDF)</span>
             {hasProject ? (
-              <div className="mt-2 flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+              <div className="mt-2 flex flex-wrap items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                 <div className="flex h-10 w-10 items-center justify-center rounded-md bg-red-100 text-red-600">
                   <span className="text-xs font-bold">PDF</span>
                 </div>
@@ -238,7 +238,7 @@ export default async function AdminOrganizerDetailPage({ params, searchParams }:
         method="post"
       />
 
-      <div className="flex justify-end">
+      <div className="flex justify-start sm:justify-end">
         <Link
           href={`/admin/organizers/${organizerSlug}/members/new`}
           className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700"
@@ -248,83 +248,85 @@ export default async function AdminOrganizerDetailPage({ params, searchParams }:
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-            <tr>
-              <th className="px-4 py-3">Email</th>
-              <th className="px-4 py-3">Prénom</th>
-              <th className="px-4 py-3">Nom</th>
-              <th className="px-4 py-3">Rôle</th>
-              <th className="px-4 py-3">Ajouté le</th>
-              <th className="px-4 py-3"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {(members ?? []).map((member) => (
-              <tr key={member.id} className="border-t border-slate-100">
-                <td className="px-4 py-3 text-slate-600">
-                  <input
-                    form={`member-${member.id}`}
-                    name="email"
-                    defaultValue={member.email ?? ''}
-                    className="w-48 rounded border border-slate-200 px-2 py-1 text-xs"
-                  />
-                </td>
-                <td className="px-4 py-3 text-slate-600">
-                  <input
-                    form={`member-${member.id}`}
-                    name="first_name"
-                    defaultValue={member.first_name ?? ''}
-                    className="w-24 rounded border border-slate-200 px-2 py-1 text-xs"
-                  />
-                </td>
-                <td className="px-4 py-3 text-slate-600">
-                  <input
-                    form={`member-${member.id}`}
-                    name="last_name"
-                    defaultValue={member.last_name ?? ''}
-                    className="w-24 rounded border border-slate-200 px-2 py-1 text-xs"
-                  />
-                </td>
-                <td className="px-4 py-3 text-slate-600">
-                  <select
-                    form={`member-${member.id}`}
-                    name="role"
-                    defaultValue={member.role}
-                    className="rounded border border-slate-200 px-2 py-1 text-xs"
-                  >
-                    <option value="OWNER">OWNER</option>
-                    <option value="EDITOR">EDITOR</option>
-                    <option value="RESERVATION_MANAGER">RESERVATION_MANAGER</option>
-                  </select>
-                </td>
-                <td className="px-4 py-3 text-slate-600">
-                  {new Date(member.created_at).toLocaleDateString('fr-FR')}
-                </td>
-                <td className="px-4 py-3 text-right">
-                  <form
-                    id={`member-${member.id}`}
-                    action={`/api/admin/organizers/${organizerSlug}/members/${member.id}`}
-                    method="post"
-                  >
-                    <input type="hidden" name="member_id" value={member.id} />
-                    <input type="hidden" name="user_id" value={member.user_id} />
-                    <button className="rounded bg-emerald-600 px-2 py-1 text-xs font-semibold text-white">
-                      OK
-                    </button>
-                  </form>
-                </td>
-              </tr>
-            ))}
-            {(members ?? []).length === 0 && (
+        <div className="overflow-x-auto">
+          <table className="min-w-[860px] w-full text-left text-sm">
+            <thead className="bg-slate-50 text-xs uppercase text-slate-500">
               <tr>
-                <td className="px-4 py-6 text-slate-500" colSpan={6}>
-                  Aucun membre.
-                </td>
+                <th className="px-4 py-3">Email</th>
+                <th className="px-4 py-3">Prénom</th>
+                <th className="px-4 py-3">Nom</th>
+                <th className="px-4 py-3">Rôle</th>
+                <th className="px-4 py-3">Ajouté le</th>
+                <th className="px-4 py-3"></th>
               </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {(members ?? []).map((member) => (
+                <tr key={member.id} className="border-t border-slate-100">
+                  <td className="px-4 py-3 text-slate-600">
+                    <input
+                      form={`member-${member.id}`}
+                      name="email"
+                      defaultValue={member.email ?? ''}
+                      className="w-48 rounded border border-slate-200 px-2 py-1 text-xs"
+                    />
+                  </td>
+                  <td className="px-4 py-3 text-slate-600">
+                    <input
+                      form={`member-${member.id}`}
+                      name="first_name"
+                      defaultValue={member.first_name ?? ''}
+                      className="w-24 rounded border border-slate-200 px-2 py-1 text-xs"
+                    />
+                  </td>
+                  <td className="px-4 py-3 text-slate-600">
+                    <input
+                      form={`member-${member.id}`}
+                      name="last_name"
+                      defaultValue={member.last_name ?? ''}
+                      className="w-24 rounded border border-slate-200 px-2 py-1 text-xs"
+                    />
+                  </td>
+                  <td className="px-4 py-3 text-slate-600">
+                    <select
+                      form={`member-${member.id}`}
+                      name="role"
+                      defaultValue={member.role}
+                      className="rounded border border-slate-200 px-2 py-1 text-xs"
+                    >
+                      <option value="OWNER">OWNER</option>
+                      <option value="EDITOR">EDITOR</option>
+                      <option value="RESERVATION_MANAGER">RESERVATION_MANAGER</option>
+                    </select>
+                  </td>
+                  <td className="px-4 py-3 text-slate-600">
+                    {new Date(member.created_at).toLocaleDateString('fr-FR')}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <form
+                      id={`member-${member.id}`}
+                      action={`/api/admin/organizers/${organizerSlug}/members/${member.id}`}
+                      method="post"
+                    >
+                      <input type="hidden" name="member_id" value={member.id} />
+                      <input type="hidden" name="user_id" value={member.user_id} />
+                      <button className="rounded bg-emerald-600 px-2 py-1 text-xs font-semibold text-white">
+                        OK
+                      </button>
+                    </form>
+                  </td>
+                </tr>
+              ))}
+              {(members ?? []).length === 0 && (
+                <tr>
+                  <td className="px-4 py-6 text-slate-500" colSpan={6}>
+                    Aucun membre.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

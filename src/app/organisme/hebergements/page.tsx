@@ -113,7 +113,7 @@ export default async function OrganizerAccommodationsPage({ searchParams }: Page
         </div>
       )}
 
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Hébergements</h1>
           <p className="text-sm text-slate-600">
@@ -124,74 +124,76 @@ export default async function OrganizerAccommodationsPage({ searchParams }: Page
         </div>
         <Link
           href={withOrganizerQuery('/organisme/hebergements/new', selectedOrganizerId)}
-          className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white"
+          className="inline-flex min-h-[44px] items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white"
         >
           Ajouter un hébergement
         </Link>
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-            <tr>
-              <th className="px-4 py-3">Hébergement</th>
-              <th className="px-4 py-3">Type</th>
-              <th className="px-4 py-3">Séjours liés</th>
-              <th className="px-4 py-3">Médias</th>
-              <th className="px-4 py-3">Statut</th>
-              <th className="px-4 py-3">Mis à jour</th>
-              <th className="px-4 py-3"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {accommodations.map((accommodation) => (
-              <tr key={accommodation.id} className="border-t border-slate-100 align-top">
-                <td className="px-4 py-3">
-                  <div className="font-medium text-slate-900">{accommodation.name}</div>
-                  <div className="mt-1 max-w-md text-xs text-slate-500">
-                    {accommodation.description || 'Aucune description'}
-                  </div>
-                </td>
-                <td className="px-4 py-3 text-slate-600">
-                  {formatAccommodationType(accommodation.accommodation_type)}
-                </td>
-                <td className="px-4 py-3 text-slate-600">
-                  {accommodation.linkedStayTitles.length > 0
-                    ? accommodation.linkedStayTitles.join(', ')
-                    : 'Aucun'}
-                </td>
-                <td className="px-4 py-3 text-slate-600">{accommodation.mediaCount}</td>
-                <td className="px-4 py-3 text-slate-600">{accommodation.status}</td>
-                <td className="px-4 py-3 text-slate-600">
-                  {new Date(accommodation.updated_at).toLocaleDateString('fr-FR')}
-                </td>
-                <td className="px-4 py-3 text-right">
-                  <div className="flex items-center justify-end gap-2">
-                    <Link
-                      href={withOrganizerQuery(`/organisme/hebergements/${accommodation.id}`, selectedOrganizerId)}
-                      className="rounded-lg border border-emerald-200 px-3 py-1 text-xs font-semibold text-emerald-700"
-                    >
-                      Éditer
-                    </Link>
-                    <form action={deleteAccommodation}>
-                      <input type="hidden" name="accommodation_id" value={accommodation.id} />
-                      <button className="rounded-lg border border-rose-200 px-3 py-1 text-xs font-semibold text-rose-700">
-                        Supprimer
-                      </button>
-                    </form>
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {accommodations.length === 0 && (
+        <div className="overflow-x-auto">
+          <table className="min-w-[980px] w-full text-left text-sm">
+            <thead className="bg-slate-50 text-xs uppercase text-slate-500">
               <tr>
-                <td className="px-4 py-6 text-slate-500" colSpan={7}>
-                  Aucun hébergement créé pour cet organisateur.
-                </td>
+                <th className="px-4 py-3">Hébergement</th>
+                <th className="px-4 py-3">Type</th>
+                <th className="px-4 py-3">Séjours liés</th>
+                <th className="px-4 py-3">Médias</th>
+                <th className="px-4 py-3">Statut</th>
+                <th className="px-4 py-3">Mis à jour</th>
+                <th className="px-4 py-3"></th>
               </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {accommodations.map((accommodation) => (
+                <tr key={accommodation.id} className="border-t border-slate-100 align-top">
+                  <td className="px-4 py-3">
+                    <div className="font-medium text-slate-900">{accommodation.name}</div>
+                    <div className="mt-1 max-w-md text-xs text-slate-500">
+                      {accommodation.description || 'Aucune description'}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-slate-600">
+                    {formatAccommodationType(accommodation.accommodation_type)}
+                  </td>
+                  <td className="px-4 py-3 text-slate-600">
+                    {accommodation.linkedStayTitles.length > 0
+                      ? accommodation.linkedStayTitles.join(', ')
+                      : 'Aucun'}
+                  </td>
+                  <td className="px-4 py-3 text-slate-600">{accommodation.mediaCount}</td>
+                  <td className="px-4 py-3 text-slate-600">{accommodation.status}</td>
+                  <td className="px-4 py-3 text-slate-600">
+                    {new Date(accommodation.updated_at).toLocaleDateString('fr-FR')}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      <Link
+                        href={withOrganizerQuery(`/organisme/hebergements/${accommodation.id}`, selectedOrganizerId)}
+                        className="rounded-lg border border-emerald-200 px-3 py-1 text-xs font-semibold text-emerald-700"
+                      >
+                        Éditer
+                      </Link>
+                      <form action={deleteAccommodation}>
+                        <input type="hidden" name="accommodation_id" value={accommodation.id} />
+                        <button className="rounded-lg border border-rose-200 px-3 py-1 text-xs font-semibold text-rose-700">
+                          Supprimer
+                        </button>
+                      </form>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {accommodations.length === 0 && (
+                <tr>
+                  <td className="px-4 py-6 text-slate-500" colSpan={7}>
+                    Aucun hébergement créé pour cet organisateur.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

@@ -118,7 +118,7 @@ export default async function NewStayPage({ searchParams }: PageProps) {
             : 'Création d’un séjour.'}
         </p>
       </div>
-      <form action={createStay} className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
+      <form action={createStay} className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
         <label className="block text-sm font-medium text-slate-700">
           Titre
           <input name="title" className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2" required />
@@ -160,7 +160,7 @@ export default async function NewStayPage({ searchParams }: PageProps) {
             <div className="text-sm font-medium text-slate-700">Âges</div>
             <p className="mt-1 text-xs text-slate-500">Coche les âges proposés.</p>
           </div>
-          <div className="grid grid-cols-4 gap-2 md:grid-cols-6 lg:grid-cols-8">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8">
             {STAY_AGE_OPTIONS.map((age) => (
               <label
                 key={age}

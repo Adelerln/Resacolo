@@ -81,7 +81,7 @@ function FiltersPanel({
   onToggle: (groupId: keyof FilterState, option: string) => void;
 }) {
   return (
-    <aside className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <aside className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
       <h2 className="text-2xl font-semibold text-slate-900">
         Filtrez <span className="text-accent-500">les séjours</span>
       </h2>
@@ -156,8 +156,8 @@ function StayCard({ stay }: { stay: StayCardData }) {
           </span>
         </div>
 
-        <CardContent className="space-y-4 p-4 pt-6">
-          <div className="flex items-center justify-between gap-3 whitespace-nowrap text-xs font-medium text-brand-600">
+        <CardContent className="space-y-4 p-4 pt-5 sm:pt-6">
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-medium text-brand-600">
             <span className="inline-flex min-w-0 items-center gap-1.5">
               <MapPin className="h-3.5 w-3.5" />
               <span className="min-w-0 truncate">{stay.location}</span>
@@ -169,7 +169,7 @@ function StayCard({ stay }: { stay: StayCardData }) {
           </div>
 
           <div className="space-y-2 pt-1 text-center">
-            <CardTitle className="text-xl font-bold text-slate-900">{stay.title}</CardTitle>
+            <CardTitle className="text-lg font-bold text-slate-900 sm:text-xl">{stay.title}</CardTitle>
             <CardDescription className="text-sm text-slate-500">{stay.subtitle}</CardDescription>
             <p
               className="text-sm leading-6 text-slate-600"
@@ -328,7 +328,7 @@ export function StayCatalogPage({
           <div className="absolute inset-0 bg-slate-900/60" />
         </div>
 
-        <div className="relative mx-auto max-w-7xl px-6 py-20 md:py-28">
+        <div className="relative mx-auto max-w-7xl px-4 py-14 sm:px-6 sm:py-20 md:py-24">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/90">
             <span className="relative inline-flex items-center gap-3">
               <span className="relative z-10 inline-flex items-center gap-2">
@@ -341,7 +341,7 @@ export function StayCatalogPage({
               />
             </span>
           </p>
-          <h1 className="mt-4 max-w-3xl text-4xl font-extrabold leading-tight text-white md:text-5xl">
+          <h1 className="mt-4 max-w-3xl text-3xl font-extrabold leading-tight text-white sm:text-4xl md:text-5xl">
             Colonies de vacances et séjours jeunes adultes
           </h1>
           <p className="mt-4 max-w-2xl text-base text-white/85 md:text-lg">
@@ -350,8 +350,8 @@ export function StayCatalogPage({
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-6 py-10">
-        <div className="mb-5 flex items-center justify-between gap-3 lg:hidden">
+      <section className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10">
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3 xl:hidden">
           <button
             type="button"
             onClick={() => setMobileFiltersOpen(true)}
@@ -365,13 +365,13 @@ export function StayCatalogPage({
           </select>
         </div>
 
-        <div className="grid grid-cols-1 gap-8 lg:grid-cols-4">
-          <div className="hidden lg:block">
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-4 xl:gap-8">
+          <div className="hidden xl:block">
             <FiltersPanel filters={filters} onToggle={toggleFilter} />
           </div>
 
-          <div className="lg:col-span-3">
-            <div className="mb-5 hidden items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 lg:flex">
+          <div className="xl:col-span-3">
+            <div className="mb-5 hidden items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 xl:flex">
               <p>
                 Affichage de 1-{filteredStays.length} sur {normalizedStays.length} résultats
               </p>
@@ -380,7 +380,7 @@ export function StayCatalogPage({
               </select>
             </div>
 
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3">
               {filteredStays.length === 0 ? (
                 <p className="text-sm text-slate-600">
                   Aucun séjour disponible pour les filtres sélectionnés.
@@ -394,14 +394,14 @@ export function StayCatalogPage({
       </section>
 
       {mobileFiltersOpen && (
-        <div className="fixed inset-0 z-[120] lg:hidden">
+        <div className="fixed inset-0 z-[120] xl:hidden">
           <button
             type="button"
             className="absolute inset-0 bg-slate-900/45"
             onClick={() => setMobileFiltersOpen(false)}
             aria-label="Fermer le panneau de filtres"
           />
-          <div className="absolute right-0 top-0 h-full w-[88%] max-w-sm overflow-y-auto bg-white p-4 shadow-xl">
+          <div className="absolute right-0 top-0 h-full w-full max-w-[420px] overflow-y-auto bg-white p-4 shadow-xl sm:p-5">
             <div className="mb-4 flex items-center justify-between">
               <p className="text-lg font-semibold text-slate-900">Filtres</p>
               <button
@@ -419,10 +419,10 @@ export function StayCatalogPage({
 
       <button
         type="button"
-        className="fixed bottom-6 right-6 z-[110] flex h-14 w-14 items-center justify-center rounded-full bg-accent-500 text-white shadow-xl transition hover:bg-accent-600"
+        className="fixed bottom-4 right-4 z-[110] flex h-12 w-12 items-center justify-center rounded-full bg-accent-500 text-white shadow-xl transition hover:bg-accent-600 sm:bottom-6 sm:right-6 sm:h-14 sm:w-14"
         aria-label="Panier"
       >
-        <ShoppingCart className="h-6 w-6" />
+        <ShoppingCart className="h-5 w-5 sm:h-6 sm:w-6" />
         <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-brand-600 text-xs font-semibold text-white">
           0
         </span>

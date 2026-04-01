@@ -47,7 +47,7 @@ export default function RemainingPlacesEditor({
       {isDirty && (
         <button
           type="submit"
-          className="fixed bottom-4 right-4 z-30 rounded-full bg-emerald-600 px-5 py-3 text-sm font-semibold text-white shadow-lg"
+          className="fixed bottom-4 left-4 right-4 z-30 rounded-full bg-emerald-600 px-5 py-3 text-sm font-semibold text-white shadow-lg sm:left-auto sm:right-4 sm:w-auto"
         >
           {buttonLabel}
         </button>

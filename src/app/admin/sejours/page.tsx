@@ -56,62 +56,64 @@ export default async function AdminStaysPage() {
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold text-slate-900">Tous les séjours</h1>
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-            <tr>
-              <th className="px-4 py-3">Séjour</th>
-              <th className="px-4 py-3">Organisateur</th>
-              <th className="px-4 py-3">Saison</th>
-              <th className="px-4 py-3">Statut</th>
-              <th className="px-4 py-3"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {stays.map((stay) => (
-              <tr key={stay.id} className="border-t border-slate-100">
-                <td className="px-4 py-3 font-medium text-slate-900">{stay.title}</td>
-                <td className="px-4 py-3 text-slate-600">
-                  {organizersById.get(stay.organizer_id) ?? '-'}
-                </td>
-                <td className="px-4 py-3 text-slate-600">
-                  {seasonsById.get(stay.season_id) ?? '-'}
-                </td>
-                <td className="px-4 py-3 text-slate-600">{stayStatusLabel(stay.status)}</td>
-                <td className="px-4 py-3 text-right">
-                  <form action={updateStatus} className="flex items-center justify-end gap-2">
-                    <input type="hidden" name="stayId" value={stay.id} />
-                    <select
-                      name="status"
-                      defaultValue={stay.status}
-                      className="rounded border border-slate-200 px-2 py-1 text-xs"
-                    >
-                      <option value="DRAFT">Brouillon</option>
-                      <option value="PUBLISHED">Publié</option>
-                      <option value="HIDDEN">Masqué</option>
-                      <option value="ARCHIVED">Archivé</option>
-                    </select>
-                    <button className="rounded bg-emerald-600 px-2 py-1 text-xs font-semibold text-white">
-                      OK
-                    </button>
-                    <Link
-                      href={`/admin/sejours/${stay.id}`}
-                      className="rounded border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-700"
-                    >
-                      Editer
-                    </Link>
-                  </form>
-                </td>
-              </tr>
-            ))}
-            {stays.length === 0 && (
+        <div className="overflow-x-auto">
+          <table className="min-w-[760px] w-full text-left text-sm">
+            <thead className="bg-slate-50 text-xs uppercase text-slate-500">
               <tr>
-                <td className="px-4 py-6 text-slate-500" colSpan={5}>
-                  {error?.message ? `Erreur: ${error.message}` : 'Aucun séjour.'}
-                </td>
+                <th className="px-4 py-3">Séjour</th>
+                <th className="px-4 py-3">Organisateur</th>
+                <th className="px-4 py-3">Saison</th>
+                <th className="px-4 py-3">Statut</th>
+                <th className="px-4 py-3"></th>
               </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {stays.map((stay) => (
+                <tr key={stay.id} className="border-t border-slate-100">
+                  <td className="px-4 py-3 font-medium text-slate-900">{stay.title}</td>
+                  <td className="px-4 py-3 text-slate-600">
+                    {organizersById.get(stay.organizer_id) ?? '-'}
+                  </td>
+                  <td className="px-4 py-3 text-slate-600">
+                    {seasonsById.get(stay.season_id) ?? '-'}
+                  </td>
+                  <td className="px-4 py-3 text-slate-600">{stayStatusLabel(stay.status)}</td>
+                  <td className="px-4 py-3 text-right">
+                    <form action={updateStatus} className="flex items-center justify-end gap-2">
+                      <input type="hidden" name="stayId" value={stay.id} />
+                      <select
+                        name="status"
+                        defaultValue={stay.status}
+                        className="rounded border border-slate-200 px-2 py-1 text-xs"
+                      >
+                        <option value="DRAFT">Brouillon</option>
+                        <option value="PUBLISHED">Publié</option>
+                        <option value="HIDDEN">Masqué</option>
+                        <option value="ARCHIVED">Archivé</option>
+                      </select>
+                      <button className="rounded bg-emerald-600 px-2 py-1 text-xs font-semibold text-white">
+                        OK
+                      </button>
+                      <Link
+                        href={`/admin/sejours/${stay.id}`}
+                        className="rounded border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-700"
+                      >
+                        Editer
+                      </Link>
+                    </form>
+                  </td>
+                </tr>
+              ))}
+              {stays.length === 0 && (
+                <tr>
+                  <td className="px-4 py-6 text-slate-500" colSpan={5}>
+                    {error?.message ? `Erreur: ${error.message}` : 'Aucun séjour.'}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

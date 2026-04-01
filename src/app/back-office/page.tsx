@@ -75,7 +75,7 @@ export default function BackOfficeDashboardPage() {
 
       {/* Séjours les plus regardés */}
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+        <div className="flex flex-col gap-3 border-b border-slate-200 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
           <div>
             <h2 className="font-display text-lg font-semibold text-slate-900">
               Séjours les plus consultés
@@ -96,13 +96,13 @@ export default function BackOfficeDashboardPage() {
           {mockTopViewed.map((item, i) => (
             <li
               key={item.title}
-              className="flex items-center justify-between px-6 py-3 hover:bg-slate-50/50"
+              className="flex flex-col gap-2 px-4 py-3 hover:bg-slate-50/50 sm:flex-row sm:items-center sm:justify-between sm:px-6"
             >
-              <span className="flex items-center gap-3">
+              <span className="flex min-w-0 items-center gap-3">
                 <span className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 font-display text-xs font-bold text-slate-600">
                   {i + 1}
                 </span>
-                <span className="text-slate-800">{item.title}</span>
+                <span className="min-w-0 text-slate-800">{item.title}</span>
               </span>
               <span className="text-sm font-medium text-slate-500">
                 {item.views} vues

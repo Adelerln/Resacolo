@@ -16,16 +16,16 @@ const legalLinks = [
 export function Footer() {
   return (
     <footer className="bg-[#7dbcf0] text-white">
-      <div className="section-container py-7 sm:py-8">
-        <div className="border-t border-white/35 pt-6">
-          <div className="grid gap-8 lg:grid-cols-[1.2fr_0.9fr]">
+      <div className="section-container py-6 sm:py-8">
+        <div className="border-t border-white/35 pt-5 sm:pt-6">
+          <div className="grid gap-8 md:grid-cols-[1.1fr_1fr] lg:grid-cols-[1.2fr_0.9fr]">
             <div className="max-w-md">
               <Link href="/" className="inline-flex items-start text-white">
-                <span className="font-display text-[42px] font-bold uppercase leading-none tracking-tight sm:text-[52px]">
+                <span className="font-display text-[34px] font-bold uppercase leading-none tracking-tight sm:text-[42px] lg:text-[52px]">
                   RESACOLO
                 </span>
               </Link>
-              <div className="mt-4 space-y-3 text-[15px] leading-6 text-white">
+              <div className="mt-4 space-y-3 text-sm leading-6 text-white sm:text-[15px]">
                 <p>
                   Plateforme de référencement et de réservation de colonies de vacances élaborée par des organisateurs
                   de séjours.
@@ -68,7 +68,7 @@ export function Footer() {
         </div>
       </div>
 
-      <div className="border-t border-white/20 py-3 text-center text-sm font-bold text-white">
+      <div className="border-t border-white/20 px-4 py-3 text-center text-xs font-bold text-white sm:text-sm">
         © 2026 – RESACOLO | Colonie de vacances pour enfants, ados et séjour jeunes adultes
       </div>
     </footer>

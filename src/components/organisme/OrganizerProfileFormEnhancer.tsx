@@ -86,11 +86,11 @@ export default function OrganizerProfileFormEnhancer({
   if (!isDirty) return null;
 
   return (
-    <div className="sticky bottom-4 z-10 flex justify-end">
+    <div className="sticky bottom-3 z-10 flex justify-center sm:bottom-4 sm:justify-end">
       <button
         type="submit"
         form={formId}
-        className="rounded-full bg-emerald-600 px-5 py-3 text-sm font-semibold text-white shadow-lg"
+        className="w-full max-w-xs rounded-full bg-emerald-600 px-5 py-3 text-sm font-semibold text-white shadow-lg sm:w-auto sm:max-w-none"
       >
         Enregistrer
       </button>

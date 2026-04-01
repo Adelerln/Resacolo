@@ -188,7 +188,7 @@ export default async function OrganizerStaysPage({ searchParams }: PageProps) {
     <div className="space-y-6">
       {savedParam === '1' && <SavedToast message="Le stock de la session a bien été mis à jour." />}
       {errorParam && <ErrorToast message={decodeURIComponent(errorParam)} />}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Séjours</h1>
           <p className="text-sm text-slate-600">
@@ -199,13 +199,13 @@ export default async function OrganizerStaysPage({ searchParams }: PageProps) {
         </div>
         <Link
           href={withOrganizerQuery('/organisme/sejours/new', organizerId)}
-          className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white"
+          className="inline-flex min-h-[44px] items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white"
         >
           Nouveau séjour
         </Link>
       </div>
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-6">
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
         <h2 className="text-lg font-semibold text-slate-900">Pré-remplissage depuis une URL</h2>
         <p className="mt-1 text-sm text-slate-600">
           Collez l&apos;URL d&apos;une fiche séjour existante pour préparer un brouillon automatiquement

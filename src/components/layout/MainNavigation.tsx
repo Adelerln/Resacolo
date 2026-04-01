@@ -31,11 +31,13 @@ const backOfficeLinks = [
   { href: '/partenaire', label: 'Collectivité' }
 ];
 
-const headerLinkClass = 'text-[17px] font-bold tracking-[1px] !text-[#37b5f4] transition-opacity hover:opacity-80';
+const headerLinkClass =
+  'whitespace-nowrap text-[15px] font-bold tracking-[0.03em] !text-[#37b5f4] transition-opacity hover:opacity-80 xl:text-base';
 const headerDropdownItemClass =
-  'block whitespace-nowrap px-4 py-2 text-[15px] font-bold tracking-[1px] !text-[#37b5f4] hover:bg-slate-50 hover:opacity-80';
+  'block px-4 py-2 text-[15px] font-bold tracking-[0.03em] !text-[#37b5f4] hover:bg-slate-50 hover:opacity-80';
 const headerIconButtonClass =
-  'flex h-7 w-7 items-center justify-center bg-transparent transition hover:opacity-80';
+  'flex h-9 w-9 items-center justify-center rounded-full bg-transparent transition hover:bg-slate-50 hover:opacity-80';
+const mobileHeaderLinkClass = 'block text-base font-semibold leading-snug !text-[#37b5f4]';
 
 function isLinkItem(
   item: (typeof links)[number]
@@ -105,23 +107,40 @@ export function MainNavigation() {
     };
   }, []);
 
+  useEffect(() => {
+    setOpen(false);
+    setDropdownOpen(false);
+    setBackOfficeOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!open) {
+      document.body.style.overflow = '';
+      return;
+    }
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [open]);
+
   const toggle = () => setOpen((current) => !current);
   const close = () => setOpen(false);
 
   return (
     <header className="relative z-[100] overflow-visible border-b border-slate-200 bg-white/80 backdrop-blur">
-      <div className="section-container flex items-center justify-between overflow-visible py-4">
+      <div className="section-container flex items-center justify-between gap-3 overflow-visible py-3 sm:py-4">
         <Link href="/" className="flex items-center gap-3 text-2xl font-semibold tracking-tight text-slate-900">
           <Image
             src="/image/accueil/images_accueil/logo-resacolo.png"
             alt="Resacolo"
             width={140}
             height={40}
-            className="h-10 w-auto"
+            className="h-9 w-auto sm:h-10"
             priority
           />
         </Link>
-        <nav className="hidden items-center gap-8 overflow-visible font-medium md:flex">
+        <nav className="hidden items-center gap-6 overflow-visible font-medium xl:flex">
           {links.map((link) => {
             if (isDropdownItem(link)) {
               const isActive = link.children.some((c) => pathname === c.href);
@@ -192,7 +211,7 @@ export function MainNavigation() {
             return null;
           })}
         </nav>
-        <div className="hidden items-center gap-5 md:flex">
+        <div className="hidden items-center gap-4 xl:flex">
           <Link
             href="/mon-compte"
             className={headerIconButtonClass}
@@ -242,7 +261,7 @@ export function MainNavigation() {
               type="button"
               aria-expanded={backOfficeOpen}
               aria-haspopup="menu"
-              className="btn btn-sm btn-accent-outline text-[17px] font-bold tracking-[1px] !text-[#37b5f4]"
+              className="btn btn-sm btn-accent-outline text-[15px] font-bold tracking-[0.03em] !text-[#37b5f4] xl:text-base"
             >
               Back Office
               <ChevronDown className={clsx('h-4 w-4 transition', backOfficeOpen && 'rotate-180')} />
@@ -276,7 +295,7 @@ export function MainNavigation() {
           </div>
         </div>
         <button
-          className="rounded-md border border-slate-200 p-2 text-slate-600 md:hidden"
+          className="rounded-lg border border-slate-200 p-2.5 text-slate-600 xl:hidden"
           onClick={toggle}
           aria-label="Ouvrir le menu"
         >
@@ -290,14 +309,14 @@ export function MainNavigation() {
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
-            className="overflow-hidden border-t border-slate-200 bg-white px-6 py-4 md:hidden"
+            className="overflow-hidden border-t border-slate-200 bg-white px-4 py-4 sm:px-6 xl:hidden"
           >
             <ul className="flex flex-col gap-4 font-medium text-slate-700">
               {links.map((link) => {
                 if (isDropdownItem(link)) {
                   return (
                     <li key={link.label}>
-                      <span className="block text-[17px] font-bold tracking-[1px] !text-[#37b5f4]">{link.label}</span>
+                      <span className={mobileHeaderLinkClass}>{link.label}</span>
                       <ul className="mt-2 flex flex-col gap-2 pl-3">
                         {link.children.map((child) => (
                           <li key={child.href}>
@@ -305,7 +324,7 @@ export function MainNavigation() {
                               href={child.href}
                               onClick={close}
                               className={clsx(
-                                headerLinkClass,
+                                mobileHeaderLinkClass,
                                 pathname === child.href && 'opacity-100'
                               )}
                             >
@@ -325,7 +344,7 @@ export function MainNavigation() {
                       <Link
                         href={link.href}
                         onClick={close}
-                        className={clsx(headerLinkClass, isActive && 'opacity-100')}
+                        className={clsx(mobileHeaderLinkClass, isActive && 'opacity-100')}
                       >
                         {link.label}
                       </Link>
@@ -335,7 +354,7 @@ export function MainNavigation() {
                 return null;
               })}
               <li>
-                <span className="block text-[17px] font-bold tracking-[1px] !text-[#37b5f4]">Back Office</span>
+                <span className={mobileHeaderLinkClass}>Back Office</span>
                 <ul className="mt-2 flex flex-col gap-2 pl-3">
                   {backOfficeLinks.map((item) => (
                     <li key={item.href}>
@@ -343,7 +362,7 @@ export function MainNavigation() {
                         href={item.href}
                         onClick={close}
                         className={clsx(
-                          headerLinkClass,
+                          mobileHeaderLinkClass,
                           pathname === item.href && 'opacity-100'
                         )}
                       >
@@ -352,6 +371,24 @@ export function MainNavigation() {
                     </li>
                   ))}
                 </ul>
+              </li>
+              <li className="mt-2 border-t border-slate-100 pt-4">
+                <div className="flex items-center gap-2">
+                  <Link
+                    href="/mon-compte"
+                    onClick={close}
+                    className="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
+                  >
+                    Mon compte
+                  </Link>
+                  <Link
+                    href="/panier"
+                    onClick={close}
+                    className="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
+                  >
+                    Panier {cartCount > 0 ? `(${cartCount > 99 ? '99+' : cartCount})` : ''}
+                  </Link>
+                </div>
               </li>
             </ul>
           </motion.nav>

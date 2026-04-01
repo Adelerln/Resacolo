@@ -961,7 +961,7 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
     <div className="space-y-6">
       {showSavedBanner && <SavedToast message="La fiche séjour a bien été enregistrée." />}
       {errorParam && <ErrorToast message={decodeURIComponent(errorParam)} />}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">{currentStay.title}</h1>
           <p className="text-sm text-slate-600">
@@ -978,7 +978,7 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
         action={updateStay}
         className="space-y-4"
       >
-        <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
+        <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
           <h2 className="text-lg font-semibold text-slate-900">Infos séjour</h2>
           <label className="block text-sm font-medium text-slate-700">
             Titre
@@ -1043,7 +1043,7 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
           transportModeLocked={hasTransportOptions}
         />
 
-        <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
+        <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
           <h2 className="text-lg font-semibold text-slate-900">Paramètres du séjour</h2>
           <div className="space-y-3">
             <div>
@@ -1073,7 +1073,7 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
               <div className="text-sm font-medium text-slate-700">Âges</div>
               <p className="mt-1 text-xs text-slate-500">Coche les âges proposés.</p>
             </div>
-            <div className="grid grid-cols-4 gap-2 md:grid-cols-6 lg:grid-cols-8">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8">
               {STAY_AGE_OPTIONS.map((age) => (
                 <label
                   key={age}
@@ -1120,7 +1120,7 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
         </section>
       </form>
 
-      <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
+      <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
         <StayTransportCardEffects
           formId="stay-transport-form"
           scrollContainerId="stay-transport-table-scroll"
@@ -1140,8 +1140,8 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
           <>
             <div className="rounded-lg border border-slate-100">
               {transportOptions.length > 0 ? (
-                <div id="stay-transport-table-scroll" className="max-h-48 overflow-y-auto">
-                  <table className="w-full text-left text-sm">
+                <div id="stay-transport-table-scroll" className="max-h-48 overflow-y-auto overflow-x-auto">
+                  <table className="min-w-[640px] w-full text-left text-sm">
                     <thead className="sticky top-0 bg-slate-50 text-xs uppercase text-slate-500">
                       <tr>
                         <th className="px-3 py-2">Ville</th>
@@ -1198,7 +1198,7 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
               autoComplete="off"
             >
               {currentStay.transport_mode === 'Aller/Retour différencié' ? (
-                <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_auto_minmax(180px,220px)] md:items-end">
+                <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto_auto_minmax(180px,220px)] xl:items-end">
                   <label className="text-sm font-medium text-slate-700">
                     Ville
                     <input
@@ -1275,7 +1275,7 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
       </section>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <section className="rounded-2xl border border-slate-200 bg-white p-6">
+        <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
           <h2 className="text-lg font-semibold text-slate-900">Médias</h2>
           <ul className="mt-4 space-y-2 text-sm text-slate-600">
             {media.map((item) => (
@@ -1287,7 +1287,7 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
           </ul>
         </section>
 
-        <section className="rounded-2xl border border-slate-200 bg-white p-6">
+        <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
           <h2 className="text-lg font-semibold text-slate-900">Options payantes</h2>
           <p className="mt-1 text-sm text-slate-600">
             Ajoute des options facturables en supplément pour ce séjour.
@@ -1295,8 +1295,8 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
 
           <div className="mt-4 rounded-lg border border-slate-100">
             {extraOptions.length > 0 ? (
-              <div className="max-h-56 overflow-y-auto">
-                <table className="w-full text-left text-sm">
+              <div className="max-h-56 overflow-y-auto overflow-x-auto">
+                <table className="min-w-[560px] w-full text-left text-sm">
                   <thead className="sticky top-0 bg-slate-50 text-xs uppercase text-slate-500">
                     <tr>
                       <th className="px-3 py-2">Libellé</th>
@@ -1366,7 +1366,7 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6 lg:col-span-2">
+        <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6 lg:col-span-2">
           <h2 className="text-lg font-semibold text-slate-900">Sessions</h2>
           <ul className="space-y-2 text-sm text-slate-600">
             {sessions.map((sessionItem) => {
@@ -1480,7 +1480,7 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
         </div>
       </div>
 
-      <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
+      <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
         <h2 className="text-lg font-semibold text-slate-900">Assurances du séjour</h2>
 
         <div className="space-y-3">
@@ -1488,7 +1488,7 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
             insuranceOptions.map((option) => (
               <div
                 key={option.id}
-                className="flex items-center justify-between gap-3 rounded-lg border border-slate-100 px-3 py-3 text-sm"
+                className="flex flex-col gap-3 rounded-lg border border-slate-100 px-3 py-3 text-sm sm:flex-row sm:items-center sm:justify-between"
               >
                 <span className="text-slate-700">{formatInsuranceOptionLabel(option)}</span>
                 <form action={deleteInsuranceOption}>

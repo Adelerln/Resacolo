@@ -214,6 +214,8 @@ export default function HomePage() {
   const [inspiTransitionEnabled, setInspiTransitionEnabled] = useState(true);
   const [inspiStepPx, setInspiStepPx] = useState(0);
   const [inspiCardWidthPx, setInspiCardWidthPx] = useState(0);
+  const [inspiGapPx, setInspiGapPx] = useState(24);
+  const [inspiCardsPerView, setInspiCardsPerView] = useState(3);
   const inspiViewportRef = useRef<HTMLDivElement | null>(null);
   const leftAids = aids.filter((_, index) => index % 2 === 0);
   const rightAids = aids.filter((_, index) => index % 2 === 1);
@@ -235,8 +237,12 @@ export default function HomePage() {
         return;
       }
 
-      const gapPx = 24;
-      const cardWidthPx = (viewportWidth - gapPx * 2) / 3;
+      const cardsPerView = viewportWidth < 640 ? 1 : viewportWidth < 1024 ? 2 : 3;
+      const gapPx = viewportWidth < 640 ? 16 : 24;
+      const totalGap = gapPx * (cardsPerView - 1);
+      const cardWidthPx = (viewportWidth - totalGap) / cardsPerView;
+      setInspiCardsPerView(cardsPerView);
+      setInspiGapPx(gapPx);
       setInspiCardWidthPx(cardWidthPx);
       setInspiStepPx(cardWidthPx + gapPx);
     }
@@ -284,7 +290,7 @@ export default function HomePage() {
     <div>
       {/* ── Banner ── */}
       <section id="accueil">
-        <div className="relative min-h-[380px] sm:min-h-[450px] lg:min-h-[500px] xl:min-h-[540px]">
+        <div className="relative min-h-[360px] sm:min-h-[430px] lg:min-h-[500px] xl:min-h-[540px]">
           <Image
             src="/image/accueil/images_accueil/banniere-accueil.jpg"
             alt="Bannière d'accueil Resacolo"
@@ -293,10 +299,10 @@ export default function HomePage() {
             sizes="100vw"
             priority
           />
-          <div className="absolute inset-0 px-6 sm:px-10 lg:px-16">
+          <div className="absolute inset-0 px-4 sm:px-8 lg:px-16">
             <div className="relative h-full w-full text-center">
               <p
-                className="absolute left-1/2 top-1/2 w-full -translate-x-1/2 -translate-y-1/2 font-display text-[clamp(2.25rem,6vw,63px)] font-bold text-white"
+                className="absolute left-1/2 top-1/2 w-full max-w-5xl -translate-x-1/2 -translate-y-1/2 px-2 font-display text-[clamp(1.9rem,7vw,63px)] font-bold text-white"
                 style={{
                   textShadow: '0.06em 0.06em 0.1em rgba(23,23,23,0.9)',
                   lineHeight: 1.05,
@@ -307,7 +313,7 @@ export default function HomePage() {
               </p>
               <div className="absolute left-1/2 top-1/2 w-full -translate-x-1/2 pt-8 sm:pt-10 lg:pt-12">
                 <h1
-                  className="whitespace-nowrap px-2 text-center text-[clamp(0.75rem,1.8vw,23px)] font-semibold text-white"
+                  className="mx-auto max-w-4xl px-2 text-center text-[clamp(0.95rem,2.6vw,23px)] font-semibold text-white"
                   style={{
                     textShadow: '0.06em 0.06em 0.1em rgba(23,23,23,0.9)',
                     lineHeight: 1.2,
@@ -317,12 +323,12 @@ export default function HomePage() {
                   Colonies de vacances 2026 pour <span style={{ color: '#6dc7fe' }}>enfants et ados</span> de 4 à
                   17 ans et séjours <span style={{ color: '#6dc7fe' }}>jeunes adultes</span> de 18 à 25 ans
                 </h1>
-                <div className="mt-6 flex flex-col items-center justify-center gap-4 sm:flex-row">
-                  <Link href="/sejours" className="btn btn-primary btn-md">
+                <div className="mt-6 flex flex-col items-center justify-center gap-3 sm:flex-row sm:gap-4">
+                  <Link href="/sejours" className="btn btn-primary btn-md w-full sm:w-auto">
                     Trouver une colo
                     <ArrowRight size={18} />
                   </Link>
-                  <a href="#comment-ca-marche" className="btn btn-secondary btn-md">
+                  <a href="#comment-ca-marche" className="btn btn-secondary btn-md w-full sm:w-auto">
                     Comment ça marche ?
                   </a>
                 </div>
@@ -345,12 +351,9 @@ export default function HomePage() {
               style={{ borderColor: '#6dc7fe' }}
             >
               <h2
+                className="text-2xl font-bold leading-tight text-[#505050] sm:text-3xl"
                 style={{
                   fontFamily: 'var(--font-primary)',
-                  fontWeight: 700,
-                  fontSize: '30px',
-                  color: '#505050',
-                  lineHeight: '1.2em',
                   textAlign: 'left',
                   margin: 0
                 }}
@@ -413,10 +416,9 @@ export default function HomePage() {
               ACTUALITÉS
             </span>
             <h2
-              className="mt-1"
+              className="mt-1 text-4xl sm:text-5xl"
               style={{
                 fontWeight: 700,
-                fontSize: '50px',
                 color: '#505050',
                 lineHeight: '1.2em',
                 marginBottom: '0.5rem'
@@ -435,18 +437,10 @@ export default function HomePage() {
             </p>
           </motion.div>
 
-          <div className="mt-10 flex items-center gap-4">
-            <button
-              type="button"
-              onClick={showPreviousInspiCard}
-              className="z-10 flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/92 text-[#505050] shadow-md transition hover:bg-white"
-              aria-label="Card précédente"
-            >
-              <ChevronLeft size={20} />
-            </button>
-            <div ref={inspiViewportRef} className="min-w-0 flex-1 overflow-hidden">
+          <div className="mt-10 space-y-4">
+            <div ref={inspiViewportRef} className="min-w-0 overflow-hidden">
               <div
-                className={`flex gap-[24px] ${
+                className={`flex ${
                   inspiTransitionEnabled ? 'transition-transform duration-700 ease-out' : 'transition-none'
                 }`}
                 onTransitionEnd={(event) => {
@@ -457,14 +451,15 @@ export default function HomePage() {
                   handleInspiTransitionEnd();
                 }}
                 style={{
-                  transform: `translateX(-${inspiIndex * inspiStepPx}px)`
+                  transform: `translateX(-${inspiIndex * inspiStepPx}px)`,
+                  gap: `${inspiGapPx}px`
                 }}
               >
                 {inspiLoopCards.map((card, index) => (
                   <div
                     key={`${card.src}-${index}`}
                     className="group relative shrink-0 overflow-hidden rounded-[14px] bg-slate-100 shadow-md"
-                    style={{ width: inspiCardWidthPx > 0 ? `${inspiCardWidthPx}px` : 'calc((100% - 48px) / 3)' }}
+                    style={{ width: inspiCardWidthPx > 0 ? `${inspiCardWidthPx}px` : '100%' }}
                   >
                     <div className="relative aspect-[4/5]">
                       <Image
@@ -472,14 +467,14 @@ export default function HomePage() {
                         alt={card.alt}
                         fill
                         className="object-cover"
-                        sizes="(max-width: 1024px) 33vw, 30vw"
+                        sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
                       />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/35 to-black/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
-                      <div className="absolute inset-0 flex flex-col justify-end p-5 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/35 to-black/10 opacity-100 transition-opacity duration-300 sm:opacity-0 sm:group-hover:opacity-100" />
+                      <div className="absolute inset-0 flex flex-col justify-end p-4 opacity-100 transition-opacity duration-300 sm:p-5 sm:opacity-0 sm:group-hover:opacity-100">
                         <h3
+                          className="text-2xl sm:text-[32px]"
                           style={{
                             fontWeight: 700,
-                            fontSize: '32px',
                             color: '#FFFFFF',
                             textShadow: '0em 0em 0.3em rgba(0,0,0,0.4)',
                             lineHeight: '1.1em'
@@ -510,14 +505,26 @@ export default function HomePage() {
                 ))}
               </div>
             </div>
-            <button
-              type="button"
-              onClick={showNextInspiCard}
-              className="z-10 flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/92 text-[#505050] shadow-md transition hover:bg-white"
-              aria-label="Card suivante"
-            >
-              <ChevronRight size={20} />
-            </button>
+            {inspiCardsPerView < inspiCards.length && (
+              <div className="flex items-center justify-center gap-3">
+                <button
+                  type="button"
+                  onClick={showPreviousInspiCard}
+                  className="z-10 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/92 text-[#505050] shadow-md transition hover:bg-white sm:h-11 sm:w-11"
+                  aria-label="Card précédente"
+                >
+                  <ChevronLeft size={18} />
+                </button>
+                <button
+                  type="button"
+                  onClick={showNextInspiCard}
+                  className="z-10 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/92 text-[#505050] shadow-md transition hover:bg-white sm:h-11 sm:w-11"
+                  aria-label="Card suivante"
+                >
+                  <ChevronRight size={18} />
+                </button>
+              </div>
+            )}
             </div>
         </div>
       </section>
@@ -542,10 +549,9 @@ export default function HomePage() {
               NOTICE
             </span>
             <h2
-              className="mt-1"
+              className="mt-1 text-4xl sm:text-5xl"
               style={{
                 fontWeight: 700,
-                fontSize: '50px',
                 color: '#505050',
                 lineHeight: '1.2em',
                 marginBottom: 0
@@ -564,7 +570,7 @@ export default function HomePage() {
             </p>
           </motion.div>
 
-          <div className="mt-14 grid sm:grid-cols-3 gap-8">
+          <div className="mt-14 grid gap-8 sm:grid-cols-3">
             {processSteps.map((step, i) => (
               <motion.div
                 key={i}
@@ -619,9 +625,9 @@ export default function HomePage() {
               viewport={{ once: true }}
             >
               <h2
+                className="text-4xl sm:text-5xl"
                 style={{
                   fontWeight: 700,
-                  fontSize: '50px',
                   color: '#505050',
                   lineHeight: '1.1em',
                   marginBottom: 0,
@@ -713,10 +719,9 @@ export default function HomePage() {
                 Coup de pouce
               </span>
               <h2
-                className="mt-1"
+                className="mt-1 text-4xl sm:text-[44px]"
                 style={{
                   fontWeight: 700,
-                  fontSize: '44px',
                   color: '#505050',
                   lineHeight: '1.2em',
                   marginBottom: '1.25rem',

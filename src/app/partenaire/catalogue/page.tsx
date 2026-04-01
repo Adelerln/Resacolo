@@ -34,17 +34,17 @@ export default async function PartnerCatalogPage({ searchParams }: { searchParam
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Catalogue</h1>
           <p className="text-sm text-slate-600">Saison {season.name}</p>
         </div>
-        <form className="flex items-center gap-2">
+        <form className="flex w-full items-center gap-2 sm:w-auto">
           <input
             name="q"
             defaultValue={searchParams?.q ?? ''}
             placeholder="Rechercher"
-            className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm sm:w-auto"
           />
           <button className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white">
             Filtrer
@@ -100,8 +100,8 @@ export default async function PartnerCatalogPage({ searchParams }: { searchParam
         {filtered.map((stay) => {
           const staySessions = sessions.filter((s) => s.stayId === stay.id);
           return (
-            <div key={stay.id} className="rounded-2xl border border-slate-200 bg-white p-6">
-              <div className="flex items-center justify-between">
+            <div key={stay.id} className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h2 className="text-lg font-semibold text-slate-900">{stay.title}</h2>
                   <p className="text-sm text-slate-600">{stay.location}</p>
@@ -110,7 +110,7 @@ export default async function PartnerCatalogPage({ searchParams }: { searchParam
               </div>
               <div className="mt-4 space-y-2 text-sm text-slate-600">
                 {staySessions.map((sessionItem) => (
-                  <div key={sessionItem.id} className="flex items-center justify-between">
+                  <div key={sessionItem.id} className="flex flex-col gap-2 rounded-lg border border-slate-100 p-3 sm:flex-row sm:items-center sm:justify-between sm:border-0 sm:p-0">
                     <div>
                       {sessionItem.startDate.toLocaleDateString('fr-FR')} -{' '}
                       {sessionItem.endDate.toLocaleDateString('fr-FR')}

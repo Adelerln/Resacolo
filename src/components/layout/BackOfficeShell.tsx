@@ -17,40 +17,66 @@ const sectionParametres = [
 
 export function BackOfficeShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const allLinks = [...sectionGestionSejours, ...sectionParametres];
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-100">
       {/* Top bar */}
-      <header className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3 shadow-sm sm:px-6">
-        <div className="flex items-center gap-4">
+      <header className="border-b border-slate-200 bg-white px-4 py-3 shadow-sm sm:px-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-4">
+            <Link
+              href="/"
+              className="flex items-center gap-2 text-slate-700 transition hover:text-brand-500"
+            >
+              <Image
+                src="/image/accueil/images_accueil/logo-resacolo.png"
+                alt="Resacolo"
+                width={120}
+                height={34}
+                className="h-8 w-auto"
+              />
+            </Link>
+            <span className="hidden text-sm font-medium text-slate-400 sm:inline">/</span>
+            <span className="font-display text-sm font-semibold text-slate-800 sm:text-base">
+              Back Office
+            </span>
+          </div>
           <Link
             href="/"
-            className="flex items-center gap-2 text-slate-700 transition hover:text-brand-500"
+            className="text-sm font-medium text-slate-600 transition hover:text-brand-500"
           >
-            <Image
-              src="/image/accueil/images_accueil/logo-resacolo.png"
-              alt="Resacolo"
-              width={120}
-              height={34}
-              className="h-8 w-auto"
-            />
+            Retour au site
           </Link>
-          <span className="hidden text-sm font-medium text-slate-400 sm:inline">/</span>
-          <span className="font-display text-sm font-semibold text-slate-800 sm:text-base">
-            Back Office
-          </span>
         </div>
-        <Link
-          href="/"
-          className="text-sm font-medium text-slate-600 transition hover:text-brand-500"
-        >
-          Retour au site
-        </Link>
+        <nav className="mt-3 flex gap-2 overflow-x-auto pb-1 md:hidden">
+          {allLinks.map((item) => {
+            const isActive =
+              item.href === '/back-office'
+                ? pathname === '/back-office'
+                : pathname.startsWith(item.href);
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={clsx(
+                  'inline-flex shrink-0 items-center gap-2 rounded-full px-3 py-2 text-xs font-semibold transition',
+                  isActive
+                    ? 'bg-brand-50 text-brand-600'
+                    : 'border border-slate-200 text-slate-600 hover:border-slate-300 hover:text-slate-900'
+                )}
+              >
+                <item.icon className="h-3.5 w-3.5" />
+                {item.label}
+              </Link>
+            );
+          })}
+        </nav>
       </header>
 
       <div className="flex flex-1">
         {/* Sidebar */}
-        <aside className="hidden w-56 shrink-0 border-r border-slate-200 bg-white sm:block">
+        <aside className="hidden w-56 shrink-0 border-r border-slate-200 bg-white md:block">
           <nav className="sticky top-0 flex flex-col gap-4 p-3">
             <div>
               <span className="mb-1.5 block px-3 text-xs font-semibold uppercase tracking-wider text-slate-400">
@@ -109,7 +135,7 @@ export function BackOfficeShell({ children }: { children: React.ReactNode }) {
         </aside>
 
         {/* Main content */}
-        <main className="min-w-0 flex-1 p-4 sm:p-6 lg:p-8">{children}</main>
+        <main className="min-w-0 flex-1 p-4 sm:p-5 lg:p-8">{children}</main>
       </div>
     </div>
   );

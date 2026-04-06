@@ -311,9 +311,9 @@ export default function HomePage() {
               >
                 Prêt pour un nouveau départ ?
               </p>
-              <div className="absolute left-1/2 top-1/2 w-full -translate-x-1/2 pt-8 sm:pt-10 lg:pt-12">
+              <div className="absolute left-1/2 top-1/2 flex w-full -translate-x-1/2 flex-col items-center pt-8 sm:pt-10 lg:pt-12">
                 <h1
-                  className="mx-auto max-w-4xl px-2 text-center text-[clamp(0.95rem,2.6vw,23px)] font-semibold text-white"
+                  className="w-full max-w-4xl px-2 text-center text-[clamp(0.95rem,2.6vw,23px)] font-semibold text-white"
                   style={{
                     textShadow: '0.06em 0.06em 0.1em rgba(23,23,23,0.9)',
                     lineHeight: 1.2,

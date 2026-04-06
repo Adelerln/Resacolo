@@ -53,14 +53,14 @@ function requestExpectsJson(req: Request): boolean {
   return contentType.includes('application/json') || accept.includes('application/json');
 }
 
-function redirectToOrganizerStays(
+function redirectToOrganizerStayCreation(
   req: Request,
   organizerId: string | null,
   params?: Record<string, string>
 ) {
   const query = new URLSearchParams(params ?? {}).toString();
   const path = withOrganizerQuery(
-    query ? `/organisme/sejours?${query}` : '/organisme/sejours',
+    query ? `/organisme/sejours/new?${query}` : '/organisme/sejours/new',
     organizerId
   );
   return NextResponse.redirect(new URL(path, req.url), 303);
@@ -75,7 +75,7 @@ function makeErrorResponse(
   if (requestExpectsJson(req)) {
     return NextResponse.json({ error: errorMessage }, { status });
   }
-  return redirectToOrganizerStays(req, organizerId, { error: errorMessage });
+  return redirectToOrganizerStayCreation(req, organizerId, { error: errorMessage });
 }
 
 function makeSuccessResponse(
@@ -119,7 +119,7 @@ function makeSuccessResponse(
       updated_draft: result.updatedDraft
     });
   }
-  return redirectToOrganizerStays(req, organizerId, {
+  return redirectToOrganizerStayCreation(req, organizerId, {
     ai: 'success',
     aiDraftId: result.draftId
   });

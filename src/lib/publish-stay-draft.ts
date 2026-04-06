@@ -6,6 +6,7 @@ import {
   type StayCategoryValue
 } from '@/lib/stay-categories';
 import { mapToCanonicalStayRegion } from '@/lib/stay-regions';
+import { normalizeStayTitle } from '@/lib/stay-title';
 import type { Database, Json } from '@/types/supabase';
 
 type StayDraftRow = Database['public']['Tables']['stay_drafts']['Row'];
@@ -54,28 +55,6 @@ const LIVE_TRANSPORT_MODES = new Set([
   'Aller/Retour similaire',
   'Aller/Retour différencié',
   'Sans transport'
-]);
-
-const TITLE_LOWERCASE_WORDS = new Set([
-  'a',
-  'à',
-  'au',
-  'aux',
-  'de',
-  'du',
-  'des',
-  'en',
-  'et',
-  'l',
-  'la',
-  'le',
-  'les',
-  'ou',
-  'par',
-  'pour',
-  'sur',
-  'un',
-  'une'
 ]);
 
 const INSURANCE_KEYWORDS = [
@@ -164,40 +143,6 @@ function simplifyForMatch(value: string | null | undefined): string {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^\w\s']/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function toStartCaseWord(word: string): string {
-  if (!word) return '';
-  const lower = word.toLocaleLowerCase('fr-FR');
-  return lower.charAt(0).toLocaleUpperCase('fr-FR') + lower.slice(1);
-}
-
-function normalizeStayTitle(value: string | null | undefined): string {
-  const normalized = normalizeWhitespace(value);
-  if (!normalized) return '';
-
-  const words = normalized.split(' ').filter(Boolean);
-  return words
-    .map((word, index) => {
-      if (word.includes("'")) {
-        const [prefix, suffix] = word.split("'", 2);
-        const normalizedPrefix = prefix ? prefix.toLocaleLowerCase('fr-FR') : '';
-        const normalizedSuffix = suffix ? toStartCaseWord(suffix) : '';
-        if (index === 0) {
-          return `${toStartCaseWord(prefix)}'${normalizedSuffix}`;
-        }
-        return `${normalizedPrefix}'${normalizedSuffix}`;
-      }
-
-      const key = simplifyForMatch(word);
-      if (index > 0 && TITLE_LOWERCASE_WORDS.has(key)) {
-        return word.toLocaleLowerCase('fr-FR');
-      }
-      return toStartCaseWord(word);
-    })
-    .join(' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -1467,6 +1412,7 @@ async function syncAccommodation(
   draft: StayDraftRow,
   stayId: string,
   currentAccommodationId: string | null,
+  extractedAccommodationSource: Json | null,
   parsedAccommodation: {
     title: string;
     description: string | null;
@@ -1504,6 +1450,13 @@ async function syncAccommodation(
 
   const now = new Date().toISOString();
   let accommodationId = currentAccommodationId;
+  const extractedData: Json = {
+    source: 'stay_draft_publication',
+    draft_id: draft.id,
+    stay_id: stayId,
+    source_url: draft.source_url ?? null,
+    extracted_accommodation: extractedAccommodationSource
+  };
 
   if (accommodationId) {
     const updatePayload: AccommodationUpdate = {
@@ -1515,6 +1468,10 @@ async function syncAccommodation(
       accessibility_info: parsedAccommodation.accessibilityInfo,
       accommodation_type: parsedAccommodation.accommodationType,
       source_url: draft.source_url,
+      ai_extracted_data: extractedData,
+      status: 'TO_VALIDATE',
+      validated_at: null,
+      validated_by_user_id: null,
       updated_at: now
     };
 
@@ -1546,7 +1503,10 @@ async function syncAccommodation(
       accessibility_info: parsedAccommodation.accessibilityInfo,
       source_url: draft.source_url,
       accommodation_type: parsedAccommodation.accommodationType,
-      status: 'DRAFT',
+      ai_extracted_data: extractedData,
+      status: 'TO_VALIDATE',
+      validated_at: null,
+      validated_by_user_id: null,
       created_at: now,
       updated_at: now
     };
@@ -1767,6 +1727,7 @@ export async function publishStayDraftToLive(
     draft,
     stayId,
     livePublication.accommodationId,
+    accommodationSource,
     accommodation
   );
   syncedTables.push('stay_accommodations', 'accommodations');

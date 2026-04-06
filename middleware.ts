@@ -1,5 +1,11 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import {
+  canAccessOrganizerPath,
+  normalizeOrganizerAccessRole,
+  ORGANIZER_ACCESS_COOKIE_NAME
+} from '@/lib/organizer-access';
+
 type SessionPayload = {
   role: 'ADMIN' | 'ORGANISATEUR' | 'PARTENAIRE';
 };
@@ -47,6 +53,17 @@ export function middleware(req: NextRequest) {
     const url = req.nextUrl.clone();
     url.pathname = expectedPrefix;
     return NextResponse.redirect(url);
+  }
+
+  if (session.role === 'ORGANISATEUR' && pathname.startsWith('/organisme')) {
+    const organizerAccessRole = normalizeOrganizerAccessRole(
+      req.cookies.get(ORGANIZER_ACCESS_COOKIE_NAME)?.value
+    );
+    if (!canAccessOrganizerPath(organizerAccessRole, pathname)) {
+      const url = req.nextUrl.clone();
+      url.pathname = '/organisme';
+      return NextResponse.redirect(url);
+    }
   }
 
   return NextResponse.next();

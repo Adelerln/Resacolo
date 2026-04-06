@@ -1,219 +1,180 @@
-import { redirect } from 'next/navigation';
+import Link from 'next/link';
+import ErrorToast from '@/components/common/ErrorToast';
 import { requireRole } from '@/lib/auth/require';
-import GoogleMapsCityInput from '@/components/common/GoogleMapsCityInput';
 import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers.server';
-import { normalizeStayCategories, STAY_CATEGORY_OPTIONS } from '@/lib/stay-categories';
-import { getStayAgeBounds, parseStayAges, STAY_AGE_OPTIONS } from '@/lib/stay-ages';
-import { isMissingRegionTextColumnError, normalizeStayRegion, STAY_REGION_OPTIONS } from '@/lib/stay-regions';
-import { getServerSupabaseClient } from '@/lib/supabase/server';
-import type { Database } from '@/types/supabase';
 
 type PageProps = {
   searchParams?: {
     organizerId?: string | string[];
+    error?: string | string[];
+    prefill?: string | string[];
+    draftId?: string | string[];
+    ai?: string | string[];
+    aiDraftId?: string | string[];
   };
 };
 
-export default async function NewStayPage({ searchParams }: PageProps) {
+function formatRedirectValue(value?: string | string[]) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+export default async function NewStayChoicePage({ searchParams }: PageProps) {
   const session = requireRole('ORGANISATEUR');
-  const supabase = getServerSupabaseClient();
   const { selectedOrganizer, selectedOrganizerId } = await resolveOrganizerSelection(
     searchParams?.organizerId,
     session.tenantId ?? null
   );
-  const organizerTenantId = selectedOrganizerId;
-  const { data: seasonsRaw } = await supabase.from('seasons').select('id,name');
-  const seasonOrder = ['Hiver', 'Printemps', 'Été', 'Automne', "Fin d'année"];
-  const seasons = [...(seasonsRaw ?? [])].sort((a, b) => {
-    const indexA = seasonOrder.indexOf(a.name);
-    const indexB = seasonOrder.indexOf(b.name);
-    if (indexA === -1 && indexB === -1) {
-      return a.name.localeCompare(b.name, 'fr');
-    }
-    if (indexA === -1) return 1;
-    if (indexB === -1) return -1;
-    return indexA - indexB;
-  });
-
-  async function createStay(formData: FormData) {
-    'use server';
-    const supabase = getServerSupabaseClient();
-    if (!organizerTenantId) {
-      redirect('/organisme/sejours');
-    }
-    const seasonId = String(formData.get('season_id') ?? '');
-    if (!seasonId) {
-      redirect(withOrganizerQuery('/organisme/sejours', organizerTenantId));
-    }
-    const title = String(formData.get('title') ?? '').trim();
-    const description = String(formData.get('description') ?? '').trim();
-    const selectedAges = parseStayAges(formData);
-    const categories = normalizeStayCategories(
-      formData
-        .getAll('categories')
-        .map((value) => String(value).trim())
-        .filter(Boolean)
-    );
-    const { ages, ageMin, ageMax } = getStayAgeBounds(selectedAges);
-    const location = String(formData.get('location') ?? '').trim();
-    const region = normalizeStayRegion(formData.get('region_text'));
-    const status = String(formData.get('status') ?? 'PUBLISHED').trim();
-    const transportMode = String(formData.get('transport_mode') ?? 'Sans transport').trim();
-    const normalizedStatus: Database['public']['Enums']['stay_status'] =
-      status === 'DRAFT' || status === 'HIDDEN' || status === 'ARCHIVED' ? status : 'PUBLISHED';
-
-    if (!title) {
-      redirect(withOrganizerQuery('/organisme/sejours/new', organizerTenantId));
-    }
-
-    const basePayload: Database['public']['Tables']['stays']['Insert'] = {
-      organizer_id: organizerTenantId,
-      season_id: seasonId,
-      title,
-      description: description || null,
-      categories,
-      ages,
-      age_min: ageMin,
-      age_max: ageMax,
-      location_text: location || null,
-      transport_mode:
-        transportMode === 'Aller/Retour similaire' ||
-        transportMode === 'Aller/Retour différencié' ||
-        transportMode === 'Sans transport'
-          ? transportMode
-          : 'Sans transport',
-      status: normalizedStatus
-    };
-
-    const payloadWithRegion = region ? { ...basePayload, region_text: region } : basePayload;
-
-    let insertedStay: { id: string } | null = null;
-    let insertError: { message: string } | null = null;
-
-    const firstAttempt = await supabase.from('stays').insert(payloadWithRegion).select('id').single();
-    insertedStay = firstAttempt.data;
-    insertError = firstAttempt.error;
-
-    if (insertError && isMissingRegionTextColumnError(insertError.message)) {
-      const fallbackAttempt = await supabase.from('stays').insert(basePayload).select('id').single();
-      insertedStay = fallbackAttempt.data;
-      insertError = fallbackAttempt.error;
-    }
-
-    if (insertError || !insertedStay) {
-      console.error('Erreur Supabase (create stay)', insertError?.message ?? 'unknown');
-      redirect(withOrganizerQuery('/organisme/sejours/new', organizerTenantId));
-    }
-
-    redirect(withOrganizerQuery(`/organisme/sejours/${insertedStay?.id ?? ''}`, organizerTenantId));
-  }
+  const organizerId = selectedOrganizerId;
+  const errorParam = formatRedirectValue(searchParams?.error);
+  const prefillParam = formatRedirectValue(searchParams?.prefill);
+  const draftIdParam = formatRedirectValue(searchParams?.draftId);
+  const aiParam = formatRedirectValue(searchParams?.ai);
+  const aiDraftIdParam = formatRedirectValue(searchParams?.aiDraftId);
 
   return (
     <div className="space-y-6">
+      {errorParam && <ErrorToast message={decodeURIComponent(errorParam)} />}
+
       <div>
         <h1 className="text-2xl font-semibold text-slate-900">Nouveau séjour</h1>
         <p className="text-sm text-slate-600">
           {selectedOrganizer
-            ? `Création d'un séjour pour ${selectedOrganizer.name}.`
-            : 'Création d’un séjour.'}
+            ? `Choisis comment créer un séjour pour ${selectedOrganizer.name}.`
+            : 'Choisis comment créer un séjour.'}
         </p>
       </div>
-      <form action={createStay} className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
-        <label className="block text-sm font-medium text-slate-700">
-          Titre
-          <input name="title" className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2" required />
-        </label>
-        <label className="block text-sm font-medium text-slate-700">
-          Saison
-          <select name="season_id" className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2" required>
-            <option value="">Sélectionner</option>
-            {(seasons ?? []).map((season) => (
-              <option key={season.id} value={season.id}>
-                {season.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="block text-sm font-medium text-slate-700">
-          Description
-          <textarea name="description" rows={4} className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2" />
-        </label>
-        <div className="space-y-3">
-          <div>
-            <div className="text-sm font-medium text-slate-700">Catégories du séjour</div>
-            <p className="mt-1 text-xs text-slate-500">Tu peux en sélectionner plusieurs.</p>
-          </div>
-          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-            {STAY_CATEGORY_OPTIONS.map((category) => (
-              <label
-                key={category.value}
-                className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700"
-              >
-                <input type="checkbox" name="categories" value={category.value} className="cursor-pointer" />
-                <span>{category.label}</span>
-              </label>
-            ))}
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        <div className="rounded-2xl border border-slate-200 bg-white p-5">
+          <h2 className="text-lg font-semibold text-slate-900">Saisie manuelle</h2>
+          <p className="mt-2 text-sm leading-6 text-slate-600">
+            Crée un séjour à la main, champ par champ, si tu veux garder la main sur toute la
+            fiche dès le départ.
+          </p>
+          <div className="mt-5">
+            <Link
+              href={withOrganizerQuery('/organisme/sejours/new/manual', organizerId)}
+              className="inline-flex min-h-[44px] items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white"
+            >
+              Commencer la saisie manuelle
+            </Link>
           </div>
         </div>
-        <div className="space-y-3">
-          <div>
-            <div className="text-sm font-medium text-slate-700">Âges</div>
-            <p className="mt-1 text-xs text-slate-500">Coche les âges proposés.</p>
-          </div>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8">
-            {STAY_AGE_OPTIONS.map((age) => (
-              <label
-                key={age}
-                className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700"
-              >
-                <input type="checkbox" name="ages" value={age} className="cursor-pointer" />
-                <span>{age} ans</span>
-              </label>
-            ))}
+
+        <div className="rounded-2xl border border-slate-200 bg-white p-5">
+          <h2 className="text-lg font-semibold text-slate-900">Utiliser l&apos;IA</h2>
+          <p className="mt-2 text-sm leading-6 text-slate-600">
+            Prépare un brouillon à partir d&apos;une fiche existante, ou enrichis un draft déjà
+            créé avec une extraction IA complémentaire.
+          </p>
+          <div className="mt-5">
+            <a
+              href="#assistant-ia"
+              className="inline-flex min-h-[44px] items-center justify-center rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700"
+            >
+              Voir les options IA
+            </a>
           </div>
         </div>
-        <GoogleMapsCityInput name="location" label="Ville du séjour" />
-        <label className="block text-sm font-medium text-slate-700">
-          Région du séjour
-          <select name="region_text" defaultValue="" className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2">
-            <option value="">Sélectionner</option>
-            {STAY_REGION_OPTIONS.map((region) => (
-              <option key={region} value={region}>
-                {region}
-              </option>
-            ))}
-          </select>
-          <span className="mt-1 block text-xs text-slate-500">Choisir “Étranger” si le séjour se déroule hors de France.</span>
-        </label>
-        <label className="block text-sm font-medium text-slate-700">
-          Mode de transport
-          <select
-            name="transport_mode"
-            defaultValue="Sans transport"
-            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+      </div>
+
+      <section id="assistant-ia" className="space-y-4">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
+          <h2 className="text-lg font-semibold text-slate-900">Pré-remplissage depuis une URL</h2>
+          <p className="mt-1 text-sm text-slate-600">
+            Collez l&apos;URL d&apos;une fiche séjour existante pour préparer un brouillon automatiquement
+            à l&apos;étape suivante.
+          </p>
+          <form
+            action="/api/import-stay"
+            method="post"
+            className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end"
           >
-            <option value="Aller/Retour similaire">Aller/Retour similaire</option>
-            <option value="Aller/Retour différencié">Aller/Retour différencié</option>
-            <option value="Sans transport">Sans transport</option>
-          </select>
-        </label>
-        <label className="block text-sm font-medium text-slate-700">
-          Statut
-          <select
-            name="status"
-            defaultValue="PUBLISHED"
-            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+            <label className="block flex-1 text-sm font-medium text-slate-700">
+              URL de la fiche séjour
+              <input
+                name="sourceUrl"
+                type="url"
+                placeholder="https://exemple.com/fiche-sejour"
+                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+                required
+              />
+            </label>
+            <input type="hidden" name="organizerId" value={organizerId ?? ''} />
+            <button
+              type="submit"
+              className="h-10 rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white"
+            >
+              Pré-remplir
+            </button>
+          </form>
+          {prefillParam === 'created' && draftIdParam && (
+            <p className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+              Brouillon créé et pré-rempli avec succès. ID du draft :{' '}
+              <span className="font-semibold">{draftIdParam}</span>.{' '}
+              <Link
+                href={withOrganizerQuery(`/organisme/sejours/drafts/${draftIdParam}`, organizerId)}
+                className="font-semibold underline"
+              >
+                Ouvrir la review
+              </Link>
+            </p>
+          )}
+        </div>
+
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
+          <h3 className="text-base font-semibold text-slate-900">Enrichissement IA d&apos;un draft</h3>
+          <p className="mt-1 text-sm text-slate-600">
+            Lancez une étape complémentaire d&apos;extraction IA sur un draft existant. Cette étape
+            enrichit uniquement <code>stay_drafts</code> et ne publie rien dans les tables live.
+          </p>
+          <form
+            action="/api/stay-drafts/enrich"
+            method="post"
+            className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end"
           >
-            <option value="PUBLISHED">Publié</option>
-            <option value="DRAFT">Brouillon</option>
-            <option value="HIDDEN">Masqué</option>
-            <option value="ARCHIVED">Archivé</option>
-          </select>
-        </label>
-        <button className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">
-          Creer
-        </button>
-      </form>
+            <label className="block flex-1 text-sm font-medium text-slate-700">
+              ID du draft
+              <input
+                name="draftId"
+                type="text"
+                placeholder="UUID du stay_draft"
+                defaultValue={draftIdParam ?? aiDraftIdParam ?? ''}
+                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+                required
+              />
+            </label>
+            <input type="hidden" name="organizerId" value={organizerId ?? ''} />
+            <label className="inline-flex items-center gap-2 text-sm text-slate-700 sm:pb-2">
+              <input
+                type="checkbox"
+                name="force"
+                value="true"
+                className="h-4 w-4 rounded border-slate-300"
+              />
+              Forcer l&apos;écrasement (test)
+            </label>
+            <button
+              type="submit"
+              className="h-10 rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white"
+            >
+              Enrichir avec IA
+            </button>
+          </form>
+          {aiParam === 'success' && aiDraftIdParam && (
+            <p className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+              Enrichissement IA terminé avec succès. ID du draft :{' '}
+              <span className="font-semibold">{aiDraftIdParam}</span>.{' '}
+              <Link
+                href={withOrganizerQuery(`/organisme/sejours/drafts/${aiDraftIdParam}`, organizerId)}
+                className="font-semibold underline"
+              >
+                Ouvrir la review
+              </Link>
+            </p>
+          )}
+        </div>
+      </section>
     </div>
   );
 }

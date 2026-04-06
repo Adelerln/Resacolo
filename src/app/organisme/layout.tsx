@@ -3,18 +3,13 @@ import Link from 'next/link';
 import { Suspense } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { requireRole } from '@/lib/auth/require';
+import { getOrganizerAccessRole } from '@/lib/organizer-access.server';
+import { getOrganizerNavLinks } from '@/lib/organizer-access';
 import {
   OrganizerWorkspaceNav,
   OrganizerWorkspaceSelector
 } from '@/components/organisme/OrganizerWorkspaceControls';
 import { resolveOrganizerSelection } from '@/lib/organizers.server';
-
-const organizerNavLinks = [
-  { href: '/organisme', label: 'Organisme' },
-  { href: '/organisme/sejours', label: 'Séjours' },
-  { href: '/organisme/hebergements', label: 'Hébergements' },
-  { href: '/organisme/reservations', label: 'Réservations' }
-];
 
 function withOrganizerQuery(path: string, organizerId?: string | null) {
   if (!organizerId) return path;
@@ -24,10 +19,12 @@ function withOrganizerQuery(path: string, organizerId?: string | null) {
 
 export default async function OrganizerLayout({ children }: { children: React.ReactNode }) {
   const session = requireRole('ORGANISATEUR');
+  const accessRole = getOrganizerAccessRole();
   const { organizers, selectedOrganizerId } = await resolveOrganizerSelection(
     undefined,
     session.tenantId ?? null
   );
+  const organizerNavLinks = getOrganizerNavLinks(accessRole);
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -79,6 +76,7 @@ export default async function OrganizerLayout({ children }: { children: React.Re
             <OrganizerWorkspaceNav
               organizers={organizers}
               initialSelectedOrganizerId={selectedOrganizerId}
+              initialAccessRole={accessRole}
             />
           </Suspense>
           <div className="mt-auto px-6 pb-6 pt-4">
@@ -105,6 +103,7 @@ export default async function OrganizerLayout({ children }: { children: React.Re
             <OrganizerWorkspaceSelector
               organizers={organizers}
               initialSelectedOrganizerId={selectedOrganizerId}
+              initialAccessRole={accessRole}
             />
           </Suspense>
           {children}

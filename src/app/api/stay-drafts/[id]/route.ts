@@ -7,6 +7,7 @@ import { publishStayDraftToLive, PublishStayDraftError } from '@/lib/publish-sta
 import { normalizeStayDraftCategories } from '@/lib/stay-categories';
 import { mapToCanonicalStayRegion } from '@/lib/stay-regions';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
+import { normalizeStayTitle } from '@/lib/stay-title';
 import type { Database, Json } from '@/types/supabase';
 import type { StayDraftReviewFieldErrors, StayDraftReviewPayload } from '@/types/stay-draft-review';
 
@@ -163,7 +164,7 @@ async function parseBody(req: Request): Promise<{ payload: StayDraftReviewPayloa
   const categories = normalizeStayDraftCategories(data.categories).categories;
   const ages = normalizeAges(data.ages);
   const payload: StayDraftReviewPayload = {
-    title: normalizeString(data.title),
+    title: normalizeStayTitle(data.title),
     summary: normalizeString(data.summary),
     location_text: normalizeString(data.location_text),
     region_text: mapToCanonicalStayRegion(data.region_text) ?? '',
@@ -223,7 +224,7 @@ async function handleUpdate(req: Request, params: { id: string }, mode: 'save' |
   const validatedByUserId = isUuid(session?.userId) ? session?.userId : null;
 
   const updatePayload: Record<string, unknown> = {
-    title: parsedBody.payload.title,
+    title: normalizeStayTitle(parsedBody.payload.title),
     summary: toNullableString(parsedBody.payload.summary),
     location_text: toNullableString(parsedBody.payload.location_text),
     region_text: toNullableString(parsedBody.payload.region_text),

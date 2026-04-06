@@ -11,17 +11,18 @@ import {
   type DraftTransportVariant
 } from '@/lib/stay-draft-import';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
+import { normalizeStayTitle } from '@/lib/stay-title';
 
 export const runtime = 'nodejs';
 
-function redirectToOrganizerStays(
+function redirectToOrganizerStayCreation(
   req: Request,
   organizerId: string | null,
   params?: Record<string, string>
 ) {
   const query = new URLSearchParams(params ?? {}).toString();
   const path = withOrganizerQuery(
-    query ? `/organisme/sejours?${query}` : '/organisme/sejours',
+    query ? `/organisme/sejours/new?${query}` : '/organisme/sejours/new',
     organizerId
   );
   return NextResponse.redirect(new URL(path, req.url), 303);
@@ -116,7 +117,7 @@ function buildDraftUpdatePayload(
   const payload: Record<string, unknown> = {};
 
   // Parsing manuel minimal : on ne remplit ici que les champs fiables.
-  if (columns.has('title')) payload.title = extracted.title;
+  if (columns.has('title')) payload.title = normalizeStayTitle(extracted.title);
   if (columns.has('description')) payload.description = extracted.description;
   if (columns.has('age_min')) payload.age_min = extracted.ageMin;
   if (columns.has('age_max')) payload.age_max = extracted.ageMax;
@@ -225,13 +226,13 @@ export async function POST(req: Request) {
   );
 
   if (!selectedOrganizerId) {
-    return redirectToOrganizerStays(req, null, {
+    return redirectToOrganizerStayCreation(req, null, {
       error: 'Aucun organisateur disponible.'
     });
   }
 
   if (!sourceUrl) {
-    return redirectToOrganizerStays(req, selectedOrganizerId, {
+    return redirectToOrganizerStayCreation(req, selectedOrganizerId, {
       error: "L'URL de la fiche séjour est requise."
     });
   }
@@ -242,7 +243,7 @@ export async function POST(req: Request) {
       throw new Error('invalid-protocol');
     }
   } catch {
-    return redirectToOrganizerStays(req, selectedOrganizerId, {
+    return redirectToOrganizerStayCreation(req, selectedOrganizerId, {
       error: 'Veuillez saisir une URL valide.'
     });
   }
@@ -259,7 +260,7 @@ export async function POST(req: Request) {
     .single();
 
   if (insertError || !insertedDraft) {
-    return redirectToOrganizerStays(req, selectedOrganizerId, {
+    return redirectToOrganizerStayCreation(req, selectedOrganizerId, {
       error: insertError?.message ?? 'Impossible de créer le brouillon.'
     });
   }
@@ -286,7 +287,7 @@ export async function POST(req: Request) {
         .eq('id', insertedDraft.id);
     }
 
-    return redirectToOrganizerStays(req, selectedOrganizerId, {
+    return redirectToOrganizerStayCreation(req, selectedOrganizerId, {
       error: fetchErrorMessage
     });
   }
@@ -329,12 +330,12 @@ export async function POST(req: Request) {
   const updateError = await updateDraftWithFallbacks(insertedDraft.id, updatePayload);
 
   if (updateError) {
-    return redirectToOrganizerStays(req, selectedOrganizerId, {
+    return redirectToOrganizerStayCreation(req, selectedOrganizerId, {
       error: updateError.message ?? 'Impossible de mettre à jour le brouillon.'
     });
   }
 
-  return redirectToOrganizerStays(req, selectedOrganizerId, {
+  return redirectToOrganizerStayCreation(req, selectedOrganizerId, {
     prefill: 'created',
     draftId: insertedDraft.id
   });

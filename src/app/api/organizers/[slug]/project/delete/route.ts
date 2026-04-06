@@ -1,9 +1,14 @@
 import { NextResponse } from 'next/server';
+import { getOrganizerAccessRole } from '@/lib/organizer-access.server';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 
 export const runtime = 'nodejs';
 
 export async function POST(req: Request, context: { params: { slug: string } }) {
+  if (getOrganizerAccessRole() !== 'OWNER') {
+    return NextResponse.redirect(new URL('/organisme', req.url), 303);
+  }
+
   const { slug } = context.params;
   const supabase = getServerSupabaseClient();
 
@@ -23,7 +28,7 @@ export async function POST(req: Request, context: { params: { slug: string } }) 
 
   if (!organizer) {
     return NextResponse.redirect(
-      new URL(`/organisme?error=Organisateur%20introuvable`, req.url),
+      new URL('/organisme/organisateur?error=Organisateur%20introuvable', req.url),
       303
     );
   }
@@ -36,5 +41,5 @@ export async function POST(req: Request, context: { params: { slug: string } }) 
       .eq('id', organizer.id);
   }
 
-  return NextResponse.redirect(new URL('/organisme?success=1', req.url), 303);
+  return NextResponse.redirect(new URL('/organisme/organisateur?success=1', req.url), 303);
 }

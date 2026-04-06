@@ -7,6 +7,7 @@ import { requireRole } from '@/lib/auth/require';
 import { deleteAccommodationForOrganizer } from '@/lib/accommodations';
 import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers.server';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
+import { accommodationStatusBadgeClassName, accommodationStatusLabel } from '@/lib/ui/labels';
 
 type PageProps = {
   searchParams?: {
@@ -162,7 +163,13 @@ export default async function OrganizerAccommodationsPage({ searchParams }: Page
                       : 'Aucun'}
                   </td>
                   <td className="px-4 py-3 text-slate-600">{accommodation.mediaCount}</td>
-                  <td className="px-4 py-3 text-slate-600">{accommodation.status}</td>
+                  <td className="px-4 py-3 text-slate-600">
+                    <span
+                      className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${accommodationStatusBadgeClassName(accommodation.status)}`}
+                    >
+                      {accommodationStatusLabel(accommodation.status)}
+                    </span>
+                  </td>
                   <td className="px-4 py-3 text-slate-600">
                     {new Date(accommodation.updated_at).toLocaleDateString('fr-FR')}
                   </td>

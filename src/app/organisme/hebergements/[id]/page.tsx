@@ -7,6 +7,7 @@ import { deleteAccommodationForOrganizer } from '@/lib/accommodations';
 import { requireRole } from '@/lib/auth/require';
 import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers.server';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
+import { accommodationStatusBadgeClassName, accommodationStatusLabel } from '@/lib/ui/labels';
 import { slugify } from '@/lib/utils';
 
 type PageProps = {
@@ -22,6 +23,10 @@ type PageProps = {
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+
+function isUuid(value: string | null | undefined): value is string {
+  return typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
 
 export default async function AccommodationDetailPage({ params, searchParams }: PageProps) {
   const session = requireRole('ORGANISATEUR');
@@ -41,7 +46,7 @@ export default async function AccommodationDetailPage({ params, searchParams }: 
   const { data: accommodation } = await supabase
     .from('accommodations')
     .select(
-      'id,name,accommodation_type,description,bed_info,bathroom_info,catering_info,accessibility_info,status,updated_at,organizer_id'
+      'id,name,accommodation_type,description,bed_info,bathroom_info,catering_info,accessibility_info,status,updated_at,validated_at,validated_by_user_id,organizer_id'
     )
     .eq('id', params.id)
     .maybeSingle();
@@ -49,12 +54,16 @@ export default async function AccommodationDetailPage({ params, searchParams }: 
   if (!accommodation || accommodation.organizer_id !== selectedOrganizerId) {
     redirect(withOrganizerQuery('/organisme/hebergements', selectedOrganizerId));
   }
+  const currentAccommodation = accommodation;
 
   async function updateAccommodation(formData: FormData) {
     'use server';
     const supabase = getServerSupabaseClient();
     const name = String(formData.get('name') ?? '').trim();
     const accommodationType = String(formData.get('accommodation_type') ?? '').trim();
+    const now = new Date().toISOString();
+    const nextStatus = currentAccommodation.status === 'TO_VALIDATE' ? 'VALIDATED' : currentAccommodation.status;
+    const validatedByUserId = isUuid(session.userId) ? session.userId : null;
 
     if (!name || !accommodationType) {
       redirect(
@@ -76,7 +85,11 @@ export default async function AccommodationDetailPage({ params, searchParams }: 
         catering_info: String(formData.get('catering_info') ?? '').trim() || null,
         accessibility_info: String(formData.get('accessibility_info') ?? '').trim() || null,
         slug: slugify(name),
-        updated_at: new Date().toISOString()
+        status: nextStatus,
+        validated_at: nextStatus === 'VALIDATED' ? now : currentAccommodation.validated_at,
+        validated_by_user_id:
+          nextStatus === 'VALIDATED' ? validatedByUserId : currentAccommodation.validated_by_user_id,
+        updated_at: now
       })
       .eq('id', params.id)
       .eq('organizer_id', selectedOrganizerId);
@@ -131,10 +144,15 @@ export default async function AccommodationDetailPage({ params, searchParams }: 
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">{accommodation.name}</h1>
-          <p className="text-sm text-slate-600">
-            Type : {formatAccommodationType(accommodation.accommodation_type)} · Statut : {accommodation.status}
-          </p>
+          <h1 className="text-2xl font-semibold text-slate-900">{currentAccommodation.name}</h1>
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-slate-600">
+            <span>Type : {formatAccommodationType(currentAccommodation.accommodation_type)}</span>
+            <span
+              className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${accommodationStatusBadgeClassName(currentAccommodation.status)}`}
+            >
+              {accommodationStatusLabel(currentAccommodation.status)}
+            </span>
+          </div>
         </div>
         <Link
           href={withOrganizerQuery('/organisme/hebergements', selectedOrganizerId)}
@@ -144,8 +162,15 @@ export default async function AccommodationDetailPage({ params, searchParams }: 
         </Link>
       </div>
 
+      {currentAccommodation.status === 'TO_VALIDATE' && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          Cet hébergement a été créé automatiquement à partir d&apos;un séjour. Enregistre la fiche après relecture
+          pour le marquer comme validé.
+        </div>
+      )}
+
       <form action={updateAccommodation} className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
-        <AccommodationFormFields values={accommodation} submitLabel="Enregistrer l'hébergement" />
+        <AccommodationFormFields values={currentAccommodation} submitLabel="Enregistrer l'hébergement" />
       </form>
 
       <div className="flex justify-start sm:justify-end">

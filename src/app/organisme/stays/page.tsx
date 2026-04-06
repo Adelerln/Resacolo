@@ -15,15 +15,14 @@ type PageProps = {
     saved?: string | string[];
     error?: string | string[];
     openStay?: string | string[];
-    prefill?: string | string[];
-    draftId?: string | string[];
-    ai?: string | string[];
-    aiDraftId?: string | string[];
+    editSession?: string | string[];
   };
 };
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+
+type StayAvailability = 'AVAILABLE' | 'PARTIALLY_AVAILABLE' | 'FULL';
 
 function formatRedirectValue(value?: string | string[]) {
   return Array.isArray(value) ? value[0] : value;
@@ -45,15 +44,12 @@ export default async function OrganizerStaysPage({ searchParams }: PageProps) {
   const savedParam = formatRedirectValue(searchParams?.saved);
   const errorParam = formatRedirectValue(searchParams?.error);
   const openStayParams = formatRedirectValues(searchParams?.openStay);
-  const prefillParam = formatRedirectValue(searchParams?.prefill);
-  const draftIdParam = formatRedirectValue(searchParams?.draftId);
-  const aiParam = formatRedirectValue(searchParams?.ai);
-  const aiDraftIdParam = formatRedirectValue(searchParams?.aiDraftId);
+  const editSessionParam = formatRedirectValue(searchParams?.editSession);
 
   const { data: stays, error: staysError } = organizerId
     ? await supabase
         .from('stays')
-        .select('id,title,status,season_id,created_at')
+        .select('id,title,status,season_id,created_at,location_text')
         .eq('organizer_id', organizerId)
         .order('created_at', { ascending: false })
     : { data: [], error: null };
@@ -76,13 +72,44 @@ export default async function OrganizerStaysPage({ searchParams }: PageProps) {
     supabase,
     (sessions ?? []).map((sessionItem) => sessionItem.id)
   );
+  const allSessionsByStayId = new Map<string, NonNullable<typeof sessions>[number][]>();
   const sessionsByStayId = new Map<string, NonNullable<typeof sessions>[number][]>();
 
   for (const sessionItem of sessions ?? []) {
+    const allGroup = allSessionsByStayId.get(sessionItem.stay_id) ?? [];
+    allGroup.push(sessionItem);
+    allSessionsByStayId.set(sessionItem.stay_id, allGroup);
+
     if (sessionItem.status === 'COMPLETED' || sessionItem.status === 'ARCHIVED') continue;
     const group = sessionsByStayId.get(sessionItem.stay_id) ?? [];
     group.push(sessionItem);
     sessionsByStayId.set(sessionItem.stay_id, group);
+  }
+
+  function getStayAvailability(stayId: string): StayAvailability {
+    const staySessions = allSessionsByStayId.get(stayId) ?? [];
+    if (staySessions.length === 0) return 'FULL';
+
+    let openCount = 0;
+    let closedCount = 0;
+
+    for (const sessionItem of staySessions) {
+      const reserved = reservedSessionCounts.get(sessionItem.id) ?? 0;
+      const isClosed =
+        sessionItem.status === 'COMPLETED' ||
+        sessionItem.status === 'ARCHIVED' ||
+        reserved >= sessionItem.capacity_total;
+
+      if (isClosed) {
+        closedCount += 1;
+      } else {
+        openCount += 1;
+      }
+    }
+
+    if (openCount === 0) return 'FULL';
+    if (closedCount === 0) return 'AVAILABLE';
+    return 'PARTIALLY_AVAILABLE';
   }
 
   async function updateSessionRemainingPlaces(formData: FormData) {
@@ -91,6 +118,7 @@ export default async function OrganizerStaysPage({ searchParams }: PageProps) {
     const sessionId = String(formData.get('session_id') ?? '').trim();
     const stayId = String(formData.get('stay_id') ?? '').trim();
     const remainingPlaces = Number(formData.get('remaining_places') ?? NaN);
+    const nextEditSessionId = String(formData.get('next_edit_session_id') ?? '').trim();
 
     if (!sessionId || !stayId || Number.isNaN(remainingPlaces) || remainingPlaces < 0) {
       redirect(
@@ -163,7 +191,7 @@ export default async function OrganizerStaysPage({ searchParams }: PageProps) {
     revalidatePath('/sejours');
     redirect(
       withOrganizerQuery(
-        `/organisme/sejours?saved=1&openStay=${encodeURIComponent(stayId)}`,
+        `/organisme/sejours?saved=1&openStay=${encodeURIComponent(stayId)}${nextEditSessionId ? `&editSession=${encodeURIComponent(nextEditSessionId)}` : ''}`,
         organizerId
       )
     );
@@ -174,6 +202,8 @@ export default async function OrganizerStaysPage({ searchParams }: PageProps) {
     title: stay.title,
     status: stay.status,
     seasonName: seasonsById.get(stay.season_id)?.name ?? '-',
+    locationText: stay.location_text ?? '',
+    availability: getStayAvailability(stay.id),
     sessions: sessionsByStayId.get(stay.id)?.map((sessionItem) => ({
       id: sessionItem.id,
       startDate: sessionItem.start_date,
@@ -205,108 +235,13 @@ export default async function OrganizerStaysPage({ searchParams }: PageProps) {
         </Link>
       </div>
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
-        <h2 className="text-lg font-semibold text-slate-900">Pré-remplissage depuis une URL</h2>
-        <p className="mt-1 text-sm text-slate-600">
-          Collez l&apos;URL d&apos;une fiche séjour existante pour préparer un brouillon automatiquement
-          à l&apos;étape suivante.
-        </p>
-        <form
-          action="/api/import-stay"
-          method="post"
-          className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end"
-        >
-          <label className="block flex-1 text-sm font-medium text-slate-700">
-            URL de la fiche séjour
-            <input
-              name="sourceUrl"
-              type="url"
-              placeholder="https://exemple.com/fiche-sejour"
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-              required
-            />
-          </label>
-          <input type="hidden" name="organizerId" value={organizerId ?? ''} />
-          <button
-            type="submit"
-            className="h-10 rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white"
-          >
-            Pré-remplir
-          </button>
-        </form>
-        {prefillParam === 'created' && draftIdParam && (
-          <p className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-            Brouillon créé et pré-rempli avec succès. ID du draft :{' '}
-            <span className="font-semibold">{draftIdParam}</span>.{' '}
-            <Link
-              href={withOrganizerQuery(`/organisme/sejours/drafts/${draftIdParam}`, organizerId)}
-              className="font-semibold underline"
-            >
-              Ouvrir la review
-            </Link>
-          </p>
-        )}
-
-        <div className="mt-6 border-t border-slate-200 pt-4">
-          <h3 className="text-base font-semibold text-slate-900">Enrichissement IA d&apos;un draft</h3>
-          <p className="mt-1 text-sm text-slate-600">
-            Lancez une étape complémentaire d&apos;extraction IA sur un draft existant. Cette étape
-            enrichit uniquement <code>stay_drafts</code> et ne publie rien dans les tables live.
-          </p>
-          <form
-            action="/api/stay-drafts/enrich"
-            method="post"
-            className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end"
-          >
-            <label className="block flex-1 text-sm font-medium text-slate-700">
-              ID du draft
-              <input
-                name="draftId"
-                type="text"
-                placeholder="UUID du stay_draft"
-                defaultValue={draftIdParam ?? aiDraftIdParam ?? ''}
-                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-                required
-              />
-            </label>
-            <input type="hidden" name="organizerId" value={organizerId ?? ''} />
-            <label className="inline-flex items-center gap-2 text-sm text-slate-700 sm:pb-2">
-              <input
-                type="checkbox"
-                name="force"
-                value="true"
-                className="h-4 w-4 rounded border-slate-300"
-              />
-              Forcer l&apos;écrasement (test)
-            </label>
-            <button
-              type="submit"
-              className="h-10 rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white"
-            >
-              Enrichir avec IA
-            </button>
-          </form>
-          {aiParam === 'success' && aiDraftIdParam && (
-            <p className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-              Enrichissement IA terminé avec succès. ID du draft :{' '}
-              <span className="font-semibold">{aiDraftIdParam}</span>.{' '}
-              <Link
-                href={withOrganizerQuery(`/organisme/sejours/drafts/${aiDraftIdParam}`, organizerId)}
-                className="font-semibold underline"
-              >
-                Ouvrir la review
-              </Link>
-            </p>
-          )}
-        </div>
-      </div>
-
       {stayRows.length > 0 ? (
         <OrganizerStaysTable
           stays={stayRows}
           organizerId={organizerId}
           updateSessionRemainingPlacesAction={updateSessionRemainingPlaces}
           defaultOpenStayIds={openStayParams}
+          defaultEditingSessionId={editSessionParam ?? null}
         />
       ) : (
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white px-4 py-6 text-sm text-slate-500">

@@ -1,0 +1,1 @@
+"use strict";exports.id=3469,exports.ids=[3469],exports.modules={73469:(r,e,t)=>{t.d(e,{verifyPassword:()=>s});var i=t(84770),f=t.n(i);function s(r,e){let[t,i,s,u]=e.split("$");if("pbkdf2"!==t||!i||!s||!u)return!1;let n=Number(i);if(!Number.isFinite(n))return!1;let o=f().pbkdf2Sync(r,s,n,32,"sha256").toString("hex");return f().timingSafeEqual(Buffer.from(u),Buffer.from(o))}}};

@@ -5,6 +5,7 @@ import { ChoisirSaColoLogo } from '@/components/bien-choisir/ChoisirSaColoLogo';
 
 const ORANGE = '#FA8500';
 const BLUE = '#52B0EA';
+const ORIGIN_GRAY = '#505050';
 
 export const metadata = {
   title: 'Bien choisir sa colo | ResaColo',
@@ -22,7 +23,10 @@ export default function BienChoisirSaColoPage() {
             <p className="text-xs font-extrabold uppercase tracking-widest text-slate-500">
               Aide & conseils
             </p>
-            <h1 className="mt-4 font-display text-3xl font-bold text-slate-900 sm:text-4xl lg:text-5xl">
+            <h1
+              className="mt-4 font-display text-3xl font-bold leading-[1.3] sm:text-4xl lg:text-[3.25rem]"
+              style={{ color: ORIGIN_GRAY }}
+            >
               <span style={{ color: ORANGE }}>Bien choisir</span> sa colonie de vacances
             </h1>
             <p className="mt-6 max-w-xl font-medium leading-relaxed text-slate-600">
@@ -50,7 +54,7 @@ export default function BienChoisirSaColoPage() {
                 priority
               />
             </div>
-            <h2 className="font-display text-xl font-bold text-slate-900 sm:text-2xl">
+            <h2 className="font-display text-xl font-bold sm:text-2xl" style={{ color: ORIGIN_GRAY }}>
               Attentes et besoins pour une colonie de vacances
             </h2>
           </div>
@@ -142,7 +146,7 @@ export default function BienChoisirSaColoPage() {
                     className="object-contain"
                   />
                 </div>
-                <h2 className="font-display text-xl font-bold text-slate-900 sm:text-2xl">
+                <h2 className="font-display text-xl font-bold sm:text-2xl" style={{ color: ORIGIN_GRAY }}>
                   Les questions essentielles avant une colonie de vacances
                 </h2>
               </div>
@@ -228,7 +232,7 @@ export default function BienChoisirSaColoPage() {
               </div>
             </div>
             <div className="mt-6 flex-1 md:mt-0">
-              <h2 className="font-display text-2xl font-bold text-slate-900 sm:text-3xl">
+              <h2 className="font-display text-2xl font-bold sm:text-3xl" style={{ color: ORIGIN_GRAY }}>
                 Besoin d&apos;aller plus loin ?
               </h2>
               <p className="mt-2 text-lg font-semibold text-slate-700">
@@ -261,7 +265,7 @@ export default function BienChoisirSaColoPage() {
                     className="object-contain"
                   />
                 </div>
-                <h2 className="font-display text-xl font-bold text-slate-900 sm:text-2xl">
+                <h2 className="font-display text-xl font-bold sm:text-2xl" style={{ color: ORIGIN_GRAY }}>
                   Thématiques pour une colonie de vacances
                 </h2>
               </div>

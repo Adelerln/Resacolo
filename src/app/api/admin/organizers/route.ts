@@ -8,6 +8,7 @@ export async function POST(req: Request) {
   const formData = await req.formData();
   const name = String(formData.get('name') ?? '').trim();
   const contactEmail = String(formData.get('contact_email') ?? '').trim();
+  const heroIntroText = String(formData.get('hero_intro_text') ?? '').trim();
   const description = String(formData.get('description') ?? '').trim();
   const foundedYearRaw = String(formData.get('founded_year') ?? '').trim();
   const ageMinRaw = String(formData.get('age_min') ?? '').trim();
@@ -38,6 +39,7 @@ export async function POST(req: Request) {
     .insert({
       name,
       contact_email: contactEmail,
+      hero_intro_text: heroIntroText || null,
       description: description || null,
       founded_year: foundedYear,
       age_min: ageMin,

@@ -17,7 +17,7 @@ const links = [
     children: [
       { href: '/notre-concept', label: 'Notre Concept' },
       { href: '/organisateurs', label: 'Organisateurs' },
-      { href: '/devenir-organisateur', label: 'Devenir Organisateur' },
+      { href: '/rejoindre-resacolo', label: 'Rejoindre Resacolo' },
       { href: '/devenir-partenaire', label: 'Devenir Partenaire' }
     ]
   },
@@ -129,18 +129,22 @@ export function MainNavigation() {
 
   return (
     <header className="relative z-[100] overflow-visible border-b border-slate-200 bg-white/80 backdrop-blur">
-      <div className="section-container flex items-center justify-between gap-3 overflow-visible py-3 sm:py-4">
-        <Link href="/" className="flex items-center gap-3 text-2xl font-semibold tracking-tight text-slate-900">
-          <Image
-            src="/image/accueil/images_accueil/logo-resacolo.png"
-            alt="Resacolo"
-            width={140}
-            height={40}
-            className="h-9 w-auto sm:h-10"
-            priority
-          />
-        </Link>
-        <nav className="hidden items-center gap-6 overflow-visible font-medium xl:flex">
+      <Link
+        href="/"
+        className="absolute left-0 top-1/2 z-10 flex -translate-y-1/2 items-center pl-3 sm:pl-4 lg:pl-5"
+      >
+        <Image
+          src="/image/accueil/images_accueil/logo-resacolo.png"
+          alt="Resacolo"
+          width={140}
+          height={40}
+          className="h-9 w-auto sm:h-10"
+          priority
+        />
+      </Link>
+      <div className="section-container flex items-center justify-between gap-6 overflow-visible py-3 pl-24 sm:py-4 sm:pl-28 lg:pl-32">
+        <div className="h-9 w-0 shrink-0 sm:h-10" aria-hidden />
+        <nav className="hidden items-center gap-9 overflow-visible font-medium xl:flex">
           {links.map((link) => {
             if (isDropdownItem(link)) {
               const isActive = link.children.some((c) => pathname === c.href);
@@ -211,7 +215,7 @@ export function MainNavigation() {
             return null;
           })}
         </nav>
-        <div className="hidden items-center gap-4 xl:flex">
+        <div className="hidden items-center gap-6 xl:flex">
           <Link
             href="/mon-compte"
             className={headerIconButtonClass}

@@ -118,7 +118,7 @@ export function OrganizerDetailModal({ slug, onClose }: OrganizerDetailModalProp
                 <div>
                   <h2
                     id="organizer-modal-title"
-                    className="font-display text-xl font-bold uppercase text-brand-600 sm:text-2xl"
+                    className="font-display text-center text-[21px] font-bold leading-[1.4] text-[#6DC7FE] sm:text-[21px]"
                   >
                     {data.organizer.name}
                   </h2>

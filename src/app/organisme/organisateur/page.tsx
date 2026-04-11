@@ -35,7 +35,7 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
   const { data: organizer } = await supabase
     .from('organizers')
     .select(
-      'id,name,contact_email,description,founded_year,age_min,age_max,logo_path,education_project_path,slug'
+      'id,name,contact_email,description,hero_intro_text,founded_year,age_min,age_max,logo_path,education_project_path,slug'
     )
     .eq('id', organizerId)
     .maybeSingle();
@@ -64,6 +64,7 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
     const supabase = getServerSupabaseClient();
     const name = String(formData.get('name') ?? '').trim();
     const contactEmail = String(formData.get('contact_email') ?? '').trim();
+    const heroIntroText = String(formData.get('hero_intro_text') ?? '').trim();
     const description = String(formData.get('description') ?? '').trim();
     const foundedYearRaw = String(formData.get('founded_year') ?? '').trim();
     const ageMinRaw = String(formData.get('age_min') ?? '').trim();
@@ -81,6 +82,7 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
       .update({
         name,
         contact_email: contactEmail,
+        hero_intro_text: heroIntroText || null,
         description: description || null,
         founded_year: foundedYear,
         age_min: ageMin,
@@ -181,6 +183,15 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
             />
           </label>
         </div>
+        <label className="block text-sm font-medium text-slate-700">
+          Texte sous le titre
+          <textarea
+            name="hero_intro_text"
+            rows={3}
+            defaultValue={organizer.hero_intro_text ?? ''}
+            className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 transition-colors"
+          />
+        </label>
         <label className="block text-sm font-medium text-slate-700">
           Texte de présentation
           <textarea

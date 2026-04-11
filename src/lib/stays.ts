@@ -63,6 +63,23 @@ type StayAccommodationRow = Pick<
 
 const DAY_MS = 1000 * 60 * 60 * 24;
 
+function getEffectiveSessionStatus(
+  session: Pick<
+    SessionWithOptionsRow,
+    'status' | 'capacity_total' | 'capacity_reserved'
+  >
+): SessionWithOptionsRow['status'] {
+  if (session.status === 'COMPLETED' || session.status === 'ARCHIVED' || session.status === 'FULL') {
+    return session.status;
+  }
+
+  if (session.capacity_reserved >= session.capacity_total) {
+    return 'FULL';
+  }
+
+  return session.status;
+}
+
 function deriveSessionDurations(sessions: SessionRow[] | null | undefined) {
   if (!sessions || sessions.length === 0) return [];
   return sessions
@@ -187,6 +204,11 @@ function buildAccommodationText(accommodations: AccommodationRow[]) {
       return [accommodation.name, details].filter(Boolean).join('\n');
     })
     .join('\n\n');
+}
+
+function isInsuranceLikeLabel(label: string | null | undefined) {
+  if (!label) return false;
+  return /(assur|annulation|rapatriement|multirisque)/i.test(label);
 }
 
 async function fetchStaysFromSupabase(): Promise<Stay[]> {
@@ -364,31 +386,47 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
           const sessionPrice = Array.isArray(sessionItem.session_prices)
             ? sessionItem.session_prices[0] ?? null
             : sessionItem.session_prices;
+          const effectiveStatus = getEffectiveSessionStatus(sessionItem);
 
           return {
             id: sessionItem.id,
             startDate: sessionItem.start_date,
             endDate: sessionItem.end_date,
             price: sessionPrice ? sessionPrice.amount_cents / 100 : null,
-            status: sessionItem.status,
+            status: effectiveStatus,
             transportOptions: sharedTransportOptions
           };
         })
         .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());
-      const insuranceOptions: StayInsuranceOption[] = (insuranceOptionsByStayId.get(stay.id) ?? []).map(
-        (option) => ({
+      const rawInsuranceOptions = insuranceOptionsByStayId.get(stay.id) ?? [];
+      const rawExtraOptions = extraOptionsByStayId.get(stay.id) ?? [];
+
+      const insuranceOptions: StayInsuranceOption[] = [
+        ...rawInsuranceOptions.map((option) => ({
           id: option.id,
           label: option.label,
           amount: option.amount_cents != null ? option.amount_cents / 100 : null,
           percentValue: option.percent_value,
           pricingMode: option.pricing_mode
-        })
-      );
-      const extraOptions: StayExtraOption[] = (extraOptionsByStayId.get(stay.id) ?? []).map((option) => ({
-        id: option.id,
-        label: option.label,
-        amount: option.amount_cents / 100
-      }));
+        })),
+        ...rawExtraOptions
+          .filter((option) => isInsuranceLikeLabel(option.label))
+          .map((option) => ({
+            id: option.id,
+            label: option.label,
+            amount: option.amount_cents / 100,
+            percentValue: null,
+            pricingMode: 'FLAT'
+          }))
+      ];
+
+      const extraOptions: StayExtraOption[] = rawExtraOptions
+        .filter((option) => !isInsuranceLikeLabel(option.label))
+        .map((option) => ({
+          id: option.id,
+          label: option.label,
+          amount: option.amount_cents / 100
+        }));
       const sessionPrices = bookingSessions
         .filter((sessionItem) => sessionItem.status === 'OPEN')
         .map((sessionItem) => sessionItem.price)

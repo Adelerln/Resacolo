@@ -9,7 +9,6 @@ import {
   MapPin,
   Users,
   Clock,
-  Phone,
   MapPin as PinIcon,
   User,
   Waves,
@@ -24,6 +23,7 @@ import {
 } from 'lucide-react';
 import type { Stay, StayInsuranceOption, StaySessionOption, StayTransportOption } from '@/types/stay';
 import { useCart } from '@/context/CartContext';
+import { createCartItemFromStay } from '@/lib/cart/normalizeCartItem';
 import { FILTER_LABELS } from '@/lib/constants';
 import { getMockImageUrl, mockImages } from '@/lib/mockImages';
 import StayLocationMap from '@/components/sejours/StayLocationMap';
@@ -159,6 +159,7 @@ export function StayDetailView({ stay }: { stay: Stay }) {
   const [selectedInsuranceId, setSelectedInsuranceId] = useState('');
   const [selectedExtraOptionId, setSelectedExtraOptionId] = useState('');
   const [bookingError, setBookingError] = useState<string | null>(null);
+  const [isCheckingAvailability, setIsCheckingAvailability] = useState(false);
 
   const bookingOptions = stay.bookingOptions;
   const availableSessions = useMemo(() => bookingOptions?.sessions ?? [], [bookingOptions]);
@@ -166,6 +167,11 @@ export function StayDetailView({ stay }: { stay: Stay }) {
   const insuranceOptions = useMemo(() => bookingOptions?.insuranceOptions ?? [], [bookingOptions]);
   const extraOptions = useMemo(() => bookingOptions?.extraOptions ?? [], [bookingOptions]);
   const hasSessions = availableSessions.length > 0;
+  const openSessions = useMemo(
+    () => availableSessions.filter((sessionItem) => sessionItem.status === 'OPEN'),
+    [availableSessions]
+  );
+  const hasOpenSessions = openSessions.length > 0;
   const selectedSession = useMemo(
     () => availableSessions.find((sessionItem) => sessionItem.id === selectedSessionId) ?? null,
     [availableSessions, selectedSessionId]
@@ -239,7 +245,7 @@ export function StayDetailView({ stay }: { stay: Stay }) {
     () => extraOptions.find((option) => option.id === selectedExtraOptionId) ?? null,
     [extraOptions, selectedExtraOptionId]
   );
-  const isSelectedSessionFull = selectedSession?.status === 'FULL';
+  const isSelectedSessionUnavailable = selectedSession ? selectedSession.status !== 'OPEN' : false;
   const estimatedPrice = useMemo(() => {
     const basePrice = selectedSession?.price ?? stay.priceFrom;
     if (basePrice == null) return stay.priceFrom;
@@ -293,14 +299,28 @@ export function StayDetailView({ stay }: { stay: Stay }) {
     }
   }, [isDifferentiatedTransport, returnCities, selectedReturnCity]);
 
-  const handleReserver = () => {
+  useEffect(() => {
+    if (!selectedInsuranceId) return;
+    if (!insuranceOptions.some((option) => option.id === selectedInsuranceId)) {
+      setSelectedInsuranceId('');
+    }
+  }, [insuranceOptions, selectedInsuranceId]);
+
+  useEffect(() => {
+    if (!selectedExtraOptionId) return;
+    if (!extraOptions.some((option) => option.id === selectedExtraOptionId)) {
+      setSelectedExtraOptionId('');
+    }
+  }, [extraOptions, selectedExtraOptionId]);
+
+  const handleReserver = async () => {
     if (hasSessions && !selectedSession) {
       setBookingError('Sélectionnez une session.');
       return;
     }
 
-    if (isSelectedSessionFull) {
-      setBookingError('Cette session est complète.');
+    if (isSelectedSessionUnavailable) {
+      setBookingError('Cette session n’est plus disponible.');
       return;
     }
 
@@ -320,35 +340,54 @@ export function StayDetailView({ stay }: { stay: Stay }) {
       }
     }
 
+    if (selectedSession?.id) {
+      setIsCheckingAvailability(true);
+      try {
+        const response = await fetch(`/api/sessions/${selectedSession.id}/availability`, {
+          method: 'GET',
+          cache: 'no-store'
+        });
+
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+          setBookingError(payload?.error ?? 'Impossible de vérifier la disponibilité de la session.');
+          return;
+        }
+
+        const payload = (await response.json()) as { available?: boolean; status?: string };
+        if (!payload.available) {
+          setBookingError(
+            payload.status === 'OPEN'
+              ? 'La session sélectionnée est complète.'
+              : 'Cette session n’est plus disponible.'
+          );
+          return;
+        }
+      } catch {
+        setBookingError('Impossible de vérifier la disponibilité de la session.');
+        return;
+      } finally {
+        setIsCheckingAvailability(false);
+      }
+    }
+
     setBookingError(null);
-    addItem({
-      ...stay,
-      priceFrom: estimatedPrice,
-      rawContext: {
-        ...(stay.rawContext ?? {}),
-        selected_booking: {
+    addItem(
+      createCartItemFromStay(stay, {
+        unitPrice: estimatedPrice ?? null,
+        selection: {
           sessionId: selectedSession?.id ?? null,
-          sessionLabel: selectedSession ? formatSessionLabel(selectedSession) : null,
           transportMode,
-          transportId: selectedTransportOption?.id ?? null,
-          transportLabel: selectedTransportOption ? formatTransportLabel(selectedTransportOption) : null,
-          departureTransportId: selectedDepartureTransportOption?.id ?? null,
-          departureTransportLabel: selectedDepartureTransportOption
-            ? formatTransportLabel(selectedDepartureTransportOption)
-            : null,
-          returnTransportId: selectedReturnTransportOption?.id ?? null,
-          returnTransportLabel: selectedReturnTransportOption
-            ? formatTransportLabel(selectedReturnTransportOption)
-            : null,
+          transportOptionId: selectedTransportOption?.id ?? null,
+          departureTransportOptionId: selectedDepartureTransportOption?.id ?? null,
+          returnTransportOptionId: selectedReturnTransportOption?.id ?? null,
           departureCity: selectedDepartureCity || null,
           returnCity: selectedReturnCity || null,
-          insuranceId: selectedInsuranceOption?.id ?? null,
-          insuranceLabel: selectedInsuranceOption ? formatInsuranceLabel(selectedInsuranceOption) : null,
-          extraOptionId: selectedExtraOption?.id ?? null,
-          extraOptionLabel: selectedExtraOption?.label ?? null
+          insuranceOptionId: selectedInsuranceOption?.id ?? null,
+          extraOptionId: selectedExtraOption?.id ?? null
         }
-      }
-    });
+      })
+    );
     router.push('/panier');
   };
   const galleryImages = stay.coverImage
@@ -611,11 +650,20 @@ export function StayDetailView({ stay }: { stay: Stay }) {
                   >
                     <option value="">{hasSessions ? 'Sélectionner une session' : 'Aucune session disponible'}</option>
                     {availableSessions.map((sessionItem) => (
-                      <option key={sessionItem.id} value={sessionItem.id}>
+                      <option
+                        key={sessionItem.id}
+                        value={sessionItem.id}
+                        disabled={sessionItem.status !== 'OPEN'}
+                      >
                         {formatSessionLabel(sessionItem)}
                       </option>
                     ))}
                   </select>
+                  {hasSessions && !hasOpenSessions ? (
+                    <p className="mt-2 text-sm font-semibold text-rose-600">
+                      Séjour complet: aucune place disponible pour le moment.
+                    </p>
+                  ) : null}
                 </div>
                 {transportMode === 'Aller/Retour différencié' ? (
                   <>
@@ -708,50 +756,52 @@ export function StayDetailView({ stay }: { stay: Stay }) {
                     </select>
                   </div>
                 )}
-                <div>
-                  <label htmlFor="insurance" className="mb-1 block text-sm font-medium text-slate-700">
-                    Assurance
-                  </label>
-                  <select
-                    id="insurance"
-                    value={selectedInsuranceId}
-                    onChange={(event) => setSelectedInsuranceId(event.target.value)}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700"
-                    disabled={!insuranceOptions.length}
-                  >
-                    <option value="">
-                      {insuranceOptions.length ? 'Aucune assurance' : 'Aucune assurance disponible'}
-                    </option>
-                    {insuranceOptions.map((option) => (
-                      <option key={option.id} value={option.id}>
-                        {formatInsuranceLabel(option)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label htmlFor="extra-options" className="mb-1 block text-sm font-medium text-slate-700">
-                    Options supplémentaires
-                  </label>
-                  <select
-                    id="extra-options"
-                    value={selectedExtraOptionId}
-                    onChange={(event) => setSelectedExtraOptionId(event.target.value)}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700"
-                    disabled={!extraOptions.length}
-                  >
-                    <option value="">
-                      {extraOptions.length ? 'Aucune option supplémentaire' : 'Aucune option disponible'}
-                    </option>
-                    {extraOptions.map((option) => (
-                      <option key={option.id} value={option.id}>
-                        {option.label} · {formatPrice(option.amount)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                {insuranceOptions.length > 0 ? (
+                  <div>
+                    <label htmlFor="insurance" className="mb-1 block text-sm font-medium text-slate-700">
+                      Assurance
+                    </label>
+                    <select
+                      id="insurance"
+                      value={selectedInsuranceId}
+                      onChange={(event) => setSelectedInsuranceId(event.target.value)}
+                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700"
+                    >
+                      <option value="">Aucune assurance</option>
+                      {insuranceOptions.map((option) => (
+                        <option key={option.id} value={option.id}>
+                          {formatInsuranceLabel(option)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : null}
+                {extraOptions.length > 0 ? (
+                  <div>
+                    <label htmlFor="extra-options" className="mb-1 block text-sm font-medium text-slate-700">
+                      Options supplémentaires
+                    </label>
+                    <select
+                      id="extra-options"
+                      value={selectedExtraOptionId}
+                      onChange={(event) => setSelectedExtraOptionId(event.target.value)}
+                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700"
+                    >
+                      <option value="">Aucune option supplémentaire</option>
+                      {extraOptions.map((option) => (
+                        <option key={option.id} value={option.id}>
+                          {option.label} · {formatPrice(option.amount)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : null}
                 {bookingError && <p className="text-sm text-rose-600">{bookingError}</p>}
-                {isSelectedSessionFull ? (
+                {hasSessions && !hasOpenSessions ? (
+                  <p className="mt-4 flex w-full items-center justify-center rounded-xl bg-rose-50 px-6 py-3.5 text-base font-semibold text-rose-700">
+                    Séjour complet
+                  </p>
+                ) : isSelectedSessionUnavailable ? (
                   <p className="mt-4 flex w-full items-center justify-center rounded-xl bg-rose-50 px-6 py-3.5 text-base font-semibold text-rose-700">
                     Complet
                   </p>
@@ -759,18 +809,14 @@ export function StayDetailView({ stay }: { stay: Stay }) {
                   <button
                     type="button"
                     onClick={handleReserver}
-                    disabled={!hasSessions}
+                    disabled={!hasSessions || !hasOpenSessions || isCheckingAvailability}
                     className="mt-4 flex w-full items-center justify-center rounded-xl bg-accent-500 px-6 py-3.5 text-base font-semibold text-white shadow-md transition-colors hover:bg-accent-600 disabled:cursor-not-allowed disabled:bg-slate-300"
                   >
-                    Réserver maintenant
+                    {isCheckingAvailability ? 'Vérification...' : 'Réserver maintenant'}
                   </button>
                 )}
               </form>
 
-              <div className="mt-6 flex items-center gap-3 text-sm text-slate-600">
-                <Phone className="h-4 w-4 shrink-0 text-accent-500" />
-                <span>Contactez-nous pour plus d&apos;informations</span>
-              </div>
             </div>
 
             {/* Lieux de séjour */}

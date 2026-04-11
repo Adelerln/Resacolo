@@ -25,6 +25,12 @@ Configurer la clé OpenAI dans `.env` :
 OPENAI_API_KEY=sk-...
 ```
 
+Pour le tunnel checkout/paiement, le projet utilise désormais un provider local `Monetico mock` (mode test) :
+
+```
+Aucune clé de paiement requise en local.
+```
+
 ## Synchronisation des séjours
 
 - La page `/sejours` appelle `getStays()` côté serveur, qui

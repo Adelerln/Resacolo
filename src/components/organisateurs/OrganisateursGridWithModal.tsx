@@ -23,12 +23,12 @@ export function OrganisateursGridWithModal({ organizers }: OrganisateursGridWith
             key={org.slug}
             className="flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-md transition hover:shadow-lg"
           >
-            <div className="flex min-h-[140px] flex-1 flex-col items-center justify-center px-4 py-8">
+            <div className="flex min-h-[170px] flex-1 flex-col items-center justify-center px-4 py-8">
                 {org.logoUrl ? (
                   <img
                     src={org.logoUrl}
                     alt={org.name}
-                    className="max-h-20 w-auto object-contain"
+                    className="max-h-28 w-auto object-contain"
                   />
               ) : (
                 <div className="flex h-16 w-full items-center justify-center rounded-lg bg-slate-100">
@@ -38,14 +38,16 @@ export function OrganisateursGridWithModal({ organizers }: OrganisateursGridWith
                 </div>
               )}
             </div>
-            <div className="border-t border-slate-100 px-4 py-4">
-              <h3 className="text-center text-sm font-bold uppercase leading-tight text-brand-600">
+            <div className="flex min-h-[126px] flex-col border-t border-slate-100 px-4 py-4">
+              <h3 className="text-center text-[21px] font-bold leading-[1.4] text-[#6DC7FE]">
                 {org.name}
               </h3>
-              <ul className="mt-3 space-y-1 text-center text-xs text-slate-500">
-                <li>Création : {org.creationYear ?? '-'}</li>
+              <ul className="mt-3 space-y-1 text-center text-sm text-slate-500">
                 <li>
-                  Public :{' '}
+                  <strong>Création :</strong> {org.creationYear ?? '-'}
+                </li>
+                <li>
+                  <strong>Public :</strong>{' '}
                   {org.ageMin || org.ageMax
                     ? `${org.ageMin ?? '?'} - ${org.ageMax ?? '?'} ans`
                     : '-'}

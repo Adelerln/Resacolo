@@ -15,7 +15,7 @@ export default async function AdminOrganizerDetailPage({ params, searchParams }:
   let { data: organizer } = await supabase
     .from('organizers')
     .select(
-      'id,name,contact_email,created_at,description,founded_year,age_min,age_max,logo_path,education_project_path,slug'
+      'id,name,contact_email,created_at,description,hero_intro_text,founded_year,age_min,age_max,logo_path,education_project_path,slug'
     )
     .eq('slug', params.id)
     .maybeSingle();
@@ -24,7 +24,7 @@ export default async function AdminOrganizerDetailPage({ params, searchParams }:
     const { data: byId } = await supabase
       .from('organizers')
       .select(
-        'id,name,contact_email,created_at,description,founded_year,age_min,age_max,logo_path,education_project_path,slug'
+        'id,name,contact_email,created_at,description,hero_intro_text,founded_year,age_min,age_max,logo_path,education_project_path,slug'
       )
       .eq('id', params.id)
       .maybeSingle();
@@ -149,6 +149,15 @@ export default async function AdminOrganizerDetailPage({ params, searchParams }:
             />
           </label>
         </div>
+        <label className="block text-sm font-medium text-slate-700">
+          Texte sous le titre
+          <textarea
+            name="hero_intro_text"
+            rows={3}
+            defaultValue={organizer.hero_intro_text ?? ''}
+            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+          />
+        </label>
         <label className="block text-sm font-medium text-slate-700">
           Texte de présentation
           <textarea

@@ -54,7 +54,7 @@ export default function NotreConceptPage() {
             <p className="text-xs font-extrabold uppercase tracking-widest text-slate-500">
               À propos
             </p>
-            <h1 className="mt-4 font-display text-3xl font-bold text-slate-900 sm:text-4xl lg:text-5xl">
+            <h1 className="mt-4 font-display text-3xl font-bold leading-[1.06] text-slate-900 sm:text-4xl lg:text-[3.25rem]">
               <span style={{ color: ORIGIN_GRAY }}>Notre</span>{' '}
               <span style={{ color: ORANGE }}>concept</span>
             </h1>
@@ -190,7 +190,7 @@ export default function NotreConceptPage() {
         </div>
       </section>
 
-      <section className="border-t border-slate-100 bg-slate-50/30 py-12 md:py-14">
+      <section className="border-t border-slate-100 bg-slate-100 py-12 md:py-14">
         <div className="section-container">
           <h2
             className="mb-7 text-center font-display text-3xl font-bold leading-[1.04] sm:text-4xl lg:text-5xl"
@@ -202,7 +202,7 @@ export default function NotreConceptPage() {
         </div>
       </section>
 
-      <section className="bg-slate-100 py-12 md:py-14">
+      <section className="bg-white py-12 md:py-14">
         <div className="section-container">
           <div>
             <h2

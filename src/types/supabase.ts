@@ -834,6 +834,7 @@ export type Database = {
           founded_year: number | null
           age_min: number | null
           age_max: number | null
+          hero_intro_text: string | null
           id: string
           logo_path: string | null
           name: string
@@ -847,6 +848,7 @@ export type Database = {
           founded_year?: number | null
           age_min?: number | null
           age_max?: number | null
+          hero_intro_text?: string | null
           id?: string
           logo_path?: string | null
           name: string
@@ -860,6 +862,7 @@ export type Database = {
           founded_year?: number | null
           age_min?: number | null
           age_max?: number | null
+          hero_intro_text?: string | null
           id?: string
           logo_path?: string | null
           name?: string

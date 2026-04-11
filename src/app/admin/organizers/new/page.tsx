@@ -74,6 +74,14 @@ export default async function AdminOrganizerNewPage({ searchParams }: PageProps)
             </label>
           </div>
           <label className="block text-sm font-medium text-slate-700">
+            Texte sous le titre
+            <textarea
+              name="hero_intro_text"
+              rows={3}
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+            />
+          </label>
+          <label className="block text-sm font-medium text-slate-700">
             Texte de présentation
             <textarea
               name="description"

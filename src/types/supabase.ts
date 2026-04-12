@@ -827,6 +827,7 @@ export type Database = {
       }
       organizers: {
         Row: {
+          activity_keys: string[]
           contact_email: string | null
           created_at: string
           description: string | null
@@ -838,9 +839,12 @@ export type Database = {
           id: string
           logo_path: string | null
           name: string
+          season_keys: string[]
           slug: string | null
+          stay_type_keys: string[]
         }
         Insert: {
+          activity_keys?: string[]
           contact_email?: string | null
           created_at?: string
           description?: string | null
@@ -852,9 +856,12 @@ export type Database = {
           id?: string
           logo_path?: string | null
           name: string
+          season_keys?: string[]
           slug?: string | null
+          stay_type_keys?: string[]
         }
         Update: {
+          activity_keys?: string[]
           contact_email?: string | null
           created_at?: string
           description?: string | null
@@ -866,7 +873,9 @@ export type Database = {
           id?: string
           logo_path?: string | null
           name?: string
+          season_keys?: string[]
           slug?: string | null
+          stay_type_keys?: string[]
         }
         Relationships: []
       }

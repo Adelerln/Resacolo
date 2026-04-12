@@ -5,12 +5,53 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ExternalLink, MapPin } from 'lucide-react';
 import { formatAccommodationType } from '@/components/organisme/AccommodationFormFields';
+import { getOrganizerBySlug } from '@/lib/mockOrganizers';
+import {
+  ORGANIZER_ACTIVITY_OPTIONS,
+  ORGANIZER_SEASON_OPTIONS,
+  ORGANIZER_STAY_TYPE_OPTIONS
+} from '@/lib/organizer-profile-options';
+import {
+  buildOrganizerPresentationHtml,
+  extractOrganizerPresentationSummary
+} from '@/lib/organizer-rich-text';
+import { getStays } from '@/lib/stays';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { slugify } from '@/lib/utils';
 
-type PageProps = { params: { slug: string } };
+type PageProps = { params: Promise<{ slug: string }> };
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 const BANNER_DIR = path.join(process.cwd(), 'public/image/organisateurs/bannieres_orga');
+const LIGHT_HERO_TEXT_KEYS = new Set([
+  'cei',
+  'cesl',
+  'chicplanet',
+  'eoleloisirs',
+  'lezebre',
+  'lesvacancesduzebre',
+  'oceanevoyage',
+  'oceanevoyagejunior',
+  'silc',
+  'visasloisirs'
+]);
+const DARK_HERO_TEXT_KEYS = new Set([
+  'aventuresvacancesenergie',
+  'ave',
+  'djuringa',
+  'equifun',
+  'lescolosdubonheur',
+  'lescolosdubonheurs',
+  'p4s',
+  'planeteaventure',
+  'planeteaventures',
+  'planetevacances',
+  'thalie',
+  'zigo',
+  'zigotours'
+]);
 
 function compactKey(value: string) {
   return slugify(value).replace(/-/g, '');
@@ -23,6 +64,14 @@ async function resolveOrganizerBannerPath(input: { name: string; slug: string })
       .sort((a, b) => a.localeCompare(b, 'fr'));
 
     if (files.length === 0) return null;
+
+    const organizerSlugKey = compactKey(input.slug);
+    if (organizerSlugKey === 'cesl') {
+      const chicPlanetBanner = files.find((file) => compactKey(file).includes('chicplanet'));
+      if (chicPlanetBanner) {
+        return `/image/organisateurs/bannieres_orga/${chicPlanetBanner}`;
+      }
+    }
 
     const organizerKeys = [compactKey(input.slug), compactKey(input.name)].filter(Boolean);
     const matchedFile =
@@ -46,94 +95,306 @@ function formatStayHref(organizerName: string, stayTitle: string, stayId: string
   return `/sejours/${slugify(`${organizerName}-${stayTitle}`) || stayId}`;
 }
 
-function splitPresentation(description?: string | null, publicAgeRange?: string) {
-  const trimmed = description?.trim();
-  if (!trimmed) {
-    return [
-      `Cet organisateur de séjours collectifs propose des colonies de vacances et séjours pour les ${publicAgeRange ?? 'jeunes publics'}.`
-    ];
-  }
+function formatAccommodationCarouselLabel(type?: string | null, locationLabel?: string | null) {
+  const typeLabel =
+    type === 'centre'
+      ? 'Centre de vacances'
+      : type
+        ? formatAccommodationType(type)
+        : 'Centre de vacances';
+
+  return locationLabel ? `${typeLabel}, ${locationLabel}` : typeLabel;
+}
+
+function formatOrganizerDisplayName(name: string) {
+  const trimmed = name.trim();
+  if (!trimmed) return name;
+
+  const preservedAcronyms = new Set(['AVE', 'CEI', 'CESL', 'P4S', 'SILC']);
+  if (preservedAcronyms.has(trimmed)) return trimmed;
+
+  const isAllCaps = trimmed === trimmed.toLocaleUpperCase('fr-FR');
+  if (!isAllCaps) return trimmed;
 
   return trimmed
-    .split(/\n+/)
-    .map((paragraph) => paragraph.trim())
-    .filter(Boolean);
+    .toLocaleLowerCase('fr-FR')
+    .replace(/(^|[\s'’-])([A-Za-zÀ-ÿ])/g, (match, prefix: string, letter: string) => {
+      return `${prefix}${letter.toLocaleUpperCase('fr-FR')}`;
+    });
+}
+
+function splitOrganizerDisplayName(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length <= 1) {
+    return { firstLine: name, secondLine: '' };
+  }
+
+  let bestSplit = {
+    firstLine: name,
+    secondLine: '',
+    score: Number.POSITIVE_INFINITY
+  };
+
+  for (let index = 1; index < parts.length; index += 1) {
+    const firstLine = parts.slice(0, index).join(' ');
+    const secondLine = parts.slice(index).join(' ');
+    const firstLength = firstLine.length;
+    const secondLength = secondLine.length;
+    const penalty = secondLength < firstLength ? 100 : 0;
+    const score = Math.abs(secondLength - firstLength) + penalty;
+
+    if (score < bestSplit.score) {
+      bestSplit = { firstLine, secondLine, score };
+    }
+  }
+
+  return { firstLine: bestSplit.firstLine, secondLine: bestSplit.secondLine };
+}
+
+function resolveHeroTextTheme(input: { slug: string; name: string; bannerPath?: string | null }) {
+  const candidateKeys = [
+    compactKey(input.slug),
+    compactKey(input.name),
+    input.bannerPath
+      ? compactKey(
+          input.bannerPath
+            .split('/')
+            .pop()
+            ?.replace(/\.[^.]+$/, '')
+            .replace(/^banniere[-_\s]*/i, '') ?? ''
+        )
+      : ''
+  ].filter(Boolean);
+
+  if (candidateKeys.some((key) => DARK_HERO_TEXT_KEYS.has(key))) return 'dark';
+  if (candidateKeys.some((key) => LIGHT_HERO_TEXT_KEYS.has(key))) return 'light';
+  return 'light';
+}
+
+function resolveHeroLogoFallbackPosition(slug: string) {
+  const key = compactKey(slug);
+
+  if (key === 'aventuresvacancesenergie' || key === 'ave') return '74% 48%';
+  if (key === 'cei') return '78% 46%';
+  if (key === 'cesl') return '80% 48%';
+  if (key === 'chicplanet') return '77% 48%';
+  if (key === 'eoleloisirs') return '79% 48%';
+  if (key === 'lezebre' || key === 'lesvacancesduzebre') return '77% 48%';
+  if (key === 'thalie') return '78% 48%';
+  if (key === 'zigo' || key === 'zigotours') return '78% 48%';
+
+  return '78% 48%';
+}
+
+function resolveHeroLogoImageClass(slug: string) {
+  const key = compactKey(slug);
+
+  if (key === 'cesl') {
+    return 'max-h-52 w-auto object-contain object-center sm:max-h-60 lg:max-h-72';
+  }
+
+  return 'max-h-44 w-auto object-contain sm:max-h-52 lg:max-h-64';
 }
 
 export default async function OrganisateurDetailPage({ params }: PageProps) {
+  const { slug } = await params;
   const supabase = getServerSupabaseClient();
-  const { data: organizer } = await supabase
+  const organizerSelectWithCatalog =
+    'id,name,slug,description,hero_intro_text,founded_year,age_min,age_max,logo_path,education_project_path,season_keys,stay_type_keys,activity_keys';
+  const organizerSelectFallback =
+    'id,name,slug,description,hero_intro_text,founded_year,age_min,age_max,logo_path,education_project_path';
+
+  const organizerQueryWithCatalog = await supabase
     .from('organizers')
-    .select('id,name,slug,description,hero_intro_text,founded_year,age_min,age_max,logo_path,education_project_path')
-    .eq('slug', params.slug)
+    .select(organizerSelectWithCatalog)
+    .eq('slug', slug)
     .maybeSingle();
+  const organizerFallbackQuery = organizerQueryWithCatalog.data
+    ? null
+    : await supabase
+        .from('organizers')
+        .select(organizerSelectFallback)
+        .eq('slug', slug)
+        .maybeSingle();
+
+  const organizer = organizerQueryWithCatalog.data
+    ? organizerQueryWithCatalog.data
+    : organizerFallbackQuery?.data
+      ? {
+          ...organizerFallbackQuery.data,
+          season_keys: [],
+          stay_type_keys: [],
+          activity_keys: []
+        }
+      : null;
 
   let resolvedOrganizer = organizer;
   if (!resolvedOrganizer) {
-    const { data: allOrganizers } = await supabase
+    const allOrganizersWithCatalog = await supabase
       .from('organizers')
-      .select('id,name,slug,description,hero_intro_text,founded_year,age_min,age_max,logo_path,education_project_path');
+      .select(organizerSelectWithCatalog);
+    const allOrganizers =
+      allOrganizersWithCatalog.data ??
+      (
+        await supabase
+          .from('organizers')
+          .select(organizerSelectFallback)
+      ).data?.map((item) => ({ ...item, season_keys: [], stay_type_keys: [], activity_keys: [] })) ??
+      [];
     resolvedOrganizer =
-      (allOrganizers ?? []).find((item) => slugify(item.name) === params.slug) ?? null;
+      allOrganizers.find((item) => slugify(item.name) === slug) ?? null;
   }
 
-  if (!resolvedOrganizer) {
+  const fallbackOrganizer = !resolvedOrganizer ? getOrganizerBySlug(slug) : null;
+
+  if (!resolvedOrganizer && !fallbackOrganizer) {
     notFound();
   }
 
-  const publicAgeRange = formatPublicAgeRange(resolvedOrganizer.age_min, resolvedOrganizer.age_max);
-  const [bannerPath, logoUrl, projectUrl] = await Promise.all([
+  const organizerName = resolvedOrganizer?.name ?? fallbackOrganizer?.name ?? 'Organisateur';
+  const organizerDisplayName = formatOrganizerDisplayName(organizerName);
+  const organizerTitleLines = splitOrganizerDisplayName(organizerDisplayName);
+  const organizerSlug = resolvedOrganizer?.slug ?? fallbackOrganizer?.slug ?? slug;
+  const selectedSeasonOptions = ORGANIZER_SEASON_OPTIONS.filter((option) =>
+    (resolvedOrganizer?.season_keys ?? []).includes(option.key)
+  );
+  const selectedStayTypeOptions = ORGANIZER_STAY_TYPE_OPTIONS.filter((option) =>
+    (resolvedOrganizer?.stay_type_keys ?? []).includes(option.key)
+  );
+  const selectedActivityOptions = ORGANIZER_ACTIVITY_OPTIONS.filter((option) =>
+    (resolvedOrganizer?.activity_keys ?? []).includes(option.key)
+  );
+  const seasonHeading =
+    selectedSeasonOptions.length === 0
+      ? null
+      : selectedSeasonOptions.length === 1
+        ? 'Saison :'
+        : 'Saisons :';
+  const stayTypeHeading =
+    selectedStayTypeOptions.length === 0
+      ? null
+      : selectedStayTypeOptions.length === 1
+        ? 'Type de séjour :'
+        : 'Types de séjours :';
+  const activityHeading =
+    selectedActivityOptions.length === 0
+      ? null
+      : selectedActivityOptions.length === 1
+        ? 'Activité proposée :'
+        : 'Activités proposées :';
+  const publicAgeRange = resolvedOrganizer
+    ? formatPublicAgeRange(resolvedOrganizer.age_min, resolvedOrganizer.age_max)
+    : fallbackOrganizer?.publicAgeRange ?? 'Âges non renseignés';
+
+  const [bannerPath, organizerLogoUrl, projectUrl, fallbackOrganizerStaysData] = await Promise.all([
     resolveOrganizerBannerPath({
-      name: resolvedOrganizer.name,
-      slug: resolvedOrganizer.slug ?? params.slug
+      name: organizerName,
+      slug: organizerSlug
     }),
-    resolvedOrganizer.logo_path
+    resolvedOrganizer?.logo_path
       ? supabase.storage
           .from('organizer-logo')
           .createSignedUrl(resolvedOrganizer.logo_path, 60 * 60)
           .then((result) => result.data?.signedUrl ?? null)
-      : Promise.resolve(null),
-    resolvedOrganizer.education_project_path
+      : Promise.resolve(fallbackOrganizer?.logoUrl ?? null),
+    resolvedOrganizer?.education_project_path
       ? supabase.storage
           .from('organizer-docs')
           .createSignedUrl(resolvedOrganizer.education_project_path, 60 * 60)
           .then((result) => result.data?.signedUrl ?? null)
-      : Promise.resolve(null)
+      : Promise.resolve(null),
+    !resolvedOrganizer || !resolvedOrganizer.logo_path
+      ? getStays({ forceRefresh: true }).then((stays) =>
+          stays
+            .filter((stay) => slugify(stay.organizer.name) === slug || stay.organizer.name === organizerName)
+            .slice(0, 6)
+            .map((stay) => ({
+              id: stay.id,
+              title: stay.title,
+              summary: stay.summary,
+              description: stay.description,
+              location_text: stay.location,
+              age_min: stay.ageMin,
+              age_max: stay.ageMax,
+              coverImage: stay.coverImage ?? null,
+              organizerLogoUrl: stay.organizer.logoUrl ?? null
+            }))
+        )
+      : Promise.resolve([])
   ]);
+  const fallbackPublishedStays = fallbackOrganizerStaysData.map(({ organizerLogoUrl: _organizerLogoUrl, ...stay }) => stay);
+  const logoUrl =
+    organizerLogoUrl ??
+    fallbackOrganizerStaysData.find((stay) => stay.organizerLogoUrl)?.organizerLogoUrl ??
+    null;
+  const heroTextTheme = resolveHeroTextTheme({
+    slug: organizerSlug,
+    name: organizerName,
+    bannerPath
+  });
+  const heroTextClass = heroTextTheme === 'dark' ? 'text-white' : 'text-[#505050]';
+  const heroLinkClass =
+    heroTextTheme === 'dark'
+      ? 'text-white/90 hover:text-white decoration-white/40'
+      : 'text-slate-600 hover:text-slate-900 decoration-slate-300';
 
-  const { data: publishedStaysRaw } = await supabase
-    .from('stays')
-    .select('id,title,summary,description,location_text,age_min,age_max,updated_at,status')
-    .eq('organizer_id', resolvedOrganizer.id)
-    .eq('status', 'PUBLISHED')
-    .order('updated_at', { ascending: false })
-    .limit(6);
+  const publishedStaysRaw = resolvedOrganizer
+    ? (
+        await supabase
+          .from('stays')
+          .select('id,title,summary,description,location_text,age_min,age_max,updated_at,status')
+          .eq('organizer_id', resolvedOrganizer.id)
+          .eq('status', 'PUBLISHED')
+          .order('updated_at', { ascending: false })
+          .limit(6)
+      ).data ?? []
+    : [];
 
-  const publishedStays = publishedStaysRaw ?? [];
+  const publishedStays = resolvedOrganizer ? publishedStaysRaw : fallbackPublishedStays;
   const publishedStayIds = publishedStays.map((stay) => stay.id);
 
   const [{ data: stayMediaRaw }, { data: accommodationsRaw }, { data: stayAccommodationLinksRaw }, { data: accommodationMediaRaw }] =
-    await Promise.all([
-      publishedStayIds.length > 0
-        ? supabase
-            .from('stay_media')
-            .select('stay_id,url,position')
-            .in('stay_id', publishedStayIds)
+    resolvedOrganizer
+      ? await Promise.all([
+          publishedStayIds.length > 0
+            ? supabase
+                .from('stay_media')
+                .select('stay_id,url,position')
+                .in('stay_id', publishedStayIds)
+                .order('position', { ascending: true })
+            : Promise.resolve({ data: [] as Array<{ stay_id: string; url: string; position: number }> }),
+          supabase
+            .from('accommodations')
+            .select(
+              'id,name,accommodation_type,description,bed_info,bathroom_info,catering_info,accessibility_info,status,updated_at'
+            )
+            .eq('organizer_id', resolvedOrganizer.id)
+            .order('updated_at', { ascending: false }),
+          supabase.from('stay_accommodations').select('accommodation_id,stay_id'),
+          supabase
+            .from('accommodation_media')
+            .select('accommodation_id,url,position')
             .order('position', { ascending: true })
-        : Promise.resolve({ data: [] as Array<{ stay_id: string; url: string; position: number }> }),
-      supabase
-        .from('accommodations')
-        .select(
-          'id,name,accommodation_type,description,bed_info,bathroom_info,catering_info,accessibility_info,status,updated_at'
-        )
-        .eq('organizer_id', resolvedOrganizer.id)
-        .order('updated_at', { ascending: false }),
-      supabase.from('stay_accommodations').select('accommodation_id,stay_id'),
-      supabase
-        .from('accommodation_media')
-        .select('accommodation_id,url,position')
-        .order('position', { ascending: true })
-    ]);
+        ])
+      : [
+          { data: [] as Array<{ stay_id: string; url: string; position: number }> },
+          {
+            data: [] as Array<{
+              id: string;
+              name: string;
+              accommodation_type: string | null;
+              description: string | null;
+              bed_info: string | null;
+              bathroom_info: string | null;
+              catering_info: string | null;
+              accessibility_info: string | null;
+              status: string | null;
+              updated_at: string;
+            }>
+          },
+          { data: [] as Array<{ accommodation_id: string; stay_id: string }> },
+          { data: [] as Array<{ accommodation_id: string; url: string; position: number }> }
+        ];
 
   const coverImageByStayId = new Map<string, string>();
   for (const media of stayMediaRaw ?? []) {
@@ -143,13 +404,24 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
   }
 
   const publishedStayTitleById = new Map(publishedStays.map((stay) => [stay.id, stay.title]));
+  const publishedStayLocationById = new Map(
+    publishedStays.map((stay) => [stay.id, stay.location_text?.trim() || ''])
+  );
   const linkedPublishedTitlesByAccommodationId = new Map<string, string[]>();
+  const linkedPublishedLocationsByAccommodationId = new Map<string, string[]>();
   for (const link of stayAccommodationLinksRaw ?? []) {
     const stayTitle = publishedStayTitleById.get(link.stay_id);
     if (!stayTitle) continue;
     const titles = linkedPublishedTitlesByAccommodationId.get(link.accommodation_id) ?? [];
     titles.push(stayTitle);
     linkedPublishedTitlesByAccommodationId.set(link.accommodation_id, titles);
+
+    const stayLocation = publishedStayLocationById.get(link.stay_id);
+    if (stayLocation) {
+      const locations = linkedPublishedLocationsByAccommodationId.get(link.accommodation_id) ?? [];
+      locations.push(stayLocation);
+      linkedPublishedLocationsByAccommodationId.set(link.accommodation_id, locations);
+    }
   }
 
   const coverImageByAccommodationId = new Map<string, string>();
@@ -162,10 +434,23 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
   const accommodations = (accommodationsRaw ?? []).map((accommodation) => ({
     ...accommodation,
     coverImage: coverImageByAccommodationId.get(accommodation.id) ?? null,
-    linkedStayTitles: linkedPublishedTitlesByAccommodationId.get(accommodation.id) ?? []
+    linkedStayTitles: linkedPublishedTitlesByAccommodationId.get(accommodation.id) ?? [],
+    linkedStayLocations: linkedPublishedLocationsByAccommodationId.get(accommodation.id) ?? []
   }));
+  const featuredPublishedStays = publishedStays.slice(0, 3);
+  const organizerCatalogHref = `/sejours?organizer=${encodeURIComponent(organizerName)}`;
 
-  const presentationParagraphs = splitPresentation(resolvedOrganizer.description, publicAgeRange);
+  const presentationHtml = buildOrganizerPresentationHtml(
+    resolvedOrganizer?.description ?? fallbackOrganizer?.description,
+    publicAgeRange
+  );
+  const heroIntroText =
+    resolvedOrganizer?.hero_intro_text?.trim() ||
+    extractOrganizerPresentationSummary(
+      resolvedOrganizer?.description ?? fallbackOrganizer?.description,
+      publicAgeRange
+    ) ||
+    `Découvrez les séjours collectifs proposés par ${organizerDisplayName}.`;
 
   return (
     <div className="min-h-screen bg-[#fcfcfb]">
@@ -182,58 +467,60 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
             : undefined
         }
       >
-        <div className="absolute inset-0 bg-[#dff1ef]/20" />
         <div
-          className="absolute inset-x-0 bottom-0 h-32 bg-[#fcfcfb]"
-          style={{ clipPath: 'polygon(0 34%, 18% 52%, 43% 47%, 67% 62%, 86% 58%, 100% 40%, 100% 100%, 0 100%)' }}
+          className="absolute inset-x-0 bottom-0 h-20 bg-white/35 sm:h-24"
+          style={{ clipPath: 'polygon(0 0, 14% 12%, 36% 28%, 63% 56%, 86% 86%, 100% 40%, 100% 100%, 0 100%)' }}
         />
-        <div className="section-container relative py-6 sm:py-8 lg:py-12">
+        <div
+          className="absolute inset-x-0 bottom-0 h-16 bg-[#fcfcfb] sm:h-20"
+          style={{ clipPath: 'polygon(0 0, 17% 8%, 39% 24%, 66% 52%, 87% 84%, 100% 36%, 100% 100%, 0 100%)' }}
+        />
+        <div className="section-container relative py-5 sm:py-6 lg:py-8">
           <Link
             href="/organisateurs"
-            className="absolute left-1 top-3 inline-flex text-sm font-semibold text-slate-600 hover:text-slate-900 sm:left-2 sm:top-4 lg:left-3 lg:top-5"
+            className={`absolute -left-6 top-3 inline-flex text-sm font-semibold sm:-left-10 sm:top-4 lg:-left-16 lg:top-5 ${heroLinkClass}`}
           >
             ← Retour aux organisateurs
           </Link>
 
-          <div className="relative mt-6 grid gap-8 lg:min-h-[32rem] lg:grid-cols-[minmax(0,1.15fr)_minmax(260px,0.85fr)] lg:items-center">
-            <div className="relative z-[1] max-w-[44rem] -ml-3 -mt-4 px-0 py-0 sm:-ml-5 sm:-mt-5 lg:-ml-10 lg:-mt-10">
-                <p className="text-sm font-bold uppercase tracking-[0.12em] text-[#6DC7FE]">
+          <div className="relative mt-0 grid gap-8 lg:min-h-[27rem] lg:grid-cols-[minmax(0,1.15fr)_minmax(260px,0.85fr)] lg:items-center">
+            <div className="relative z-[1] max-w-[44rem] self-center -ml-8 px-0 py-0 sm:-ml-12 lg:-ml-20">
+                <p className="text-[0.65rem] font-extrabold uppercase tracking-[0.18em] text-[#6DC7FE] sm:text-[0.7rem]">
                   Organisateur de séjours collectifs
                 </p>
-                <h1 className="mt-5 font-display text-4xl font-bold leading-[1.08] text-[#505050] sm:text-5xl lg:text-[4rem]">
-                  {resolvedOrganizer.name}
+                <h1 className={`mt-5 max-w-[18ch] font-display text-4xl font-bold leading-[1.08] sm:max-w-[19ch] sm:text-5xl lg:max-w-[20ch] lg:text-[4rem] ${heroTextClass}`}>
+                  <span className="block">{organizerTitleLines.firstLine}</span>
+                  {organizerTitleLines.secondLine ? (
+                    <span className="block">{organizerTitleLines.secondLine}</span>
+                  ) : null}
                 </h1>
 
-                {resolvedOrganizer.hero_intro_text?.trim() && (
-                  <div className="mt-7 max-w-[34rem] text-lg font-medium leading-[1.65] text-[#505050]">
-                    <p>{resolvedOrganizer.hero_intro_text.trim()}</p>
-                  </div>
-                )}
+                <div className={`mt-7 max-w-[34rem] whitespace-pre-line text-sm font-bold leading-[1.6] sm:text-[0.95rem] ${heroTextClass}`}>
+                  <p>{heroIntroText}</p>
+                </div>
 
-                {projectUrl && (
-                  <a
-                    className="mt-8 inline-flex items-center gap-2 text-sm font-semibold text-slate-700 underline decoration-slate-300 underline-offset-4"
-                    href={projectUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Télécharger le projet éducatif
-                    <ExternalLink className="h-4 w-4" />
-                  </a>
-                )}
             </div>
 
             <div className="relative z-[1] flex items-center justify-center lg:justify-end">
-              <div className="flex min-h-[240px] w-full max-w-[24rem] items-center justify-center p-4 sm:p-6 lg:min-h-[320px]">
+              <div className="flex min-h-[190px] w-full max-w-[24rem] items-center justify-center p-3 sm:p-4 lg:min-h-[220px]">
                 {logoUrl ? (
                   <img
                     src={logoUrl}
-                    alt={resolvedOrganizer.name}
-                    className="max-h-44 w-auto object-contain sm:max-h-52 lg:max-h-64"
+                    alt={organizerDisplayName}
+                    className={resolveHeroLogoImageClass(organizerSlug)}
                   />
+                ) : bannerPath ? (
+                  <div className="relative h-40 w-40 overflow-hidden rounded-full bg-white/15 shadow-[0_18px_40px_-28px_rgba(15,23,42,0.35)] sm:h-48 sm:w-48 lg:h-56 lg:w-56">
+                    <img
+                      src={bannerPath}
+                      alt={organizerDisplayName}
+                      className="h-full w-full scale-[2.35] object-cover"
+                      style={{ objectPosition: resolveHeroLogoFallbackPosition(organizerSlug) }}
+                    />
+                  </div>
                 ) : (
                   <div className="flex h-40 w-40 items-center justify-center rounded-full bg-white/90 text-5xl font-bold text-slate-300 shadow-[0_18px_40px_-28px_rgba(15,23,42,0.35)]">
-                    {resolvedOrganizer.name.slice(0, 2)}
+                    {organizerDisplayName.slice(0, 2)}
                   </div>
                 )}
               </div>
@@ -242,137 +529,235 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
         </div>
       </section>
 
-      <section className="relative border-t border-slate-200 bg-[#f3f3f3] py-10 sm:py-14">
-        <div className="absolute inset-x-0 top-0 h-[44%] bg-white" />
-        <div className="section-container relative">
-          <div className="mx-auto grid max-w-[70rem] justify-center gap-8 md:grid-cols-2">
-            <article className="flex min-h-[255px] w-full max-w-[460px] flex-col items-center justify-center rounded-[26px] bg-white px-8 py-10 text-center shadow-[0_24px_60px_-34px_rgba(15,23,42,0.22)] sm:px-10 sm:py-12">
-              <Image
-                src="/image/organisateurs/pictos_orga/creation.png"
-                alt=""
-                width={82}
-                height={82}
-                className="h-20 w-20 object-contain sm:h-24 sm:w-24"
+      <section className="relative bg-white pb-28 pt-10 sm:pb-32 sm:pt-12">
+        <div className="section-container">
+          <div className="grid gap-8 lg:grid-cols-[minmax(0,0.56fr)_minmax(340px,0.44fr)] lg:gap-10">
+            <div className="max-w-4xl -ml-8 sm:-ml-12 lg:-ml-20">
+              <p className="text-sm font-bold uppercase tracking-[0.12em] text-slate-400">Présentation</p>
+              <h1 className="mt-2 font-display text-4xl font-bold leading-[1.02] text-[#505050] sm:text-5xl lg:text-[3.6rem]">
+                {organizerDisplayName}
+              </h1>
+              <div
+                className="mt-5 text-justify text-[0.88rem] font-medium leading-[1.6] text-slate-600 sm:text-[0.95rem] [&_b]:text-[1rem] [&_b]:font-extrabold [&_br]:block [&_br]:content-[''] [&_em]:italic [&_i]:italic [&_li]:ml-5 [&_li]:list-disc [&_li]:pl-1 [&_ol]:ml-5 [&_ol]:list-decimal [&_ol]:space-y-2 [&_p]:mb-4 [&_strong]:text-[1rem] [&_strong]:font-extrabold [&_u]:underline [&_ul]:space-y-2 sm:[&_b]:text-[1.05rem] sm:[&_strong]:text-[1.05rem]"
+                dangerouslySetInnerHTML={{ __html: presentationHtml }}
               />
-              <h2 className="mt-5 font-display text-[2.1rem] font-bold leading-none text-[#FA8500]">
-                Création
-              </h2>
-              <p className="mt-8 font-display text-[2.35rem] font-bold leading-none text-[#505050]">
-                {resolvedOrganizer.founded_year ?? '—'}
-              </p>
-            </article>
-
-            <article className="flex min-h-[255px] w-full max-w-[460px] flex-col items-center justify-center rounded-[26px] bg-white px-8 py-10 text-center shadow-[0_24px_60px_-34px_rgba(15,23,42,0.22)] sm:px-10 sm:py-12">
-              <Image
-                src="/image/organisateurs/pictos_orga/age.png"
-                alt=""
-                width={82}
-                height={82}
-                className="h-20 w-20 object-contain sm:h-24 sm:w-24"
-              />
-              <h2 className="mt-5 font-display text-[2.1rem] font-bold leading-none text-[#FA8500]">
-                Public
-              </h2>
-              <p className="mt-8 font-display text-[2.35rem] font-bold leading-none text-[#505050]">{publicAgeRange}</p>
-            </article>
-          </div>
-        </div>
-      </section>
-
-      <section className="section-container pb-10 sm:pb-12">
-        <div className="max-w-4xl">
-          <p className="text-sm font-bold uppercase tracking-[0.12em] text-slate-400">Présentation</p>
-          <h2 className="mt-2 font-display text-3xl font-bold leading-[1.06] text-[#505050]">
-            L’organisateur en quelques mots
-          </h2>
-          <div className="mt-5 space-y-5 text-lg font-medium leading-[1.7] text-slate-600">
-            {presentationParagraphs.map((paragraph) => (
-              <p key={paragraph}>{paragraph}</p>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="section-container pb-12 sm:pb-14">
-        <div className="flex items-end justify-between gap-4">
-          <div>
-            <p className="text-sm font-bold uppercase tracking-[0.12em] text-slate-400">Hébergements</p>
-            <h2 className="mt-2 font-display text-3xl font-bold leading-[1.06] text-[#505050]">
-              Centres de vacances
-            </h2>
-          </div>
-        </div>
-
-        {accommodations.length > 0 ? (
-          <div className="-mx-4 mt-6 overflow-x-auto px-4 pb-3">
-            <div className="flex min-w-max gap-5">
-              {accommodations.map((accommodation) => (
-                <article
-                  key={accommodation.id}
-                  className="flex w-[320px] shrink-0 flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_18px_40px_-28px_rgba(15,23,42,0.35)]"
+              {projectUrl && (
+                <a
+                  className="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-slate-700 underline decoration-slate-300 underline-offset-4"
+                  href={projectUrl}
+                  target="_blank"
+                  rel="noreferrer"
                 >
-                  <div className="relative h-48 bg-slate-100">
-                    {accommodation.coverImage ? (
-                      <img
-                        src={accommodation.coverImage}
-                        alt={accommodation.name}
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-full items-center justify-center bg-slate-100 text-slate-400">
-                        <MapPin className="h-10 w-10" />
+                  Télécharger le projet éducatif
+                  <ExternalLink className="h-4 w-4" />
+                </a>
+              )}
+            </div>
+
+            <div className="hidden lg:block lg:self-start">
+              <div className="ml-auto w-full max-w-[30rem] rounded-[28px] border border-slate-200 bg-slate-50/80 p-6 shadow-[0_18px_40px_-28px_rgba(15,23,42,0.18)]">
+                {seasonHeading ? (
+                  <p className="text-[0.72rem] font-extrabold uppercase tracking-[0.18em] text-slate-900">
+                    {seasonHeading}
+                  </p>
+                ) : null}
+                {selectedSeasonOptions.length > 0 ? (
+                  <div className="mt-5 flex flex-wrap gap-4">
+                    {selectedSeasonOptions.map((season) => (
+                      <div
+                        key={season.key}
+                        className="group relative flex h-12 w-12 items-center justify-center rounded-2xl bg-white shadow-[0_10px_24px_-18px_rgba(15,23,42,0.35)]"
+                      >
+                        <Image
+                          src={season.iconPath}
+                          alt={season.label}
+                          width={40}
+                          height={40}
+                          className="h-6 w-6 object-contain"
+                        />
+                        <span className="pointer-events-none absolute -top-3 left-1/2 z-10 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white opacity-0 shadow-[0_12px_24px_-16px_rgba(15,23,42,0.7)] transition-opacity duration-150 group-hover:opacity-100">
+                          {season.label}
+                        </span>
                       </div>
-                    )}
+                    ))}
                   </div>
-                  <div className="flex flex-1 flex-col p-5">
-                    <p className="text-xs font-bold uppercase tracking-[0.1em] text-slate-400">
-                      {formatAccommodationType(accommodation.accommodation_type)}
-                    </p>
-                    <h3 className="mt-2 text-xl font-bold leading-snug text-[#505050]">{accommodation.name}</h3>
-                    <p className="mt-3 text-sm leading-6 text-slate-600">
-                      {accommodation.description?.trim() || 'Informations d’hébergement à venir.'}
-                    </p>
-                    {accommodation.linkedStayTitles.length > 0 && (
-                      <div className="mt-4 border-t border-slate-100 pt-4">
-                        <p className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-400">
-                          Séjours liés
-                        </p>
-                        <p className="mt-2 text-sm leading-6 text-slate-600">
-                          {accommodation.linkedStayTitles.slice(0, 3).join(', ')}
-                        </p>
+                ) : (
+                  <p className="mt-5 max-w-[14rem] text-sm leading-6 text-slate-500">
+                    Aucune saison mise en avant pour le moment.
+                  </p>
+                )}
+                {stayTypeHeading ? (
+                  <p className="mt-8 text-[0.72rem] font-extrabold uppercase tracking-[0.18em] text-slate-900">
+                    {stayTypeHeading}
+                  </p>
+                ) : null}
+                {selectedStayTypeOptions.length > 0 ? (
+                  <div className="mt-5 flex flex-wrap gap-4">
+                    {selectedStayTypeOptions.map((stayType) => (
+                      <div
+                        key={stayType.key}
+                        className="group relative flex h-12 w-12 items-center justify-center rounded-2xl bg-white shadow-[0_10px_24px_-18px_rgba(15,23,42,0.35)]"
+                      >
+                        <Image
+                          src={stayType.iconPath}
+                          alt={stayType.label}
+                          width={40}
+                          height={40}
+                          className="h-6 w-6 object-contain"
+                        />
+                        <span className="pointer-events-none absolute -top-3 left-1/2 z-10 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white opacity-0 shadow-[0_12px_24px_-16px_rgba(15,23,42,0.7)] transition-opacity duration-150 group-hover:opacity-100">
+                          {stayType.label}
+                        </span>
                       </div>
-                    )}
+                    ))}
                   </div>
-                </article>
-              ))}
+                ) : null}
+                {activityHeading ? (
+                  <p className="mt-8 text-[0.72rem] font-extrabold uppercase tracking-[0.18em] text-slate-900">
+                    {activityHeading}
+                  </p>
+                ) : null}
+                {selectedActivityOptions.length > 0 ? (
+                  <div className="mt-5 flex flex-wrap gap-4">
+                    {selectedActivityOptions.map((activity) => (
+                      <div
+                        key={activity.key}
+                        className="group relative flex h-12 w-12 items-center justify-center rounded-2xl bg-white shadow-[0_10px_24px_-18px_rgba(15,23,42,0.35)]"
+                      >
+                        <Image
+                          src={activity.iconPath}
+                          alt={activity.label}
+                          width={40}
+                          height={40}
+                          className="h-6 w-6 object-contain"
+                        />
+                        <span className="pointer-events-none absolute -top-3 left-1/2 z-10 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white opacity-0 shadow-[0_12px_24px_-16px_rgba(15,23,42,0.7)] transition-opacity duration-150 group-hover:opacity-100">
+                          {activity.label}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
             </div>
           </div>
-        ) : (
-          <div className="mt-6 rounded-[28px] border border-dashed border-slate-200 bg-white p-8 text-sm text-slate-500">
-            Aucun hébergement n’est encore présenté pour cet organisateur.
+
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 translate-y-1/2 px-4 sm:px-6">
+            <div className="mx-auto grid max-w-[30rem] justify-center gap-4 md:grid-cols-2">
+              <article className="pointer-events-auto flex min-h-[116px] w-full max-w-[210px] flex-col items-center justify-center rounded-[18px] bg-white px-4 py-3 text-center shadow-[0_18px_44px_-34px_rgba(15,23,42,0.2)] sm:px-4 sm:py-4">
+                <Image
+                  src="/image/organisateurs/pictos_orga/creation.png"
+                  alt=""
+                  width={82}
+                  height={82}
+                  className="h-8 w-8 object-contain sm:h-9 sm:w-9"
+                />
+                <h2 className="mt-2 font-display text-[1.05rem] font-bold leading-none text-[#FA8500]">
+                  Création
+                </h2>
+                <p className="mt-2 font-display text-[1.3rem] font-bold leading-none text-[#505050]">
+                  {resolvedOrganizer?.founded_year ?? fallbackOrganizer?.creationYear ?? '—'}
+                </p>
+              </article>
+
+              <article className="pointer-events-auto flex min-h-[116px] w-full max-w-[210px] flex-col items-center justify-center rounded-[18px] bg-white px-4 py-3 text-center shadow-[0_18px_44px_-34px_rgba(15,23,42,0.2)] sm:px-4 sm:py-4">
+                <Image
+                  src="/image/organisateurs/pictos_orga/age.png"
+                  alt=""
+                  width={82}
+                  height={82}
+                  className="h-8 w-8 object-contain sm:h-9 sm:w-9"
+                />
+                <h2 className="mt-2 font-display text-[1.05rem] font-bold leading-none text-[#FA8500]">
+                  Public
+                </h2>
+                <p className="mt-2 font-display text-[1.3rem] font-bold leading-none text-[#505050]">{publicAgeRange}</p>
+              </article>
+            </div>
           </div>
-        )}
+        </div>
       </section>
 
-      <section className="section-container pb-20">
+      <section className="bg-[#ece9e5] pb-12 pt-20 sm:pb-14 sm:pt-24">
+        <div className="section-container">
+          <div className="grid gap-8 lg:grid-cols-[minmax(0,0.42fr)_minmax(0,0.58fr)] lg:items-start lg:gap-10">
+            <div className="max-w-md">
+              <p className="text-[0.72rem] font-extrabold uppercase tracking-[0.18em] text-slate-500">
+                Hébergements
+              </p>
+              <h2 className="mt-2 font-display text-[2.45rem] font-bold leading-[1.02] text-[#505050] sm:text-[2.8rem]">
+                Coup d&apos;oeil sur
+                <span className="mt-2 block text-[#FA8500]">{organizerDisplayName}</span>
+              </h2>
+              <p className="mt-5 max-w-sm text-sm font-medium leading-6 text-slate-600 sm:text-base">
+                Un petit aperçu de quelques uns de nos centres de vacances :
+              </p>
+            </div>
+
+            {accommodations.length > 0 ? (
+              <div className="-mx-4 overflow-x-auto px-4 pb-3">
+                <div className="flex min-w-max gap-5">
+                  {accommodations.map((accommodation) => {
+                    const locationLabel = accommodation.linkedStayLocations.find(Boolean) ?? '';
+                    return (
+                      <article
+                        key={accommodation.id}
+                        className="group w-[280px] shrink-0 overflow-hidden rounded-[28px] bg-white shadow-[0_18px_40px_-28px_rgba(15,23,42,0.35)]"
+                      >
+                        <div className="relative h-[320px] bg-slate-100">
+                          {accommodation.coverImage ? (
+                            <img
+                              src={accommodation.coverImage}
+                              alt={accommodation.name}
+                              className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.03]"
+                            />
+                          ) : (
+                            <div className="flex h-full items-center justify-center bg-slate-100 text-slate-400">
+                              <MapPin className="h-10 w-10" />
+                            </div>
+                          )}
+                          <div className="absolute inset-x-0 bottom-0 bg-white/92 px-4 py-3 backdrop-blur-sm">
+                            <p className="text-sm font-semibold text-[#505050]">
+                              {formatAccommodationCarouselLabel(
+                                accommodation.accommodation_type,
+                                locationLabel
+                              )}
+                            </p>
+                          </div>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-[28px] border border-dashed border-slate-200 bg-white p-8 text-sm text-slate-500">
+                Aucun hébergement n’est encore présenté pour cet organisateur.
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
+      <section className="section-container pb-20 pt-8 sm:pt-10">
         <div>
-          <p className="text-sm font-bold uppercase tracking-[0.12em] text-slate-400">Séjours</p>
+          <p className="text-[0.72rem] font-extrabold uppercase tracking-[0.18em] text-slate-500">Séjours</p>
           <h2 className="mt-2 font-display text-3xl font-bold leading-[1.06] text-[#505050]">
             Quelques séjours publiés
           </h2>
         </div>
 
-        {publishedStays.length > 0 ? (
+        {featuredPublishedStays.length > 0 ? (
           <div className="mt-6 grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-            {publishedStays.map((stay) => (
+            {featuredPublishedStays.map((stay) => (
               <article
                 key={stay.id}
                 className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_18px_40px_-28px_rgba(15,23,42,0.35)]"
               >
                 <div className="relative h-52 bg-slate-100">
-                  {coverImageByStayId.get(stay.id) ? (
+                  {((stay as { coverImage?: string | null }).coverImage ?? coverImageByStayId.get(stay.id)) ? (
                     <img
-                      src={coverImageByStayId.get(stay.id)}
+                      src={(stay as { coverImage?: string | null }).coverImage ?? coverImageByStayId.get(stay.id) ?? ''}
                       alt={stay.title}
                       className="h-full w-full object-cover"
                     />
@@ -392,7 +777,7 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
                     {stay.summary?.trim() || stay.description?.trim() || 'Présentation du séjour à venir.'}
                   </p>
                   <Link
-                    href={formatStayHref(resolvedOrganizer.name, stay.title, stay.id)}
+                    href={formatStayHref(organizerName, stay.title, stay.id)}
                     className="mt-5 inline-flex items-center rounded-full bg-[#6DC7FE] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#52B0EA]"
                   >
                     Voir le séjour
@@ -404,6 +789,17 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
         ) : (
           <div className="mt-6 rounded-[28px] border border-dashed border-slate-200 bg-white p-8 text-sm text-slate-500">
             Aucun séjour publié n’est encore disponible pour cet organisateur.
+          </div>
+        )}
+
+        {publishedStays.length > 3 && (
+          <div className="mt-8 flex justify-center">
+            <Link
+              href={organizerCatalogHref}
+              className="inline-flex items-center rounded-full border border-[#6DC7FE] px-6 py-3 text-sm font-semibold text-[#6DC7FE] transition hover:bg-[#6DC7FE] hover:text-white"
+            >
+              Découvrir les autres séjours
+            </Link>
           </div>
         )}
       </section>

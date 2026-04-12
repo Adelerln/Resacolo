@@ -4,7 +4,6 @@ import { usePathname } from 'next/navigation';
 import { Suspense } from 'react';
 import { MainNavigation } from '@/components/layout/MainNavigation';
 import { Footer } from '@/components/layout/Footer';
-import { PageTransition } from '@/components/ui/PageTransition';
 
 export function SiteShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -21,9 +20,7 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
     <div className="flex min-h-screen flex-col">
       <MainNavigation />
       <main className="flex-1 min-h-0">
-        <Suspense fallback={<div className="min-h-screen">{children}</div>}>
-          <PageTransition>{children}</PageTransition>
-        </Suspense>
+        <Suspense fallback={<div className="min-h-screen">{children}</div>}>{children}</Suspense>
       </main>
       <Footer />
     </div>

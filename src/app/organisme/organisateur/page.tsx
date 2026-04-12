@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import SavedToast from '@/components/common/SavedToast';
-import OrganizerOptionChecklist from '@/components/organisme/OrganizerOptionChecklist';
+import OrganizerCatalogTabs from '@/components/organisme/OrganizerCatalogTabs';
 import OrganizerProfileFormEnhancer from '@/components/organisme/OrganizerProfileFormEnhancer';
 import OrganizerRichTextEditor from '@/components/organisme/OrganizerRichTextEditor';
 import { requireRole } from '@/lib/auth/require';
@@ -74,6 +74,24 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
     redirect('/organisme');
   }
 
+  let stayDurationMinLoaded: number | null = null;
+  let stayDurationMaxLoaded: number | null = null;
+  const { data: durationRow, error: durationLoadError } = await supabase
+    .from('organizers')
+    .select('stay_duration_min_days,stay_duration_max_days')
+    .eq('id', organizer.id)
+    .maybeSingle();
+  if (!durationLoadError && durationRow) {
+    stayDurationMinLoaded = durationRow.stay_duration_min_days ?? null;
+    stayDurationMaxLoaded = durationRow.stay_duration_max_days ?? null;
+  }
+
+  const organizerForForm = {
+    ...organizer,
+    stay_duration_min_days: stayDurationMinLoaded,
+    stay_duration_max_days: stayDurationMaxLoaded
+  };
+
   const logoUrl = organizer.logo_path
     ? (await supabase.storage
         .from('organizer-logo')
@@ -99,6 +117,8 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
     const foundedYearRaw = String(formData.get('founded_year') ?? '').trim();
     const ageMinRaw = String(formData.get('age_min') ?? '').trim();
     const ageMaxRaw = String(formData.get('age_max') ?? '').trim();
+    const stayDurationMinRaw = String(formData.get('stay_duration_min_days') ?? '').trim();
+    const stayDurationMaxRaw = String(formData.get('stay_duration_max_days') ?? '').trim();
     const seasonKeys = sanitizeOrganizerOptionValues(
       formData.getAll('season_keys'),
       ORGANIZER_SEASON_OPTIONS
@@ -117,6 +137,19 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
     const foundedYear = foundedYearRaw ? Number(foundedYearRaw) : null;
     const ageMin = ageMinRaw ? Number(ageMinRaw) : null;
     const ageMax = ageMaxRaw ? Number(ageMaxRaw) : null;
+    const parsePositiveInt = (raw: string) => {
+      if (!raw) return null;
+      const n = Math.round(Number(raw));
+      if (!Number.isFinite(n) || n < 1) return null;
+      return n;
+    };
+    let stayDurationMinDays = parsePositiveInt(stayDurationMinRaw);
+    let stayDurationMaxDays = parsePositiveInt(stayDurationMaxRaw);
+    if (stayDurationMinDays != null && stayDurationMaxDays != null && stayDurationMinDays > stayDurationMaxDays) {
+      const tmp = stayDurationMinDays;
+      stayDurationMinDays = stayDurationMaxDays;
+      stayDurationMaxDays = tmp;
+    }
     const slug = name ? slugify(name) : currentOrganizerSlug;
 
     const updateWithCatalog = await supabase
@@ -132,7 +165,9 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
         season_keys: seasonKeys,
         stay_type_keys: stayTypeKeys,
         activity_keys: activityKeys,
-        slug
+        slug,
+        stay_duration_min_days: stayDurationMinDays,
+        stay_duration_max_days: stayDurationMaxDays
       })
       .eq('id', currentOrganizerId);
 
@@ -147,7 +182,9 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
           founded_year: foundedYear,
           age_min: ageMin,
           age_max: ageMax,
-          slug
+          slug,
+          stay_duration_min_days: stayDurationMinDays,
+          stay_duration_max_days: stayDurationMaxDays
         })
         .eq('id', currentOrganizerId);
     }
@@ -311,30 +348,41 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
         <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
           <h2 className="text-lg font-semibold text-slate-900">Catalogue organisateur</h2>
           <p className="mt-1 text-sm text-slate-600">
-            Sélectionne les saisons, types de séjours et activités proposés par ton organisme.
+            Saisons, activités, durées des séjours et types de séjours : choisis chaque section ci-dessous
+            pour compléter ta fiche sans encombrer l&apos;écran.
           </p>
-          <div className="mt-5 space-y-6">
-            <OrganizerOptionChecklist
-              name="season_keys"
-              title="Saisons"
-              description="Ces saisons seront utilisées dans la carte de présentation publique."
-              options={ORGANIZER_SEASON_OPTIONS}
-              selectedValues={organizer.season_keys ?? []}
-              columnsClassName="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
-            />
-            <OrganizerOptionChecklist
-              name="stay_type_keys"
-              title="Types de séjours proposés"
-              options={ORGANIZER_STAY_TYPE_OPTIONS}
-              selectedValues={organizer.stay_type_keys ?? []}
-            />
-            <OrganizerOptionChecklist
-              name="activity_keys"
-              title="Activités proposées"
-              options={ORGANIZER_ACTIVITY_OPTIONS}
-              selectedValues={organizer.activity_keys ?? []}
-            />
-          </div>
+          <OrganizerCatalogTabs
+            seasonChecklist={{
+              name: 'season_keys',
+              title: 'Saisons',
+              description: 'Ces saisons seront utilisées dans la carte de présentation publique.',
+              options: ORGANIZER_SEASON_OPTIONS,
+              selectedValues: organizer.season_keys ?? [],
+              columnsClassName: 'grid gap-3 sm:grid-cols-2 xl:grid-cols-4'
+            }}
+            activityChecklist={{
+              name: 'activity_keys',
+              title: 'Activités proposées',
+              options: ORGANIZER_ACTIVITY_OPTIONS,
+              selectedValues: organizer.activity_keys ?? []
+            }}
+            stayTypeChecklist={{
+              name: 'stay_type_keys',
+              title: 'Types de séjours proposés',
+              options: ORGANIZER_STAY_TYPE_OPTIONS,
+              selectedValues: organizer.stay_type_keys ?? []
+            }}
+            durationMinDefault={
+              organizerForForm.stay_duration_min_days != null
+                ? String(organizerForForm.stay_duration_min_days)
+                : ''
+            }
+            durationMaxDefault={
+              organizerForForm.stay_duration_max_days != null
+                ? String(organizerForForm.stay_duration_max_days)
+                : ''
+            }
+          />
         </div>
 
       </form>

@@ -1,6 +1,6 @@
 import Image from 'next/image';
 
-type OrganizerOptionChecklistProps = {
+export type OrganizerOptionChecklistProps = {
   name: string;
   title: string;
   description?: string;
@@ -11,6 +11,8 @@ type OrganizerOptionChecklistProps = {
   }>;
   selectedValues?: string[];
   columnsClassName?: string;
+  /** Quand false, le titre / description ne s’affichent pas (ex. onglets avec libellé externe). */
+  showHeading?: boolean;
 };
 
 export default function OrganizerOptionChecklist({
@@ -19,16 +21,19 @@ export default function OrganizerOptionChecklist({
   description,
   options,
   selectedValues = [],
-  columnsClassName = 'grid gap-3 sm:grid-cols-2 xl:grid-cols-3'
+  columnsClassName = 'grid gap-3 sm:grid-cols-2 xl:grid-cols-3',
+  showHeading = true
 }: OrganizerOptionChecklistProps) {
   const selected = new Set(selectedValues);
 
   return (
     <section className="space-y-3">
-      <div>
-        <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
-        {description ? <p className="mt-1 text-xs text-slate-500">{description}</p> : null}
-      </div>
+      {showHeading ? (
+        <div>
+          <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
+          {description ? <p className="mt-1 text-xs text-slate-500">{description}</p> : null}
+        </div>
+      ) : null}
       <div className={columnsClassName}>
         {options.map((option) => {
           const checked = selected.has(option.key);

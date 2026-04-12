@@ -7,7 +7,6 @@ import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, Menu, X } from 'lucide-react';
 import clsx from 'clsx';
 import { useCart } from '@/context/CartContext';
-import { AnimatePresence, motion } from 'framer-motion';
 
 const links = [
   { href: '/sejours', label: 'Séjours' },
@@ -170,32 +169,24 @@ export function MainNavigation() {
                       className={clsx('h-4 w-4 transition', dropdownOpen && 'rotate-180')}
                     />
                   </button>
-                  <AnimatePresence>
-                    {dropdownOpen && (
-                      <motion.div
-                        initial={{ opacity: 0, y: 8, scale: 0.98 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: 6, scale: 0.98 }}
-                        transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-                        className="absolute left-0 top-full z-50 min-w-[260px] pt-1"
-                      >
-                        <div className="rounded-xl border border-slate-200 bg-white py-2 shadow-lg">
-                          {link.children.map((child) => (
-                            <Link
-                              key={child.href}
-                              href={child.href}
-                              className={clsx(
-                                headerDropdownItemClass,
-                                pathname === child.href && 'bg-brand-50'
-                              )}
-                            >
-                              {child.label}
-                            </Link>
-                          ))}
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
+                  {dropdownOpen ? (
+                    <div className="absolute left-0 top-full z-50 min-w-[260px] pt-1">
+                      <div className="rounded-xl border border-slate-200 bg-white py-2 shadow-lg">
+                        {link.children.map((child) => (
+                          <Link
+                            key={child.href}
+                            href={child.href}
+                            className={clsx(
+                              headerDropdownItemClass,
+                              pathname === child.href && 'bg-brand-50'
+                            )}
+                          >
+                            {child.label}
+                          </Link>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               );
             }
@@ -270,32 +261,24 @@ export function MainNavigation() {
               Back Office
               <ChevronDown className={clsx('h-4 w-4 transition', backOfficeOpen && 'rotate-180')} />
             </button>
-            <AnimatePresence>
-              {backOfficeOpen && (
-                <motion.div
-                  initial={{ opacity: 0, y: 8, scale: 0.98 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: 6, scale: 0.98 }}
-                  transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-                  className="absolute right-0 top-full z-50 min-w-[200px] pt-2"
-                >
-                  <div className="rounded-xl border border-slate-200 bg-white py-2 shadow-lg">
-                    {backOfficeLinks.map((item) => (
-                      <Link
-                        key={item.href}
-                        href={item.href}
-                        className={clsx(
-                          'block px-4 py-2 text-slate-700 hover:bg-slate-50 hover:text-brand-500',
-                          pathname === item.href && 'bg-brand-50 text-brand-600'
-                        )}
-                      >
-                        {item.label}
-                      </Link>
-                    ))}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
+            {backOfficeOpen ? (
+              <div className="absolute right-0 top-full z-50 min-w-[200px] pt-2">
+                <div className="rounded-xl border border-slate-200 bg-white py-2 shadow-lg">
+                  {backOfficeLinks.map((item) => (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      className={clsx(
+                        'block px-4 py-2 text-slate-700 hover:bg-slate-50 hover:text-brand-500',
+                        pathname === item.href && 'bg-brand-50 text-brand-600'
+                      )}
+                    >
+                      {item.label}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
         <button
@@ -306,15 +289,8 @@ export function MainNavigation() {
           {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
         </button>
       </div>
-      <AnimatePresence>
-        {open && (
-          <motion.nav
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
-            className="overflow-hidden border-t border-slate-200 bg-white px-4 py-4 sm:px-6 xl:hidden"
-          >
+      {open ? (
+        <nav className="overflow-hidden border-t border-slate-200 bg-white px-4 py-4 sm:px-6 xl:hidden">
             <ul className="flex flex-col gap-4 font-medium text-slate-700">
               {links.map((link) => {
                 if (isDropdownItem(link)) {
@@ -395,9 +371,8 @@ export function MainNavigation() {
                 </div>
               </li>
             </ul>
-          </motion.nav>
-        )}
-      </AnimatePresence>
+        </nav>
+      ) : null}
     </header>
   );
 }

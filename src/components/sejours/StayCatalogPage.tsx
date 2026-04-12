@@ -4,7 +4,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { Compass, Clock3, Filter, MapPin, Search, ShoppingCart, Sun, X } from 'lucide-react';
+import { Compass, Filter, MapPin, Search, ShoppingCart, Sun, X } from 'lucide-react';
 import { getMockImageUrl, mockImages } from '@/lib/mockImages';
 import {
   Accordion,
@@ -77,8 +77,6 @@ function toggleListValue<TValue extends string>(list: TValue[], value: TValue) {
 
 function StayCard({ stay }: { stay: Stay }) {
   const organizerLogo = stay.organizer.logoUrl ?? '/image/accueil/images_accueil/logo-resacolo.png';
-  const priceLabel =
-    typeof stay.priceFrom === 'number' ? `À partir de ${stay.priceFrom} €` : 'Sur demande';
   const locationLabel = stay.location || stay.region || 'Lieu à préciser';
   const seasonLabel = stay.seasonName || (stay.period[0] ?? 'À venir');
   const description = stay.summary || stay.description || 'Informations à venir';
@@ -112,15 +110,21 @@ function StayCard({ stay }: { stay: Stay }) {
           </span>
         </div>
 
-        <CardContent className="space-y-4 p-4 pt-5 sm:pt-6">
-          <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-medium text-brand-600">
-            <span className="inline-flex min-w-0 items-center gap-1.5">
-              <MapPin className="h-3.5 w-3.5" />
+        <CardContent className="flex flex-col space-y-4 p-4 pt-5 sm:pt-6">
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-semibold text-[#6DC7FE]">
+            <span className="inline-flex min-w-0 items-center gap-2">
+              <MapPin className="h-5 w-5 shrink-0" aria-hidden />
               <span className="min-w-0 truncate">{locationLabel}</span>
             </span>
-            <span className="inline-flex shrink-0 items-center gap-1.5">
-              <Clock3 className="h-3.5 w-3.5" />
-              {stay.duration || 'Durée à venir'}
+            <span className="inline-flex shrink-0 items-center gap-2">
+              <Image
+                src="/image/sejours/pictos_duree/duree.png"
+                alt=""
+                width={24}
+                height={24}
+                className="h-5 w-5 object-contain"
+              />
+              <span>{stay.duration || 'Durée à venir'}</span>
             </span>
           </div>
 
@@ -139,7 +143,25 @@ function StayCard({ stay }: { stay: Stay }) {
               {description}
             </p>
           </div>
-          <p className="text-center text-xl font-bold text-accent-500">{priceLabel}</p>
+          <p className="text-center text-base font-semibold text-slate-600">
+            {typeof stay.priceFrom === 'number' ? (
+              <>
+                À partir de{' '}
+                <span className="text-xl font-bold text-accent-500">
+                  {stay.priceFrom.toLocaleString('fr-FR', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2
+                  })}
+                  €
+                </span>
+              </>
+            ) : (
+              <span className="text-lg font-bold text-accent-500">Sur demande</span>
+            )}
+          </p>
+          <div className="mt-2 flex w-[calc(100%+2rem)] max-w-none -mx-4 -mb-4 items-center justify-center bg-[#6DC7FE] py-3.5 text-sm font-bold uppercase tracking-wide text-white sm:w-[calc(100%+3rem)] sm:-mx-6 sm:-mb-6">
+            DÉCOUVRIR LE SÉJOUR
+          </div>
         </CardContent>
       </Card>
     </Link>

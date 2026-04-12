@@ -5,6 +5,7 @@ const supabaseHostname = process.env.NEXT_PUBLIC_SUPABASE_URL
 export default function nextConfig() {
   /** @type {import('next').NextConfig} */
   return {
+    transpilePackages: ['framer-motion'],
     output: 'standalone',
     images: {
       remotePatterns: [

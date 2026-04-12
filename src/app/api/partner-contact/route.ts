@@ -64,8 +64,9 @@ async function verifyTurnstileToken(token: string, remoteIp: string | null) {
     errorCodes: ['verification_unavailable']
   };
 
-  for (const secret of secrets) {
-    const result = await verifyTurnstileTokenWithSecret(secret, token, remoteIp);
+  const secretList = Array.from(secrets);
+  for (let index = 0; index < secretList.length; index += 1) {
+    const result = await verifyTurnstileTokenWithSecret(secretList[index], token, remoteIp);
     if (result.success) {
       return result;
     }

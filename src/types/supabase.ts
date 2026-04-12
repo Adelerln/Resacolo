@@ -841,6 +841,8 @@ export type Database = {
           name: string
           season_keys: string[]
           slug: string | null
+          stay_duration_max_days: number | null
+          stay_duration_min_days: number | null
           stay_type_keys: string[]
         }
         Insert: {
@@ -858,6 +860,8 @@ export type Database = {
           name: string
           season_keys?: string[]
           slug?: string | null
+          stay_duration_max_days?: number | null
+          stay_duration_min_days?: number | null
           stay_type_keys?: string[]
         }
         Update: {
@@ -875,6 +879,8 @@ export type Database = {
           name?: string
           season_keys?: string[]
           slug?: string | null
+          stay_duration_max_days?: number | null
+          stay_duration_min_days?: number | null
           stay_type_keys?: string[]
         }
         Relationships: []

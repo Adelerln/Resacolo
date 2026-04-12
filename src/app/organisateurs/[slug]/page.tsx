@@ -3,13 +3,15 @@ import path from 'node:path';
 import Image from 'next/image';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { OrganizerStayPreviewCard } from '@/components/organisateurs/OrganizerStayPreviewCard';
 import { ExternalLink, MapPin } from 'lucide-react';
 import { formatAccommodationType } from '@/components/organisme/AccommodationFormFields';
 import { getOrganizerBySlug } from '@/lib/mockOrganizers';
 import {
   ORGANIZER_ACTIVITY_OPTIONS,
   ORGANIZER_SEASON_OPTIONS,
-  ORGANIZER_STAY_TYPE_OPTIONS
+  ORGANIZER_STAY_TYPE_OPTIONS,
+  resolveStaySeasonPicto
 } from '@/lib/organizer-profile-options';
 import {
   buildOrganizerPresentationHtml,
@@ -87,8 +89,95 @@ async function resolveOrganizerBannerPath(input: { name: string; slug: string })
 }
 
 function formatPublicAgeRange(ageMin?: number | null, ageMax?: number | null) {
-  if (ageMin || ageMax) return `${ageMin ?? '?'} à ${ageMax ?? '?'} ans`;
+  if (ageMin != null || ageMax != null) return `${ageMin ?? '?'} à ${ageMax ?? '?'} ans`;
   return 'Âges non renseignés';
+}
+
+function formatOrganizerStayDurationLabel(minDays?: number | null, maxDays?: number | null) {
+  const min = minDays != null && Number.isFinite(minDays) ? Math.round(minDays) : null;
+  const max = maxDays != null && Number.isFinite(maxDays) ? Math.round(maxDays) : null;
+  if (min != null && max != null) {
+    if (min === max) return `${min} jour${min > 1 ? 's' : ''}`;
+    return `De ${min} à ${max} jours`;
+  }
+  if (min != null) return `À partir de ${min} jour${min > 1 ? 's' : ''}`;
+  if (max != null) return `Jusqu'à ${max} jour${max > 1 ? 's' : ''}`;
+  return 'Durées non renseignées';
+}
+
+const DAY_MS = 86_400_000;
+
+function pickSeasonNameFromJoin(raw: unknown): string | null {
+  if (!raw) return null;
+  if (Array.isArray(raw)) {
+    const first = raw[0] as { name?: string } | undefined;
+    return first?.name?.trim() ?? null;
+  }
+  if (typeof raw === 'object' && raw !== null && 'name' in raw) {
+    return String((raw as { name: string }).name).trim() || null;
+  }
+  return null;
+}
+
+function sessionLengthDays(start: string, end: string): number | null {
+  const startMs = new Date(start).getTime();
+  const endMs = new Date(end).getTime();
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return null;
+  const diff = Math.max(0, Math.round((endMs - startMs) / DAY_MS));
+  return diff + 1;
+}
+
+function formatAggregatedStayDays(days: number[]): string {
+  if (days.length === 0) return 'Durée à venir';
+  const min = Math.min(...days);
+  const max = Math.max(...days);
+  if (min === max) return min === 1 ? '1 jour' : `${min} jours`;
+  return `${min} à ${max} jours`;
+}
+
+type FeaturedSessionRow = {
+  stay_id: string;
+  start_date: string;
+  end_date: string;
+  status: string | null;
+  session_prices:
+    | { amount_cents: number | null }[]
+    | { amount_cents: number | null }
+    | null;
+};
+
+function readSessionPriceEuros(row: FeaturedSessionRow): number | null {
+  const raw = row.session_prices;
+  const first = Array.isArray(raw) ? raw[0] : raw;
+  const cents = first?.amount_cents;
+  if (cents == null || !Number.isFinite(cents)) return null;
+  return cents / 100;
+}
+
+function buildFeaturedStaySessionMeta(sessions: FeaturedSessionRow[]) {
+  const visible = sessions.filter(
+    (session) => session.status !== 'COMPLETED' && session.status !== 'ARCHIVED'
+  );
+  const dayCounts = visible
+    .map((session) => sessionLengthDays(session.start_date, session.end_date))
+    .filter((value): value is number => typeof value === 'number' && value > 0);
+  const openPrices = visible
+    .filter((session) => session.status === 'OPEN')
+    .map((session) => readSessionPriceEuros(session))
+    .filter((value): value is number => value != null);
+  const fallbackPrices = visible
+    .map((session) => readSessionPriceEuros(session))
+    .filter((value): value is number => value != null);
+  const minPrice =
+    openPrices.length > 0
+      ? Math.min(...openPrices)
+      : fallbackPrices.length > 0
+        ? Math.min(...fallbackPrices)
+        : null;
+  return {
+    durationLabel: formatAggregatedStayDays(dayCounts),
+    priceFrom: minPrice
+  };
 }
 
 function formatStayHref(organizerName: string, stayTitle: string, stayId: string) {
@@ -239,7 +328,12 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
         await supabase
           .from('organizers')
           .select(organizerSelectFallback)
-      ).data?.map((item) => ({ ...item, season_keys: [], stay_type_keys: [], activity_keys: [] })) ??
+      ).data?.map((item) => ({
+          ...item,
+          season_keys: [],
+          stay_type_keys: [],
+          activity_keys: []
+        })) ??
       [];
     resolvedOrganizer =
       allOrganizers.find((item) => slugify(item.name) === slug) ?? null;
@@ -249,6 +343,20 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
 
   if (!resolvedOrganizer && !fallbackOrganizer) {
     notFound();
+  }
+
+  let stayDurationMinDays: number | null = null;
+  let stayDurationMaxDays: number | null = null;
+  if (resolvedOrganizer?.id) {
+    const { data: durRow, error: durErr } = await supabase
+      .from('organizers')
+      .select('stay_duration_min_days,stay_duration_max_days')
+      .eq('id', resolvedOrganizer.id)
+      .maybeSingle();
+    if (!durErr && durRow) {
+      stayDurationMinDays = durRow.stay_duration_min_days ?? null;
+      stayDurationMaxDays = durRow.stay_duration_max_days ?? null;
+    }
   }
 
   const organizerName = resolvedOrganizer?.name ?? fallbackOrganizer?.name ?? 'Organisateur';
@@ -285,6 +393,9 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
   const publicAgeRange = resolvedOrganizer
     ? formatPublicAgeRange(resolvedOrganizer.age_min, resolvedOrganizer.age_max)
     : fallbackOrganizer?.publicAgeRange ?? 'Âges non renseignés';
+  const stayDurationLabel = resolvedOrganizer
+    ? formatOrganizerStayDurationLabel(stayDurationMinDays, stayDurationMaxDays)
+    : 'Durées non renseignées';
 
   const [bannerPath, organizerLogoUrl, projectUrl, fallbackOrganizerStaysData] = await Promise.all([
     resolveOrganizerBannerPath({
@@ -322,7 +433,18 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
         )
       : Promise.resolve([])
   ]);
-  const fallbackPublishedStays = fallbackOrganizerStaysData.map(({ organizerLogoUrl: _organizerLogoUrl, ...stay }) => stay);
+  const fallbackPublishedStays = fallbackOrganizerStaysData.map(
+    ({ id, title, summary, description, location_text, age_min, age_max, coverImage }) => ({
+      id,
+      title,
+      summary,
+      description,
+      location_text,
+      age_min,
+      age_max,
+      coverImage
+    })
+  );
   const logoUrl =
     organizerLogoUrl ??
     fallbackOrganizerStaysData.find((stay) => stay.organizerLogoUrl)?.organizerLogoUrl ??
@@ -342,7 +464,9 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
     ? (
         await supabase
           .from('stays')
-          .select('id,title,summary,description,location_text,age_min,age_max,updated_at,status')
+          .select(
+            'id,title,summary,description,location_text,age_min,age_max,updated_at,status,season_id,seasons(name)'
+          )
           .eq('organizer_id', resolvedOrganizer.id)
           .eq('status', 'PUBLISHED')
           .order('updated_at', { ascending: false })
@@ -352,6 +476,21 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
 
   const publishedStays = resolvedOrganizer ? publishedStaysRaw : fallbackPublishedStays;
   const publishedStayIds = publishedStays.map((stay) => stay.id);
+
+  const { data: featuredSessionsRaw } =
+    resolvedOrganizer && publishedStayIds.length > 0
+      ? await supabase
+          .from('sessions')
+          .select('stay_id,start_date,end_date,status,session_prices(amount_cents)')
+          .in('stay_id', publishedStayIds)
+      : { data: [] as FeaturedSessionRow[] };
+
+  const featuredSessionsByStayId = new Map<string, FeaturedSessionRow[]>();
+  for (const row of featuredSessionsRaw ?? []) {
+    const group = featuredSessionsByStayId.get(row.stay_id) ?? [];
+    group.push(row as FeaturedSessionRow);
+    featuredSessionsByStayId.set(row.stay_id, group);
+  }
 
   const [{ data: stayMediaRaw }, { data: accommodationsRaw }, { data: stayAccommodationLinksRaw }, { data: accommodationMediaRaw }] =
     resolvedOrganizer
@@ -612,6 +751,32 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
                     ))}
                   </div>
                 ) : null}
+                <p className="mt-8 text-[0.72rem] font-extrabold uppercase tracking-[0.18em] text-slate-900">
+                  Durées des séjours :
+                </p>
+                <div className="mt-3 flex items-center gap-3">
+                  <Image
+                    src="/image/sejours/pictos_duree/duree.png"
+                    alt=""
+                    width={24}
+                    height={24}
+                    className="h-6 w-6 shrink-0 object-contain"
+                  />
+                  <p className="text-sm font-semibold leading-relaxed text-slate-700">{stayDurationLabel}</p>
+                </div>
+                <p className="mt-8 text-[0.72rem] font-extrabold uppercase tracking-[0.18em] text-slate-900">
+                  Tranches d&apos;âges :
+                </p>
+                <div className="mt-3 flex items-center gap-3">
+                  <Image
+                    src="/image/sejours/pictos_age/age.png"
+                    alt=""
+                    width={24}
+                    height={24}
+                    className="h-6 w-6 shrink-0 object-contain"
+                  />
+                  <p className="text-sm font-semibold leading-relaxed text-slate-700">{publicAgeRange}</p>
+                </div>
                 {activityHeading ? (
                   <p className="mt-8 text-[0.72rem] font-extrabold uppercase tracking-[0.18em] text-slate-900">
                     {activityHeading}
@@ -690,7 +855,7 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
                 <span className="mt-2 block text-[#FA8500]">{organizerDisplayName}</span>
               </h2>
               <p className="mt-5 max-w-sm text-sm font-medium leading-6 text-slate-600 sm:text-base">
-                Un petit aperçu de quelques uns de nos centres de vacances :
+                Un petit aperçu des lieux de séjours de {organizerDisplayName} :
               </p>
             </div>
 
@@ -748,43 +913,40 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
         </div>
 
         {featuredPublishedStays.length > 0 ? (
-          <div className="mt-6 grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-            {featuredPublishedStays.map((stay) => (
-              <article
-                key={stay.id}
-                className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_18px_40px_-28px_rgba(15,23,42,0.35)]"
-              >
-                <div className="relative h-52 bg-slate-100">
-                  {((stay as { coverImage?: string | null }).coverImage ?? coverImageByStayId.get(stay.id)) ? (
-                    <img
-                      src={(stay as { coverImage?: string | null }).coverImage ?? coverImageByStayId.get(stay.id) ?? ''}
-                      alt={stay.title}
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-full items-center justify-center bg-slate-100 text-slate-400">
-                      <MapPin className="h-10 w-10" />
-                    </div>
-                  )}
+          <div className="mt-6 grid grid-cols-1 items-stretch justify-items-center gap-8 sm:grid-cols-2 sm:justify-items-stretch lg:grid-cols-3">
+            {featuredPublishedStays.map((stay) => {
+              const stayRow = stay as {
+                seasons?: unknown;
+              };
+              const seasonNameJoined = pickSeasonNameFromJoin(stayRow.seasons);
+              const seasonDisplay = resolveStaySeasonPicto(seasonNameJoined);
+              const sessionMeta = buildFeaturedStaySessionMeta(
+                featuredSessionsByStayId.get(stay.id) ?? []
+              );
+              const coverUrl =
+                (stay as { coverImage?: string | null }).coverImage ??
+                coverImageByStayId.get(stay.id) ??
+                null;
+              return (
+                <div key={stay.id} className="flex h-full min-h-[520px] justify-center">
+                  <OrganizerStayPreviewCard
+                  title={stay.title}
+                  summary={stay.summary ?? null}
+                  description={stay.description ?? null}
+                  locationLabel={stay.location_text?.trim() || 'Lieu à préciser'}
+                  ageRangeLabel={formatPublicAgeRange(stay.age_min, stay.age_max)}
+                  seasonIconSrc={seasonDisplay.iconPath}
+                  seasonBadge={seasonDisplay.badgeText}
+                  durationLabel={sessionMeta.durationLabel}
+                  priceFromEuros={sessionMeta.priceFrom}
+                  coverUrl={coverUrl}
+                  href={formatStayHref(organizerName, stay.title, stay.id)}
+                  organizerLogoUrl={logoUrl}
+                  organizerName={organizerDisplayName}
+                />
                 </div>
-                <div className="p-5">
-                  <p className="text-xs font-bold uppercase tracking-[0.1em] text-slate-400">
-                    {formatPublicAgeRange(stay.age_min, stay.age_max)}
-                  </p>
-                  <h3 className="mt-2 text-xl font-bold leading-snug text-[#505050]">{stay.title}</h3>
-                  <p className="mt-2 text-sm text-slate-500">{stay.location_text || 'Destination à découvrir'}</p>
-                  <p className="mt-4 line-clamp-4 text-sm leading-6 text-slate-600">
-                    {stay.summary?.trim() || stay.description?.trim() || 'Présentation du séjour à venir.'}
-                  </p>
-                  <Link
-                    href={formatStayHref(organizerName, stay.title, stay.id)}
-                    className="mt-5 inline-flex items-center rounded-full bg-[#6DC7FE] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#52B0EA]"
-                  >
-                    Voir le séjour
-                  </Link>
-                </div>
-              </article>
-            ))}
+              );
+            })}
           </div>
         ) : (
           <div className="mt-6 rounded-[28px] border border-dashed border-slate-200 bg-white p-8 text-sm text-slate-500">

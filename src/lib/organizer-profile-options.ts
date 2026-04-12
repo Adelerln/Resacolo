@@ -120,6 +120,37 @@ export const ORGANIZER_ACTIVITY_OPTIONS: OrganizerOption<OrganizerActivityKey>[]
   { key: 'theatre', label: 'Théâtre', iconPath: '/image/sejours/pictos_activites/theatre.png' }
 ];
 
+/** Picto + libellé court pour la pastille saison sur une carte séjour (nom issu de la table `seasons`). */
+export function resolveStaySeasonPicto(
+  seasonName: string | null | undefined
+): { iconPath: string; badgeText: string } {
+  const raw = seasonName?.trim() ?? '';
+  const lower = raw.toLowerCase();
+
+  const badgeText = (() => {
+    if (!raw) return 'SAISON';
+    if (lower.includes('été') || lower.includes('ete')) return 'ÉTÉ';
+    if (lower.includes('hiver')) return 'HIVER';
+    if (lower.includes('printemps')) return 'PRINTEMPS';
+    if (lower.includes('automne')) return 'AUTOMNE';
+    if (lower.includes('toussaint')) return 'TOUSSAINT';
+    return raw.toLocaleUpperCase('fr-FR').slice(0, 14);
+  })();
+
+  let key: OrganizerSeasonKey = 'ete';
+  if (lower.includes('printemps')) key = 'printemps';
+  else if (lower.includes('automne') || lower.includes('toussaint')) key = 'automne';
+  else if (lower.includes('hiver') || lower.includes('noël') || lower.includes('noel')) key = 'hiver';
+  else if (lower.includes('été') || lower.includes('ete')) key = 'ete';
+  else if (lower.includes('fin') && (lower.includes('année') || lower.includes('annee'))) key = 'fin-annee';
+
+  const opt =
+    ORGANIZER_SEASON_OPTIONS.find((option) => option.key === key) ??
+    ORGANIZER_SEASON_OPTIONS.find((option) => option.key === 'ete')!;
+
+  return { iconPath: opt.iconPath, badgeText };
+}
+
 export function sanitizeOrganizerOptionValues<T extends string>(
   values: FormDataEntryValue[],
   options: readonly OrganizerOption<T>[]

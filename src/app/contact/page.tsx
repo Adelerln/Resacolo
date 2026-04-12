@@ -1,16 +1,15 @@
 'use client';
 
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { User, Headset, Home, Flag, Key, ChevronDown } from 'lucide-react';
 
 const BLUE = '#52B0EA';
 const ORANGE = '#FA8500';
 
-const recipients = [
-  { value: '', label: 'Sélectionner un destinataire' },
-  { value: 'organisateur', label: 'Un organisateur de séjour' },
-  { value: 'assistance', label: 'Assistance technique ResaColo' }
-];
+type OrganizerRecipient = {
+  id: string;
+  name: string;
+};
 
 type CaptchaChoice = 'home' | 'flag' | 'key' | null;
 
@@ -24,8 +23,58 @@ export default function ContactPage() {
   const [captcha, setCaptcha] = useState<CaptchaChoice>(null);
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [organizers, setOrganizers] = useState<OrganizerRecipient[]>([]);
+  const [isLoadingOrganizers, setIsLoadingOrganizers] = useState(true);
+  const [organizersLoadError, setOrganizersLoadError] = useState<string | null>(null);
 
   const captchaValid = captcha === 'flag';
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let isMounted = true;
+
+    const loadOrganizers = async () => {
+      try {
+        const response = await fetch('/api/organizers/options', {
+          method: 'GET',
+          cache: 'no-store',
+          signal: controller.signal
+        });
+
+        if (!response.ok) {
+          throw new Error('Impossible de charger les organisateurs.');
+        }
+
+        const payload = (await response.json()) as {
+          organizers?: OrganizerRecipient[];
+        };
+
+        if (!isMounted) return;
+        setOrganizers(
+          Array.isArray(payload.organizers)
+            ? payload.organizers.filter(
+                (organizer): organizer is OrganizerRecipient =>
+                  Boolean(organizer?.id) && typeof organizer.name === 'string'
+              )
+            : []
+        );
+      } catch {
+        if (!isMounted) return;
+        setOrganizersLoadError('La liste des organisateurs est momentanément indisponible.');
+      } finally {
+        if (isMounted) {
+          setIsLoadingOrganizers(false);
+        }
+      }
+    };
+
+    loadOrganizers();
+
+    return () => {
+      isMounted = false;
+      controller.abort();
+    };
+  }, []);
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -119,14 +168,27 @@ export default function ContactPage() {
                     onChange={(e) => setRecipient(e.target.value)}
                     className={`${inputClass} appearance-none pr-10`}
                   >
-                    {recipients.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
+                    <option value="">Sélectionner un destinataire</option>
+                    {organizers.map((organizer) => (
+                      <option key={organizer.id} value={`organizer:${organizer.id}`}>
+                        {organizer.name}
                       </option>
                     ))}
+                    <option value="assistance">ASSISTANCE TECHNIQUE RESACOLO</option>
                   </select>
                   <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
                 </div>
+                {isLoadingOrganizers && (
+                  <p className="mt-2 text-xs text-slate-500">Chargement des organisateurs...</p>
+                )}
+                {!isLoadingOrganizers && organizers.length === 0 && !organizersLoadError && (
+                  <p className="mt-2 text-xs text-slate-500">
+                    Aucun organisateur disponible pour le moment.
+                  </p>
+                )}
+                {organizersLoadError && (
+                  <p className="mt-2 text-xs text-amber-700">{organizersLoadError}</p>
+                )}
               </div>
 
               {/* Step 2: Personal Info */}

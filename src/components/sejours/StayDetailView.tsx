@@ -27,6 +27,7 @@ import { createCartItemFromStay } from '@/lib/cart/normalizeCartItem';
 import { FILTER_LABELS } from '@/lib/constants';
 import { getMockImageUrl, mockImages } from '@/lib/mockImages';
 import StayLocationMap from '@/components/sejours/StayLocationMap';
+import { FavoriteStayButton } from '@/components/sejours/FavoriteStayButton';
 
 type TabId = 'sejour' | 'programme' | 'hebergement' | 'encadrement' | 'infos';
 
@@ -279,6 +280,19 @@ export function StayDetailView({ stay }: { stay: Stay }) {
   }, [stay.id]);
 
   useEffect(() => {
+    const controller = new AbortController();
+    fetch(`/api/stays/${encodeURIComponent(stay.id)}/visit`, {
+      method: 'POST',
+      keepalive: true,
+      signal: controller.signal
+    }).catch(() => {
+      // Do not block the page if analytics tracking fails.
+    });
+
+    return () => controller.abort();
+  }, [stay.id]);
+
+  useEffect(() => {
     setSelectedTransportId('');
     setSelectedDepartureCity('');
     setSelectedReturnCity('');
@@ -435,23 +449,26 @@ export function StayDetailView({ stay }: { stay: Stay }) {
           {/* Main column */}
           <article className="min-w-0">
             {/* Meta line */}
-            <div className="mb-6 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-slate-600">
-              <span className="flex items-center gap-1.5">
-                <ThemeIcon className="h-4 w-4 text-accent-500" aria-hidden />
-                {themeLabel}
-              </span>
-              <span className="flex items-center gap-1.5">
-                <MapPin className="h-4 w-4 text-accent-500" aria-hidden />
-                {stay.location}
-              </span>
-              <span className="flex items-center gap-1.5">
-                <Users className="h-4 w-4 text-accent-500" aria-hidden />
-                {stay.ageRange}
-              </span>
-              <span className="flex items-center gap-1.5">
-                <Clock className="h-4 w-4 text-accent-500" aria-hidden />
-                {stay.duration}
-              </span>
+            <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-slate-600">
+                <span className="flex items-center gap-1.5">
+                  <ThemeIcon className="h-4 w-4 text-accent-500" aria-hidden />
+                  {themeLabel}
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <MapPin className="h-4 w-4 text-accent-500" aria-hidden />
+                  {stay.location}
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <Users className="h-4 w-4 text-accent-500" aria-hidden />
+                  {stay.ageRange}
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <Clock className="h-4 w-4 text-accent-500" aria-hidden />
+                  {stay.duration}
+                </span>
+              </div>
+              <FavoriteStayButton stayId={stay.id} className="shrink-0" />
             </div>
 
             <p className="mb-8 max-w-3xl text-base leading-relaxed text-slate-600">{stay.summary}</p>

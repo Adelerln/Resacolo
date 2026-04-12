@@ -13,6 +13,7 @@ import {
   AccordionTrigger
 } from '@/components/ui/accordion';
 import { Card, CardContent, CardDescription, CardTitle } from '@/components/ui/card';
+import { FavoriteStayButton } from '@/components/sejours/FavoriteStayButton';
 import {
   EMPTY_STAY_CATALOG_FILTERS,
   DEFAULT_STAY_CATALOG_SORT,
@@ -94,6 +95,9 @@ function StayCard({ stay }: { stay: Stay }) {
             className="object-cover"
             sizes="(max-width: 768px) 100vw, 33vw"
           />
+          <div className="absolute left-3 top-3 z-10">
+            <FavoriteStayButton stayId={stay.id} stopPropagation />
+          </div>
           <div className="absolute right-3 top-3 h-11 w-11 overflow-hidden rounded-full border-2 border-white bg-white shadow">
             <Image
               src={organizerLogo}

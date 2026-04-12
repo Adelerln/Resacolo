@@ -13,6 +13,7 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
     pathname.startsWith('/back-office') ||
     pathname.startsWith('/organisme') ||
     pathname.startsWith('/partenaire');
+  const hideFooterHelpAndLegal = pathname.startsWith('/contact');
   if (hidePublicShell) {
     return <>{children}</>;
   }
@@ -25,7 +26,7 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
           <PageTransition>{children}</PageTransition>
         </Suspense>
       </main>
-      <Footer />
+      <Footer hideHelpAndLegal={hideFooterHelpAndLegal} />
     </div>
   );
 }

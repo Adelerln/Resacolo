@@ -209,7 +209,7 @@ export default function NotreConceptPage() {
               className="mb-9 font-display text-3xl font-bold leading-[1.04] sm:text-4xl lg:text-5xl"
               style={{ color: ORIGIN_GRAY }}
             >
-              Nos <span style={{ color: BLUE }}>GARANTIES</span>
+              Nos <span style={{ color: BLUE }}>Garanties</span>
             </h2>
             <div className="divide-y divide-slate-200">
               <div className="flex flex-col gap-4 py-6 first:pt-0 sm:flex-row sm:items-center sm:gap-6">

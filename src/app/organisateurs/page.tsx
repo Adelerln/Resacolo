@@ -5,6 +5,9 @@ import { slugify } from '@/lib/utils';
 
 const ORIGIN_GRAY = '#505050';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export const metadata = {
   title: 'Organisateurs | ResaColo',
   description:

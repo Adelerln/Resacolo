@@ -1,15 +1,11 @@
-export const ACCOMMODATION_TYPE_OPTIONS = [
-  'centre',
-  'auberge de jeunesse',
-  'camping',
-  "famille d'accueil",
-  'mixte'
-] as const;
+'use client';
 
-export function formatAccommodationType(value?: string | null) {
-  if (!value) return 'Non renseigné';
-  return value.charAt(0).toUpperCase() + value.slice(1);
-}
+import { useState } from 'react';
+import GoogleMapsCityInput from '@/components/common/GoogleMapsCityInput';
+import type { AccommodationLocationMode } from '@/lib/accommodation-location';
+import { ACCOMMODATION_TYPE_OPTIONS, formatAccommodationType } from '@/lib/accommodation-types';
+
+export { ACCOMMODATION_TYPE_OPTIONS, formatAccommodationType };
 
 type AccommodationFormValues = {
   name?: string | null;
@@ -19,6 +15,11 @@ type AccommodationFormValues = {
   bathroom_info?: string | null;
   catering_info?: string | null;
   accessibility_info?: string | null;
+  location_mode?: AccommodationLocationMode | null;
+  location_city?: string | null;
+  location_department_code?: string | null;
+  location_country?: string | null;
+  itinerant_zone?: string | null;
 };
 
 type AccommodationFormFieldsProps = {
@@ -30,6 +31,8 @@ export default function AccommodationFormFields({
   values = {},
   submitLabel
 }: AccommodationFormFieldsProps) {
+  const [locationMode, setLocationMode] = useState<AccommodationLocationMode | ''>(values.location_mode ?? '');
+
   return (
     <>
       <div className="grid gap-4 md:grid-cols-2">
@@ -58,6 +61,84 @@ export default function AccommodationFormFields({
             ))}
           </select>
         </label>
+      </div>
+
+      <div className="rounded-xl border border-slate-100 p-4">
+        <h3 className="text-sm font-semibold text-slate-900">Lieu affiché</h3>
+        <p className="mt-2 text-sm text-slate-500">
+          Format public attendu : ville avec département, ville avec pays, ou circuit itinérant.
+        </p>
+        <div className="mt-4 space-y-4">
+          <label className="block text-sm font-medium text-slate-700">
+            Type de lieu
+            <select
+              name="location_mode"
+              value={locationMode}
+              onChange={(event) => setLocationMode(event.target.value as AccommodationLocationMode | '')}
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+            >
+              <option value="">Aucun lieu affiché</option>
+              <option value="france">Ville en France</option>
+              <option value="abroad">Ville à l&apos;étranger</option>
+              <option value="itinerant">Circuit itinérant</option>
+            </select>
+          </label>
+
+          {locationMode === 'france' ? (
+            <div className="grid gap-4 md:grid-cols-2">
+              <GoogleMapsCityInput
+                name="location_city"
+                label="Ville"
+                defaultValue={values.location_city ?? ''}
+                className="block text-sm font-medium text-slate-700"
+              />
+              <label className="block text-sm font-medium text-slate-700">
+                Numéro de département
+                <input
+                  name="location_department_code"
+                  defaultValue={values.location_department_code ?? ''}
+                  placeholder="Ex. 74"
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+                />
+              </label>
+            </div>
+          ) : null}
+
+          {locationMode === 'abroad' ? (
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="block text-sm font-medium text-slate-700">
+                Ville
+                <input
+                  name="location_city"
+                  defaultValue={values.location_city ?? ''}
+                  placeholder="Ex. Barcelone"
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+                />
+              </label>
+              <label className="block text-sm font-medium text-slate-700">
+                Pays
+                <input
+                  name="location_country"
+                  defaultValue={values.location_country ?? ''}
+                  placeholder="Ex. Espagne"
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+                />
+              </label>
+            </div>
+          ) : null}
+
+          {locationMode === 'itinerant' ? (
+            <label className="block text-sm font-medium text-slate-700">
+              Zone ou itinéraire
+              <input
+                name="itinerant_zone"
+                defaultValue={values.itinerant_zone ?? ''}
+                placeholder="Ex. Bretagne sud"
+                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+              />
+            </label>
+          ) : null}
+        </div>
       </div>
 
       <label className="block text-sm font-medium text-slate-700">

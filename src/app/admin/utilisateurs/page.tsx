@@ -14,7 +14,7 @@ function normalizeRole(role: string): AdminRole {
 }
 
 export default async function AdminUsersPage() {
-  requireRole('ADMIN');
+  await requireRole('ADMIN');
   const supabase = getServerSupabaseClient();
   const { data: membersRaw } = await supabase
     .from('organizer_members')

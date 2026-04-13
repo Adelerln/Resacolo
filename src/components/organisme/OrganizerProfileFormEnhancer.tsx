@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 
 type OrganizerProfileFormEnhancerProps = {
   formId: string;
+  resetToken?: string;
 };
 
 const IDLE_CLASSES = ['bg-slate-100', 'border-slate-200'];
@@ -38,16 +39,14 @@ function normalizeValue(field: HTMLInputElement | HTMLTextAreaElement | HTMLSele
   return field.value;
 }
 
-function markFieldDirty(
-  field: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement,
-  isDirty: boolean
-) {
+function markFieldDirty(field: HTMLElement, isDirty: boolean) {
   field.classList.remove(...IDLE_CLASSES, ...DIRTY_CLASSES);
   field.classList.add(...(isDirty ? DIRTY_CLASSES : IDLE_CLASSES));
 }
 
 export default function OrganizerProfileFormEnhancer({
-  formId
+  formId,
+  resetToken
 }: OrganizerProfileFormEnhancerProps) {
   const [isDirty, setIsDirty] = useState(false);
 
@@ -55,18 +54,34 @@ export default function OrganizerProfileFormEnhancer({
     const form = document.getElementById(formId);
     if (!(form instanceof HTMLFormElement)) return;
 
-    const fields = Array.from(
+    const trackedFields = Array.from(
       form.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(
         'input, textarea, select'
       )
-    ).filter((field) => field.type !== 'hidden' && field.type !== 'submit' && field.type !== 'button');
+    ).filter((field) => {
+      if (field.type === 'submit' || field.type === 'button') return false;
+      if (field.type === 'hidden') return field.dataset.trackDirty === 'true';
+      return true;
+    });
+    const visualFields = trackedFields.filter(
+      (field): field is HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement =>
+        !(field instanceof HTMLInputElement && field.type === 'hidden')
+    );
 
-    const initialValues = new Map(fields.map((field) => [field, normalizeValue(field)]));
+    const initialValues = new Map(trackedFields.map((field) => [field, normalizeValue(field)]));
     const initialSnapshot = serializeFormData(form);
 
     const syncState = () => {
-      for (const field of fields) {
+      for (const field of visualFields) {
         markFieldDirty(field, normalizeValue(field) !== initialValues.get(field));
+      }
+      for (const field of trackedFields) {
+        if (!(field instanceof HTMLInputElement) || field.type !== 'hidden') continue;
+        const targetId = field.dataset.dirtyTarget;
+        if (!targetId) continue;
+        const target = document.getElementById(targetId);
+        if (!target) continue;
+        markFieldDirty(target, normalizeValue(field) !== initialValues.get(field));
       }
       setIsDirty(serializeFormData(form) !== initialSnapshot);
     };
@@ -81,16 +96,16 @@ export default function OrganizerProfileFormEnhancer({
       form.removeEventListener('change', syncState);
       form.removeEventListener('reset', syncState);
     };
-  }, [formId]);
+  }, [formId, resetToken]);
 
   if (!isDirty) return null;
 
   return (
-    <div className="sticky bottom-3 z-10 flex justify-center sm:bottom-4 sm:justify-end">
+    <div className="pointer-events-none fixed right-4 bottom-4 z-40 flex justify-end sm:right-6 sm:bottom-6">
       <button
         type="submit"
         form={formId}
-        className="w-full max-w-xs rounded-full bg-emerald-600 px-5 py-3 text-sm font-semibold text-white shadow-lg sm:w-auto sm:max-w-none"
+        className="pointer-events-auto w-full max-w-xs rounded-full bg-emerald-600 px-5 py-3 text-sm font-semibold text-white shadow-lg sm:w-auto sm:max-w-none"
       >
         Enregistrer
       </button>

@@ -1,119 +1,34 @@
 'use client';
 
-import Link from 'next/link';
-import { useState } from 'react';
-import { ExternalLink, Info } from 'lucide-react';
+import { OrganizerStayPreviewCard } from '@/components/organisateurs/OrganizerStayPreviewCard';
+import { getMockImageUrl, mockImages } from '@/lib/mockImages';
+import { resolveStaySeasonPicto } from '@/lib/organizer-profile-options';
 import type { Stay } from '@/types/stay';
-import { FILTER_LABELS } from '@/lib/constants';
 
 interface StayCardProps {
   stay: Stay;
 }
 
-function formatPrice(price?: number | null) {
-  if (!price) return 'Tarif sur demande';
-  return new Intl.NumberFormat('fr-FR', {
-    style: 'currency',
-    currency: 'EUR',
-    maximumFractionDigits: 0
-  }).format(price);
-}
-
-function formatLabel(group: keyof typeof FILTER_LABELS, value: string) {
-  return FILTER_LABELS[group][value as keyof (typeof FILTER_LABELS)[typeof group]] ?? value;
-}
-
 export function StayCard({ stay }: StayCardProps) {
-  const [expanded, setExpanded] = useState(false);
+  const season = resolveStaySeasonPicto(stay.seasonName || stay.period[0] || null);
 
   return (
-    <Link
-      href={`/sejours/${stay.slug}`}
-      className="block rounded-xl border border-slate-200 bg-white p-6 shadow-sm transition-shadow hover:shadow-md"
-      prefetch
-    >
-      <article className="flex flex-col gap-4">
-        <header className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-          <div>
-            <p className="text-xs uppercase tracking-wide text-brand-600">{stay.organizer.name}</p>
-            <h3 className="text-xl font-semibold text-slate-900">{stay.title}</h3>
-            <p className="text-sm text-slate-500">
-              {stay.location} · {stay.duration} · {stay.ageRange}
-            </p>
-          </div>
-          <div className="flex flex-col items-start gap-2 text-right md:items-end">
-            <p className="text-lg font-semibold text-brand-600">{formatPrice(stay.priceFrom)}</p>
-            <a
-              href={stay.sourceUrl ?? stay.organizer.website}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1 text-xs font-medium text-brand-600 hover:text-brand-700"
-              onClick={(e) => e.stopPropagation()}
-            >
-              Voir sur le site <ExternalLink className="h-3 w-3" />
-            </a>
-          </div>
-        </header>
-        <p className="text-sm text-slate-600">{stay.summary}</p>
-        <div className="flex flex-wrap gap-2">
-          {stay.filters.categories.map((category) => (
-            <span key={category} className="rounded-full bg-brand-50 px-3 py-1 text-xs font-medium text-brand-700">
-              {formatLabel('categories', category)}
-            </span>
-          ))}
-          {stay.filters.audiences.map((audience) => (
-            <span key={audience} className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
-              {formatLabel('audiences', audience)}
-            </span>
-          ))}
-        </div>
-        <div className="space-y-2 text-sm text-slate-600" onClick={(e) => e.stopPropagation()}>
-          <div className="flex items-center justify-between">
-            <button
-              type="button"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setExpanded((prev) => !prev);
-              }}
-              className="text-xs font-medium uppercase tracking-wide text-brand-600"
-            >
-              {expanded ? 'Masquer le détail' : 'Voir un aperçu'}
-            </button>
-            <span className="inline-flex items-center gap-1 text-xs font-medium text-brand-600">
-              Fiche complète <Info className="h-3 w-3" />
-            </span>
-          </div>
-          {expanded && (
-          <div className="space-y-3">
-            <div>
-              <h4 className="text-sm font-semibold text-slate-800">Programme</h4>
-              <p className="mt-1 whitespace-pre-line text-sm leading-relaxed text-slate-600">{stay.description}</p>
-            </div>
-            {stay.highlights.length > 0 && (
-              <div>
-                <h4 className="text-sm font-semibold text-slate-800">Moments forts</h4>
-                <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-slate-600">
-                  {stay.highlights.map((highlight) => (
-                    <li key={highlight}>{highlight}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            <div className="grid gap-2 text-xs">
-              <p>
-                <span className="font-medium text-slate-700">Périodes :</span>{' '}
-                {stay.period.map((period) => formatLabel('periods', period)).join(', ')}
-              </p>
-              <p>
-                <span className="font-medium text-slate-700">Transport :</span>{' '}
-                {stay.filters.transport.map((value) => formatLabel('transport', value)).join(', ')}
-              </p>
-            </div>
-          </div>
-        )}
-      </div>
-    </article>
-    </Link>
+    <div className="flex justify-center">
+      <OrganizerStayPreviewCard
+        title={stay.title}
+        summary={stay.summary}
+        description={stay.description}
+        locationLabel={stay.location || stay.region || 'Lieu à préciser'}
+        ageRangeLabel={stay.ageRange || 'Tous âges'}
+        seasonIconSrc={season.iconPath}
+        seasonBadge={season.badgeText}
+        durationLabel={stay.duration || 'Durée à venir'}
+        priceFromEuros={stay.priceFrom}
+        coverUrl={stay.coverImage || getMockImageUrl(mockImages.sejours.fallbackCover, 1200, 80)}
+        href={`/sejours/${stay.slug}`}
+        organizerLogoUrl={stay.organizer.logoUrl ?? null}
+        organizerName={stay.organizer.name}
+      />
+    </div>
   );
 }

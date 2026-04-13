@@ -18,7 +18,7 @@ export function StayList({ stays }: StayListProps) {
   }
 
   return (
-    <div className="grid gap-4">
+    <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3">
       {stays.map((stay) => (
         <StayCard key={stay.id} stay={stay} />
       ))}

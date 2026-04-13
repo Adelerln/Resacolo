@@ -108,7 +108,7 @@ export default function NotreConceptPage() {
           </div>
 
           <div className="flex h-full flex-col lg:min-h-[32rem]">
-            <div className="space-y-6 font-medium leading-relaxed text-slate-600">
+            <div className="space-y-6 text-justify font-medium leading-relaxed text-slate-600">
               <p>
                 <strong className="font-semibold text-slate-800">RESACOLO</strong> est le fruit de
                 l’imagination de professionnels de l’Enfance-Jeunesse, spécialisés dans

@@ -22,6 +22,7 @@ import {
   Route,
   Globe2
 } from 'lucide-react';
+import { FavoriteToggleButton } from '@/components/favorites/FavoriteToggleButton';
 import type { Stay, StayInsuranceOption, StaySessionOption, StayTransportOption } from '@/types/stay';
 import { useCart } from '@/context/CartContext';
 import { FILTER_LABELS } from '@/lib/constants';
@@ -415,6 +416,10 @@ export function StayDetailView({ stay }: { stay: Stay }) {
               </span>
             </div>
 
+            <div className="mb-6">
+              <FavoriteToggleButton stayId={stay.id} showLabel />
+            </div>
+
             <p className="mb-8 max-w-3xl text-base leading-relaxed text-slate-600">{stay.summary}</p>
 
             {stay.filters.categories.length > 0 && (
@@ -442,6 +447,7 @@ export function StayDetailView({ stay }: { stay: Stay }) {
                     src={src}
                     alt=""
                     fill
+                    loading="eager"
                     className="object-cover"
                     sizes="(max-width: 768px) 33vw, 280px"
                   />
@@ -798,6 +804,7 @@ export function StayDetailView({ stay }: { stay: Stay }) {
                       src={stay.organizer.logoUrl}
                       alt=""
                       fill
+                      sizes="56px"
                       className="object-cover"
                     />
                   </div>

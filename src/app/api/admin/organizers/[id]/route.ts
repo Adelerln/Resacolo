@@ -1,11 +1,15 @@
 import { NextResponse } from 'next/server';
+import {
+  embedOrganizerDurationMeta,
+  extractOrganizerDurationMeta
+} from '@/lib/organizer-rich-text';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { slugify } from '@/lib/utils';
 
 export const runtime = 'nodejs';
 
-export async function POST(req: Request, context: { params: { id: string } }) {
-  const { id: idOrSlug } = context.params;
+export async function POST(req: Request, context: { params: Promise<{ id: string }> }) {
+  const { id: idOrSlug } = await context.params;
   const formData = await req.formData();
   const name = String(formData.get('name') ?? '').trim();
   const contactEmail = String(formData.get('contact_email') ?? '').trim();
@@ -46,13 +50,24 @@ export async function POST(req: Request, context: { params: { id: string } }) {
     );
   }
 
+  const { data: organizerDetails } = await supabase
+    .from('organizers')
+    .select('description')
+    .eq('id', organizer.id)
+    .maybeSingle();
+  const existingDurationMeta = extractOrganizerDurationMeta(organizerDetails?.description);
+
   const { error } = await supabase
     .from('organizers')
     .update({
       name,
       contact_email: contactEmail,
       hero_intro_text: heroIntroText || null,
-      description: description || null,
+      description: embedOrganizerDurationMeta(
+        description || null,
+        existingDurationMeta.stayDurationMinDays,
+        existingDurationMeta.stayDurationMaxDays
+      ),
       founded_year: foundedYear,
       age_min: ageMin,
       age_max: ageMax,

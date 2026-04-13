@@ -2,28 +2,35 @@ import { revalidatePath } from 'next/cache';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import AccommodationFormFields from '@/components/organisme/AccommodationFormFields';
+import {
+  embedAccommodationLocationMeta,
+  validateAccommodationLocation
+} from '@/lib/accommodation-location';
 import { requireRole } from '@/lib/auth/require';
 import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers.server';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { slugify } from '@/lib/utils';
 
 type PageProps = {
-  searchParams?: {
+  searchParams?: Promise<{
     organizerId?: string | string[];
     error?: string | string[];
-  };
+  }>;
 };
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 export default async function NewAccommodationPage({ searchParams }: PageProps) {
-  const session = requireRole('ORGANISATEUR');
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const session = await requireRole('ORGANISATEUR');
   const { selectedOrganizer, selectedOrganizerId } = await resolveOrganizerSelection(
-    searchParams?.organizerId,
+    resolvedSearchParams?.organizerId,
     session.tenantId ?? null
   );
-  const errorParam = Array.isArray(searchParams?.error) ? searchParams?.error[0] : searchParams?.error;
+  const errorParam = Array.isArray(resolvedSearchParams?.error)
+    ? resolvedSearchParams?.error[0]
+    : resolvedSearchParams?.error;
 
   if (!selectedOrganizerId) {
     redirect('/organisme/sejours');
@@ -34,9 +41,27 @@ export default async function NewAccommodationPage({ searchParams }: PageProps) 
     const supabase = getServerSupabaseClient();
     const name = String(formData.get('name') ?? '').trim();
     const accommodationType = String(formData.get('accommodation_type') ?? '').trim();
+    const description = String(formData.get('description') ?? '').trim();
+    const locationInput = {
+      locationMode: String(formData.get('location_mode') ?? '').trim(),
+      locationCity: String(formData.get('location_city') ?? '').trim(),
+      locationDepartmentCode: String(formData.get('location_department_code') ?? '').trim(),
+      locationCountry: String(formData.get('location_country') ?? '').trim(),
+      itinerantZone: String(formData.get('itinerant_zone') ?? '').trim()
+    };
 
     if (!name || !accommodationType) {
       redirect(withOrganizerQuery('/organisme/hebergements/new?error=missing-required-fields', selectedOrganizerId));
+    }
+
+    const locationError = validateAccommodationLocation(locationInput);
+    if (locationError) {
+      redirect(
+        withOrganizerQuery(
+          `/organisme/hebergements/new?error=${encodeURIComponent(locationError)}`,
+          selectedOrganizerId
+        )
+      );
     }
 
     const now = new Date().toISOString();
@@ -44,7 +69,7 @@ export default async function NewAccommodationPage({ searchParams }: PageProps) 
       organizer_id: selectedOrganizerId,
       name,
       accommodation_type: accommodationType,
-      description: String(formData.get('description') ?? '').trim() || null,
+      description: embedAccommodationLocationMeta(description, locationInput),
       bed_info: String(formData.get('bed_info') ?? '').trim() || null,
       bathroom_info: String(formData.get('bathroom_info') ?? '').trim() || null,
       catering_info: String(formData.get('catering_info') ?? '').trim() || null,

@@ -15,7 +15,7 @@ type OrganizerRow = {
 };
 
 export default async function AdminOrganizersPage() {
-  requireRole('ADMIN');
+  await requireRole('ADMIN');
   const supabase = getServerSupabaseClient();
   const hasServiceRole = Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY);
 

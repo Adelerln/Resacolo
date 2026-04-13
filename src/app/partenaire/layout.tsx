@@ -2,8 +2,8 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { requireRole } from '@/lib/auth/require';
 
-export default function PartnerLayout({ children }: { children: React.ReactNode }) {
-  requireRole('PARTENAIRE');
+export default async function PartnerLayout({ children }: { children: React.ReactNode }) {
+  await requireRole('PARTENAIRE');
 
   return (
     <div className="min-h-screen bg-slate-50">

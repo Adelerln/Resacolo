@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { formatAccommodationType } from '@/components/organisme/AccommodationFormFields';
+import { formatAccommodationType } from '@/lib/accommodation-types';
 
 type TabKey =
   | 'description'
@@ -19,6 +19,7 @@ type AccommodationOption = {
   name: string;
   accommodationType?: string | null;
   description?: string | null;
+  locationLabel?: string | null;
 };
 
 type StayEditorialTabsProps = {
@@ -140,6 +141,9 @@ export default function StayEditorialTabs({
                   <div className="space-y-4">
                     <div className="rounded-lg border border-slate-100 px-4 py-3 text-sm">
                       <div className="font-medium text-slate-900">{linkedAccommodation.name}</div>
+                      {linkedAccommodation.locationLabel ? (
+                        <div className="mt-1 font-medium text-slate-700">{linkedAccommodation.locationLabel}</div>
+                      ) : null}
                       <div className="mt-1 text-slate-600">
                         {formatAccommodationType(linkedAccommodation.accommodationType)}
                       </div>
@@ -184,6 +188,11 @@ export default function StayEditorialTabs({
                                 </td>
                                 <td className="px-3 py-2 align-top">
                                   <div className="font-medium text-slate-900">{accommodation.name}</div>
+                                  {accommodation.locationLabel ? (
+                                    <div className="mt-1 text-xs font-semibold text-slate-700">
+                                      {accommodation.locationLabel}
+                                    </div>
+                                  ) : null}
                                   {accommodation.description && (
                                     <div className="mt-1 text-xs text-slate-500">
                                       {accommodation.description}

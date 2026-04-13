@@ -21,6 +21,7 @@ export default function OrganizerRichTextEditor({
   initialValue
 }: OrganizerRichTextEditorProps) {
   const editorRef = useRef<HTMLDivElement | null>(null);
+  const hiddenInputRef = useRef<HTMLInputElement | null>(null);
   const [html, setHtml] = useState(() => sanitizeOrganizerRichText(initialValue));
   const [activeCommands, setActiveCommands] = useState<Record<string, boolean>>({
     bold: false,
@@ -34,10 +35,18 @@ export default function OrganizerRichTextEditor({
     if (editorRef.current && editorRef.current.innerHTML !== nextHtml) {
       editorRef.current.innerHTML = nextHtml;
     }
+    if (hiddenInputRef.current && hiddenInputRef.current.value !== nextHtml) {
+      hiddenInputRef.current.value = nextHtml;
+    }
   }, [initialValue]);
 
   function syncFromEditor() {
     const nextHtml = sanitizeOrganizerRichText(editorRef.current?.innerHTML ?? '');
+    if (hiddenInputRef.current && hiddenInputRef.current.value !== nextHtml) {
+      hiddenInputRef.current.value = nextHtml;
+      hiddenInputRef.current.dispatchEvent(new Event('input', { bubbles: true }));
+      hiddenInputRef.current.dispatchEvent(new Event('change', { bubbles: true }));
+    }
     setHtml(nextHtml);
     syncToolbarState();
   }
@@ -78,9 +87,11 @@ export default function OrganizerRichTextEditor({
           ))}
         </div>
         <div
+          id={`${name}-editor`}
           ref={editorRef}
           contentEditable
           suppressContentEditableWarning
+          suppressHydrationWarning
           onInput={syncFromEditor}
           onKeyUp={() => {
             syncToolbarState();
@@ -94,7 +105,15 @@ export default function OrganizerRichTextEditor({
           className="min-h-[220px] w-full rounded-b-lg bg-slate-100 px-3 py-3 text-sm font-normal leading-6 text-slate-700 outline-none"
         />
       </div>
-      <input type="hidden" name={name} value={html} />
+      <input
+        ref={hiddenInputRef}
+        type="hidden"
+        name={name}
+        value={html}
+        data-track-dirty="true"
+        data-dirty-target={`${name}-editor`}
+        readOnly
+      />
     </div>
   );
 }

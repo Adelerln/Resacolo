@@ -8,7 +8,6 @@ import { WorldMap } from '@/components/home/WorldMap';
 import { OrganizersMarquee } from '@/components/organisateurs/OrganizersMarquee';
 import {
   Briefcase,
-  CheckCircle,
   Home,
   HeartHandshake,
   CreditCard,
@@ -16,8 +15,7 @@ import {
   ArrowRight,
   ChevronLeft,
   ChevronRight,
-  type LucideIcon,
-  Send
+  type LucideIcon
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
@@ -208,7 +206,6 @@ const fadeUp = {
 /* ─── Page ────────────────────────────────────────────────────────────────── */
 
 export default function HomePage() {
-  const [submitted, setSubmitted] = useState(false);
   const [destinationMap, setDestinationMap] = useState<'france' | 'world'>('france');
   const [inspiIndex, setInspiIndex] = useState(inspiCards.length);
   const [inspiTransitionEnabled, setInspiTransitionEnabled] = useState(true);
@@ -818,84 +815,13 @@ export default function HomePage() {
 
       {/* ── Contact ── */}
       <section id="contact" className="section-padding bg-slate-50">
-        <div className="section-container max-w-xl mx-auto text-center">
-          <motion.h2
-            className="font-display text-3xl sm:text-4xl font-bold text-slate-900"
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
+        <div className="section-container flex justify-center">
+          <Link
+            href="/contact"
+            className="inline-flex items-center justify-center rounded-full bg-[#FA8500] px-10 py-4 text-base font-bold uppercase tracking-widest text-white shadow-[0_16px_30px_-18px_rgba(250,133,0,0.7)] transition hover:opacity-90"
           >
-            Contact
-          </motion.h2>
-
-          {submitted ? (
-            <motion.div
-              className="mt-10 resacolo-card flex flex-col items-center gap-4 py-12"
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-            >
-              <div className="icon-box">
-                <CheckCircle size={28} />
-              </div>
-              <p className="text-lg font-semibold text-slate-900">Merci pour votre message !</p>
-              <p className="text-sm text-slate-500">Nous vous répondrons dans les plus brefs délais.</p>
-            </motion.div>
-          ) : (
-            <motion.form
-              className="mt-10 space-y-5 text-left"
-              onSubmit={(e) => {
-                e.preventDefault();
-                setSubmitted(true);
-              }}
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-            >
-              <div>
-                <label htmlFor="name" className="block text-sm font-medium text-slate-700 mb-1.5">
-                  Nom
-                </label>
-                <input
-                  id="name"
-                  type="text"
-                  required
-                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500 transition"
-                  placeholder="Votre nom"
-                />
-              </div>
-              <div>
-                <label htmlFor="email" className="block text-sm font-medium text-slate-700 mb-1.5">
-                  Email
-                </label>
-                <input
-                  id="email"
-                  type="email"
-                  required
-                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500 transition"
-                  placeholder="votre@email.com"
-                />
-              </div>
-              <div>
-                <label htmlFor="message" className="block text-sm font-medium text-slate-700 mb-1.5">
-                  Message
-                </label>
-                <textarea
-                  id="message"
-                  rows={5}
-                  required
-                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500 transition resize-none"
-                  placeholder="Votre message…"
-                />
-              </div>
-              <button
-                type="submit"
-                className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-accent-500 px-7 py-3 text-base font-semibold text-white shadow-md hover:bg-accent-600 transition-colors"
-              >
-                Envoyer
-                <Send size={16} />
-              </button>
-            </motion.form>
-          )}
+            Nous contacter
+          </Link>
         </div>
       </section>
     </div>

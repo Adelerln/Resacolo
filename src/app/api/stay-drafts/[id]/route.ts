@@ -193,7 +193,7 @@ async function parseBody(req: Request): Promise<{ payload: StayDraftReviewPayloa
 
 async function handleUpdate(req: Request, params: { id: string }, mode: 'save' | 'validate') {
   const isMockMode = process.env.MOCK_UI === '1' || process.env.DISABLE_AUTH === '1';
-  const session = getSession();
+  const session = await getSession();
 
   if (!isMockMode && (!session || session.role !== 'ORGANISATEUR')) {
     return NextResponse.json({ error: 'Non authentifié.' }, { status: 401 });
@@ -422,14 +422,14 @@ async function handleUpdate(req: Request, params: { id: string }, mode: 'save' |
 
 export async function PATCH(
   req: Request,
-  context: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
-  return handleUpdate(req, context.params, 'save');
+  return handleUpdate(req, await context.params, 'save');
 }
 
 export async function POST(
   req: Request,
-  context: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
-  return handleUpdate(req, context.params, 'validate');
+  return handleUpdate(req, await context.params, 'validate');
 }

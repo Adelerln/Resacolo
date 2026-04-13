@@ -2,7 +2,7 @@ import { requireRole } from '@/lib/auth/require';
 import { mockRequests, mockSessions, mockStages, mockStays } from '@/lib/mocks';
 
 export default async function PartnerRequestsPage() {
-  requireRole('PARTENAIRE');
+  await requireRole('PARTENAIRE');
   const useMock = process.env.MOCK_UI === '1';
   const requests = useMock
     ? mockRequests.map((request) => ({

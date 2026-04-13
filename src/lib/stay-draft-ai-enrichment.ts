@@ -146,6 +146,8 @@ Règles impératives :
 - Respecte strictement les clés attendues, sans en ajouter d'autres.
 - Les prix complexes doivent rester dans sessions_json / extra_options_json / transport_options_json.
 - Pour availability dans sessions_json, utilise seulement : "available", "full", "unknown" ou null.
+- "summary" doit être une phrase courte de 100 caractères maximum (environ 2 lignes dans une carte). Pas de ponctuation de liste, pas de saut de ligne.
+- "location_text" doit contenir uniquement la ville principale (et le pays si hors de France) : 50 caractères maximum. Exemples : "Avignon, France", "Saint-Jean-de-Luz", "Saulieu, Bourgogne", "Londres, Royaume-Uni".
 `.trim();
 
 const MAIN_TEXT_NOISE_KEYS = [
@@ -439,10 +441,35 @@ function dedupeNumbers(values: number[]): number[] {
   return Array.from(new Set(values.filter((value) => Number.isFinite(value)))).sort((a, b) => a - b);
 }
 
+const SUMMARY_MAX_CHARS = 100;
+const LOCATION_MAX_CHARS = 50;
+
+function truncateSummary(value: string | null): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (trimmed.length <= SUMMARY_MAX_CHARS) return trimmed;
+  const cut = trimmed.slice(0, SUMMARY_MAX_CHARS).trimEnd();
+  const lastSpace = cut.lastIndexOf(' ');
+  return lastSpace > SUMMARY_MAX_CHARS * 0.7 ? cut.slice(0, lastSpace) : cut;
+}
+
+function truncateLocation(value: string | null): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (trimmed.length <= LOCATION_MAX_CHARS) return trimmed;
+  const cut = trimmed.slice(0, LOCATION_MAX_CHARS).trimEnd();
+  const lastComma = cut.lastIndexOf(',');
+  if (lastComma > LOCATION_MAX_CHARS * 0.4) return cut.slice(0, lastComma).trimEnd();
+  const lastSpace = cut.lastIndexOf(' ');
+  return lastSpace > LOCATION_MAX_CHARS * 0.5 ? cut.slice(0, lastSpace) : cut;
+}
+
 function normalizeAiExtracted(data: StayDraftAiExtracted): StayDraftAiExtracted {
   const normalizedCategories = normalizeStayDraftCategories(data.categories);
   return {
     ...data,
+    summary: truncateSummary(data.summary),
+    location_text: truncateLocation(data.location_text),
     categories: normalizedCategories.categories,
     ages: dedupeNumbers(data.ages)
   };

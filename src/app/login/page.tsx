@@ -1,11 +1,11 @@
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth/session';
 
-export default function LoginPage() {
+export default async function LoginPage() {
   if (process.env.MOCK_UI === '1') {
     return null;
   }
-  const session = getSession();
+  const session = await getSession();
   if (session) {
     if (session.role === 'ADMIN') redirect('/admin');
     if (session.role === 'ORGANISATEUR') redirect('/organisme');

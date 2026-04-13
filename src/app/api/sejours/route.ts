@@ -7,7 +7,7 @@ import {
 import { getStays } from '@/lib/stays';
 
 export const runtime = 'nodejs';
-export const revalidate = 60 * 60; // 1 heure
+export const revalidate = 3600;
 
 export async function GET(req: NextRequest) {
   const forceRefresh = req.nextUrl.searchParams.get('refresh') === '1';

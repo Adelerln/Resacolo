@@ -2,7 +2,8 @@ import { revalidatePath } from 'next/cache';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import SavedToast from '@/components/common/SavedToast';
-import { formatAccommodationType } from '@/components/organisme/AccommodationFormFields';
+import { formatAccommodationType } from '@/lib/accommodation-types';
+import { extractAccommodationLocationMeta } from '@/lib/accommodation-location';
 import { requireRole } from '@/lib/auth/require';
 import { deleteAccommodationForOrganizer } from '@/lib/accommodations';
 import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers.server';
@@ -10,27 +11,34 @@ import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { accommodationStatusBadgeClassName, accommodationStatusLabel } from '@/lib/ui/labels';
 
 type PageProps = {
-  searchParams?: {
+  searchParams?: Promise<{
     organizerId?: string | string[];
     saved?: string | string[];
     deleted?: string | string[];
     error?: string | string[];
-  };
+  }>;
 };
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 export default async function OrganizerAccommodationsPage({ searchParams }: PageProps) {
-  const session = requireRole('ORGANISATEUR');
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const session = await requireRole('ORGANISATEUR');
   const supabase = getServerSupabaseClient();
   const { selectedOrganizer, selectedOrganizerId } = await resolveOrganizerSelection(
-    searchParams?.organizerId,
+    resolvedSearchParams?.organizerId,
     session.tenantId ?? null
   );
-  const savedParam = Array.isArray(searchParams?.saved) ? searchParams?.saved[0] : searchParams?.saved;
-  const deletedParam = Array.isArray(searchParams?.deleted) ? searchParams?.deleted[0] : searchParams?.deleted;
-  const errorParam = Array.isArray(searchParams?.error) ? searchParams?.error[0] : searchParams?.error;
+  const savedParam = Array.isArray(resolvedSearchParams?.saved)
+    ? resolvedSearchParams?.saved[0]
+    : resolvedSearchParams?.saved;
+  const deletedParam = Array.isArray(resolvedSearchParams?.deleted)
+    ? resolvedSearchParams?.deleted[0]
+    : resolvedSearchParams?.deleted;
+  const errorParam = Array.isArray(resolvedSearchParams?.error)
+    ? resolvedSearchParams?.error[0]
+    : resolvedSearchParams?.error;
   const showSavedBanner = savedParam === '1';
   const showDeletedBanner = deletedParam === '1';
 
@@ -70,11 +78,16 @@ export default async function OrganizerAccommodationsPage({ searchParams }: Page
     mediaCountByAccommodationId.set(media.accommodation_id, count + 1);
   }
 
-  const accommodations = (accommodationsRaw ?? []).map((accommodation) => ({
-    ...accommodation,
-    linkedStayTitles: linkedStayTitlesByAccommodationId.get(accommodation.id) ?? [],
-    mediaCount: mediaCountByAccommodationId.get(accommodation.id) ?? 0
-  }));
+  const accommodations = (accommodationsRaw ?? []).map((accommodation) => {
+    const locationMeta = extractAccommodationLocationMeta(accommodation.description);
+    return {
+      ...accommodation,
+      description: locationMeta.description,
+      locationLabel: locationMeta.locationLabel,
+      linkedStayTitles: linkedStayTitlesByAccommodationId.get(accommodation.id) ?? [],
+      mediaCount: mediaCountByAccommodationId.get(accommodation.id) ?? 0
+    };
+  });
 
   async function deleteAccommodation(formData: FormData) {
     'use server';
@@ -150,9 +163,10 @@ export default async function OrganizerAccommodationsPage({ searchParams }: Page
                 <tr key={accommodation.id} className="border-t border-slate-100 align-top">
                   <td className="px-4 py-3">
                     <div className="font-medium text-slate-900">{accommodation.name}</div>
-                    <div className="mt-1 max-w-md text-xs text-slate-500">
-                      {accommodation.description || 'Aucune description'}
-                    </div>
+                    {accommodation.locationLabel ? (
+                      <div className="mt-1 text-xs font-semibold text-slate-700">{accommodation.locationLabel}</div>
+                    ) : null}
+                    <div className="mt-1 max-w-md text-xs text-slate-500">{accommodation.description || 'Aucune description'}</div>
                   </td>
                   <td className="px-4 py-3 text-slate-600">
                     {formatAccommodationType(accommodation.accommodation_type)}

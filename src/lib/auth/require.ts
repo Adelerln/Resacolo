@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import { getSession, type AppRole, type SessionPayload } from '@/lib/auth/session';
 import { mockOrganizerTenant, mockPartnerTenant } from '@/lib/mocks';
 
-export function requireRole(role: AppRole): SessionPayload {
+export async function requireRole(role: AppRole): Promise<SessionPayload> {
   if (process.env.MOCK_UI === '1' || process.env.DISABLE_AUTH === '1') {
     const tenantId =
       role === 'ORGANISATEUR'
@@ -17,14 +17,14 @@ export function requireRole(role: AppRole): SessionPayload {
       tenantId
     };
   }
-  const session = getSession();
+  const session = await getSession();
   if (!session || session.role !== role) {
     redirect('/login');
   }
   return session;
 }
 
-export function requireAnyRole(): SessionPayload {
+export async function requireAnyRole(): Promise<SessionPayload> {
   if (process.env.MOCK_UI === '1' || process.env.DISABLE_AUTH === '1') {
     return {
       userId: 'mock-user',
@@ -32,7 +32,7 @@ export function requireAnyRole(): SessionPayload {
       role: 'ADMIN'
     };
   }
-  const session = getSession();
+  const session = await getSession();
   if (!session) redirect('/login');
   return session;
 }

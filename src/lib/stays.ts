@@ -1,6 +1,7 @@
 import { cache } from 'react';
 import { NextRequest } from 'next/server';
-import { formatAccommodationType } from '@/components/organisme/AccommodationFormFields';
+import { formatAccommodationType } from '@/lib/accommodation-types';
+import { extractAccommodationLocationMeta } from '@/lib/accommodation-location';
 import { FILTER_LABELS } from '@/lib/constants';
 import { normalizeStayCategories } from '@/lib/stay-categories';
 import { deriveStayAudiences, formatStayAgeRange } from '@/lib/stay-ages';
@@ -173,9 +174,11 @@ function buildAccommodationText(accommodations: AccommodationRow[]) {
 
   return accommodations
     .map((accommodation) => {
+      const locationMeta = extractAccommodationLocationMeta(accommodation.description);
       const details = [
         formatAccommodationType(accommodation.accommodation_type),
-        accommodation.description,
+        locationMeta.locationLabel,
+        locationMeta.description,
         accommodation.bed_info,
         accommodation.bathroom_info,
         accommodation.catering_info,

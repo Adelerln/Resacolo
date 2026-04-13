@@ -11,9 +11,9 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 type PageProps = {
-  searchParams?: {
+  searchParams?: Promise<{
     organizerId?: string | string[];
-  };
+  }>;
 };
 
 function formatPercent(value: number) {
@@ -27,11 +27,12 @@ function formatVisibilityLabel(isPublished: boolean, mediaCount: number) {
 }
 
 export default async function OrganizerDashboardPage({ searchParams }: PageProps) {
-  const session = requireRole('ORGANISATEUR');
-  const accessRole = getOrganizerAccessRole();
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const session = await requireRole('ORGANISATEUR');
+  const accessRole = await getOrganizerAccessRole();
   const supabase = getServerSupabaseClient();
   const { selectedOrganizer, selectedOrganizerId } = await resolveOrganizerSelection(
-    searchParams?.organizerId,
+    resolvedSearchParams?.organizerId,
     session.tenantId ?? null
   );
   const organizerId = selectedOrganizerId;
@@ -64,7 +65,7 @@ export default async function OrganizerDashboardPage({ searchParams }: PageProps
   const stays = staysRaw ?? [];
   const stayIds = stays.map((stay) => stay.id);
 
-  const [{ data: sessionsRaw }, { data: stayMediaRaw }, { data: stayAccommodationLinksRaw }] =
+  const [{ data: sessionsRaw }, { data: stayMediaRaw }, { data: stayAccommodationLinksRaw }, { data: favoritesRaw }] =
     stayIds.length > 0
       ? await Promise.all([
           supabase
@@ -73,9 +74,10 @@ export default async function OrganizerDashboardPage({ searchParams }: PageProps
             .in('stay_id', stayIds)
             .order('start_date', { ascending: true }),
           supabase.from('stay_media').select('id,stay_id').in('stay_id', stayIds),
-          supabase.from('stay_accommodations').select('stay_id,accommodation_id').in('stay_id', stayIds)
+          supabase.from('stay_accommodations').select('stay_id,accommodation_id').in('stay_id', stayIds),
+          supabase.from('favorites').select('stay_id').in('stay_id', stayIds)
         ])
-      : [{ data: [] }, { data: [] }, { data: [] }];
+      : [{ data: [] }, { data: [] }, { data: [] }, { data: [] }];
 
   const sessions = sessionsRaw ?? [];
   const sessionIds = sessions.map((sessionItem) => sessionItem.id);
@@ -89,6 +91,10 @@ export default async function OrganizerDashboardPage({ searchParams }: PageProps
   const linkedAccommodationIds = new Set(
     (stayAccommodationLinksRaw ?? []).map((link) => link.accommodation_id)
   );
+  const favoriteCountByStayId = new Map<string, number>();
+  for (const favorite of favoritesRaw ?? []) {
+    favoriteCountByStayId.set(favorite.stay_id, (favoriteCountByStayId.get(favorite.stay_id) ?? 0) + 1);
+  }
   const sessionCountByStayId = new Map<string, number>();
   const reservedCountByStayId = new Map<string, number>();
   const capacityByStayId = new Map<string, number>();
@@ -120,6 +126,7 @@ export default async function OrganizerDashboardPage({ searchParams }: PageProps
     stays.length > 0
       ? (stays.filter((stay) => (mediaCountByStayId.get(stay.id) ?? 0) > 0).length / stays.length) * 100
       : 0;
+  const totalFavorites = Array.from(favoriteCountByStayId.values()).reduce((sum, count) => sum + count, 0);
   const ownerCount = (membersRaw ?? []).filter((member) => member.role === 'OWNER').length;
   const editorCount = (membersRaw ?? []).filter((member) => member.role === 'EDITOR').length;
   const reservationManagerCount = (membersRaw ?? []).filter(
@@ -138,10 +145,15 @@ export default async function OrganizerDashboardPage({ searchParams }: PageProps
         reserved,
         capacity,
         occupancy,
-        mediaCount
+        mediaCount,
+        favorites: favoriteCountByStayId.get(stay.id) ?? 0
       };
     })
     .sort((a, b) => b.reserved - a.reserved || b.sessionCount - a.sessionCount || a.title.localeCompare(b.title, 'fr'));
+  const mostFavoritedRows = [...stayRows]
+    .filter((stay) => stay.favorites > 0)
+    .sort((a, b) => b.favorites - a.favorites || a.title.localeCompare(b.title, 'fr'))
+    .slice(0, 5);
 
   const organizerLabel = selectedOrganizer?.name ?? 'Organisateur';
 
@@ -188,62 +200,104 @@ export default async function OrganizerDashboardPage({ searchParams }: PageProps
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.7fr)_minmax(320px,1fr)]">
-        <div className="rounded-2xl border border-slate-200 bg-white p-5">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h2 className="text-lg font-semibold text-slate-900">Visibilité et diffusion</h2>
-              <p className="mt-1 text-sm text-slate-600">
-                Le taux de visibilité repose sur les séjours publiés. La couverture média mesure les
-                fiches disposant déjà de photos.
-              </p>
+        <div className="space-y-4">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">Visibilité et diffusion</h2>
+                <p className="mt-1 text-sm text-slate-600">
+                  Le taux de visibilité repose sur les séjours publiés. La couverture média mesure les
+                  fiches disposant déjà de photos.
+                </p>
+              </div>
+              <div className="rounded-full bg-emerald-50 px-3 py-1 text-sm font-semibold text-emerald-700">
+                {formatPercent(visibilityRate)} visibles
+              </div>
             </div>
-            <div className="rounded-full bg-emerald-50 px-3 py-1 text-sm font-semibold text-emerald-700">
-              {formatPercent(visibilityRate)} visibles
+
+            <div className="mt-4 space-y-3">
+              <div>
+                <div className="mb-2 flex items-center justify-between text-sm text-slate-600">
+                  <span>Séjours publiés</span>
+                  <span>{totalPublishedStays}/{stays.length || 0}</span>
+                </div>
+                <div className="h-2 rounded-full bg-slate-100">
+                  <div
+                    className="h-2 rounded-full bg-emerald-500"
+                    style={{ width: `${Math.max(visibilityRate, stays.length > 0 ? 4 : 0)}%` }}
+                  />
+                </div>
+              </div>
+              <div>
+                <div className="mb-2 flex items-center justify-between text-sm text-slate-600">
+                  <span>Fiches avec médias</span>
+                  <span>{formatPercent(mediaCoverageRate)}</span>
+                </div>
+                <div className="h-2 rounded-full bg-slate-100">
+                  <div
+                    className="h-2 rounded-full bg-sky-500"
+                    style={{ width: `${Math.max(mediaCoverageRate, stays.length > 0 ? 4 : 0)}%` }}
+                  />
+                </div>
+              </div>
             </div>
           </div>
-          <div className="mt-6 space-y-4">
-            <div>
-              <div className="mb-2 flex items-center justify-between text-sm text-slate-600">
-                <span>Séjours publiés</span>
-                <span>{totalPublishedStays}/{stays.length || 0}</span>
+
+          <div className="rounded-2xl border border-slate-200 bg-white p-5">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">Séjours mis en favoris par les clients</h2>
               </div>
-              <div className="h-2 rounded-full bg-slate-100">
-                <div
-                  className="h-2 rounded-full bg-emerald-500"
-                  style={{ width: `${Math.max(visibilityRate, stays.length > 0 ? 4 : 0)}%` }}
-                />
+              <div className="rounded-full bg-rose-50 px-3 py-1 text-sm font-semibold text-rose-600">
+                {totalFavorites} favoris
               </div>
             </div>
-            <div>
-              <div className="mb-2 flex items-center justify-between text-sm text-slate-600">
-                <span>Fiches avec médias</span>
-                <span>{formatPercent(mediaCoverageRate)}</span>
+
+            {mostFavoritedRows.length > 0 ? (
+              <div className="mt-5 space-y-3">
+                {mostFavoritedRows.map((stay) => (
+                  <div
+                    key={stay.id}
+                    className="flex items-start justify-between gap-4 rounded-xl border border-slate-100 bg-slate-50 px-4 py-3"
+                  >
+                    <div className="min-w-0">
+                      <div className="truncate font-medium text-slate-900">{stay.title}</div>
+                      <div className="mt-1 text-xs text-slate-500">
+                        {stayStatusLabel(stay.status)}
+                      </div>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <div className="text-lg font-semibold text-slate-900">{stay.favorites}</div>
+                      <div className="text-xs uppercase tracking-wide text-slate-500">favori{stay.favorites > 1 ? 's' : ''}</div>
+                    </div>
+                  </div>
+                ))}
               </div>
-              <div className="h-2 rounded-full bg-slate-100">
-                <div
-                  className="h-2 rounded-full bg-sky-500"
-                  style={{ width: `${Math.max(mediaCoverageRate, stays.length > 0 ? 4 : 0)}%` }}
-                />
+            ) : (
+              <div className="mt-5 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">
+                Aucun séjour n’a encore été ajouté en favori.
               </div>
-            </div>
+            )}
           </div>
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-5">
-          <h2 className="text-lg font-semibold text-slate-900">Équipe organisateur</h2>
-          <p className="mt-1 text-sm text-slate-600">Répartition des accès configurés pour cet organisateur.</p>
-          <div className="mt-5 grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
-            <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
-              <div className="text-xs uppercase tracking-wide text-slate-500">Propriétaires</div>
-              <div className="mt-2 text-2xl font-semibold text-slate-900">{ownerCount}</div>
-            </div>
-            <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
-              <div className="text-xs uppercase tracking-wide text-slate-500">Éditeurs</div>
-              <div className="mt-2 text-2xl font-semibold text-slate-900">{editorCount}</div>
-            </div>
-            <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
-              <div className="text-xs uppercase tracking-wide text-slate-500">Gestionnaires</div>
-              <div className="mt-2 text-2xl font-semibold text-slate-900">{reservationManagerCount}</div>
+        <div className="space-y-4">
+          <div className="rounded-2xl border border-slate-200 bg-white p-5">
+            <h2 className="text-lg font-semibold text-slate-900">Équipe organisateur</h2>
+            <p className="mt-1 text-sm text-slate-600">Répartition des accès configurés pour cet organisateur.</p>
+            <div className="mt-5 grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
+              <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
+                <div className="text-xs uppercase tracking-wide text-slate-500">Propriétaires</div>
+                <div className="mt-2 text-2xl font-semibold text-slate-900">{ownerCount}</div>
+              </div>
+              <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
+                <div className="text-xs uppercase tracking-wide text-slate-500">Éditeurs</div>
+                <div className="mt-2 text-2xl font-semibold text-slate-900">{editorCount}</div>
+              </div>
+              <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
+                <div className="text-xs uppercase tracking-wide text-slate-500">Gestionnaires</div>
+                <div className="mt-2 text-2xl font-semibold text-slate-900">{reservationManagerCount}</div>
+              </div>
             </div>
           </div>
         </div>

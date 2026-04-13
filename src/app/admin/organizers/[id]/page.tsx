@@ -1,15 +1,18 @@
+import Image from 'next/image';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { requireRole } from '@/lib/auth/require';
+import { extractOrganizerDurationMeta } from '@/lib/organizer-rich-text';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-type PageProps = { params: { id: string }; searchParams?: { error?: string; success?: string } };
+type PageProps = { params: Promise<{ id: string }>; searchParams?: { error?: string; success?: string } };
 
-export default async function AdminOrganizerDetailPage({ params, searchParams }: PageProps) {
-  requireRole('ADMIN');
+export default async function AdminOrganizerDetailPage({ params: paramsPromise, searchParams }: PageProps) {
+  const params = await paramsPromise;
+  await requireRole('ADMIN');
   const supabase = getServerSupabaseClient();
 
   let { data: organizer } = await supabase
@@ -34,6 +37,8 @@ export default async function AdminOrganizerDetailPage({ params, searchParams }:
   if (!organizer) {
     notFound();
   }
+
+  const organizerDescriptionMeta = extractOrganizerDurationMeta(organizer.description);
 
   const organizerSlug = organizer.slug ?? organizer.id;
 
@@ -163,7 +168,7 @@ export default async function AdminOrganizerDetailPage({ params, searchParams }:
           <textarea
             name="description"
             rows={4}
-            defaultValue={organizer.description ?? ''}
+            defaultValue={organizerDescriptionMeta.description ?? ''}
             className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
           />
         </label>
@@ -171,9 +176,16 @@ export default async function AdminOrganizerDetailPage({ params, searchParams }:
           <div className="block text-sm font-medium text-slate-700">
             <span>Logo (PNG/JPG)</span>
             {logoUrl ? (
-              <div className="mt-2 space-y-1">
+              <div className="mt-2 space-y-1" suppressHydrationWarning>
                 <div className="text-xs text-slate-500">Logo déjà chargé</div>
-                <img src={logoUrl} alt={organizer.name} className="h-16 w-auto rounded-lg border" />
+                <Image
+                  src={logoUrl}
+                  alt={organizer.name}
+                  width={160}
+                  height={64}
+                  unoptimized
+                  className="h-16 w-auto max-w-full rounded-lg border object-contain"
+                />
                 <button
                   type="submit"
                   form="delete-logo-form"

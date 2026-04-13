@@ -33,7 +33,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="fr" className="bg-slate-50 text-slate-900">
+    <html lang="fr" className="bg-slate-50 text-slate-900" data-scroll-behavior="smooth">
       <body className={`${raleway.variable} ${baloo.variable} font-sans bg-white`}>
         <CartProvider>
           <SiteShell>{children}</SiteShell>

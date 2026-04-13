@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
-import { Users, MapPin, ClipboardList, Mail } from 'lucide-react';
+import Image from 'next/image';
+import { MapPin, ClipboardList, Mail } from 'lucide-react';
 
 export const metadata: Metadata = {
   title: 'Rejoindre Resacolo | Resacolo',
@@ -28,7 +29,7 @@ export default function RejoindreResacoloPage() {
             </p>
             <ul className="mt-4 space-y-2 text-sm text-slate-600">
               <li className="flex items-center gap-2">
-                <Users className="h-4 w-4 text-accent-500" />
+                <Image src="/image/organisateurs/pictos_orga/age.png" alt="" width={16} height={16} className="h-4 w-4 object-contain text-accent-500" />
                 Intégrer un collectif d&apos;organisateurs engagés.
               </li>
               <li className="flex items-center gap-2">
@@ -43,8 +44,14 @@ export default function RejoindreResacoloPage() {
           </div>
 
           <div className="flex justify-center lg:justify-end">
-            <div className="flex h-56 w-56 items-center justify-center rounded-3xl bg-accent-50 shadow-md ring-1 ring-accent-200 md:h-72 md:w-72">
-              <Users className="h-28 w-28 text-accent-500 md:h-36 md:w-36" />
+            <div className="flex h-56 w-56 items-center justify-center overflow-hidden rounded-3xl bg-accent-50 shadow-md ring-1 ring-accent-200 md:h-72 md:w-72">
+              <Image
+                src="/image/concept/pictos_concept/projetambitieux.png"
+                alt="Projet ambitieux Resacolo"
+                width={200}
+                height={200}
+                className="h-32 w-32 object-contain md:h-44 md:w-44"
+              />
             </div>
           </div>
         </div>

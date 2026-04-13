@@ -825,6 +825,29 @@ export type Database = {
           },
         ]
       }
+      favorites: {
+        Row: {
+          client_user_id: string
+          stay_id: string
+        }
+        Insert: {
+          client_user_id: string
+          stay_id: string
+        }
+        Update: {
+          client_user_id?: string
+          stay_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "favorites_stay_id_fkey"
+            columns: ["stay_id"]
+            isOneToOne: false
+            referencedRelation: "stays"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       organizers: {
         Row: {
           activity_keys: string[]

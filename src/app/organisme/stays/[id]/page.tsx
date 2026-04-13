@@ -8,6 +8,7 @@ import StayInsuranceForm from '@/components/organisme/StayInsuranceForm';
 import StayEditorialTabs from '@/components/organisme/StayEditorialTabs';
 import StayFloatingSaveButton from '@/components/organisme/StayFloatingSaveButton';
 import StayTransportCardEffects from '@/components/organisme/StayTransportCardEffects';
+import { extractAccommodationLocationMeta } from '@/lib/accommodation-location';
 import { requireRole } from '@/lib/auth/require';
 import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers.server';
 import { normalizeStayCategories, STAY_CATEGORY_OPTIONS } from '@/lib/stay-categories';
@@ -20,7 +21,7 @@ import { slugify } from '@/lib/utils';
 import type { Database } from '@/types/supabase';
 
 type PageProps = {
-  params: { id: string };
+  params: Promise<{ id: string }>;
   searchParams?: {
     organizerId?: string | string[];
     saved?: string | string[];
@@ -101,18 +102,24 @@ function getNextAvailablePosition(positions: number[]) {
   return nextPosition;
 }
 
-export default async function OrganizerStayDetailPage({ params, searchParams }: PageProps) {
-  const session = requireRole('ORGANISATEUR');
+export default async function OrganizerStayDetailPage({ params: paramsPromise, searchParams }: PageProps) {
+  const params = await paramsPromise;
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const session = await requireRole('ORGANISATEUR');
   const supabase = getServerSupabaseClient();
   const { selectedOrganizerId } = await resolveOrganizerSelection(
-    searchParams?.organizerId,
+    resolvedSearchParams?.organizerId,
     session.tenantId ?? null
   );
-  const savedParam = Array.isArray(searchParams?.saved) ? searchParams?.saved[0] : searchParams?.saved;
-  const errorParam = Array.isArray(searchParams?.error) ? searchParams?.error[0] : searchParams?.error;
-  const transportSavedParam = Array.isArray(searchParams?.transportSaved)
-    ? searchParams?.transportSaved[0]
-    : searchParams?.transportSaved;
+  const savedParam = Array.isArray(resolvedSearchParams?.saved)
+    ? resolvedSearchParams?.saved[0]
+    : resolvedSearchParams?.saved;
+  const errorParam = Array.isArray(resolvedSearchParams?.error)
+    ? resolvedSearchParams?.error[0]
+    : resolvedSearchParams?.error;
+  const transportSavedParam = Array.isArray(resolvedSearchParams?.transportSaved)
+    ? resolvedSearchParams?.transportSaved[0]
+    : resolvedSearchParams?.transportSaved;
   const showSavedBanner = savedParam === '1';
 
   if (!selectedOrganizerId) {
@@ -194,7 +201,14 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
     sessions.map((sessionItem) => sessionItem.id)
   );
   const media = mediaRaw ?? [];
-  const accommodations = accommodationsRaw ?? [];
+  const accommodations = (accommodationsRaw ?? []).map((accommodation) => {
+    const locationMeta = extractAccommodationLocationMeta(accommodation.description);
+    return {
+      ...accommodation,
+      description: locationMeta.description,
+      locationLabel: locationMeta.locationLabel
+    };
+  });
   const stayAccommodationLinks = stayAccommodationLinksRaw ?? [];
   const extraOptions = extraOptionsRaw ?? [];
   const insuranceOptions = insuranceOptionsRaw ?? [];
@@ -989,13 +1003,18 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
             />
           </label>
           <label className="block text-sm font-medium text-slate-700">
-            Résumé commercial
+            Résumé commercial{' '}
+            <span className="text-xs font-normal text-slate-400">(max 100 caractères)</span>
             <textarea
               name="summary"
               defaultValue={currentStay.summary ?? ''}
               rows={3}
+              maxLength={100}
               className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
             />
+            <span className="mt-1 block text-xs text-slate-500">
+              Ce texte apparaît en sous-titre gras sur la carte du séjour (max 2 lignes).
+            </span>
           </label>
           <label className="block text-sm font-medium text-slate-700">
             Saison
@@ -1024,7 +1043,8 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
                   id: linkedAccommodation.id,
                   name: linkedAccommodation.name,
                   accommodationType: linkedAccommodation.accommodation_type,
-                  description: linkedAccommodation.description
+                  description: linkedAccommodation.description,
+                  locationLabel: linkedAccommodation.locationLabel
                 }
               : null
           }
@@ -1032,7 +1052,8 @@ export default async function OrganizerStayDetailPage({ params, searchParams }: 
             id: accommodation.id,
             name: accommodation.name,
             accommodationType: accommodation.accommodation_type,
-            description: accommodation.description
+            description: accommodation.description,
+            locationLabel: accommodation.locationLabel
           }))}
           syncAccommodationAction={syncAccommodations}
           unlinkAccommodationAction={unlinkAccommodation}

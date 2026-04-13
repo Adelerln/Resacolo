@@ -10,16 +10,17 @@ import { getServerSupabaseClient } from '@/lib/supabase/server';
 import type { Database } from '@/types/supabase';
 
 type PageProps = {
-  searchParams?: {
+  searchParams?: Promise<{
     organizerId?: string | string[];
-  };
+  }>;
 };
 
 export default async function NewStayManualPage({ searchParams }: PageProps) {
-  const session = requireRole('ORGANISATEUR');
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const session = await requireRole('ORGANISATEUR');
   const supabase = getServerSupabaseClient();
   const { selectedOrganizer, selectedOrganizerId } = await resolveOrganizerSelection(
-    searchParams?.organizerId,
+    resolvedSearchParams?.organizerId,
     session.tenantId ?? null
   );
   const organizerTenantId = selectedOrganizerId;

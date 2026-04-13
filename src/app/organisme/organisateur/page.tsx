@@ -1,4 +1,6 @@
 import { redirect } from 'next/navigation';
+import Image from 'next/image';
+import ErrorToast from '@/components/common/ErrorToast';
 import SavedToast from '@/components/common/SavedToast';
 import OrganizerCatalogTabs from '@/components/organisme/OrganizerCatalogTabs';
 import OrganizerProfileFormEnhancer from '@/components/organisme/OrganizerProfileFormEnhancer';
@@ -10,7 +12,11 @@ import {
   ORGANIZER_STAY_TYPE_OPTIONS,
   sanitizeOrganizerOptionValues
 } from '@/lib/organizer-profile-options';
-import { sanitizeOrganizerRichText } from '@/lib/organizer-rich-text';
+import {
+  embedOrganizerDurationMeta,
+  extractOrganizerDurationMeta,
+  sanitizeOrganizerRichText
+} from '@/lib/organizer-rich-text';
 import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers.server';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { slugify } from '@/lib/utils';
@@ -20,20 +26,27 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 type PageProps = {
-  searchParams?: {
+  searchParams?: Promise<{
     organizerId?: string | string[];
     saved?: string | string[];
-  };
+    error?: string | string[];
+  }>;
 };
 
 export default async function OrganizerProfilePage({ searchParams }: PageProps) {
-  const session = requireRole('ORGANISATEUR');
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const session = await requireRole('ORGANISATEUR');
   const supabase = getServerSupabaseClient();
   const { selectedOrganizerId } = await resolveOrganizerSelection(
-    searchParams?.organizerId,
+    resolvedSearchParams?.organizerId,
     session.tenantId ?? null
   );
-  const savedParam = Array.isArray(searchParams?.saved) ? searchParams?.saved[0] : searchParams?.saved;
+  const savedParam = Array.isArray(resolvedSearchParams?.saved)
+    ? resolvedSearchParams?.saved[0]
+    : resolvedSearchParams?.saved;
+  const errorParam = Array.isArray(resolvedSearchParams?.error)
+    ? resolvedSearchParams?.error[0]
+    : resolvedSearchParams?.error;
   const showSavedBanner = savedParam === '1';
   const organizerId = selectedOrganizerId;
 
@@ -74,6 +87,8 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
     redirect('/organisme');
   }
 
+  const organizerDescriptionMeta = extractOrganizerDurationMeta(organizer.description);
+
   let stayDurationMinLoaded: number | null = null;
   let stayDurationMaxLoaded: number | null = null;
   const { data: durationRow, error: durationLoadError } = await supabase
@@ -84,6 +99,12 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
   if (!durationLoadError && durationRow) {
     stayDurationMinLoaded = durationRow.stay_duration_min_days ?? null;
     stayDurationMaxLoaded = durationRow.stay_duration_max_days ?? null;
+  }
+  if (stayDurationMinLoaded == null) {
+    stayDurationMinLoaded = organizerDescriptionMeta.stayDurationMinDays;
+  }
+  if (stayDurationMaxLoaded == null) {
+    stayDurationMaxLoaded = organizerDescriptionMeta.stayDurationMaxDays;
   }
 
   const organizerForForm = {
@@ -151,42 +172,50 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
       stayDurationMaxDays = tmp;
     }
     const slug = name ? slugify(name) : currentOrganizerSlug;
+    const descriptionWithDurationMeta = embedOrganizerDurationMeta(
+      description,
+      stayDurationMinDays,
+      stayDurationMaxDays
+    );
+    const basePayload = {
+      name,
+      contact_email: contactEmail,
+      hero_intro_text: heroIntroText || null,
+      description: descriptionWithDurationMeta,
+      founded_year: foundedYear,
+      age_min: ageMin,
+      age_max: ageMax,
+      season_keys: seasonKeys,
+      stay_type_keys: stayTypeKeys,
+      activity_keys: activityKeys,
+      slug
+    };
 
     const updateWithCatalog = await supabase
       .from('organizers')
       .update({
-        name,
-        contact_email: contactEmail,
-        hero_intro_text: heroIntroText || null,
-        description: description || null,
-        founded_year: foundedYear,
-        age_min: ageMin,
-        age_max: ageMax,
-        season_keys: seasonKeys,
-        stay_type_keys: stayTypeKeys,
-        activity_keys: activityKeys,
-        slug,
+        ...basePayload,
         stay_duration_min_days: stayDurationMinDays,
         stay_duration_max_days: stayDurationMaxDays
       })
       .eq('id', currentOrganizerId);
 
     if (updateWithCatalog.error) {
-      await supabase
+      const fallbackUpdate = await supabase
         .from('organizers')
-        .update({
-          name,
-          contact_email: contactEmail,
-          hero_intro_text: heroIntroText || null,
-          description: description || null,
-          founded_year: foundedYear,
-          age_min: ageMin,
-          age_max: ageMax,
-          slug,
-          stay_duration_min_days: stayDurationMinDays,
-          stay_duration_max_days: stayDurationMaxDays
-        })
+        .update(basePayload)
         .eq('id', currentOrganizerId);
+
+      if (fallbackUpdate.error) {
+        redirect(
+          withOrganizerQuery(
+            `/organisme/organisateur?error=${encodeURIComponent(
+              fallbackUpdate.error.message || "Impossible d'enregistrer la fiche organisateur."
+            )}`,
+            currentOrganizerId
+          )
+        );
+      }
     }
 
     if (logoFile instanceof File && logoFile.size > 0) {
@@ -217,7 +246,13 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
 
   return (
     <div className="space-y-6">
+      {errorParam && <ErrorToast message={decodeURIComponent(errorParam)} />}
       {showSavedBanner && <SavedToast message="La fiche organisme a bien été enregistrée." />}
+      {showSavedBanner && (
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">
+          La fiche organisme a bien été enregistrée.
+        </div>
+      )}
       <div>
         <h1 className="text-2xl font-semibold text-slate-900">Fiche organisateur</h1>
         <p className="text-sm text-slate-600">Mets à jour les informations publiques de ton organisme.</p>
@@ -308,27 +343,34 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
                 accept="image/*"
                 className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 transition-colors"
               />
-              {logoUrl && (
-                <div className="mt-2 space-y-1">
+              {logoUrl ? (
+                <div className="mt-2 space-y-1" suppressHydrationWarning>
                   <div className="text-xs text-slate-500">Logo déjà chargé</div>
-                  <img src={logoUrl} alt={organizer.name} className="h-16 w-auto rounded-lg border" />
+                  <Image
+                    src={logoUrl}
+                    alt={organizer.name}
+                    width={160}
+                    height={64}
+                    unoptimized
+                    className="h-16 w-auto max-w-full rounded-lg border object-contain"
+                  />
                 </div>
-              )}
+              ) : null}
             </label>
             <label className="block text-sm font-medium text-slate-700">
               Projet éducatif (PDF)
               {hasProject ? (
                 <div className="mt-2 space-y-1">
                   <div className="text-xs text-slate-500">Projet déjà chargé</div>
-                  {projectUrl && (
-                    <a className="inline-flex text-sm font-medium text-brand-600" href={projectUrl}>
+                  {projectUrl ? (
+                    <a className="block text-sm font-medium text-brand-600" href={projectUrl}>
                       Télécharger le PDF actuel
                     </a>
-                  )}
+                  ) : null}
                   <button
                     formAction={`/api/organizers/${organizerSlug}/project/delete`}
                     formMethod="post"
-                    className="inline-flex items-center text-xs font-semibold text-red-600"
+                    className="block text-left text-xs font-semibold text-red-600"
                   >
                     Supprimer le PDF
                   </button>
@@ -347,10 +389,6 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
 
         <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
           <h2 className="text-lg font-semibold text-slate-900">Catalogue organisateur</h2>
-          <p className="mt-1 text-sm text-slate-600">
-            Saisons, activités, durées des séjours et types de séjours : choisis chaque section ci-dessous
-            pour compléter ta fiche sans encombrer l&apos;écran.
-          </p>
           <OrganizerCatalogTabs
             seasonChecklist={{
               name: 'season_keys',
@@ -384,9 +422,11 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
             }
           />
         </div>
-
       </form>
-      <OrganizerProfileFormEnhancer formId="organizer-profile-form" />
+      <OrganizerProfileFormEnhancer
+        formId="organizer-profile-form"
+        resetToken={`${savedParam ?? ''}:${errorParam ?? ''}`}
+      />
     </div>
   );
 }

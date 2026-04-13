@@ -34,7 +34,8 @@ export async function resolveOrganizerSelection(
   fallbackOrganizerId?: string | null
 ) {
   const organizers = await getOrganizerOptions();
-  const organizerIdFromCookie = cookies().get(ORGANIZER_COOKIE_NAME)?.value ?? null;
+  const cookieStore = await cookies();
+  const organizerIdFromCookie = cookieStore.get(ORGANIZER_COOKIE_NAME)?.value ?? null;
   const normalizedRequestedId = Array.isArray(requestedOrganizerId)
     ? requestedOrganizerId[0]
     : requestedOrganizerId;

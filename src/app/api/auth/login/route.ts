@@ -54,7 +54,7 @@ export async function POST(req: Request) {
     }))
   );
 
-  setSessionCookie({
+  await setSessionCookie({
     userId: user.id,
     email: user.email,
     name: user.name,

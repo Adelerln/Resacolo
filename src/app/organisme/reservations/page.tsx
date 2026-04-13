@@ -3,15 +3,16 @@ import { resolveOrganizerSelection } from '@/lib/organizers.server';
 import { mockRequests, mockSessions, mockStages, mockStays } from '@/lib/mocks';
 
 type PageProps = {
-  searchParams?: {
+  searchParams?: Promise<{
     organizerId?: string | string[];
-  };
+  }>;
 };
 
 export default async function OrganizerRequestsPage({ searchParams }: PageProps) {
-  const session = requireRole('ORGANISATEUR');
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const session = await requireRole('ORGANISATEUR');
   const { selectedOrganizer } = await resolveOrganizerSelection(
-    searchParams?.organizerId,
+    resolvedSearchParams?.organizerId,
     session.tenantId ?? null
   );
   const useMock = process.env.MOCK_UI === '1';

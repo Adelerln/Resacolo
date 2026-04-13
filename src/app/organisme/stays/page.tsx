@@ -10,13 +10,13 @@ import { getReservedSessionCounts } from '@/lib/session-reservations';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 
 type PageProps = {
-  searchParams?: {
+  searchParams?: Promise<{
     organizerId?: string | string[];
     saved?: string | string[];
     error?: string | string[];
     openStay?: string | string[];
     editSession?: string | string[];
-  };
+  }>;
 };
 
 export const dynamic = 'force-dynamic';
@@ -34,17 +34,18 @@ function formatRedirectValues(value?: string | string[]) {
 }
 
 export default async function OrganizerStaysPage({ searchParams }: PageProps) {
-  const session = requireRole('ORGANISATEUR');
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const session = await requireRole('ORGANISATEUR');
   const supabase = getServerSupabaseClient();
   const { selectedOrganizer, selectedOrganizerId } = await resolveOrganizerSelection(
-    searchParams?.organizerId,
+    resolvedSearchParams?.organizerId,
     session.tenantId ?? null
   );
   const organizerId = selectedOrganizerId;
-  const savedParam = formatRedirectValue(searchParams?.saved);
-  const errorParam = formatRedirectValue(searchParams?.error);
-  const openStayParams = formatRedirectValues(searchParams?.openStay);
-  const editSessionParam = formatRedirectValue(searchParams?.editSession);
+  const savedParam = formatRedirectValue(resolvedSearchParams?.saved);
+  const errorParam = formatRedirectValue(resolvedSearchParams?.error);
+  const openStayParams = formatRedirectValues(resolvedSearchParams?.openStay);
+  const editSessionParam = formatRedirectValue(resolvedSearchParams?.editSession);
 
   const { data: stays, error: staysError } = organizerId
     ? await supabase

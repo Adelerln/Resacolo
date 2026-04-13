@@ -5,6 +5,7 @@ import {
   type OrganizerAccessRole
 } from '@/lib/organizer-access';
 
-export function getOrganizerAccessRole(): OrganizerAccessRole {
-  return normalizeOrganizerAccessRole(cookies().get(ORGANIZER_ACCESS_COOKIE_NAME)?.value);
+export async function getOrganizerAccessRole(): Promise<OrganizerAccessRole> {
+  const cookieStore = await cookies();
+  return normalizeOrganizerAccessRole(cookieStore.get(ORGANIZER_ACCESS_COOKIE_NAME)?.value);
 }

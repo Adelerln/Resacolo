@@ -23,6 +23,7 @@ type ParsedSvgMap = {
 
 type WorldMapProps = {
   onFranceSelect?: () => void;
+  onCountrySelect?: (countryName: string, countryId: string) => void;
 };
 
 const frenchRegionNames =
@@ -87,7 +88,7 @@ function buildHoveredCountryFromMouse(
   };
 }
 
-export function WorldMap({ onFranceSelect }: WorldMapProps) {
+export function WorldMap({ onFranceSelect, onCountrySelect }: WorldMapProps) {
   const [svgMap, setSvgMap] = useState<ParsedSvgMap | null>(null);
   const [hoveredCountry, setHoveredCountry] = useState<HoveredCountry | null>(null);
 
@@ -185,15 +186,26 @@ export function WorldMap({ onFranceSelect }: WorldMapProps) {
               onClick={() => {
                 if (isFrance) {
                   onFranceSelect?.();
+                } else if (onCountrySelect) {
+                  onCountrySelect(country.name, country.id);
+                } else {
+                  const href = `/sejours?q=${encodeURIComponent(country.name)}&categories=etranger`;
+                  window.location.href = href;
                 }
               }}
               onKeyDown={(event) => {
-                if ((event.key === 'Enter' || event.key === ' ') && isFrance) {
+                if (event.key === 'Enter' || event.key === ' ') {
                   event.preventDefault();
-                  onFranceSelect?.();
+                  if (isFrance) {
+                    onFranceSelect?.();
+                  } else if (onCountrySelect) {
+                    onCountrySelect(country.name, country.id);
+                  } else {
+                    window.location.href = `/sejours?q=${encodeURIComponent(country.name)}&categories=etranger`;
+                  }
                 }
               }}
-              role={isFrance ? 'button' : undefined}
+              role="button"
               tabIndex={0}
               aria-label={country.name}
             />

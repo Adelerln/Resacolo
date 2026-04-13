@@ -211,7 +211,7 @@ async function updateDraftWithFallbacks(
 
 export async function POST(req: Request) {
   const isMockMode = process.env.MOCK_UI === '1' || process.env.DISABLE_AUTH === '1';
-  const session = getSession();
+  const session = await getSession();
 
   if (!isMockMode && (!session || session.role !== 'ORGANISATEUR')) {
     return NextResponse.redirect(new URL('/login', req.url), 303);

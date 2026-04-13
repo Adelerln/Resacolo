@@ -11,8 +11,8 @@ const adminNavLinks = [
   { href: '/admin/organisateurs', label: 'Organisateurs' }
 ];
 
-export default function AdminLayout({ children }: { children: React.ReactNode }) {
-  requireRole('ADMIN');
+export default async function AdminLayout({ children }: { children: React.ReactNode }) {
+  await requireRole('ADMIN');
 
   return (
     <div className="min-h-screen bg-slate-50">

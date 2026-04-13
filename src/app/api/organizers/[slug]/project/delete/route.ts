@@ -4,12 +4,12 @@ import { getServerSupabaseClient } from '@/lib/supabase/server';
 
 export const runtime = 'nodejs';
 
-export async function POST(req: Request, context: { params: { slug: string } }) {
-  if (getOrganizerAccessRole() !== 'OWNER') {
+export async function POST(req: Request, context: { params: Promise<{ slug: string }> }) {
+  if ((await getOrganizerAccessRole()) !== 'OWNER') {
     return NextResponse.redirect(new URL('/organisme', req.url), 303);
   }
 
-  const { slug } = context.params;
+  const { slug } = await context.params;
   const supabase = getServerSupabaseClient();
 
   let { data: organizer } = await supabase

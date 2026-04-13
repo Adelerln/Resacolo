@@ -5,9 +5,9 @@ export const runtime = 'nodejs';
 
 export async function POST(
   req: Request,
-  context: { params: { id: string; memberId: string } }
+  context: { params: Promise<{ id: string; memberId: string }> }
 ) {
-  const { id, memberId } = context.params;
+  const { id, memberId } = await context.params;
   const formData = await req.formData();
   const role = String(formData.get('role') ?? '').trim();
   const firstName = String(formData.get('first_name') ?? '').trim();

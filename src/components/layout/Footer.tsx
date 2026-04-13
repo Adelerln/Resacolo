@@ -51,7 +51,7 @@ const legalLinks = [
   { href: '/mentions-legales', label: 'Mentions légales' }
 ];
 
-export function Footer() {
+export function Footer({ hideHelpAndLegal = false }: { hideHelpAndLegal?: boolean }) {
   return (
     <footer className="relative overflow-visible bg-[#7dbcf0] text-white">
       <div className="pointer-events-none absolute right-0 top-0 z-10 translate-y-[-42%]" aria-hidden>
@@ -118,37 +118,39 @@ export function Footer() {
               </div>
             </div>
 
-            <div className="space-y-7">
-              <div>
-                <h2 className="text-[15px] font-bold uppercase tracking-[0.03em] text-white">
-                  Aide
-                </h2>
-                <ul className="mt-4 space-y-3 text-[15px] font-semibold leading-5 text-white">
-                  {helpLinks.map((link) => (
-                    <li key={link.href}>
-                      <Link href={link.href} className="text-white transition hover:text-white">
-                        {link.label}
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+            {!hideHelpAndLegal ? (
+              <div className="space-y-7">
+                <div>
+                  <h2 className="text-[15px] font-bold uppercase tracking-[0.03em] text-white">
+                    Aide
+                  </h2>
+                  <ul className="mt-4 space-y-3 text-[15px] font-semibold leading-5 text-white">
+                    {helpLinks.map((link) => (
+                      <li key={link.href}>
+                        <Link href={link.href} className="text-white transition hover:text-white">
+                          {link.label}
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
 
-              <div>
-                <h2 className="text-[15px] font-bold uppercase tracking-[0.03em] text-white">
-                  Informations légales
-                </h2>
-                <ul className="mt-4 space-y-3 text-[15px] font-semibold leading-5 text-white">
-                  {legalLinks.map((link) => (
-                    <li key={link.href}>
-                      <Link href={link.href} className="text-white transition hover:text-white">
-                        {link.label}
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
+                <div>
+                  <h2 className="text-[15px] font-bold uppercase tracking-[0.03em] text-white">
+                    Informations légales
+                  </h2>
+                  <ul className="mt-4 space-y-3 text-[15px] font-semibold leading-5 text-white">
+                    {legalLinks.map((link) => (
+                      <li key={link.href}>
+                        <Link href={link.href} className="text-white transition hover:text-white">
+                          {link.label}
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               </div>
-            </div>
+            ) : null}
           </div>
         </div>
       </div>

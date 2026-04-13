@@ -1,8 +1,25 @@
+import Link from 'next/link';
+import {
+  CalendarCheck2,
+  Eye,
+  Gauge,
+  Info,
+  ListChecks,
+  Megaphone,
+  TrendingUp
+} from 'lucide-react';
 import { requireRole } from '@/lib/auth/require';
 import { ORGANIZER_ACCESS_LABELS } from '@/lib/organizer-access';
 import { getOrganizerAccessRole } from '@/lib/organizer-access.server';
-import { resolveOrganizerSelection } from '@/lib/organizers.server';
+import { buildOrganizerDashboardModel } from '@/lib/organisme/dashboard-metrics';
+import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers.server';
 import { getReservedSessionCounts } from '@/lib/session-reservations';
+import {
+  STAY_VISIT_AUDIT_ACTION,
+  STAY_VISIT_ENTITY_TYPE,
+  STAY_VISIT_LOOKBACK_DAYS
+} from '@/lib/stay-visits';
+import { normalizeStayTitle } from '@/lib/stay-title';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { stayStatusLabel } from '@/lib/ui/labels';
 
@@ -20,10 +37,72 @@ function formatPercent(value: number) {
   return `${Math.round(value)}%`;
 }
 
+function formatDecimal(value: number) {
+  return new Intl.NumberFormat('fr-FR', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 1
+  }).format(value);
+}
+
 function formatVisibilityLabel(isPublished: boolean, mediaCount: number) {
   if (!isPublished) return 'Hors catalogue';
-  if (mediaCount > 0) return 'Visible';
-  return 'Publié, à enrichir';
+  if (mediaCount > 0) return 'Publié';
+  return 'Publié (sans média)';
+}
+
+function stayStatusBadgeClassName(status?: string | null) {
+  switch (status) {
+    case 'PUBLISHED':
+      return 'bg-emerald-100 text-emerald-700';
+    case 'DRAFT':
+      return 'bg-amber-100 text-amber-700';
+    case 'HIDDEN':
+      return 'bg-slate-100 text-slate-700';
+    case 'ARCHIVED':
+      return 'bg-slate-100 text-slate-700';
+    default:
+      return 'bg-slate-100 text-slate-700';
+  }
+}
+
+function visibilityBadgeClassName(isPublished: boolean, mediaCount: number) {
+  if (!isPublished) return 'bg-slate-100 text-slate-700';
+  if (mediaCount > 0) return 'bg-emerald-100 text-emerald-700';
+  return 'bg-amber-100 text-amber-700';
+}
+
+function KpiInfo({ text }: { text: string }) {
+  return (
+    <span className="group relative inline-flex align-middle">
+      <button
+        type="button"
+        className="inline-flex items-center rounded text-slate-400 hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
+        aria-label={text}
+      >
+        <Info className="h-3.5 w-3.5" />
+      </button>
+      <span
+        role="tooltip"
+        className="pointer-events-none absolute left-1/2 top-full z-30 mt-1.5 w-64 -translate-x-1/2 rounded-md border border-slate-200 bg-white px-2.5 py-2 text-left text-[11px] font-medium normal-case tracking-normal text-slate-700 opacity-0 shadow-lg transition-opacity duration-100 group-hover:opacity-100 group-focus-within:opacity-100"
+      >
+        {text}
+      </span>
+    </span>
+  );
+}
+
+function formatStayDisplayTitle(title: string) {
+  const trimmed = title.trim();
+  if (!trimmed) return '';
+
+  const lettersOnly = trimmed.replace(/[^A-Za-zÀ-ÖØ-öø-ÿ]/g, '');
+  const isAllUppercase =
+    lettersOnly.length > 0 && lettersOnly === lettersOnly.toLocaleUpperCase('fr-FR');
+
+  if (!isAllUppercase) return trimmed;
+
+  const normalized = normalizeStayTitle(trimmed);
+  return normalized || trimmed;
 }
 
 export default async function OrganizerDashboardPage({ searchParams }: PageProps) {
@@ -44,28 +123,33 @@ export default async function OrganizerDashboardPage({ searchParams }: PageProps
         <p className="mt-2 text-sm text-slate-600">
           Aucun organisateur n&apos;est disponible pour afficher les statistiques.
         </p>
+        <div className="mt-5">
+          <Link
+            href="/organisme/sejours"
+            className="inline-flex min-h-[44px] items-center justify-center rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:border-slate-300"
+          >
+            Gérer les séjours
+          </Link>
+        </div>
       </div>
     );
   }
 
-  const [{ data: staysRaw }, { data: accommodationsRaw }, { data: membersRaw }] = await Promise.all([
+  const [{ data: staysRaw }, { data: membersRaw }] = await Promise.all([
     supabase
       .from('stays')
       .select('id,title,status,updated_at')
       .eq('organizer_id', organizerId)
       .order('updated_at', { ascending: false }),
-    supabase
-      .from('accommodations')
-      .select('id,name,status')
-      .eq('organizer_id', organizerId)
-      .order('name', { ascending: true }),
     supabase.from('organizer_members').select('id,role').eq('organizer_id', organizerId)
   ]);
 
   const stays = staysRaw ?? [];
   const stayIds = stays.map((stay) => stay.id);
-
-  const [{ data: sessionsRaw }, { data: stayMediaRaw }, { data: stayAccommodationLinksRaw }, { data: favoritesRaw }] =
+  const visitsLookbackDate = new Date(
+    Date.now() - STAY_VISIT_LOOKBACK_DAYS * 24 * 60 * 60 * 1000
+  ).toISOString();
+  const [{ data: sessionsRaw }, { data: stayMediaRaw }, { data: stayVisitsRaw }] =
     stayIds.length > 0
       ? await Promise.all([
           supabase
@@ -74,8 +158,13 @@ export default async function OrganizerDashboardPage({ searchParams }: PageProps
             .in('stay_id', stayIds)
             .order('start_date', { ascending: true }),
           supabase.from('stay_media').select('id,stay_id').in('stay_id', stayIds),
-          supabase.from('stay_accommodations').select('stay_id,accommodation_id').in('stay_id', stayIds),
-          supabase.from('favorites').select('stay_id').in('stay_id', stayIds)
+          supabase
+            .from('audit_logs')
+            .select('entity_id')
+            .eq('entity_type', STAY_VISIT_ENTITY_TYPE)
+            .eq('action', STAY_VISIT_AUDIT_ACTION)
+            .in('entity_id', stayIds)
+            .gte('created_at', visitsLookbackDate)
         ])
       : [{ data: [] }, { data: [] }, { data: [] }, { data: [] }];
 
@@ -83,233 +172,228 @@ export default async function OrganizerDashboardPage({ searchParams }: PageProps
   const sessionIds = sessions.map((sessionItem) => sessionItem.id);
   const reservedCounts = await getReservedSessionCounts(supabase, sessionIds);
 
-  const mediaCountByStayId = new Map<string, number>();
-  for (const media of stayMediaRaw ?? []) {
-    mediaCountByStayId.set(media.stay_id, (mediaCountByStayId.get(media.stay_id) ?? 0) + 1);
-  }
-
-  const linkedAccommodationIds = new Set(
-    (stayAccommodationLinksRaw ?? []).map((link) => link.accommodation_id)
-  );
-  const favoriteCountByStayId = new Map<string, number>();
-  for (const favorite of favoritesRaw ?? []) {
-    favoriteCountByStayId.set(favorite.stay_id, (favoriteCountByStayId.get(favorite.stay_id) ?? 0) + 1);
-  }
-  const sessionCountByStayId = new Map<string, number>();
-  const reservedCountByStayId = new Map<string, number>();
-  const capacityByStayId = new Map<string, number>();
-
-  for (const sessionItem of sessions) {
-    sessionCountByStayId.set(
-      sessionItem.stay_id,
-      (sessionCountByStayId.get(sessionItem.stay_id) ?? 0) + 1
-    );
-    const reservedCount = reservedCounts.get(sessionItem.id) ?? 0;
-    reservedCountByStayId.set(
-      sessionItem.stay_id,
-      (reservedCountByStayId.get(sessionItem.stay_id) ?? 0) + reservedCount
-    );
-    if (sessionItem.status === 'ARCHIVED' || sessionItem.status === 'COMPLETED') continue;
-    capacityByStayId.set(
-      sessionItem.stay_id,
-      (capacityByStayId.get(sessionItem.stay_id) ?? 0) + sessionItem.capacity_total
-    );
-  }
-
-  const totalPublishedStays = stays.filter((stay) => stay.status === 'PUBLISHED').length;
-  const totalDraftOrHiddenStays = stays.filter((stay) => stay.status !== 'PUBLISHED').length;
-  const totalReservations = Array.from(reservedCounts.values()).reduce((sum, count) => sum + count, 0);
-  const totalCapacity = Array.from(capacityByStayId.values()).reduce((sum, count) => sum + count, 0);
-  const occupancyRate = totalCapacity > 0 ? (totalReservations / totalCapacity) * 100 : 0;
-  const visibilityRate = stays.length > 0 ? (totalPublishedStays / stays.length) * 100 : 0;
-  const mediaCoverageRate =
-    stays.length > 0
-      ? (stays.filter((stay) => (mediaCountByStayId.get(stay.id) ?? 0) > 0).length / stays.length) * 100
-      : 0;
-  const totalFavorites = Array.from(favoriteCountByStayId.values()).reduce((sum, count) => sum + count, 0);
-  const ownerCount = (membersRaw ?? []).filter((member) => member.role === 'OWNER').length;
-  const editorCount = (membersRaw ?? []).filter((member) => member.role === 'EDITOR').length;
-  const reservationManagerCount = (membersRaw ?? []).filter(
-    (member) => member.role === 'RESERVATION_MANAGER'
-  ).length;
-
-  const stayRows = stays
-    .map((stay) => {
-      const reserved = reservedCountByStayId.get(stay.id) ?? 0;
-      const capacity = capacityByStayId.get(stay.id) ?? 0;
-      const occupancy = capacity > 0 ? (reserved / capacity) * 100 : 0;
-      const mediaCount = mediaCountByStayId.get(stay.id) ?? 0;
-      return {
-        ...stay,
-        sessionCount: sessionCountByStayId.get(stay.id) ?? 0,
-        reserved,
-        capacity,
-        occupancy,
-        mediaCount,
-        favorites: favoriteCountByStayId.get(stay.id) ?? 0
-      };
-    })
-    .sort((a, b) => b.reserved - a.reserved || b.sessionCount - a.sessionCount || a.title.localeCompare(b.title, 'fr'));
-  const mostFavoritedRows = [...stayRows]
-    .filter((stay) => stay.favorites > 0)
-    .sort((a, b) => b.favorites - a.favorites || a.title.localeCompare(b.title, 'fr'))
-    .slice(0, 5);
-
+  const dashboardModel = buildOrganizerDashboardModel({
+    stays,
+    sessions,
+    stayMedia: stayMediaRaw ?? [],
+    stayVisits: stayVisitsRaw ?? [],
+    members: membersRaw ?? [],
+    reservedCounts,
+    vigilanceOccupancyThreshold: 25
+  });
+  const { metrics, stayRows, lists } = dashboardModel;
   const organizerLabel = selectedOrganizer?.name ?? 'Organisateur';
+  const teamCount = metrics.ownerCount + metrics.editorCount + metrics.reservationManagerCount;
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Dashboard</h1>
-          <p className="text-sm text-slate-600">
-            Vue d&apos;ensemble de {organizerLabel}. Mode actuel : {ORGANIZER_ACCESS_LABELS[accessRole]}.
-          </p>
-        </div>
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <div className="rounded-2xl border border-slate-200 bg-white p-5">
-          <div className="text-xs uppercase tracking-wide text-slate-500">Séjours proposés</div>
-          <div className="mt-2 text-3xl font-semibold text-slate-900">{stays.length}</div>
-          <p className="mt-2 text-sm text-slate-600">
-            {totalPublishedStays} publiés, {totalDraftOrHiddenStays} à compléter ou hors catalogue.
-          </p>
-        </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-5">
-          <div className="text-xs uppercase tracking-wide text-slate-500">Hébergements</div>
-          <div className="mt-2 text-3xl font-semibold text-slate-900">{accommodationsRaw?.length ?? 0}</div>
-          <p className="mt-2 text-sm text-slate-600">
-            {linkedAccommodationIds.size} déjà reliés à au moins un séjour.
-          </p>
-        </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-5">
-          <div className="text-xs uppercase tracking-wide text-slate-500">Réservations actives</div>
-          <div className="mt-2 text-3xl font-semibold text-slate-900">{totalReservations}</div>
-          <p className="mt-2 text-sm text-slate-600">
-            Réservations déduites des sessions encore actives.
-          </p>
-        </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-5">
-          <div className="text-xs uppercase tracking-wide text-slate-500">Taux de fréquentation</div>
-          <div className="mt-2 text-3xl font-semibold text-slate-900">{formatPercent(occupancyRate)}</div>
-          <p className="mt-2 text-sm text-slate-600">
-            {totalReservations} places réservées pour {totalCapacity} places ouvertes.
-          </p>
-        </div>
-      </div>
-
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.7fr)_minmax(320px,1fr)]">
-        <div className="space-y-4">
-          <div className="rounded-2xl border border-slate-200 bg-white p-4">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h2 className="text-lg font-semibold text-slate-900">Visibilité et diffusion</h2>
-                <p className="mt-1 text-sm text-slate-600">
-                  Le taux de visibilité repose sur les séjours publiés. La couverture média mesure les
-                  fiches disposant déjà de photos.
-                </p>
-              </div>
-              <div className="rounded-full bg-emerald-50 px-3 py-1 text-sm font-semibold text-emerald-700">
-                {formatPercent(visibilityRate)} visibles
-              </div>
-            </div>
-
-            <div className="mt-4 space-y-3">
-              <div>
-                <div className="mb-2 flex items-center justify-between text-sm text-slate-600">
-                  <span>Séjours publiés</span>
-                  <span>{totalPublishedStays}/{stays.length || 0}</span>
-                </div>
-                <div className="h-2 rounded-full bg-slate-100">
-                  <div
-                    className="h-2 rounded-full bg-emerald-500"
-                    style={{ width: `${Math.max(visibilityRate, stays.length > 0 ? 4 : 0)}%` }}
-                  />
-                </div>
-              </div>
-              <div>
-                <div className="mb-2 flex items-center justify-between text-sm text-slate-600">
-                  <span>Fiches avec médias</span>
-                  <span>{formatPercent(mediaCoverageRate)}</span>
-                </div>
-                <div className="h-2 rounded-full bg-slate-100">
-                  <div
-                    className="h-2 rounded-full bg-sky-500"
-                    style={{ width: `${Math.max(mediaCoverageRate, stays.length > 0 ? 4 : 0)}%` }}
-                  />
-                </div>
-              </div>
-            </div>
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold text-slate-900">Dashboard</h1>
+            <p className="mt-1 text-sm text-slate-600">
+              Vue d&apos;ensemble de {organizerLabel}. Mode actuel : {ORGANIZER_ACCESS_LABELS[accessRole]}.
+            </p>
+            <p className="mt-3 text-sm text-slate-700">
+              {metrics.totalStays} séjours suivis, {metrics.totalReservations} réservations,{' '}
+              {formatPercent(metrics.occupancyRate)} de remplissage global.
+            </p>
+            <p className="mt-1 text-xs text-slate-500">Équipe active : {teamCount} membre(s).</p>
           </div>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href={withOrganizerQuery('/organisme/sejours', organizerId)}
+              className="inline-flex min-h-[44px] items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+            >
+              Gérer les séjours
+            </Link>
+            <Link
+              href={withOrganizerQuery('/organisme/reservations', organizerId)}
+              className="inline-flex min-h-[44px] items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:border-slate-300"
+            >
+              Gérer les réservations
+            </Link>
+          </div>
+        </div>
+      </section>
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-5">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h2 className="text-lg font-semibold text-slate-900">Séjours mis en favoris par les clients</h2>
-              </div>
-              <div className="rounded-full bg-rose-50 px-3 py-1 text-sm font-semibold text-rose-600">
-                {totalFavorites} favoris
-              </div>
-            </div>
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <article className="min-h-[150px] rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-start justify-between gap-3">
+            <p className="inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Séjours proposés
+              <KpiInfo text="Tous statuts confondus (publié, brouillon, archivé)." />
+            </p>
+            <ListChecks className="h-4 w-4 text-slate-400" />
+          </div>
+          <p className="mt-3 text-3xl font-semibold text-slate-900">{metrics.totalStays}</p>
+        </article>
 
-            {mostFavoritedRows.length > 0 ? (
-              <div className="mt-5 space-y-3">
-                {mostFavoritedRows.map((stay) => (
-                  <div
-                    key={stay.id}
-                    className="flex items-start justify-between gap-4 rounded-xl border border-slate-100 bg-slate-50 px-4 py-3"
-                  >
-                    <div className="min-w-0">
-                      <div className="truncate font-medium text-slate-900">{stay.title}</div>
-                      <div className="mt-1 text-xs text-slate-500">
-                        {stayStatusLabel(stay.status)}
-                      </div>
-                    </div>
-                    <div className="shrink-0 text-right">
-                      <div className="text-lg font-semibold text-slate-900">{stay.favorites}</div>
-                      <div className="text-xs uppercase tracking-wide text-slate-500">favori{stay.favorites > 1 ? 's' : ''}</div>
-                    </div>
-                  </div>
+        <article className="min-h-[150px] rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-start justify-between gap-3">
+            <p className="inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Réservations
+              <KpiInfo text="Total cumulé des réservations confirmées." />
+            </p>
+            <CalendarCheck2 className="h-4 w-4 text-slate-400" />
+          </div>
+          <p className="mt-3 text-3xl font-semibold text-slate-900">{metrics.totalReservations}</p>
+        </article>
+
+        <article className="min-h-[150px] rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-start justify-between gap-3">
+            <p className="inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Taux de remplissage
+              <KpiInfo
+                text={`Calcul : ${metrics.totalReservations} réservations / ${metrics.totalCapacity} places ouvertes.`}
+              />
+            </p>
+            <Gauge className="h-4 w-4 text-slate-400" />
+          </div>
+          <p className="mt-3 text-3xl font-semibold text-slate-900">{formatPercent(metrics.occupancyRate)}</p>
+        </article>
+
+        <article className="min-h-[150px] rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-start justify-between gap-3">
+            <p className="inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Sessions complètes
+              <KpiInfo text="Sessions marquées complètes ou à capacité atteinte." />
+            </p>
+            <Gauge className="h-4 w-4 text-slate-400" />
+          </div>
+          <p className="mt-3 text-3xl font-semibold text-slate-900">{metrics.fullSessionsCount}</p>
+        </article>
+      </section>
+
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <article className="min-h-[140px] rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <p className="inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Visites des pages séjour ({STAY_VISIT_LOOKBACK_DAYS}j)
+            <KpiInfo text="Nombre total d'ouvertures des pages de séjour." />
+          </p>
+          <p className="mt-3 text-3xl font-semibold text-slate-900">{metrics.totalStayVisits}</p>
+        </article>
+
+        <article className="min-h-[140px] rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <p className="inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Pages de séjour visitées ({STAY_VISIT_LOOKBACK_DAYS}j)
+            <KpiInfo text="Pages de séjour ayant reçu au moins une visite sur la période." />
+          </p>
+          <p className="mt-3 text-3xl font-semibold text-slate-900">{metrics.visitedStaysCount}</p>
+        </article>
+
+        <article className="min-h-[140px] rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <p className="inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Visites moyennes / page séjour ({STAY_VISIT_LOOKBACK_DAYS}j)
+            <KpiInfo text="Moyenne de visites par page de séjour sur la période." />
+          </p>
+          <p className="mt-3 text-3xl font-semibold text-slate-900">
+            {formatDecimal(metrics.avgVisitsPerStay)}
+          </p>
+        </article>
+      </section>
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900">Pilotage commercial</h2>
+            <p className="text-sm text-slate-600">
+              Priorisez les actions grâce aux séjours qui performent, stagnent ou nécessitent une intervention rapide.
+            </p>
+          </div>
+          <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+            <Eye className="h-3.5 w-3.5" />
+            {metrics.totalStayVisits} visites des pages séjour sur les {STAY_VISIT_LOOKBACK_DAYS} derniers jours
+          </span>
+        </div>
+
+        <div className="mt-5 grid gap-4 xl:grid-cols-3">
+          <article className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+            <h3 className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
+              <TrendingUp className="h-4 w-4 text-emerald-600" />
+              Top séjours
+            </h3>
+            {lists.topStays.length > 0 ? (
+              <ul className="mt-3 space-y-2 text-sm text-slate-700">
+                {lists.topStays.map((stay) => (
+                  <li key={stay.id} className="flex items-start justify-between gap-3">
+                    <Link
+                      href={withOrganizerQuery(`/organisme/sejours/${stay.id}`, organizerId)}
+                      className="min-w-0 truncate font-medium text-slate-800 hover:text-brand-700"
+                    >
+                      {formatStayDisplayTitle(stay.title)}
+                    </Link>
+                    <span className="shrink-0 text-xs text-slate-500">
+                      {stay.reserved} résa · {formatPercent(stay.occupancy)}
+                    </span>
+                  </li>
                 ))}
-              </div>
+              </ul>
             ) : (
-              <div className="mt-5 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">
-                Aucun séjour n’a encore été ajouté en favori.
-              </div>
+              <p className="mt-3 text-sm text-slate-500">Aucun séjour avec réservation pour le moment.</p>
             )}
-          </div>
-        </div>
+          </article>
 
-        <div className="space-y-4">
-          <div className="rounded-2xl border border-slate-200 bg-white p-5">
-            <h2 className="text-lg font-semibold text-slate-900">Équipe organisateur</h2>
-            <p className="mt-1 text-sm text-slate-600">Répartition des accès configurés pour cet organisateur.</p>
-            <div className="mt-5 grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
-              <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
-                <div className="text-xs uppercase tracking-wide text-slate-500">Propriétaires</div>
-                <div className="mt-2 text-2xl font-semibold text-slate-900">{ownerCount}</div>
-              </div>
-              <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
-                <div className="text-xs uppercase tracking-wide text-slate-500">Éditeurs</div>
-                <div className="mt-2 text-2xl font-semibold text-slate-900">{editorCount}</div>
-              </div>
-              <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
-                <div className="text-xs uppercase tracking-wide text-slate-500">Gestionnaires</div>
-                <div className="mt-2 text-2xl font-semibold text-slate-900">{reservationManagerCount}</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+          <article className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+            <h3 className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
+              <Megaphone className="h-4 w-4 text-amber-600" />
+              Séjours sans traction
+            </h3>
+            {lists.noTractionPublishedStays.length > 0 ? (
+              <ul className="mt-3 space-y-2 text-sm text-slate-700">
+                {lists.noTractionPublishedStays.map((stay) => (
+                  <li key={stay.id} className="flex items-start justify-between gap-3">
+                    <Link
+                      href={withOrganizerQuery(`/organisme/sejours/${stay.id}`, organizerId)}
+                      className="min-w-0 truncate font-medium text-slate-800 hover:text-brand-700"
+                    >
+                      {formatStayDisplayTitle(stay.title)}
+                    </Link>
+                    <span className="shrink-0 text-xs text-slate-500">{stay.sessionCount} sessions</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-3 text-sm text-slate-500">Aucun séjour sans traction à prioriser.</p>
+            )}
+          </article>
 
-      <div className="rounded-2xl border border-slate-200 bg-white">
+          <article className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+            <h3 className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
+              <Gauge className="h-4 w-4 text-rose-600" />
+              Points de vigilance
+            </h3>
+            {lists.vigilanceStays.length > 0 ? (
+              <ul className="mt-3 space-y-2 text-sm text-slate-700">
+                {lists.vigilanceStays.map((stay) => (
+                  <li key={stay.id} className="flex items-start justify-between gap-3">
+                    <Link
+                      href={withOrganizerQuery(`/organisme/sejours/${stay.id}`, organizerId)}
+                      className="min-w-0 truncate font-medium text-slate-800 hover:text-brand-700"
+                    >
+                      {formatStayDisplayTitle(stay.title)}
+                    </Link>
+                    <span className="shrink-0 text-xs text-slate-500">
+                      {formatPercent(stay.occupancy)} · {stay.reserved}/{stay.capacity}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-3 text-sm text-slate-500">Aucun séjour sous le seuil de fréquentation de 25%.</p>
+            )}
+          </article>
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 px-5 py-4">
           <h2 className="text-lg font-semibold text-slate-900">Suivi des séjours</h2>
           <p className="mt-1 text-sm text-slate-600">
-            Fréquentation et visibilité par séjour, pour repérer rapidement les fiches à retravailler.
+            Détail des performances pour repérer rapidement les fiches à optimiser.
           </p>
         </div>
+
         {stayRows.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="min-w-[860px] w-full text-left text-sm">
@@ -327,20 +411,32 @@ export default async function OrganizerDashboardPage({ searchParams }: PageProps
                 {stayRows.map((stay) => (
                   <tr key={stay.id} className="border-t border-slate-100 align-top">
                     <td className="px-5 py-4">
-                      <div className="font-medium text-slate-900">{stay.title}</div>
+                      <Link
+                        href={withOrganizerQuery(`/organisme/sejours/${stay.id}`, organizerId)}
+                        className="font-medium text-slate-900 hover:text-brand-700"
+                      >
+                        {formatStayDisplayTitle(stay.title)}
+                      </Link>
                       <div className="mt-1 text-xs text-slate-500">
-                        Mis à jour le {new Date(stay.updated_at).toLocaleDateString('fr-FR')}
+                        Mis à jour le {new Date(stay.updatedAt).toLocaleDateString('fr-FR')}
                       </div>
                     </td>
-                    <td className="px-5 py-4 text-slate-600">{stayStatusLabel(stay.status)}</td>
-                    <td className="px-5 py-4 text-slate-600">{stay.sessionCount}</td>
-                    <td className="px-5 py-4 text-slate-600">
-                      {stay.reserved}
-                      {stay.capacity > 0 ? ` / ${stay.capacity} places` : ''}
+                    <td className="px-5 py-4">
+                      <span
+                        className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${stayStatusBadgeClassName(stay.status)}`}
+                      >
+                        {stayStatusLabel(stay.status)}
+                      </span>
                     </td>
+                    <td className="px-5 py-4 text-slate-600">{stay.sessionCount}</td>
+                    <td className="px-5 py-4 text-slate-600">{stay.reserved}</td>
                     <td className="px-5 py-4 text-slate-600">{formatPercent(stay.occupancy)}</td>
-                    <td className="px-5 py-4 text-slate-600">
-                      {formatVisibilityLabel(stay.status === 'PUBLISHED', stay.mediaCount)}
+                    <td className="px-5 py-4">
+                      <span
+                        className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${visibilityBadgeClassName(stay.isPublished, stay.mediaCount)}`}
+                      >
+                        {formatVisibilityLabel(stay.isPublished, stay.mediaCount)}
+                      </span>
                     </td>
                   </tr>
                 ))}
@@ -348,11 +444,21 @@ export default async function OrganizerDashboardPage({ searchParams }: PageProps
             </table>
           </div>
         ) : (
-          <div className="px-5 py-10 text-sm text-slate-500">
-            Aucun séjour n&apos;est encore rattaché à cet organisateur.
+          <div className="px-5 py-10 text-center">
+            <p className="text-sm text-slate-500">
+              Aucun séjour n&apos;est encore rattaché à cet organisateur.
+            </p>
+            <div className="mt-4">
+              <Link
+                href={withOrganizerQuery('/organisme/sejours', organizerId)}
+                className="inline-flex min-h-[44px] items-center justify-center rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:border-slate-300"
+              >
+                Gérer les séjours
+              </Link>
+            </div>
           </div>
         )}
-      </div>
+      </section>
     </div>
   );
 }

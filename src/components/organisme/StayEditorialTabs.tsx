@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { formatAccommodationType } from '@/components/organisme/AccommodationFormFields';
+import { formatAccommodationType } from '@/components/organisme/accommodation-type';
 
 type TabKey =
   | 'description'

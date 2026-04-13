@@ -1,15 +1,8 @@
-export const ACCOMMODATION_TYPE_OPTIONS = [
-  'centre',
-  'auberge de jeunesse',
-  'camping',
-  "famille d'accueil",
-  'mixte'
-] as const;
-
-export function formatAccommodationType(value?: string | null) {
-  if (!value) return 'Non renseigné';
-  return value.charAt(0).toUpperCase() + value.slice(1);
-}
+import AccommodationTypeField from '@/components/organisme/AccommodationTypeField';
+export {
+  ACCOMMODATION_TYPE_OPTIONS,
+  formatAccommodationType
+} from '@/components/organisme/accommodation-type';
 
 type AccommodationFormValues = {
   name?: string | null;
@@ -42,22 +35,7 @@ export default function AccommodationFormFields({
             required
           />
         </label>
-        <label className="block text-sm font-medium text-slate-700">
-          Type d&apos;hébergement
-          <select
-            name="accommodation_type"
-            defaultValue={values.accommodation_type ?? ''}
-            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-            required
-          >
-            <option value="">Sélectionner</option>
-            {ACCOMMODATION_TYPE_OPTIONS.map((option) => (
-              <option key={option} value={option}>
-                {formatAccommodationType(option)}
-              </option>
-            ))}
-          </select>
-        </label>
+        <AccommodationTypeField defaultValue={values.accommodation_type ?? ''} />
       </div>
 
       <label className="block text-sm font-medium text-slate-700">

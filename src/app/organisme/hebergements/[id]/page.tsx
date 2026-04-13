@@ -1,7 +1,12 @@
 import { revalidatePath } from 'next/cache';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import AccommodationFormFields, { formatAccommodationType } from '@/components/organisme/AccommodationFormFields';
+import AccommodationFormFields from '@/components/organisme/AccommodationFormFields';
+import {
+  buildAccommodationTypeValue,
+  formatAccommodationType,
+  parseAccommodationType
+} from '@/components/organisme/accommodation-type';
 import SavedToast from '@/components/common/SavedToast';
 import { deleteAccommodationForOrganizer } from '@/lib/accommodations';
 import { requireRole } from '@/lib/auth/require';
@@ -54,12 +59,25 @@ export default async function AccommodationDetailPage({ params, searchParams }: 
     'use server';
     const supabase = getServerSupabaseClient();
     const name = String(formData.get('name') ?? '').trim();
-    const accommodationType = String(formData.get('accommodation_type') ?? '').trim();
+    const selectedAccommodationType = String(formData.get('accommodation_type') ?? '').trim();
+    const mixedAccommodationTypes = formData
+      .getAll('accommodation_type_mixed_values')
+      .map((value) => String(value).trim());
+    const accommodationType = buildAccommodationTypeValue(selectedAccommodationType, mixedAccommodationTypes);
+    const parsedAccommodationType = parseAccommodationType(accommodationType);
 
-    if (!name || !accommodationType) {
+    if (!name || !parsedAccommodationType.baseType) {
       redirect(
         withOrganizerQuery(
           `/organisme/hebergements/${params.id}?error=missing-fields`,
+          selectedOrganizerId
+        )
+      );
+    }
+    if (parsedAccommodationType.baseType === 'mixte' && parsedAccommodationType.mixedTypes.length === 0) {
+      redirect(
+        withOrganizerQuery(
+          `/organisme/hebergements/${params.id}?error=missing-mixed-types`,
           selectedOrganizerId
         )
       );

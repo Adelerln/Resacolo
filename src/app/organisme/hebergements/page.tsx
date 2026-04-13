@@ -2,7 +2,7 @@ import { revalidatePath } from 'next/cache';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import SavedToast from '@/components/common/SavedToast';
-import { formatAccommodationType } from '@/components/organisme/AccommodationFormFields';
+import { formatAccommodationType } from '@/components/organisme/accommodation-type';
 import { requireRole } from '@/lib/auth/require';
 import { deleteAccommodationForOrganizer } from '@/lib/accommodations';
 import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers.server';

@@ -15,6 +15,8 @@ type PageProps = {
     organizerId?: string | string[];
     saved?: string | string[];
     deleted?: string | string[];
+    archived?: string | string[];
+    unarchived?: string | string[];
     error?: string | string[];
   }>;
 };
@@ -36,11 +38,19 @@ export default async function OrganizerAccommodationsPage({ searchParams }: Page
   const deletedParam = Array.isArray(resolvedSearchParams?.deleted)
     ? resolvedSearchParams?.deleted[0]
     : resolvedSearchParams?.deleted;
+  const archivedParam = Array.isArray(resolvedSearchParams?.archived)
+    ? resolvedSearchParams?.archived[0]
+    : resolvedSearchParams?.archived;
+  const unarchivedParam = Array.isArray(resolvedSearchParams?.unarchived)
+    ? resolvedSearchParams?.unarchived[0]
+    : resolvedSearchParams?.unarchived;
   const errorParam = Array.isArray(resolvedSearchParams?.error)
     ? resolvedSearchParams?.error[0]
     : resolvedSearchParams?.error;
   const showSavedBanner = savedParam === '1';
   const showDeletedBanner = deletedParam === '1';
+  const showArchivedBanner = archivedParam === '1';
+  const showUnarchivedBanner = unarchivedParam === '1';
 
   if (!selectedOrganizerId) {
     redirect('/organisme/sejours');
@@ -50,7 +60,7 @@ export default async function OrganizerAccommodationsPage({ searchParams }: Page
     supabase
       .from('accommodations')
       .select(
-        'id,name,accommodation_type,description,bed_info,bathroom_info,catering_info,accessibility_info,status,updated_at'
+        'id,name,accommodation_type,description,bed_info,bathroom_info,catering_info,accessibility_info,status,updated_at,validated_at'
       )
       .eq('organizer_id', selectedOrganizerId)
       .order('name', { ascending: true }),
@@ -117,10 +127,56 @@ export default async function OrganizerAccommodationsPage({ searchParams }: Page
     redirect(withOrganizerQuery('/organisme/hebergements?deleted=1', selectedOrganizerId));
   }
 
+  async function toggleAccommodationArchive(formData: FormData) {
+    'use server';
+    const supabase = getServerSupabaseClient();
+    const accommodationId = String(formData.get('accommodation_id') ?? '').trim();
+    const nextStatus = String(formData.get('next_status') ?? '').trim();
+
+    if (!accommodationId || (nextStatus !== 'ARCHIVED' && nextStatus !== 'VALIDATED')) {
+      redirect(
+        withOrganizerQuery(
+          '/organisme/hebergements?error=archive-action-invalid',
+          selectedOrganizerId
+        )
+      );
+    }
+
+    const { error } = await supabase
+      .from('accommodations')
+      .update({
+        status: nextStatus,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', accommodationId)
+      .eq('organizer_id', selectedOrganizerId);
+
+    if (error) {
+      redirect(
+        withOrganizerQuery(
+          `/organisme/hebergements?error=${encodeURIComponent(error.message)}`,
+          selectedOrganizerId
+        )
+      );
+    }
+
+    revalidatePath('/organisme/hebergements');
+    revalidatePath('/organisme/sejours');
+    revalidatePath('/organisme/stays');
+    redirect(
+      withOrganizerQuery(
+        `/organisme/hebergements?${nextStatus === 'ARCHIVED' ? 'archived=1' : 'unarchived=1'}`,
+        selectedOrganizerId
+      )
+    );
+  }
+
   return (
     <div className="space-y-6">
       {showSavedBanner && <SavedToast message="La fiche hébergement a bien été enregistrée." />}
       {showDeletedBanner && <SavedToast message="La fiche hébergement a bien été supprimée." />}
+      {showArchivedBanner && <SavedToast message="La fiche hébergement a bien été archivée." />}
+      {showUnarchivedBanner && <SavedToast message="La fiche hébergement a bien été désarchivée." />}
       {errorParam && (
         <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
           {decodeURIComponent(errorParam)}
@@ -195,6 +251,29 @@ export default async function OrganizerAccommodationsPage({ searchParams }: Page
                       >
                         Éditer
                       </Link>
+                      <form action={toggleAccommodationArchive}>
+                        <input type="hidden" name="accommodation_id" value={accommodation.id} />
+                        <input
+                          type="hidden"
+                          name="next_status"
+                          value={
+                            accommodation.status === 'ARCHIVED'
+                              ? accommodation.validated_at
+                                ? 'VALIDATED'
+                                : 'DRAFT'
+                              : 'ARCHIVED'
+                          }
+                        />
+                        <button
+                          className={`rounded-lg px-3 py-1 text-xs font-semibold ${
+                            accommodation.status === 'ARCHIVED'
+                              ? 'border border-emerald-200 text-emerald-700'
+                              : 'border border-amber-200 text-amber-700'
+                          }`}
+                        >
+                          {accommodation.status === 'ARCHIVED' ? 'Désarchiver' : 'Archiver'}
+                        </button>
+                      </form>
                       <form action={deleteAccommodation}>
                         <input type="hidden" name="accommodation_id" value={accommodation.id} />
                         <button className="rounded-lg border border-rose-200 px-3 py-1 text-xs font-semibold text-rose-700">

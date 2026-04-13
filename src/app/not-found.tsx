@@ -1,6 +1,5 @@
 import Link from 'next/link';
 import { Home, MapPin } from 'lucide-react';
-import { NotFoundIllustration } from '@/components/404/NotFoundIllustration';
 
 const BLUE = '#52B0EA';
 const ORANGE = '#FA8500';
@@ -9,18 +8,12 @@ export default function NotFound() {
   return (
     <div className="flex min-h-[70vh] flex-col items-center justify-center bg-[#FFFFFF] px-4 py-12 sm:py-16">
       <div className="mx-auto flex w-full max-w-lg flex-col items-center text-center">
-        {/* 1. Hero Illustration */}
-        <div className="mb-8 w-full max-w-xs flex-shrink-0 sm:mb-10">
-          <NotFoundIllustration />
-        </div>
-
-        {/* 2. Main Message */}
         <p
           className="font-display text-6xl font-extrabold tracking-tight sm:text-7xl md:text-8xl"
           style={{ color: BLUE }}
           aria-hidden
         >
-          404
+          Erreur 404
         </p>
         <h1 className="mt-4 font-display text-xl font-bold text-slate-800 sm:text-2xl">
           Oups ! Cette destination semble introuvable.
@@ -30,7 +23,6 @@ export default function NotFound() {
           n&apos;est jamais très loin !
         </p>
 
-        {/* 3. Recovery Actions */}
         <div className="mt-10 flex flex-col items-center gap-4">
           <Link
             href="/"

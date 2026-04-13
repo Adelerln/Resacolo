@@ -204,6 +204,17 @@ function asObject(value: Json | null): Record<string, unknown> {
   return {};
 }
 
+function readImportedExistingAccommodationId(rawPayload: Json | null): string | null {
+  const raw = asObject(rawPayload);
+  const importOptions = raw.import_options;
+  if (!importOptions || typeof importOptions !== 'object' || Array.isArray(importOptions)) {
+    return null;
+  }
+
+  const selectedId = (importOptions as Record<string, unknown>).existing_accommodation_id;
+  return typeof selectedId === 'string' && selectedId.trim().length > 0 ? selectedId.trim() : null;
+}
+
 function buildDraftUpdateFromAi(
   draft: StayDraftRow,
   ai: Awaited<ReturnType<typeof enrichStayDraftWithAI>>,
@@ -211,6 +222,8 @@ function buildDraftUpdateFromAi(
 ): StayDraftUpdate {
   const patch: StayDraftUpdate = {};
   const extracted = ai.extracted;
+  const linkedAccommodationId = readImportedExistingAccommodationId(draft.raw_payload);
+  const extractedAccommodation = linkedAccommodationId ? null : extracted.accommodations_json;
   const normalizedCategories = normalizeStayDraftCategories(extracted.categories).categories;
 
   if ((force || !hasText(draft.summary)) && hasText(extracted.summary)) patch.summary = extracted.summary;
@@ -247,8 +260,8 @@ function buildDraftUpdateFromAi(
   if ((force || !hasJsonValue(draft.transport_options_json)) && extracted.transport_options_json.length > 0) {
     patch.transport_options_json = extracted.transport_options_json;
   }
-  if ((force || !hasJsonValue(draft.accommodations_json)) && extracted.accommodations_json) {
-    patch.accommodations_json = extracted.accommodations_json;
+  if ((force || !hasJsonValue(draft.accommodations_json)) && extractedAccommodation) {
+    patch.accommodations_json = extractedAccommodation;
   }
 
   const existingRawPayload = asObject(draft.raw_payload);
@@ -258,6 +271,7 @@ function buildDraftUpdateFromAi(
     ai_raw: ai.rawResponse,
     ai_extracted: {
       ...extracted,
+      accommodations_json: extractedAccommodation,
       categories: normalizedCategories
     },
     ai_prompt_version: ai.promptVersion,

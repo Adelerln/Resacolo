@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { formatAccommodationType } from '@/lib/accommodation-types';
 import { normalizeStayDraftCategories, STAY_CATEGORY_OPTIONS } from '@/lib/stay-categories';
 import type { StayDraftReviewFieldErrors, StayDraftReviewPayload } from '@/types/stay-draft-review';
 
@@ -14,6 +15,11 @@ type StayDraftReviewFormProps = {
   initialStatus: string;
   initialValidatedAt: string | null;
   initialValidatedByUserId: string | null;
+  linkedAccommodation?: {
+    id: string;
+    name: string;
+    accommodationType: string | null;
+  } | null;
 };
 
 type JsonFieldName =
@@ -41,7 +47,8 @@ export default function StayDraftReviewForm({
   initialPayload,
   initialStatus,
   initialValidatedAt,
-  initialValidatedByUserId
+  initialValidatedByUserId,
+  linkedAccommodation = null
 }: StayDraftReviewFormProps) {
   const router = useRouter();
   const [title, setTitle] = useState(initialPayload.title);
@@ -154,10 +161,9 @@ export default function StayDraftReviewForm({
       'transport_options_json',
       transportOptionsJsonText
     );
-    const accommodationsParsed = parseJsonField<Record<string, unknown> | null>(
-      'accommodations_json',
-      accommodationsJsonText
-    );
+    const accommodationsParsed = linkedAccommodation
+      ? { value: null as Record<string, unknown> | null }
+      : parseJsonField<Record<string, unknown> | null>('accommodations_json', accommodationsJsonText);
     const imagesParsed = parseJsonField<string[]>('images', imagesJsonText);
 
     setFieldError(sessionsParsed.error, 'sessions_json', nextErrors);
@@ -317,6 +323,21 @@ export default function StayDraftReviewForm({
       {successMessage && (
         <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
           {successMessage}
+        </div>
+      )}
+
+      {linkedAccommodation && (
+        <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-4 text-sm text-sky-900">
+          <p className="font-semibold">Hébergement déjà sélectionné avant import</p>
+          <p className="mt-1">
+            Le séjour sera rattaché à <span className="font-semibold">{linkedAccommodation.name}</span>
+            {linkedAccommodation.accommodationType
+              ? ` (${formatAccommodationType(linkedAccommodation.accommodationType)})`
+              : ''}.
+          </p>
+          <p className="mt-1 text-sky-800">
+            L&apos;IA n&apos;extrait pas de nouvel hébergement pour ce brouillon.
+          </p>
         </div>
       )}
 
@@ -489,18 +510,20 @@ export default function StayDraftReviewForm({
           )}
         </label>
 
-        <label className="block text-sm font-medium text-slate-700">
-          Hébergement (JSON)
-          <textarea
-            value={accommodationsJsonText}
-            onChange={(event) => setAccommodationsJsonText(event.target.value)}
-            rows={8}
-            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 font-mono text-xs"
-          />
-          {fieldErrors.accommodations_json && (
-            <span className="mt-1 block text-xs text-rose-600">{fieldErrors.accommodations_json}</span>
-          )}
-        </label>
+        {!linkedAccommodation && (
+          <label className="block text-sm font-medium text-slate-700">
+            Hébergement (JSON)
+            <textarea
+              value={accommodationsJsonText}
+              onChange={(event) => setAccommodationsJsonText(event.target.value)}
+              rows={8}
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 font-mono text-xs"
+            />
+            {fieldErrors.accommodations_json && (
+              <span className="mt-1 block text-xs text-rose-600">{fieldErrors.accommodations_json}</span>
+            )}
+          </label>
+        )}
 
         <label className="block text-sm font-medium text-slate-700">
           Images (JSON)

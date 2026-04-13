@@ -1,6 +1,8 @@
 import type { CartItem } from '@/types/cart';
 
 export type CheckoutContact = {
+  billingFirstName: string;
+  billingLastName: string;
   email: string;
   phone: string;
   addressLine1: string;
@@ -8,6 +10,15 @@ export type CheckoutContact = {
   postalCode: string;
   city: string;
   country: string;
+  hasSeparateBillingAddress: boolean;
+  billingAddressLine1: string;
+  billingAddressLine2: string;
+  billingPostalCode: string;
+  billingCity: string;
+  billingCountry: string;
+  cseOrganization: string;
+  vacafNumber: string;
+  paymentMode: 'FULL' | 'DEPOSIT_200' | 'CV_CONNECT' | 'CV_PAPER' | 'DEFERRED';
   acceptsTerms: boolean;
   acceptsPrivacy: boolean;
 };
@@ -17,6 +28,8 @@ export type CheckoutParticipant = {
   childFirstName: string;
   childLastName: string;
   childBirthdate: string;
+  childGender: '' | 'MASCULIN' | 'FEMININ';
+  additionalInfo: string;
 };
 
 export type CheckoutState = {
@@ -30,9 +43,13 @@ export type CheckoutPricingItem = {
   stayTitle: string;
   sessionId: string;
   organizerId: string;
+  sessionStartDate: string | null;
+  sessionEndDate: string | null;
   basePriceCents: number;
   transportPriceCents: number;
+  transportLabel: string | null;
   insurancePriceCents: number;
+  insuranceLabel: string | null;
   extraOptionPriceCents: number;
   optionsPriceCents: number;
   totalPriceCents: number;
@@ -49,6 +66,8 @@ export type CheckoutPricing = {
 };
 
 export const EMPTY_CONTACT: CheckoutContact = {
+  billingFirstName: '',
+  billingLastName: '',
   email: '',
   phone: '',
   addressLine1: '',
@@ -56,8 +75,17 @@ export const EMPTY_CONTACT: CheckoutContact = {
   postalCode: '',
   city: '',
   country: 'France',
+  hasSeparateBillingAddress: false,
+  billingAddressLine1: '',
+  billingAddressLine2: '',
+  billingPostalCode: '',
+  billingCity: '',
+  billingCountry: 'France',
+  cseOrganization: '',
+  vacafNumber: '',
+  paymentMode: 'FULL',
   acceptsTerms: false,
-  acceptsPrivacy: false
+  acceptsPrivacy: true
 };
 
 export function getDefaultParticipant(cartItemId: string): CheckoutParticipant {
@@ -65,7 +93,9 @@ export function getDefaultParticipant(cartItemId: string): CheckoutParticipant {
     cartItemId,
     childFirstName: '',
     childLastName: '',
-    childBirthdate: ''
+    childBirthdate: '',
+    childGender: '',
+    additionalInfo: ''
   };
 }
 

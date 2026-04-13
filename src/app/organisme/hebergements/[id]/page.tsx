@@ -21,6 +21,8 @@ type PageProps = {
   searchParams?: Promise<{
     organizerId?: string | string[];
     saved?: string | string[];
+    archived?: string | string[];
+    unarchived?: string | string[];
     error?: string | string[];
   }>;
 };
@@ -44,10 +46,18 @@ export default async function AccommodationDetailPage({ params: paramsPromise, s
   const savedParam = Array.isArray(resolvedSearchParams?.saved)
     ? resolvedSearchParams?.saved[0]
     : resolvedSearchParams?.saved;
+  const archivedParam = Array.isArray(resolvedSearchParams?.archived)
+    ? resolvedSearchParams?.archived[0]
+    : resolvedSearchParams?.archived;
+  const unarchivedParam = Array.isArray(resolvedSearchParams?.unarchived)
+    ? resolvedSearchParams?.unarchived[0]
+    : resolvedSearchParams?.unarchived;
   const errorParam = Array.isArray(resolvedSearchParams?.error)
     ? resolvedSearchParams?.error[0]
     : resolvedSearchParams?.error;
   const showSavedBanner = savedParam === '1';
+  const showArchivedBanner = archivedParam === '1';
+  const showUnarchivedBanner = unarchivedParam === '1';
 
   if (!selectedOrganizerId) {
     redirect('/organisme/sejours');
@@ -170,9 +180,53 @@ export default async function AccommodationDetailPage({ params: paramsPromise, s
     redirect(withOrganizerQuery('/organisme/hebergements?deleted=1', selectedOrganizerId));
   }
 
+  async function toggleAccommodationArchive() {
+    'use server';
+    const supabase = getServerSupabaseClient();
+    const nextStatus =
+      currentAccommodation.status === 'ARCHIVED'
+        ? currentAccommodation.validated_at
+          ? 'VALIDATED'
+          : 'DRAFT'
+        : 'ARCHIVED';
+
+    const { error } = await supabase
+      .from('accommodations')
+      .update({
+        status: nextStatus,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', params.id)
+      .eq('organizer_id', selectedOrganizerId);
+
+    if (error) {
+      redirect(
+        withOrganizerQuery(
+          `/organisme/hebergements/${params.id}?error=${encodeURIComponent(error.message)}`,
+          selectedOrganizerId
+        )
+      );
+    }
+
+    revalidatePath('/organisme/hebergements');
+    revalidatePath('/organisme/sejours');
+    revalidatePath('/organisme/stays');
+    revalidatePath(`/organisme/hebergements/${params.id}`);
+    redirect(
+      withOrganizerQuery(
+        `/organisme/hebergements/${params.id}?${
+          nextStatus === 'ARCHIVED' ? 'archived=1' : 'unarchived=1'
+        }`,
+        selectedOrganizerId
+      )
+    );
+  }
+
   return (
     <div className="space-y-6">
       {showSavedBanner && <SavedToast message="La fiche hébergement a bien été enregistrée." />}
+      {showArchivedBanner && <SavedToast message="La fiche hébergement a bien été archivée." />}
+      {showUnarchivedBanner && <SavedToast message="La fiche hébergement a bien été désarchivée." />}
       {errorParam && (
         <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
           {decodeURIComponent(errorParam)}
@@ -210,7 +264,18 @@ export default async function AccommodationDetailPage({ params: paramsPromise, s
         <AccommodationFormFields values={currentAccommodation} submitLabel="Enregistrer l'hébergement" />
       </form>
 
-      <div className="flex justify-start sm:justify-end">
+      <div className="flex flex-wrap justify-start gap-3 sm:justify-end">
+        <form action={toggleAccommodationArchive}>
+          <button
+            className={`rounded-lg px-4 py-2 text-sm font-semibold ${
+              currentAccommodation.status === 'ARCHIVED'
+                ? 'border border-emerald-200 text-emerald-700'
+                : 'border border-amber-200 text-amber-700'
+            }`}
+          >
+            {currentAccommodation.status === 'ARCHIVED' ? 'Désarchiver la fiche' : 'Archiver la fiche'}
+          </button>
+        </form>
         <form action={deleteAccommodation}>
           <button className="rounded-lg border border-rose-200 px-4 py-2 text-sm font-semibold text-rose-700">
             Supprimer la fiche

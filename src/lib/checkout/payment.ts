@@ -80,10 +80,11 @@ function createMoneticoMockTransactionId(checkoutId: string, paymentId: string) 
 
 async function createOrUpdateClientProfile(clientUserId: string, contact: CheckoutContact) {
   const supabase = getServerSupabaseClient();
+  const fullName = [contact.billingFirstName, contact.billingLastName].filter(Boolean).join(' ').trim();
   const { error } = await supabase.from('clients').upsert(
     {
       user_id: clientUserId,
-      full_name: null,
+      full_name: fullName || null,
       phone: contact.phone,
       collectivity_id: null
     },
@@ -192,6 +193,7 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
       raw_payload: {
         checkoutId: input.checkoutId,
         contact: input.contact,
+        participants: input.participants,
         orderItemIds
       }
     })
@@ -220,6 +222,7 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
       raw_payload: {
         checkoutId: input.checkoutId,
         contact: input.contact,
+        participants: input.participants,
         orderItemIds,
         monetico: moneticoMock
       }
@@ -298,6 +301,9 @@ export async function markOrderPaid(input: {
       throw new Error('Impossible de convertir les holds de session.');
     }
   }
+
+  const { recordCommissionFeesOnOrderPaid } = await import('@/lib/resacolo-fee-ledger.server');
+  await recordCommissionFeesOnOrderPaid(supabase, input.orderId, paidAt);
 
   return {
     orderId: input.orderId,

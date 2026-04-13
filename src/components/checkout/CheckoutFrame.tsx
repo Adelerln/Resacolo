@@ -20,19 +20,30 @@ export function CheckoutFrame({
   title,
   subtitle,
   children,
-  aside
+  aside,
+  headerClassName,
+  contentClassName,
+  asideClassName
 }: {
   step: CheckoutStepKey;
-  title: string;
-  subtitle?: string;
+  title: React.ReactNode;
+  subtitle?: React.ReactNode;
   children: React.ReactNode;
   aside?: React.ReactNode;
+  headerClassName?: string;
+  contentClassName?: string;
+  asideClassName?: string;
 }) {
   const stepIndex = getStepIndex(step);
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
-      <header className="mb-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+      <header
+        className={clsx(
+          'mb-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6',
+          headerClassName
+        )}
+      >
         <div className="flex flex-wrap gap-2">
           {STEPS.map((item, index) => {
             const state = index < stepIndex ? 'done' : index === stepIndex ? 'current' : 'upcoming';
@@ -55,9 +66,25 @@ export function CheckoutFrame({
         {subtitle ? <p className="mt-1 text-sm text-slate-600 sm:text-base">{subtitle}</p> : null}
       </header>
 
-      <div className={clsx('grid gap-6', aside ? 'lg:grid-cols-[minmax(0,1fr)_320px]' : 'grid-cols-1')}>
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">{children}</section>
-        {aside ? <aside className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">{aside}</aside> : null}
+      <div className={clsx('grid gap-6', aside ? 'lg:grid-cols-[minmax(0,1fr)_460px]' : 'grid-cols-1')}>
+        <section
+          className={clsx(
+            'rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6',
+            contentClassName
+          )}
+        >
+          {children}
+        </section>
+        {aside ? (
+          <aside
+            className={clsx(
+              'rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6',
+              asideClassName
+            )}
+          >
+            {aside}
+          </aside>
+        ) : null}
       </div>
     </div>
   );

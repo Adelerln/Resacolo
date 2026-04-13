@@ -18,6 +18,12 @@ type PageProps = {
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+type LinkedAccommodationSummary = {
+  id: string;
+  name: string;
+  accommodationType: string | null;
+};
+
 function normalizeString(value: string | null | undefined): string {
   return value?.trim() ?? '';
 }
@@ -87,6 +93,13 @@ function asStringArray(value: Json | null): string[] {
   return [];
 }
 
+function readExistingAccommodationId(rawPayload: Record<string, unknown>): string | null {
+  const importOptions = rawPayload.import_options;
+  if (!isPlainRecord(importOptions)) return null;
+  const selectedId = importOptions.existing_accommodation_id;
+  return typeof selectedId === 'string' && selectedId.trim().length > 0 ? selectedId.trim() : null;
+}
+
 function draftStatusBadgeClass(status: string | null): string {
   switch ((status ?? '').toLowerCase()) {
     case 'validated':
@@ -131,6 +144,18 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
   const aiEnrichedAt =
     typeof rawPayload.ai_enriched_at === 'string' ? rawPayload.ai_enriched_at : null;
   const accommodationsObject = asObject(draft.accommodations_json);
+  const linkedAccommodationId = readExistingAccommodationId(rawPayload);
+  const linkedAccommodation =
+    linkedAccommodationId
+      ? (
+          await supabase
+            .from('accommodations')
+            .select('id,name,accommodation_type')
+            .eq('id', linkedAccommodationId)
+            .eq('organizer_id', selectedOrganizerId)
+            .maybeSingle()
+        ).data ?? null
+      : null;
 
   const initialPayload: StayDraftReviewPayload = {
     title: normalizeString(draft.title),
@@ -147,7 +172,10 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
     sessions_json: asArrayOfObjects(draft.sessions_json),
     extra_options_json: asArrayOfObjects(draft.extra_options_json),
     transport_options_json: asArrayOfObjects(draft.transport_options_json),
-    accommodations_json: Object.keys(accommodationsObject).length > 0 ? accommodationsObject : null,
+    accommodations_json:
+      !linkedAccommodation && Object.keys(accommodationsObject).length > 0
+        ? accommodationsObject
+        : null,
     images: asStringArray(draft.images)
   };
 
@@ -242,6 +270,15 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
         initialStatus={draft.status}
         initialValidatedAt={draft.validated_at}
         initialValidatedByUserId={draft.validated_by_user_id}
+        linkedAccommodation={
+          linkedAccommodation
+            ? ({
+                id: linkedAccommodation.id,
+                name: linkedAccommodation.name,
+                accommodationType: linkedAccommodation.accommodation_type
+              } satisfies LinkedAccommodationSummary)
+            : null
+        }
       />
     </div>
   );

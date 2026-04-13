@@ -367,6 +367,51 @@ export type Database = {
           },
         ]
       }
+      inquiries: {
+        Row: {
+          assigned_to_user_id: string | null
+          contact_email: string
+          contact_name: string | null
+          contact_phone: string | null
+          created_at: string
+          id: string
+          inquiry_type: string
+          internal_notes: string | null
+          message: string
+          status: string
+          subject: string | null
+          updated_at: string
+        }
+        Insert: {
+          assigned_to_user_id?: string | null
+          contact_email: string
+          contact_name?: string | null
+          contact_phone?: string | null
+          created_at?: string
+          id?: string
+          inquiry_type?: string
+          internal_notes?: string | null
+          message: string
+          status?: string
+          subject?: string | null
+          updated_at?: string
+        }
+        Update: {
+          assigned_to_user_id?: string | null
+          contact_email?: string
+          contact_name?: string | null
+          contact_phone?: string | null
+          created_at?: string
+          id?: string
+          inquiry_type?: string
+          internal_notes?: string | null
+          message?: string
+          status?: string
+          subject?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       invoice_counters: {
         Row: {
           next_number: number
@@ -710,6 +755,210 @@ export type Database = {
           },
         ]
       }
+      organizer_billing_settings: {
+        Row: {
+          commission_percent: number
+          created_at: string
+          notes: string | null
+          organizer_id: string
+          publication_fee_cents: number
+          updated_at: string
+        }
+        Insert: {
+          commission_percent?: number
+          created_at?: string
+          notes?: string | null
+          organizer_id: string
+          publication_fee_cents?: number
+          updated_at?: string
+        }
+        Update: {
+          commission_percent?: number
+          created_at?: string
+          notes?: string | null
+          organizer_id?: string
+          publication_fee_cents?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "organizer_billing_settings_organizer_id_fkey"
+            columns: ["organizer_id"]
+            isOneToOne: true
+            referencedRelation: "organizers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      organizer_billing_events: {
+        Row: {
+          created_at: string
+          created_by_user_id: string | null
+          event_type: string
+          id: string
+          invoice_id: string | null
+          metadata: Json
+          organizer_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by_user_id?: string | null
+          event_type: string
+          id?: string
+          invoice_id?: string | null
+          metadata?: Json
+          organizer_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by_user_id?: string | null
+          event_type?: string
+          id?: string
+          invoice_id?: string | null
+          metadata?: Json
+          organizer_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "organizer_billing_events_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organizer_billing_events_organizer_id_fkey"
+            columns: ["organizer_id"]
+            isOneToOne: false
+            referencedRelation: "organizers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      organizer_support_requests: {
+        Row: {
+          assigned_to_user_id: string | null
+          body: string | null
+          category: string | null
+          created_at: string
+          created_by_user_id: string | null
+          id: string
+          organizer_id: string
+          priority: string
+          resolved_at: string | null
+          status: string
+          subject: string | null
+          updated_at: string
+        }
+        Insert: {
+          assigned_to_user_id?: string | null
+          body?: string | null
+          category?: string | null
+          created_at?: string
+          created_by_user_id?: string | null
+          id?: string
+          organizer_id: string
+          priority?: string
+          resolved_at?: string | null
+          status?: string
+          subject?: string | null
+          updated_at?: string
+        }
+        Update: {
+          assigned_to_user_id?: string | null
+          body?: string | null
+          category?: string | null
+          created_at?: string
+          created_by_user_id?: string | null
+          id?: string
+          organizer_id?: string
+          priority?: string
+          resolved_at?: string | null
+          status?: string
+          subject?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "organizer_support_requests_organizer_id_fkey"
+            columns: ["organizer_id"]
+            isOneToOne: false
+            referencedRelation: "organizers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      resacolo_fee_ledger: {
+        Row: {
+          amount_cents: number
+          channel: string
+          created_at: string
+          fee_kind: string
+          id: string
+          note: string | null
+          occurred_at: string
+          order_id: string | null
+          order_item_id: string | null
+          organizer_id: string
+          stay_id: string | null
+        }
+        Insert: {
+          amount_cents: number
+          channel: string
+          created_at?: string
+          fee_kind: string
+          id?: string
+          note?: string | null
+          occurred_at: string
+          order_id?: string | null
+          order_item_id?: string | null
+          organizer_id: string
+          stay_id?: string | null
+        }
+        Update: {
+          amount_cents?: number
+          channel?: string
+          created_at?: string
+          fee_kind?: string
+          id?: string
+          note?: string | null
+          occurred_at?: string
+          order_id?: string | null
+          order_item_id?: string | null
+          organizer_id?: string
+          stay_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "resacolo_fee_ledger_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "resacolo_fee_ledger_order_item_id_fkey"
+            columns: ["order_item_id"]
+            isOneToOne: false
+            referencedRelation: "order_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "resacolo_fee_ledger_organizer_id_fkey"
+            columns: ["organizer_id"]
+            isOneToOne: false
+            referencedRelation: "organizers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "resacolo_fee_ledger_stay_id_fkey"
+            columns: ["stay_id"]
+            isOneToOne: false
+            referencedRelation: "stays"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       accommodation_media: {
         Row: {
           accommodation_id: string
@@ -860,13 +1109,18 @@ export type Database = {
           age_max: number | null
           hero_intro_text: string | null
           id: string
+          is_founding_member: boolean
+          is_resacolo_member: boolean
           logo_path: string | null
+          logo_url: string | null
           name: string
+          profile_completeness_percent: number | null
           season_keys: string[]
           slug: string | null
           stay_duration_max_days: number | null
           stay_duration_min_days: number | null
           stay_type_keys: string[]
+          website_url: string | null
         }
         Insert: {
           activity_keys?: string[]
@@ -879,13 +1133,18 @@ export type Database = {
           age_max?: number | null
           hero_intro_text?: string | null
           id?: string
+          is_founding_member?: boolean
+          is_resacolo_member?: boolean
           logo_path?: string | null
+          logo_url?: string | null
           name: string
+          profile_completeness_percent?: number | null
           season_keys?: string[]
           slug?: string | null
           stay_duration_max_days?: number | null
           stay_duration_min_days?: number | null
           stay_type_keys?: string[]
+          website_url?: string | null
         }
         Update: {
           activity_keys?: string[]
@@ -898,13 +1157,18 @@ export type Database = {
           age_max?: number | null
           hero_intro_text?: string | null
           id?: string
+          is_founding_member?: boolean
+          is_resacolo_member?: boolean
           logo_path?: string | null
+          logo_url?: string | null
           name?: string
+          profile_completeness_percent?: number | null
           season_keys?: string[]
           slug?: string | null
           stay_duration_max_days?: number | null
           stay_duration_min_days?: number | null
           stay_type_keys?: string[]
+          website_url?: string | null
         }
         Relationships: []
       }
@@ -1383,6 +1647,7 @@ export type Database = {
           location_text: string | null
           region_text: string | null
           organizer_id: string
+          partner_discount_percent: number | null
           program_text: string | null
           required_documents_text: string | null
           season_id: string
@@ -1407,6 +1672,7 @@ export type Database = {
           location_text?: string | null
           region_text?: string | null
           organizer_id: string
+          partner_discount_percent?: number | null
           program_text?: string | null
           required_documents_text?: string | null
           season_id: string
@@ -1431,6 +1697,7 @@ export type Database = {
           location_text?: string | null
           region_text?: string | null
           organizer_id?: string
+          partner_discount_percent?: number | null
           program_text?: string | null
           required_documents_text?: string | null
           season_id?: string
@@ -1455,6 +1722,41 @@ export type Database = {
             columns: ["season_id"]
             isOneToOne: false
             referencedRelation: "seasons"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      support_request_messages: {
+        Row: {
+          author_user_id: string
+          body: string
+          created_at: string
+          id: string
+          is_internal: boolean
+          support_request_id: string
+        }
+        Insert: {
+          author_user_id: string
+          body: string
+          created_at?: string
+          id?: string
+          is_internal?: boolean
+          support_request_id: string
+        }
+        Update: {
+          author_user_id?: string
+          body?: string
+          created_at?: string
+          id?: string
+          is_internal?: boolean
+          support_request_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "support_request_messages_support_request_id_fkey"
+            columns: ["support_request_id"]
+            isOneToOne: false
+            referencedRelation: "organizer_support_requests"
             referencedColumns: ["id"]
           },
         ]
@@ -1506,7 +1808,23 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      organizer_admin_overview: {
+        Row: {
+          commission_percent: number | null
+          contact_email: string | null
+          id: string
+          is_founding_member: boolean | null
+          is_resacolo_member: boolean | null
+          name: string
+          profile_completeness_percent: number | null
+          publication_fee_cents: number | null
+          published_stays_count: number | null
+          sales_count: number | null
+          slug: string | null
+          stays_count: number | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       cron_archive_finished_stays: { Args: never; Returns: undefined }

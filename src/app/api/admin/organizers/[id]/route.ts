@@ -3,16 +3,27 @@ import {
   embedOrganizerDurationMeta,
   extractOrganizerDurationMeta
 } from '@/lib/organizer-rich-text';
+import { getSession } from '@/lib/auth/session';
+import { syncOrganizerProfileCompletenessPercent } from '@/lib/organizer-profile-completeness';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { slugify } from '@/lib/utils';
 
 export const runtime = 'nodejs';
 
 export async function POST(req: Request, context: { params: Promise<{ id: string }> }) {
+  const session = await getSession();
+  if (!session || session.role !== 'ADMIN') {
+    return NextResponse.redirect(new URL('/login', req.url), 303);
+  }
+
   const { id: idOrSlug } = await context.params;
   const formData = await req.formData();
   const name = String(formData.get('name') ?? '').trim();
   const contactEmail = String(formData.get('contact_email') ?? '').trim();
+  const websiteUrl = String(formData.get('website_url') ?? '').trim();
+  const logoUrlField = String(formData.get('logo_url') ?? '').trim();
+  const isFoundingMember = formData.get('is_founding_member') === 'on';
+  const isResacoloMember = formData.get('is_resacolo_member') === 'on';
   const heroIntroText = String(formData.get('hero_intro_text') ?? '').trim();
   const description = String(formData.get('description') ?? '').trim();
   const foundedYearRaw = String(formData.get('founded_year') ?? '').trim();
@@ -45,7 +56,7 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
 
   if (!organizer) {
     return NextResponse.redirect(
-      new URL(`/admin/organisateurs/${urlSlug}?error=Organisateur%20introuvable`, req.url),
+      new URL(`/admin/organizers/${urlSlug}?error=Organisme%20introuvable`, req.url),
       303
     );
   }
@@ -62,6 +73,10 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
     .update({
       name,
       contact_email: contactEmail,
+      website_url: websiteUrl || null,
+      logo_url: logoUrlField || null,
+      is_founding_member: isFoundingMember,
+      is_resacolo_member: isResacoloMember,
       hero_intro_text: heroIntroText || null,
       description: embedOrganizerDurationMeta(
         description || null,
@@ -78,7 +93,7 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
   if (error) {
     return NextResponse.redirect(
       new URL(
-        `/admin/organisateurs/${urlSlug}?error=${encodeURIComponent(error.message)}`,
+        `/admin/organizers/${urlSlug}?error=${encodeURIComponent(error.message)}`,
         req.url
       ),
       303
@@ -95,7 +110,7 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
     if (logoError) {
       return NextResponse.redirect(
         new URL(
-          `/admin/organisateurs/${urlSlug}?error=${encodeURIComponent(logoError.message)}`,
+          `/admin/organizers/${urlSlug}?error=${encodeURIComponent(logoError.message)}`,
           req.url
         ),
         303
@@ -114,7 +129,7 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
     if (projectError) {
       return NextResponse.redirect(
         new URL(
-          `/admin/organisateurs/${urlSlug}?error=${encodeURIComponent(projectError.message)}`,
+          `/admin/organizers/${urlSlug}?error=${encodeURIComponent(projectError.message)}`,
           req.url
         ),
         303
@@ -126,5 +141,7 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
       .eq('id', organizer.id);
   }
 
-  return NextResponse.redirect(new URL(`/admin/organisateurs/${urlSlug}?success=1`, req.url), 303);
+  await syncOrganizerProfileCompletenessPercent(supabase, organizer.id);
+
+  return NextResponse.redirect(new URL(`/admin/organizers/${urlSlug}?success=1`, req.url), 303);
 }

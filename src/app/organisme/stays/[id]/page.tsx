@@ -242,6 +242,22 @@ export default async function OrganizerStayDetailPage({ params: paramsPromise, s
     const region = normalizeStayRegion(formData.get('region_text'));
     const transportMode = String(formData.get('transport_mode') ?? '').trim();
     const transportText = String(formData.get('transport_text') ?? '').trim();
+    const partnerDiscountRaw = String(formData.get('partner_discount_percent') ?? '').trim().replace(',', '.');
+    let partnerDiscountPercent: number | null = null;
+    if (partnerDiscountRaw !== '') {
+      const parsed = Number(partnerDiscountRaw);
+      if (!Number.isFinite(parsed) || parsed < 0 || parsed > 100) {
+        redirect(
+          withOrganizerQuery(
+            `/organisme/sejours/${currentStay.id}?error=${encodeURIComponent(
+              'Réduction partenaires : indique un pourcentage entre 0 et 100, ou laisse vide.'
+            )}`,
+            selectedOrganizerId
+          )
+        );
+      }
+      partnerDiscountPercent = parsed;
+    }
     const requestedTransportMode = transportMode || currentStay.transport_mode || 'Sans transport';
     const { data: organizer } = await supabase
       .from('organizers')
@@ -286,7 +302,8 @@ export default async function OrganizerStayDetailPage({ params: paramsPromise, s
       age_max: ageMax,
       location_text: location || null,
       transport_mode: requestedTransportMode,
-      transport_text: transportText || null
+      transport_text: transportText || null,
+      partner_discount_percent: partnerDiscountPercent
     };
 
     const payloadWithRegion = { ...basePayload, region_text: region };
@@ -1030,6 +1047,32 @@ export default async function OrganizerStayDetailPage({ params: paramsPromise, s
                 </option>
               ))}
             </select>
+          </label>
+        </section>
+
+        <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
+          <h2 className="text-lg font-semibold text-slate-900">Tarifs et conditions commerciales</h2>
+          <label className="block">
+            <span className="mb-3 block text-sm font-medium text-slate-700">
+              Réduction accordée aux partenaires (%)
+            </span>
+            <input
+              name="partner_discount_percent"
+              type="number"
+              min="0"
+              max="100"
+              step="0.1"
+              placeholder="Ex. 5"
+              defaultValue={
+                currentStay.partner_discount_percent != null
+                  ? String(currentStay.partner_discount_percent)
+                  : ''
+              }
+              className="w-full max-w-xs rounded-lg border border-slate-200 px-3 py-2"
+            />
+            <span className="mt-2 block text-xs text-slate-500">
+              Laisse vide si aucune réduction n’est prévue pour les collectivités partenaires.
+            </span>
           </label>
         </section>
 

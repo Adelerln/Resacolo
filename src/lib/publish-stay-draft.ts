@@ -7,6 +7,7 @@ import {
 } from '@/lib/stay-categories';
 import { mapToCanonicalStayRegion } from '@/lib/stay-regions';
 import { normalizeStayTitle } from '@/lib/stay-title';
+import { maybeRecordPublicationFeeWhenStayPublished } from '@/lib/resacolo-fee-ledger.server';
 import type { Database, Json } from '@/types/supabase';
 
 type StayDraftRow = Database['public']['Tables']['stay_drafts']['Row'];
@@ -250,6 +251,8 @@ function buildFallbackAccommodationName(
       ? 'Camping'
       : accommodationType === 'auberge de jeunesse'
         ? 'Auberge de jeunesse'
+        : accommodationType === 'gite'
+          ? 'Gîte'
         : "Centre d'hébergement";
   return city ? `${base} à ${city}` : base;
 }
@@ -900,6 +903,7 @@ function normalizeAccommodationType(value: string | null | undefined, fallbackTe
   if (raw === 'camping') return 'camping';
   if (raw.includes('auberge')) return 'auberge de jeunesse';
   if (raw.includes('famille')) return "famille d'accueil";
+  if (raw.includes('gite')) return 'gite';
   if (raw === 'mixte') return 'mixte';
   if (raw === 'centre') return 'centre';
 
@@ -907,7 +911,17 @@ function normalizeAccommodationType(value: string | null | undefined, fallbackTe
   if (fallback.includes('camping') || fallback.includes('tente')) return 'camping';
   if (fallback.includes('auberge')) return 'auberge de jeunesse';
   if (fallback.includes('famille d accueil')) return "famille d'accueil";
+  if (fallback.includes('gite')) return 'gite';
   return 'centre';
+}
+
+function readImportedExistingAccommodationId(rawPayload: Record<string, unknown>): string | null {
+  const importOptions = rawPayload.import_options;
+  if (!isPlainObject(importOptions)) return null;
+  return typeof importOptions.existing_accommodation_id === 'string' &&
+    importOptions.existing_accommodation_id.trim().length > 0
+    ? importOptions.existing_accommodation_id.trim()
+    : null;
 }
 
 function parseAccommodation(
@@ -1095,6 +1109,12 @@ async function updateOrInsertStay(
   const normalizedRegion = mapToCanonicalStayRegion(draft.region_text);
   const seasonId = await resolveSeasonIdFromSessions(supabase, sessions);
 
+  let previousStatus: string | null | undefined;
+  if (stayId) {
+    const { data: existingStay } = await supabase.from('stays').select('status').eq('id', stayId).maybeSingle();
+    previousStatus = existingStay?.status ?? undefined;
+  }
+
   const basePayload: StayUpdate = {
     title: normalizedTitle,
     description: toNullableText(draft.description),
@@ -1155,6 +1175,13 @@ async function updateOrInsertStay(
       }
     }
 
+    await maybeRecordPublicationFeeWhenStayPublished(supabase, {
+      stayId,
+      organizerId: draft.organizer_id,
+      previousStatus,
+      newStatus: 'PUBLISHED',
+      occurredAt: now
+    });
     return stayId;
   }
 
@@ -1199,7 +1226,15 @@ async function updateOrInsertStay(
   }
 
   if (!firstTry.error && firstTry.data?.id) {
-    return firstTry.data.id;
+    const newId = firstTry.data.id;
+    await maybeRecordPublicationFeeWhenStayPublished(supabase, {
+      stayId: newId,
+      organizerId: draft.organizer_id,
+      previousStatus,
+      newStatus: 'PUBLISHED',
+      occurredAt: now
+    });
+    return newId;
   }
 
   const fallbackTry = await supabase.from('stays').insert(insertPayload).select('id').single();
@@ -1207,7 +1242,15 @@ async function updateOrInsertStay(
     throw new PublishStayDraftError('insert-stay', fallbackTry.error?.message ?? 'Impossible de créer le séjour.');
   }
 
-  return fallbackTry.data.id;
+  const newId = fallbackTry.data.id;
+  await maybeRecordPublicationFeeWhenStayPublished(supabase, {
+    stayId: newId,
+    organizerId: draft.organizer_id,
+    previousStatus,
+    newStatus: 'PUBLISHED',
+    occurredAt: now
+  });
+  return newId;
 }
 
 async function syncSessions(
@@ -1437,6 +1480,27 @@ async function syncAccommodation(
       return null;
     }
 
+    const { data: existingAccommodation, error: existingAccommodationError } = await supabase
+      .from('accommodations')
+      .select('id')
+      .eq('id', currentAccommodationId)
+      .eq('organizer_id', draft.organizer_id)
+      .maybeSingle();
+
+    if (existingAccommodationError) {
+      throw new PublishStayDraftError(
+        'resolve-existing-accommodation',
+        existingAccommodationError.message
+      );
+    }
+
+    if (!existingAccommodation?.id) {
+      throw new PublishStayDraftError(
+        'resolve-existing-accommodation',
+        "L'hébergement sélectionné pour le draft est introuvable."
+      );
+    }
+
     const { error: relinkError } = await supabase.from('stay_accommodations').insert({
       stay_id: stayId,
       accommodation_id: currentAccommodationId
@@ -1596,6 +1660,7 @@ export async function publishStayDraftToLive(
 
   const rawPayload = asObject(draft.raw_payload);
   const livePublication = readLivePublication(rawPayload);
+  const importedExistingAccommodationId = readImportedExistingAccommodationId(rawPayload);
   const categoryMapping = mapDraftCategoriesToLiveCategories(draft.categories);
   const categoryInferenceSource = [
     draft.summary,
@@ -1628,10 +1693,11 @@ export async function publishStayDraftToLive(
     (rawAiExtracted?.transport_options_json as Json | undefined) ??
     null;
   const transportOptions = parseTransportOptions(transportSource);
-  const accommodationSource =
-    draft.accommodations_json ??
-    (rawAiExtracted?.accommodations_json as Json | undefined) ??
-    null;
+  const accommodationSource = importedExistingAccommodationId
+    ? null
+    : draft.accommodations_json ??
+      (rawAiExtracted?.accommodations_json as Json | undefined) ??
+      null;
   const accommodation = parseAccommodation(accommodationSource, {
     locationText: draft.location_text
   });
@@ -1726,7 +1792,7 @@ export async function publishStayDraftToLive(
     supabase,
     draft,
     stayId,
-    livePublication.accommodationId,
+    importedExistingAccommodationId ?? livePublication.accommodationId,
     accommodationSource,
     accommodation
   );

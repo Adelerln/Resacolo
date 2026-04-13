@@ -3,7 +3,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { MapPin, Clock, Trash2, ShoppingBag } from 'lucide-react';
+import { MapPin, Users, Trash2 } from 'lucide-react';
 import { useCart } from '@/context/CartContext';
 import { getMockImageUrl, mockImages } from '@/lib/mockImages';
 
@@ -27,8 +27,15 @@ export default function PanierPage() {
   if (items.length === 0) {
     return (
       <div className="mx-auto max-w-3xl px-4 py-16 text-center sm:px-6">
-        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-slate-100 text-slate-400">
-          <ShoppingBag className="h-8 w-8" />
+        <div className="mx-auto flex h-20 w-20 items-center justify-center">
+          <Image
+            src="/image/header/pictos_header/icon-panier.png"
+            alt="Panier vide"
+            width={80}
+            height={80}
+            className="h-16 w-16 object-contain opacity-50"
+            priority
+          />
         </div>
         <h1 className="font-display mt-6 text-2xl font-bold text-slate-900">Votre panier est vide</h1>
         <p className="mt-2 text-slate-600">
@@ -81,8 +88,8 @@ export default function PanierPage() {
                     {item.location}
                   </span>
                   <span className="flex items-center gap-1">
-                    <Clock className="h-3.5 w-3.5" />
-                    {item.duration} · {item.ageRange}
+                    <Users className="h-3.5 w-3.5" />
+                    {item.ageRange}
                   </span>
                 </div>
               </div>

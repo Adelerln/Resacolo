@@ -45,7 +45,8 @@ const config: Config = {
       },
       fontFamily: {
         sans: ['var(--font-sans)', 'system-ui', 'sans-serif'],
-        display: ['var(--font-display)', 'system-ui', 'sans-serif']
+        display: ['var(--font-display)', 'system-ui', 'sans-serif'],
+        accent: ['var(--font-accent)']
       },
       boxShadow: {
         brand: '0 30px 60px -40px rgba(82, 176, 234, 0.35)'

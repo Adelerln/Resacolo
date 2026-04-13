@@ -5,7 +5,7 @@ import type { CheckoutPricing, CheckoutPricingItem } from '@/types/checkout';
 
 type SessionRow = Pick<
   Database['public']['Tables']['sessions']['Row'],
-  'id' | 'stay_id' | 'status' | 'capacity_total' | 'capacity_reserved'
+  'id' | 'stay_id' | 'status' | 'capacity_total' | 'capacity_reserved' | 'start_date' | 'end_date'
 >;
 type StayRow = Pick<Database['public']['Tables']['stays']['Row'], 'id' | 'organizer_id' | 'title' | 'status'>;
 type SessionPriceRow = Pick<Database['public']['Tables']['session_prices']['Row'], 'session_id' | 'amount_cents'>;
@@ -19,6 +19,7 @@ type ExtraOptionRow = Pick<
 >;
 type ResolvedInsuranceOption = {
   id: string;
+  label: string;
   session_id: string | null;
   stay_id: string | null;
   amount_cents: number | null;
@@ -60,6 +61,21 @@ function computeDifferentiatedAmount(option: TransportRow, leg: 'outbound' | 're
   return option.departure_city ? Math.round(option.amount_cents / 2) : option.amount_cents;
 }
 
+function formatTransportLabel(departureCity: string | null | undefined, returnCity: string | null | undefined) {
+  const departure = departureCity?.trim() ?? '';
+  const returning = returnCity?.trim() ?? '';
+
+  if (departure && returning) {
+    return departure === returning
+      ? `Ville départ/retour: ${departure}`
+      : `Ville départ/retour: ${departure} / ${returning}`;
+  }
+
+  if (departure) return `Ville départ: ${departure}`;
+  if (returning) return `Ville retour: ${returning}`;
+  return null;
+}
+
 function isInsuranceLikeLabel(label: string | null | undefined) {
   if (!label) return false;
   return /(assur|annulation|rapatriement|multirisque)/i.test(label);
@@ -69,7 +85,7 @@ async function fetchSession(sessionId: string): Promise<SessionRow> {
   const supabase = getServerSupabaseClient();
   const { data, error } = await supabase
     .from('sessions')
-    .select('id,stay_id,status,capacity_total,capacity_reserved')
+    .select('id,stay_id,status,capacity_total,capacity_reserved,start_date,end_date')
     .eq('id', sessionId)
     .maybeSingle();
 
@@ -129,13 +145,14 @@ async function fetchInsuranceOption(optionId: string): Promise<ResolvedInsurance
   const supabase = getServerSupabaseClient();
   const { data, error } = await supabase
     .from('insurance_options')
-    .select('id,session_id,stay_id,amount_cents,percent_value')
+    .select('id,label,session_id,stay_id,amount_cents,percent_value')
     .eq('id', optionId)
     .maybeSingle();
 
   if (!error && data) {
     return {
       id: data.id,
+      label: data.label,
       session_id: data.session_id,
       stay_id: data.stay_id,
       amount_cents: data.amount_cents,
@@ -156,6 +173,7 @@ async function fetchInsuranceOption(optionId: string): Promise<ResolvedInsurance
 
   return {
     id: fallbackExtra.id,
+    label: fallbackExtra.label,
     session_id: null,
     stay_id: fallbackExtra.stay_id,
     amount_cents: fallbackExtra.amount_cents,
@@ -229,11 +247,16 @@ export async function repriceCart(items: CartItem[]): Promise<CheckoutPricing> {
     const basePriceCents = sessionPrice.amount_cents;
 
     let transportPriceCents = 0;
+    let transportLabel: string | null = null;
     if (cartItem.selection.transportOptionId) {
       const transportOption = await fetchTransportOption(cartItem.selection.transportOptionId);
       assertRowBelongsToSession(transportOption.session_id, sessionId, 'Le transport');
       assertRowBelongsToStay(transportOption.stay_id, cartItem.stayId, 'Le transport');
       transportPriceCents = transportOption.amount_cents;
+      transportLabel = formatTransportLabel(
+        transportOption.departure_city,
+        transportOption.return_city
+      );
     } else {
       const [departureOption, returnOption] = await Promise.all([
         cartItem.selection.departureTransportOptionId
@@ -254,14 +277,23 @@ export async function repriceCart(items: CartItem[]): Promise<CheckoutPricing> {
         assertRowBelongsToStay(returnOption.stay_id, cartItem.stayId, 'Le transport retour');
         transportPriceCents += computeDifferentiatedAmount(returnOption, 'return');
       }
+
+      transportLabel =
+        formatTransportLabel(
+          cartItem.selection.departureCity ?? departureOption?.departure_city ?? null,
+          cartItem.selection.returnCity ?? returnOption?.return_city ?? null
+        ) ??
+        formatTransportLabel(departureOption?.departure_city ?? null, returnOption?.return_city ?? null);
     }
 
     let insurancePriceCents = 0;
     let persistedInsuranceOptionId: string | null = null;
+    let insuranceLabel: string | null = null;
     if (cartItem.selection.insuranceOptionId) {
       const insuranceOption = await fetchInsuranceOption(cartItem.selection.insuranceOptionId);
       assertRowBelongsToSession(insuranceOption.session_id, sessionId, 'L’assurance');
       assertRowBelongsToStay(insuranceOption.stay_id, cartItem.stayId, 'L’assurance');
+      insuranceLabel = insuranceOption.label;
       if (insuranceOption.source === 'INSURANCE_OPTION') {
         persistedInsuranceOptionId = insuranceOption.id;
       }
@@ -290,9 +322,13 @@ export async function repriceCart(items: CartItem[]): Promise<CheckoutPricing> {
       stayTitle: stay.title,
       sessionId,
       organizerId: stay.organizer_id,
+      sessionStartDate: session.start_date,
+      sessionEndDate: session.end_date,
       basePriceCents,
       transportPriceCents,
+      transportLabel,
       insurancePriceCents,
+      insuranceLabel,
       extraOptionPriceCents,
       optionsPriceCents,
       totalPriceCents,

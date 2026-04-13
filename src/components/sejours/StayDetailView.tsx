@@ -150,6 +150,7 @@ const DEFAULT_GALLERY = [
   getMockImageUrl(mockImages.sejours.gallery[1], 600, 80),
   getMockImageUrl(mockImages.sejours.gallery[2], 600, 80)
 ];
+const VISIT_TRACKING_DEDUP_MS = 60_000;
 
 export function StayDetailView({ stay }: { stay: Stay }) {
   const router = useRouter();
@@ -282,6 +283,15 @@ export function StayDetailView({ stay }: { stay: Stay }) {
   }, [stay.id]);
 
   useEffect(() => {
+    const storageKey = `stay-visit:${stay.id}`;
+    const now = Date.now();
+    const lastTrackedAtRaw = sessionStorage.getItem(storageKey);
+    const lastTrackedAt = lastTrackedAtRaw ? Number(lastTrackedAtRaw) : 0;
+    if (Number.isFinite(lastTrackedAt) && now - lastTrackedAt < VISIT_TRACKING_DEDUP_MS) {
+      return;
+    }
+    sessionStorage.setItem(storageKey, String(now));
+
     const controller = new AbortController();
     fetch(`/api/stays/${encodeURIComponent(stay.id)}/visit`, {
       method: 'POST',
@@ -473,7 +483,7 @@ export function StayDetailView({ stay }: { stay: Stay }) {
         />
         <div className="absolute inset-0 bg-slate-900/40" />
         <div className="absolute inset-0 flex items-center justify-center">
-          <h1 className="px-4 text-center font-display text-3xl font-bold tracking-tight text-white drop-shadow-lg sm:text-4xl md:text-5xl">
+          <h1 className="px-4 text-center font-display text-3xl font-normal tracking-tight text-white sm:text-4xl md:text-5xl">
             {stay.title}
           </h1>
         </div>

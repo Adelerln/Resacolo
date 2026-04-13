@@ -5,6 +5,7 @@ import { extractAccommodationLocationMeta } from '@/lib/accommodation-location';
 import { FILTER_LABELS } from '@/lib/constants';
 import { normalizeStayCategories } from '@/lib/stay-categories';
 import { deriveStayAudiences, formatStayAgeRange } from '@/lib/stay-ages';
+import { normalizeStayTitle } from '@/lib/stay-title';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { slugify } from '@/lib/utils';
 import type {
@@ -442,12 +443,13 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
         : fallbackSessionPrices.length
           ? Math.min(...fallbackSessionPrices)
           : null;
+      const displayTitle = normalizeStayTitle(stay.title) || stay.title.trim();
 
       return {
         id: stay.id,
-        title: stay.title,
+        title: displayTitle,
         slug: slugify(`${organizerName}-${stay.title}`) || stay.id,
-        summary: stay.summary?.trim() || buildSummary(stay.title, stay.description),
+        summary: stay.summary?.trim() || buildSummary(displayTitle, stay.description),
         description: stay.description?.trim() || stay.program_text?.trim() || '',
         seasonId: stay.season_id,
         seasonName: season?.name?.trim() || 'Saison non précisée',

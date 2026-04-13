@@ -3,8 +3,8 @@ import { getServerSupabaseClient } from '@/lib/supabase/server';
 
 export const runtime = 'nodejs';
 
-export async function POST(req: Request, context: { params: { memberId: string } }) {
-  const { memberId } = context.params;
+export async function POST(req: Request, context: { params: Promise<{ memberId: string }> }) {
+  const { memberId } = await context.params;
   const formData = await req.formData();
   const firstName = String(formData.get('first_name') ?? '').trim();
   const lastName = String(formData.get('last_name') ?? '').trim();

@@ -10,7 +10,7 @@ import { sessionStatusLabel, stayStatusLabel } from '@/lib/ui/labels';
 import type { Database } from '@/types/supabase';
 
 type PageProps = {
-  params: { id: string };
+  params: Promise<{ id: string }>;
   searchParams?: {
     saved?: string | string[];
   };
@@ -48,8 +48,9 @@ function getSessionPriceAmountCents(
   return sessionItem.session_prices.amount_cents ?? null;
 }
 
-export default async function AdminStayDetailPage({ params, searchParams }: PageProps) {
-  requireRole('ADMIN');
+export default async function AdminStayDetailPage({ params: paramsPromise, searchParams }: PageProps) {
+  const params = await paramsPromise;
+  await requireRole('ADMIN');
   const supabase = getServerSupabaseClient();
   const savedParam = Array.isArray(searchParams?.saved) ? searchParams?.saved[0] : searchParams?.saved;
   const showSavedBanner = savedParam === '1';

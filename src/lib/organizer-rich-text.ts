@@ -18,6 +18,8 @@ function stripHtmlTags(value: string) {
     .trim();
 }
 
+const ORGANIZER_DURATION_META_PATTERN = /<!--\s*resacolo:duration:(\d*):(\d*)\s*-->/i;
+
 export function convertPlainTextToRichTextHtml(value: string) {
   const paragraphs = value
     .trim()
@@ -55,6 +57,37 @@ export function sanitizeOrganizerRichText(value?: string | null) {
   html = html.replace(/<br>/gi, '<br />');
 
   return html.trim();
+}
+
+export function extractOrganizerDurationMeta(value?: string | null) {
+  const raw = value ?? '';
+  const match = raw.match(ORGANIZER_DURATION_META_PATTERN);
+  const parseValue = (input?: string) => {
+    if (!input) return null;
+    const parsed = Number(input);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  };
+
+  return {
+    description: raw.replace(ORGANIZER_DURATION_META_PATTERN, '').trim() || null,
+    stayDurationMinDays: parseValue(match?.[1]),
+    stayDurationMaxDays: parseValue(match?.[2])
+  };
+}
+
+export function embedOrganizerDurationMeta(
+  description: string | null | undefined,
+  stayDurationMinDays: number | null,
+  stayDurationMaxDays: number | null
+) {
+  const cleanedDescription = (description ?? '').replace(ORGANIZER_DURATION_META_PATTERN, '').trim();
+
+  if (stayDurationMinDays == null && stayDurationMaxDays == null) {
+    return cleanedDescription || null;
+  }
+
+  const meta = `<!-- resacolo:duration:${stayDurationMinDays ?? ''}:${stayDurationMaxDays ?? ''} -->`;
+  return cleanedDescription ? `${cleanedDescription}\n${meta}` : meta;
 }
 
 export function buildOrganizerPresentationHtml(description: string | null | undefined, publicAgeRange: string) {

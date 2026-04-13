@@ -3,7 +3,7 @@ import { requireRole } from '@/lib/auth/require';
 import { mockRequests, mockSessions, mockStages, mockStays, mockPartnerTenant } from '@/lib/mocks';
 
 export default async function AdminRequestsPage() {
-  requireRole('ADMIN');
+  await requireRole('ADMIN');
   const requests = mockRequests.map((request) => ({
     ...request,
     stay: mockStays.find((s) => s.id === request.stayId),

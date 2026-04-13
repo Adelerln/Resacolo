@@ -1,8 +1,14 @@
 import { revalidatePath } from 'next/cache';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import AccommodationFormFields, { formatAccommodationType } from '@/components/organisme/AccommodationFormFields';
+import AccommodationFormFields from '@/components/organisme/AccommodationFormFields';
+import { formatAccommodationType } from '@/lib/accommodation-types';
 import SavedToast from '@/components/common/SavedToast';
+import {
+  embedAccommodationLocationMeta,
+  extractAccommodationLocationMeta,
+  validateAccommodationLocation
+} from '@/lib/accommodation-location';
 import { deleteAccommodationForOrganizer } from '@/lib/accommodations';
 import { requireRole } from '@/lib/auth/require';
 import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers.server';
@@ -11,14 +17,12 @@ import { accommodationStatusBadgeClassName, accommodationStatusLabel } from '@/l
 import { slugify } from '@/lib/utils';
 
 type PageProps = {
-  params: {
-    id: string;
-  };
-  searchParams?: {
+  params: Promise<{ id: string }>;
+  searchParams?: Promise<{
     organizerId?: string | string[];
     saved?: string | string[];
     error?: string | string[];
-  };
+  }>;
 };
 
 export const dynamic = 'force-dynamic';
@@ -28,15 +32,21 @@ function isUuid(value: string | null | undefined): value is string {
   return typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
-export default async function AccommodationDetailPage({ params, searchParams }: PageProps) {
-  const session = requireRole('ORGANISATEUR');
+export default async function AccommodationDetailPage({ params: paramsPromise, searchParams }: PageProps) {
+  const params = await paramsPromise;
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const session = await requireRole('ORGANISATEUR');
   const supabase = getServerSupabaseClient();
   const { selectedOrganizerId } = await resolveOrganizerSelection(
-    searchParams?.organizerId,
+    resolvedSearchParams?.organizerId,
     session.tenantId ?? null
   );
-  const savedParam = Array.isArray(searchParams?.saved) ? searchParams?.saved[0] : searchParams?.saved;
-  const errorParam = Array.isArray(searchParams?.error) ? searchParams?.error[0] : searchParams?.error;
+  const savedParam = Array.isArray(resolvedSearchParams?.saved)
+    ? resolvedSearchParams?.saved[0]
+    : resolvedSearchParams?.saved;
+  const errorParam = Array.isArray(resolvedSearchParams?.error)
+    ? resolvedSearchParams?.error[0]
+    : resolvedSearchParams?.error;
   const showSavedBanner = savedParam === '1';
 
   if (!selectedOrganizerId) {
@@ -54,13 +64,30 @@ export default async function AccommodationDetailPage({ params, searchParams }: 
   if (!accommodation || accommodation.organizer_id !== selectedOrganizerId) {
     redirect(withOrganizerQuery('/organisme/hebergements', selectedOrganizerId));
   }
-  const currentAccommodation = accommodation;
+  const currentAccommodationLocation = extractAccommodationLocationMeta(accommodation.description);
+  const currentAccommodation = {
+    ...accommodation,
+    description: currentAccommodationLocation.description,
+    location_mode: currentAccommodationLocation.locationMode,
+    location_city: currentAccommodationLocation.locationCity,
+    location_department_code: currentAccommodationLocation.locationDepartmentCode,
+    location_country: currentAccommodationLocation.locationCountry,
+    itinerant_zone: currentAccommodationLocation.itinerantZone
+  };
 
   async function updateAccommodation(formData: FormData) {
     'use server';
     const supabase = getServerSupabaseClient();
     const name = String(formData.get('name') ?? '').trim();
     const accommodationType = String(formData.get('accommodation_type') ?? '').trim();
+    const description = String(formData.get('description') ?? '').trim();
+    const locationInput = {
+      locationMode: String(formData.get('location_mode') ?? '').trim(),
+      locationCity: String(formData.get('location_city') ?? '').trim(),
+      locationDepartmentCode: String(formData.get('location_department_code') ?? '').trim(),
+      locationCountry: String(formData.get('location_country') ?? '').trim(),
+      itinerantZone: String(formData.get('itinerant_zone') ?? '').trim()
+    };
     const now = new Date().toISOString();
     const nextStatus = currentAccommodation.status === 'TO_VALIDATE' ? 'VALIDATED' : currentAccommodation.status;
     const validatedByUserId = isUuid(session.userId) ? session.userId : null;
@@ -74,12 +101,22 @@ export default async function AccommodationDetailPage({ params, searchParams }: 
       );
     }
 
+    const locationError = validateAccommodationLocation(locationInput);
+    if (locationError) {
+      redirect(
+        withOrganizerQuery(
+          `/organisme/hebergements/${params.id}?error=${encodeURIComponent(locationError)}`,
+          selectedOrganizerId
+        )
+      );
+    }
+
     const { error } = await supabase
       .from('accommodations')
       .update({
         name,
         accommodation_type: accommodationType,
-        description: String(formData.get('description') ?? '').trim() || null,
+        description: embedAccommodationLocationMeta(description, locationInput),
         bed_info: String(formData.get('bed_info') ?? '').trim() || null,
         bathroom_info: String(formData.get('bathroom_info') ?? '').trim() || null,
         catering_info: String(formData.get('catering_info') ?? '').trim() || null,

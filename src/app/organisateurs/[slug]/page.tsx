@@ -5,7 +5,8 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { OrganizerStayPreviewCard } from '@/components/organisateurs/OrganizerStayPreviewCard';
 import { ExternalLink, MapPin } from 'lucide-react';
-import { formatAccommodationType } from '@/components/organisme/AccommodationFormFields';
+import { formatAccommodationType } from '@/lib/accommodation-types';
+import { extractAccommodationLocationMeta } from '@/lib/accommodation-location';
 import { getOrganizerBySlug } from '@/lib/mockOrganizers';
 import {
   ORGANIZER_ACTIVITY_OPTIONS,
@@ -15,6 +16,7 @@ import {
 } from '@/lib/organizer-profile-options';
 import {
   buildOrganizerPresentationHtml,
+  extractOrganizerDurationMeta,
   extractOrganizerPresentationSummary
 } from '@/lib/organizer-rich-text';
 import { getStays } from '@/lib/stays';
@@ -68,6 +70,22 @@ async function resolveOrganizerBannerPath(input: { name: string; slug: string })
     if (files.length === 0) return null;
 
     const organizerSlugKey = compactKey(input.slug);
+    const organizerNameKey = compactKey(input.name);
+
+    if (
+      organizerSlugKey.includes('poneydesquatresaisons') ||
+      organizerSlugKey.includes('poneysdes4saisons') ||
+      organizerSlugKey.includes('poneysdesquatresaisons') ||
+      organizerNameKey.includes('poneydesquatresaisons') ||
+      organizerNameKey.includes('poneysdes4saisons') ||
+      organizerNameKey.includes('poneysdesquatresaisons')
+    ) {
+      const p4sBanner = files.find((file) => compactKey(file).includes('p4s'));
+      if (p4sBanner) {
+        return `/image/organisateurs/bannieres_orga/${p4sBanner}`;
+      }
+    }
+
     if (organizerSlugKey === 'cesl') {
       const chicPlanetBanner = files.find((file) => compactKey(file).includes('chicplanet'));
       if (chicPlanetBanner) {
@@ -89,7 +107,7 @@ async function resolveOrganizerBannerPath(input: { name: string; slug: string })
 }
 
 function formatPublicAgeRange(ageMin?: number | null, ageMax?: number | null) {
-  if (ageMin != null || ageMax != null) return `${ageMin ?? '?'} à ${ageMax ?? '?'} ans`;
+  if (ageMin != null || ageMax != null) return `De ${ageMin ?? '?'} à ${ageMax ?? '?'} ans`;
   return 'Âges non renseignés';
 }
 
@@ -347,6 +365,7 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
 
   let stayDurationMinDays: number | null = null;
   let stayDurationMaxDays: number | null = null;
+  const organizerDescriptionMeta = extractOrganizerDurationMeta(resolvedOrganizer?.description);
   if (resolvedOrganizer?.id) {
     const { data: durRow, error: durErr } = await supabase
       .from('organizers')
@@ -357,6 +376,12 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
       stayDurationMinDays = durRow.stay_duration_min_days ?? null;
       stayDurationMaxDays = durRow.stay_duration_max_days ?? null;
     }
+  }
+  if (stayDurationMinDays == null) {
+    stayDurationMinDays = organizerDescriptionMeta.stayDurationMinDays;
+  }
+  if (stayDurationMaxDays == null) {
+    stayDurationMaxDays = organizerDescriptionMeta.stayDurationMaxDays;
   }
 
   const organizerName = resolvedOrganizer?.name ?? fallbackOrganizer?.name ?? 'Organisateur';
@@ -570,12 +595,17 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
     }
   }
 
-  const accommodations = (accommodationsRaw ?? []).map((accommodation) => ({
-    ...accommodation,
-    coverImage: coverImageByAccommodationId.get(accommodation.id) ?? null,
-    linkedStayTitles: linkedPublishedTitlesByAccommodationId.get(accommodation.id) ?? [],
-    linkedStayLocations: linkedPublishedLocationsByAccommodationId.get(accommodation.id) ?? []
-  }));
+  const accommodations = (accommodationsRaw ?? []).map((accommodation) => {
+    const locationMeta = extractAccommodationLocationMeta(accommodation.description);
+    return {
+      ...accommodation,
+      description: locationMeta.description,
+      locationLabel: locationMeta.locationLabel,
+      coverImage: coverImageByAccommodationId.get(accommodation.id) ?? null,
+      linkedStayTitles: linkedPublishedTitlesByAccommodationId.get(accommodation.id) ?? [],
+      linkedStayLocations: linkedPublishedLocationsByAccommodationId.get(accommodation.id) ?? []
+    };
+  });
   const featuredPublishedStays = publishedStays.slice(0, 3);
   const organizerCatalogHref = `/sejours?organizer=${encodeURIComponent(organizerName)}`;
 
@@ -693,7 +723,7 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
               )}
             </div>
 
-            <div className="hidden lg:block lg:self-start">
+            <div className="hidden lg:block lg:self-start lg:pt-[6.4rem]">
               <div className="ml-auto w-full max-w-[30rem] rounded-[28px] border border-slate-200 bg-slate-50/80 p-6 shadow-[0_18px_40px_-28px_rgba(15,23,42,0.18)]">
                 {seasonHeading ? (
                   <p className="text-[0.72rem] font-extrabold uppercase tracking-[0.18em] text-slate-900">
@@ -752,7 +782,7 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
                   </div>
                 ) : null}
                 <p className="mt-8 text-[0.72rem] font-extrabold uppercase tracking-[0.18em] text-slate-900">
-                  Durées des séjours :
+                  Durées de séjour :
                 </p>
                 <div className="mt-3 flex items-center gap-3">
                   <Image
@@ -765,7 +795,7 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
                   <p className="text-sm font-semibold leading-relaxed text-slate-700">{stayDurationLabel}</p>
                 </div>
                 <p className="mt-8 text-[0.72rem] font-extrabold uppercase tracking-[0.18em] text-slate-900">
-                  Tranches d&apos;âges :
+                  Tranche d&apos;âge :
                 </p>
                 <div className="mt-3 flex items-center gap-3">
                   <Image
@@ -863,7 +893,8 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
               <div className="-mx-4 overflow-x-auto px-4 pb-3">
                 <div className="flex min-w-max gap-5">
                   {accommodations.map((accommodation) => {
-                    const locationLabel = accommodation.linkedStayLocations.find(Boolean) ?? '';
+                    const locationLabel =
+                      accommodation.locationLabel ?? accommodation.linkedStayLocations.find(Boolean) ?? '';
                     return (
                       <article
                         key={accommodation.id}
@@ -958,7 +989,7 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
           <div className="mt-8 flex justify-center">
             <Link
               href={organizerCatalogHref}
-              className="inline-flex items-center rounded-full border border-[#6DC7FE] px-6 py-3 text-sm font-semibold text-[#6DC7FE] transition hover:bg-[#6DC7FE] hover:text-white"
+              className="inline-flex items-center rounded-full border border-[#6DC7FE] bg-[#6DC7FE] px-6 py-3 text-sm font-bold text-white transition hover:bg-white hover:text-[#6DC7FE]"
             >
               Découvrir les autres séjours
             </Link>

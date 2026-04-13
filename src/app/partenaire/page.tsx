@@ -2,8 +2,8 @@ import { requireRole } from '@/lib/auth/require';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 
-export default function PartnerHome() {
-  const session = requireRole('PARTENAIRE');
+export default async function PartnerHome() {
+  const session = await requireRole('PARTENAIRE');
 
   return (
     <div className="space-y-4">

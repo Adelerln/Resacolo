@@ -42,7 +42,7 @@ async function ensureCheckoutUserId(candidate: string) {
 }
 
 export async function getOrCreateClientUserId() {
-  const store = cookies();
+  const store = await cookies();
   const existing = store.get(CLIENT_COOKIE_NAME)?.value;
 
   if (existing) {

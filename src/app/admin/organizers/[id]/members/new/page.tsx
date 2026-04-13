@@ -1,9 +1,10 @@
 import { requireRole } from '@/lib/auth/require';
 
-type PageProps = { params: { id: string }; searchParams?: { error?: string } };
+type PageProps = { params: Promise<{ id: string }>; searchParams?: { error?: string } };
 
-export default async function AdminOrganizerMemberNewPage({ params, searchParams }: PageProps) {
-  requireRole('ADMIN');
+export default async function AdminOrganizerMemberNewPage({ params: paramsPromise, searchParams }: PageProps) {
+  const params = await paramsPromise;
+  await requireRole('ADMIN');
 
   return (
     <div className="space-y-6">

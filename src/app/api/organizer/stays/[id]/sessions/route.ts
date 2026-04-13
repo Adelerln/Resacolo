@@ -11,12 +11,13 @@ const sessionSchema = z.object({
   capacityTotal: z.number().int().nonnegative()
 });
 
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const body = await req.json();
   const input = sessionSchema.parse(body);
   const service = new SessionService();
   const session = await service.create({
-    stayId: params.id,
+    stayId: id,
     seasonId: input.seasonId,
     startDate: new Date(input.startDate),
     endDate: new Date(input.endDate),

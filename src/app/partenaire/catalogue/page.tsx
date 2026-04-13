@@ -4,7 +4,7 @@ import { mockSeasons, mockSessions, mockStays } from '@/lib/mocks';
 import { stayStatusLabel } from '@/lib/ui/labels';
 
 export default async function PartnerCatalogPage({ searchParams }: { searchParams?: { q?: string } }) {
-  const session = requireRole('PARTENAIRE');
+  const session = await requireRole('PARTENAIRE');
   const partnerTenantId = session.tenantId;
   const useMock = process.env.MOCK_UI === '1';
   const season = useMock ? mockSeasons[0] : null;

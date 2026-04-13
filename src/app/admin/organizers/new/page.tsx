@@ -3,7 +3,7 @@ import { requireRole } from '@/lib/auth/require';
 type PageProps = { searchParams?: { error?: string } };
 
 export default async function AdminOrganizerNewPage({ searchParams }: PageProps) {
-  requireRole('ADMIN');
+  await requireRole('ADMIN');
 
   return (
     <div className="space-y-6">

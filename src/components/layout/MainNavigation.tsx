@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, Menu, X } from 'lucide-react';
 import clsx from 'clsx';
+import { useFavorites } from '@/components/favorites/FavoritesProvider';
 import { useCart } from '@/context/CartContext';
 
 const links = [
@@ -53,6 +54,7 @@ function isDropdownItem(
 export function MainNavigation() {
   const pathname = usePathname();
   const { count: cartCount } = useCart();
+  const { favoriteIdsArray } = useFavorites();
   const [open, setOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [backOfficeOpen, setBackOfficeOpen] = useState(false);
@@ -220,7 +222,11 @@ export function MainNavigation() {
               className="h-4 w-4 object-contain"
             />
           </Link>
-          <button className={headerIconButtonClass} aria-label="Favoris" type="button">
+          <Link
+            href="/account/favorites"
+            className={clsx(headerIconButtonClass, 'relative')}
+            aria-label="Favoris"
+          >
             <Image
               src="/image/header/pictos_header/icon-favoris.png"
               alt=""
@@ -228,7 +234,12 @@ export function MainNavigation() {
               height={16}
               className="h-4 w-4 object-contain"
             />
-          </button>
+            {favoriteIdsArray.length > 0 && (
+              <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent-500 px-1 text-[10px] font-semibold text-white">
+                {favoriteIdsArray.length > 99 ? '99+' : favoriteIdsArray.length}
+              </span>
+            )}
+          </Link>
           <Link
             href="/panier"
             className={clsx(headerIconButtonClass, 'relative')}
@@ -360,6 +371,13 @@ export function MainNavigation() {
                     className="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
                   >
                     Mon compte
+                  </Link>
+                  <Link
+                    href="/account/favorites"
+                    onClick={close}
+                    className="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
+                  >
+                    Favoris {favoriteIdsArray.length > 0 ? `(${favoriteIdsArray.length > 99 ? '99+' : favoriteIdsArray.length})` : ''}
                   </Link>
                   <Link
                     href="/panier"

@@ -16,7 +16,7 @@ const footerHighlights: FooterHighlight[] = [
         <strong>100 % des séjours</strong> conçus et organisés par des opérateurs producteurs
       </>
     ),
-    imageSrc: '/image/accueil/pictos_accueil/qualite.png'
+    imageSrc: '/image/footer/qualite.png'
   },
   {
     title: 'Savoir-faire',
@@ -25,7 +25,7 @@ const footerHighlights: FooterHighlight[] = [
         <strong>De 5 à 75 ans</strong> d’expérience dans le secteur des accueils collectifs de mineurs
       </>
     ),
-    imageSrc: '/image/accueil/pictos_accueil/evaluation.png'
+    imageSrc: '/image/footer/evaluation.png'
   },
   {
     title: 'Engagement',
@@ -34,7 +34,7 @@ const footerHighlights: FooterHighlight[] = [
         <strong>La sécurité et l’épanouissement</strong> des enfants comme premières préoccupations
       </>
     ),
-    imageSrc: '/image/accueil/pictos_accueil/bouclier.png'
+    imageSrc: '/image/footer/bouclier.png'
   }
 ];
 
@@ -56,7 +56,7 @@ export function Footer({ hideHelpAndLegal = false }: { hideHelpAndLegal?: boolea
     <footer className="relative overflow-visible bg-[#7dbcf0] text-white">
       <div className="pointer-events-none absolute right-0 top-0 z-10 translate-y-[-42%]" aria-hidden>
         <Image
-          src="/image/accueil/pictos_accueil/gouttes.png"
+          src="/image/footer/gouttes.png"
           alt=""
           width={320}
           height={240}

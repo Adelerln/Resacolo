@@ -18,8 +18,8 @@ function withOrganizerQuery(path: string, organizerId?: string | null) {
 }
 
 export default async function OrganizerLayout({ children }: { children: React.ReactNode }) {
-  const session = requireRole('ORGANISATEUR');
-  const accessRole = getOrganizerAccessRole();
+  const session = await requireRole('ORGANISATEUR');
+  const accessRole = await getOrganizerAccessRole();
   const { organizers, selectedOrganizerId } = await resolveOrganizerSelection(
     undefined,
     session.tenantId ?? null

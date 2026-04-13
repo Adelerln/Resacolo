@@ -9,7 +9,7 @@ import type { Json } from '@/types/supabase';
 import type { StayDraftReviewPayload } from '@/types/stay-draft-review';
 
 type PageProps = {
-  params: { id: string };
+  params: Promise<{ id: string }>;
   searchParams?: {
     organizerId?: string | string[];
   };
@@ -98,11 +98,13 @@ function draftStatusBadgeClass(status: string | null): string {
   }
 }
 
-export default async function StayDraftReviewPage({ params, searchParams }: PageProps) {
-  const session = requireRole('ORGANISATEUR');
+export default async function StayDraftReviewPage({ params: paramsPromise, searchParams }: PageProps) {
+  const params = await paramsPromise;
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const session = await requireRole('ORGANISATEUR');
   const supabase = getServerSupabaseClient();
   const { selectedOrganizer, selectedOrganizerId } = await resolveOrganizerSelection(
-    searchParams?.organizerId,
+    resolvedSearchParams?.organizerId,
     session.tenantId ?? null
   );
 

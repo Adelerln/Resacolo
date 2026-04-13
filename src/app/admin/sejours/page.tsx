@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 export default async function AdminStaysPage() {
-  requireRole('ADMIN');
+  await requireRole('ADMIN');
   const supabase = getServerSupabaseClient();
 
   const { data: staysRaw, error } = await supabase

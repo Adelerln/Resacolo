@@ -3,8 +3,8 @@ import { getServerSupabaseClient } from '@/lib/supabase/server';
 
 export const runtime = 'nodejs';
 
-export async function POST(req: Request, context: { params: { id: string } }) {
-  const { id: slug } = context.params;
+export async function POST(req: Request, context: { params: Promise<{ id: string }> }) {
+  const { id: slug } = await context.params;
   const supabase = getServerSupabaseClient();
 
   let { data: organizer } = await supabase

@@ -28,9 +28,9 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 type PageProps = {
-  searchParams?: {
+  searchParams?: Promise<{
     organizerId?: string | string[];
-  };
+  }>;
 };
 
 function formatPercent(value: number) {
@@ -106,11 +106,12 @@ function formatStayDisplayTitle(title: string) {
 }
 
 export default async function OrganizerDashboardPage({ searchParams }: PageProps) {
-  const session = requireRole('ORGANISATEUR');
-  const accessRole = getOrganizerAccessRole();
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const session = await requireRole('ORGANISATEUR');
+  const accessRole = await getOrganizerAccessRole();
   const supabase = getServerSupabaseClient();
   const { selectedOrganizer, selectedOrganizerId } = await resolveOrganizerSelection(
-    searchParams?.organizerId,
+    resolvedSearchParams?.organizerId,
     session.tenantId ?? null
   );
   const organizerId = selectedOrganizerId;
@@ -165,7 +166,7 @@ export default async function OrganizerDashboardPage({ searchParams }: PageProps
             .in('entity_id', stayIds)
             .gte('created_at', visitsLookbackDate)
         ])
-      : [{ data: [] }, { data: [] }, { data: [] }];
+      : [{ data: [] }, { data: [] }, { data: [] }, { data: [] }];
 
   const sessions = sessionsRaw ?? [];
   const sessionIds = sessions.map((sessionItem) => sessionItem.id);

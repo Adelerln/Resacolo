@@ -3,25 +3,26 @@ import { getServerSupabaseClient } from '@/lib/supabase/server';
 
 export const runtime = 'nodejs';
 
-export async function GET(_: Request, { params }: { params: { id: string } }) {
+export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id: orderId } = await params;
   const supabase = getServerSupabaseClient();
 
   const [{ data: order, error: orderError }, { data: payments }, { data: orderItems }] = await Promise.all([
     supabase
       .from('orders')
       .select('id,status,paid_at')
-      .eq('id', params.id)
+      .eq('id', orderId)
       .maybeSingle(),
     supabase
       .from('payments')
       .select('id,status,amount_cents,currency,updated_at')
-      .eq('order_id', params.id)
+      .eq('order_id', orderId)
       .order('updated_at', { ascending: false })
       .limit(1),
     supabase
       .from('order_items')
       .select('total_price_cents')
-      .eq('order_id', params.id)
+      .eq('order_id', orderId)
   ]);
 
   if (orderError || !order) {

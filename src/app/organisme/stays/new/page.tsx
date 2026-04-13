@@ -4,14 +4,14 @@ import { requireRole } from '@/lib/auth/require';
 import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers.server';
 
 type PageProps = {
-  searchParams?: {
+  searchParams?: Promise<{
     organizerId?: string | string[];
     error?: string | string[];
     prefill?: string | string[];
     draftId?: string | string[];
     ai?: string | string[];
     aiDraftId?: string | string[];
-  };
+  }>;
 };
 
 function formatRedirectValue(value?: string | string[]) {
@@ -19,17 +19,18 @@ function formatRedirectValue(value?: string | string[]) {
 }
 
 export default async function NewStayChoicePage({ searchParams }: PageProps) {
-  const session = requireRole('ORGANISATEUR');
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const session = await requireRole('ORGANISATEUR');
   const { selectedOrganizer, selectedOrganizerId } = await resolveOrganizerSelection(
-    searchParams?.organizerId,
+    resolvedSearchParams?.organizerId,
     session.tenantId ?? null
   );
   const organizerId = selectedOrganizerId;
-  const errorParam = formatRedirectValue(searchParams?.error);
-  const prefillParam = formatRedirectValue(searchParams?.prefill);
-  const draftIdParam = formatRedirectValue(searchParams?.draftId);
-  const aiParam = formatRedirectValue(searchParams?.ai);
-  const aiDraftIdParam = formatRedirectValue(searchParams?.aiDraftId);
+  const errorParam = formatRedirectValue(resolvedSearchParams?.error);
+  const prefillParam = formatRedirectValue(resolvedSearchParams?.prefill);
+  const draftIdParam = formatRedirectValue(resolvedSearchParams?.draftId);
+  const aiParam = formatRedirectValue(resolvedSearchParams?.ai);
+  const aiDraftIdParam = formatRedirectValue(resolvedSearchParams?.aiDraftId);
 
   return (
     <div className="space-y-6">

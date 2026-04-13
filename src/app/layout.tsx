@@ -28,7 +28,12 @@ export const metadata: Metadata = {
   title: 'Resacolo | Plateforme des colonies de vacances',
   description:
     'Découvrez toutes les colonies de vacances proposées par les membres de Resacolo et trouvez le séjour idéal pour chaque enfant.',
-  metadataBase: new URL('https://resacolo.com')
+  metadataBase: new URL('https://resacolo.com'),
+  icons: {
+    icon: '/image/footer/gouttes.png',
+    shortcut: '/image/footer/gouttes.png',
+    apple: '/image/footer/gouttes.png'
+  }
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Heart,
   Mail,
@@ -13,36 +13,15 @@ import {
   X
 } from 'lucide-react';
 import Link from 'next/link';
-
-type ParentStatus = 'pere' | 'mere' | 'grand-parent' | 'autre';
-
-type AccountInfo = {
-  addressLine1: string;
-  addressLine2: string;
-  postalCode: string;
-  city: string;
-  parent1Name: string;
-  parent2Name: string;
-  parent1Phone: string;
-  parent2Phone: string;
-  parent1Email: string;
-  parent2Email: string;
-  parent1Status: ParentStatus;
-  parent2Status: ParentStatus;
-  parent1StatusOther: string;
-  parent2StatusOther: string;
-  parent2HasDifferentAddress: boolean;
-  parent2AddressLine1: string;
-  parent2AddressLine2: string;
-  parent2PostalCode: string;
-  parent2City: string;
-};
-
-const mockUser = {
-  name: 'Marie Dupont',
-  email: 'marie.dupont@example.com',
-  city: 'Lyon, France'
-};
+import {
+  DEFAULT_ACCOUNT_PREFERENCES,
+  formatFrenchPhone,
+  parentStatusLabel,
+  readAccountPreferences,
+  saveAccountPreferences,
+  type AccountInfo,
+  type ParentStatus
+} from '@/lib/account-preferences';
 
 const mockUpcoming = [
   {
@@ -70,49 +49,30 @@ const mockFavorites = [
   }
 ];
 
-const initialAccountInfo: AccountInfo = {
-  addressLine1: '12 rue des Tilleuls',
-  addressLine2: 'Bâtiment B, Appartement 23',
-  postalCode: '69003',
-  city: 'Lyon',
-  parent1Name: 'Marie Dupont',
-  parent2Name: 'Jean Dupont',
-  parent1Phone: '06.12.34.56.78',
-  parent2Phone: '06.78.90.12.34',
-  parent1Email: 'parent1@example.com',
-  parent2Email: 'parent2@example.com',
-  parent1Status: 'mere',
-  parent2Status: 'pere',
-  parent1StatusOther: '',
-  parent2StatusOther: '',
-  parent2HasDifferentAddress: false,
-  parent2AddressLine1: '',
-  parent2AddressLine2: '',
-  parent2PostalCode: '',
-  parent2City: ''
-};
-
-function parentStatusLabel(status: ParentStatus, other?: string) {
-  if (status === 'pere') return 'Père';
-  if (status === 'mere') return 'Mère';
-  if (status === 'grand-parent') return 'Grand-parent';
-  return other?.trim() || 'Autre';
-}
-
-function formatFrenchPhone(value: string) {
-  const digits = value.replace(/\D/g, '').slice(0, 10);
-  if (!digits) return '';
-  return digits.match(/.{1,2}/g)?.join('.') ?? digits;
-}
-
 function formatAddress(line1: string, line2: string, postalCode: string, city: string) {
   return [line1, line2, `${postalCode} ${city}`.trim()].filter(Boolean).join(', ');
 }
 
 export default function MonCompteClient() {
-  const [accountInfo, setAccountInfo] = useState<AccountInfo>(initialAccountInfo);
+  const [profile, setProfile] = useState({
+    name: DEFAULT_ACCOUNT_PREFERENCES.userName,
+    email: DEFAULT_ACCOUNT_PREFERENCES.userEmail,
+    city: DEFAULT_ACCOUNT_PREFERENCES.userCity
+  });
+  const [accountInfo, setAccountInfo] = useState<AccountInfo>(DEFAULT_ACCOUNT_PREFERENCES.accountInfo);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [draft, setDraft] = useState<AccountInfo>(initialAccountInfo);
+  const [draft, setDraft] = useState<AccountInfo>(DEFAULT_ACCOUNT_PREFERENCES.accountInfo);
+
+  useEffect(() => {
+    const storedPreferences = readAccountPreferences();
+    setProfile({
+      name: storedPreferences.userName,
+      email: storedPreferences.userEmail,
+      city: storedPreferences.userCity
+    });
+    setAccountInfo(storedPreferences.accountInfo);
+    setDraft(storedPreferences.accountInfo);
+  }, []);
 
   const fullAddress = formatAddress(
     accountInfo.addressLine1,
@@ -127,7 +87,7 @@ export default function MonCompteClient() {
         accountInfo.parent2PostalCode,
         accountInfo.parent2City
       )
-    : 'Même adresse que le domicile';
+    : 'Identique à l’adresse du domicile';
 
   function openEditModal() {
     setDraft(accountInfo);
@@ -140,12 +100,36 @@ export default function MonCompteClient() {
 
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    setAccountInfo(draft);
+    const nextAccountInfo = { ...draft };
+    setAccountInfo(nextAccountInfo);
+    saveAccountPreferences({
+      userName: profile.name,
+      userEmail: profile.email,
+      userCity: profile.city,
+      accountInfo: nextAccountInfo
+    });
     setIsModalOpen(false);
   }
 
   function updateField<K extends keyof AccountInfo>(key: K, value: AccountInfo[K]) {
     setDraft((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function handleParent2DifferentAddressChange(checked: boolean) {
+    setDraft((prev) => {
+      if (checked) {
+        return { ...prev, parent2HasDifferentAddress: true };
+      }
+
+      return {
+        ...prev,
+        parent2HasDifferentAddress: false,
+        parent2AddressLine1: '',
+        parent2AddressLine2: '',
+        parent2PostalCode: '',
+        parent2City: ''
+      };
+    });
   }
 
   return (
@@ -158,21 +142,21 @@ export default function MonCompteClient() {
             </div>
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Mon compte</p>
-              <h1 className="mt-1 font-display text-2xl font-bold text-slate-900 sm:text-3xl">Bonjour {mockUser.name}</h1>
+              <h1 className="mt-1 font-display text-2xl font-bold text-slate-900 sm:text-3xl">Bonjour {profile.name}</h1>
               <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-500">
                 <Mail className="h-4 w-4" />
-                {mockUser.email}
+                {profile.email}
                 <span className="mx-1 hidden text-slate-300 sm:inline">|</span>
                 <MapPin className="h-4 w-4" />
-                {mockUser.city}
+                {profile.city}
               </p>
             </div>
           </div>
           <div className="flex flex-wrap gap-3">
-            <button className="btn btn-secondary btn-sm">
+            <Link href="/contact/preferences" className="btn btn-secondary btn-sm">
               <Settings className="h-4 w-4" />
               Préférences
-            </button>
+            </Link>
             <button className="btn btn-primary btn-sm">Se déconnecter</button>
           </div>
         </header>
@@ -324,12 +308,14 @@ export default function MonCompteClient() {
                         {accountInfo.parent2Email || 'Non renseigné'}
                       </dd>
                     </div>
-                    <div className="flex items-start justify-between gap-3">
-                      <dt className="text-slate-500">Adresse</dt>
-                      <dd className="max-w-[65%] text-right font-medium text-slate-900">
-                        {parent2Address || 'Non renseignée'}
-                      </dd>
-                    </div>
+                    {accountInfo.parent2HasDifferentAddress && (
+                      <div className="flex items-start justify-between gap-3">
+                        <dt className="text-slate-500">Adresse</dt>
+                        <dd className="max-w-[65%] text-right font-medium text-slate-900">
+                          {parent2Address || 'Non renseignée'}
+                        </dd>
+                      </div>
+                    )}
                   </dl>
                 </article>
               </div>
@@ -478,7 +464,7 @@ export default function MonCompteClient() {
                     <input
                       type="tel"
                       inputMode="tel"
-                      pattern="^0[1-9](\\.[0-9]{2}){4}$"
+                      pattern="^0[1-9]([.][0-9]{2}){4}$"
                       className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
                       value={draft.parent1Phone}
                       onChange={(e) => updateField('parent1Phone', formatFrenchPhone(e.target.value))}
@@ -541,7 +527,7 @@ export default function MonCompteClient() {
                     <input
                       type="tel"
                       inputMode="tel"
-                      pattern="^0[1-9](\\.[0-9]{2}){4}$"
+                      pattern="^0[1-9]([.][0-9]{2}){4}$"
                       className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
                       value={draft.parent2Phone}
                       onChange={(e) => updateField('parent2Phone', formatFrenchPhone(e.target.value))}
@@ -562,11 +548,16 @@ export default function MonCompteClient() {
                     <input
                       type="checkbox"
                       checked={draft.parent2HasDifferentAddress}
-                      onChange={(e) => updateField('parent2HasDifferentAddress', e.target.checked)}
+                      onChange={(e) => handleParent2DifferentAddressChange(e.target.checked)}
                       className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
                     />
-                    Adresse parent 2 différente du domicile
+                    Adresse du parent 2 différente du domicile
                   </label>
+                  {!draft.parent2HasDifferentAddress && (
+                    <p className="sm:col-span-2 -mt-1 text-xs text-slate-500">
+                      Parent 2 utilise la même adresse que le domicile.
+                    </p>
+                  )}
                 </div>
 
                 {draft.parent2HasDifferentAddress && (

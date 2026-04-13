@@ -1,0 +1,3 @@
+export const STAY_VISIT_AUDIT_ACTION = 'STAY_PUBLIC_VIEW';
+export const STAY_VISIT_ENTITY_TYPE = 'stay';
+export const STAY_VISIT_LOOKBACK_DAYS = 30;

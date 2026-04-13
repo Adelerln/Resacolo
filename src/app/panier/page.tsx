@@ -21,8 +21,8 @@ export default function PanierPage() {
   const router = useRouter();
   const { items, removeItemByIndex } = useCart();
 
-  const total = items.reduce((sum, s) => sum + (s.priceFrom ?? 0), 0);
-  const hasTotal = items.every((s) => s.priceFrom != null);
+  const total = items.reduce((sum, item) => sum + (item.unitPrice ?? 0), 0);
+  const hasTotal = items.every((item) => item.unitPrice != null);
 
   if (items.length === 0) {
     return (
@@ -52,14 +52,14 @@ export default function PanierPage() {
       </p>
 
       <div className="mt-10 space-y-6">
-        {items.map((stay, index) => (
+        {items.map((item, index) => (
           <article
-            key={`${stay.slug}-${index}`}
+            key={`${item.id}-${index}`}
             className="flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm sm:flex-row"
           >
             <div className="relative h-40 w-full shrink-0 sm:h-36 sm:w-48">
               <Image
-                src={stay.coverImage || getMockImageUrl(mockImages.sejours.fallbackCover, 400, 80)}
+                src={item.coverImage || getMockImageUrl(mockImages.sejours.fallbackCover, 400, 80)}
                 alt=""
                 fill
                 className="object-cover"
@@ -69,26 +69,26 @@ export default function PanierPage() {
             <div className="flex flex-1 flex-col justify-between p-4 sm:p-5">
               <div>
                 <Link
-                  href={`/sejours/${stay.slug}`}
+                  href={`/sejours/${item.slug}`}
                   className="font-display text-lg font-semibold text-slate-900 hover:text-brand-600"
                 >
-                  {stay.title}
+                  {item.title}
                 </Link>
-                <p className="mt-1 text-xs font-medium text-brand-600">{stay.organizer.name}</p>
+                <p className="mt-1 text-xs font-medium text-brand-600">{item.organizerName}</p>
                 <div className="mt-2 flex flex-wrap gap-3 text-sm text-slate-500">
                   <span className="flex items-center gap-1">
                     <MapPin className="h-3.5 w-3.5" />
-                    {stay.location}
+                    {item.location}
                   </span>
                   <span className="flex items-center gap-1">
                     <Clock className="h-3.5 w-3.5" />
-                    {stay.duration} · {stay.ageRange}
+                    {item.duration} · {item.ageRange}
                   </span>
                 </div>
               </div>
               <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-4">
                 <p className="text-lg font-semibold text-accent-600">
-                  {formatPrice(stay.priceFrom)}
+                  {formatPrice(item.unitPrice)}
                 </p>
                 <button
                   type="button"
@@ -122,7 +122,7 @@ export default function PanierPage() {
             </Link>
             <button
               type="button"
-              onClick={() => router.push('/contact')}
+              onClick={() => router.push('/checkout/informations')}
               className="btn btn-primary btn-md"
             >
               Valider le panier

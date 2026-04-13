@@ -27,7 +27,9 @@ const benefits = [
     imageAlt: 'Pictogramme ordinateur',
     text: (
       <>
-        <strong style={{ color: '#fb8500' }}>1er site</strong> conçu par un collectif d&apos;organisateurs.
+        <strong style={{ color: '#fb8500' }}>1er site</strong>
+        {' '}
+        conçu par un collectif d&apos;organisateurs.
       </>
     )
   },
@@ -45,7 +47,9 @@ const benefits = [
     imageAlt: 'Pictogramme carrousel',
     text: (
       <>
-        Une <strong style={{ color: '#fb8500' }}>offre riche et variée</strong> issue d&apos;opérateurs reconnus.
+        Une <strong style={{ color: '#fb8500' }}>offre riche et variée</strong>
+        {' '}
+        issue d&apos;opérateurs reconnus.
       </>
     )
   }

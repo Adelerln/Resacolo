@@ -36,6 +36,14 @@ const nextConfig = {
         protocol: 'https',
         hostname: 'www.choisirsacolo.fr'
       },
+      {
+        protocol: 'https',
+        hostname: 'www.cesl.fr'
+      },
+      {
+        protocol: 'https',
+        hostname: 'cesl.fr'
+      },
       ...(supabaseHostname
         ? [
             {

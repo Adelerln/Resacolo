@@ -40,6 +40,20 @@ function prettyJson(value: unknown): string {
   return JSON.stringify(value, null, 2);
 }
 
+function getAccommodationField(
+  source: Record<string, unknown> | null,
+  ...keys: string[]
+): string {
+  if (!source) return '';
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return value;
+    }
+  }
+  return '';
+}
+
 export default function StayDraftReviewForm({
   draftId,
   organizerId,
@@ -69,8 +83,26 @@ export default function StayDraftReviewForm({
   const [transportOptionsJsonText, setTransportOptionsJsonText] = useState(
     prettyJson(initialPayload.transport_options_json)
   );
-  const [accommodationsJsonText, setAccommodationsJsonText] = useState(
-    prettyJson(initialPayload.accommodations_json)
+  const [accommodationTitle, setAccommodationTitle] = useState(() =>
+    getAccommodationField(initialPayload.accommodations_json, 'title', 'name')
+  );
+  const [accommodationType, setAccommodationType] = useState(() =>
+    getAccommodationField(initialPayload.accommodations_json, 'accommodation_type')
+  );
+  const [accommodationDescription, setAccommodationDescription] = useState(() =>
+    getAccommodationField(initialPayload.accommodations_json, 'description')
+  );
+  const [accommodationBedInfo, setAccommodationBedInfo] = useState(() =>
+    getAccommodationField(initialPayload.accommodations_json, 'bed_info', 'sleeping_info')
+  );
+  const [accommodationBathroomInfo, setAccommodationBathroomInfo] = useState(() =>
+    getAccommodationField(initialPayload.accommodations_json, 'bathroom_info', 'sanitary_info')
+  );
+  const [accommodationCateringInfo, setAccommodationCateringInfo] = useState(() =>
+    getAccommodationField(initialPayload.accommodations_json, 'catering_info', 'food_info')
+  );
+  const [accommodationAccessibilityInfo, setAccommodationAccessibilityInfo] = useState(() =>
+    getAccommodationField(initialPayload.accommodations_json, 'accessibility_info', 'pmr_info')
   );
   const [imagesJsonText, setImagesJsonText] = useState(prettyJson(initialPayload.images));
   const [status, setStatus] = useState(initialStatus);
@@ -161,15 +193,27 @@ export default function StayDraftReviewForm({
       'transport_options_json',
       transportOptionsJsonText
     );
-    const accommodationsParsed = linkedAccommodation
-      ? { value: null as Record<string, unknown> | null }
-      : parseJsonField<Record<string, unknown> | null>('accommodations_json', accommodationsJsonText);
+    const normalizedAccommodation = linkedAccommodation
+      ? null
+      : (() => {
+          const payload = {
+            title: accommodationTitle.trim(),
+            accommodation_type: accommodationType.trim(),
+            description: accommodationDescription.trim(),
+            bed_info: accommodationBedInfo.trim(),
+            bathroom_info: accommodationBathroomInfo.trim(),
+            catering_info: accommodationCateringInfo.trim(),
+            accessibility_info: accommodationAccessibilityInfo.trim()
+          };
+
+          const hasContent = Object.values(payload).some((value) => value.length > 0);
+          return hasContent ? payload : null;
+        })();
     const imagesParsed = parseJsonField<string[]>('images', imagesJsonText);
 
     setFieldError(sessionsParsed.error, 'sessions_json', nextErrors);
     setFieldError(extraOptionsParsed.error, 'extra_options_json', nextErrors);
     setFieldError(transportOptionsParsed.error, 'transport_options_json', nextErrors);
-    setFieldError(accommodationsParsed.error, 'accommodations_json', nextErrors);
     setFieldError(imagesParsed.error, 'images', nextErrors);
 
     if (Object.keys(nextErrors).length > 0) {
@@ -191,7 +235,7 @@ export default function StayDraftReviewForm({
       sessions_json: sessionsParsed.value ?? [],
       extra_options_json: extraOptionsParsed.value ?? [],
       transport_options_json: transportOptionsParsed.value ?? [],
-      accommodations_json: accommodationsParsed.value ?? null,
+      accommodations_json: normalizedAccommodation,
       images: (imagesParsed.value ?? []).filter((image): image is string => typeof image === 'string')
     };
 
@@ -338,6 +382,90 @@ export default function StayDraftReviewForm({
           <p className="mt-1 text-sky-800">
             L&apos;IA n&apos;extrait pas de nouvel hébergement pour ce brouillon.
           </p>
+        </div>
+      )}
+
+      {!linkedAccommodation && (
+        <div className="space-y-4 rounded-2xl border border-amber-200 bg-amber-50 p-6">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Hébergement</p>
+            <h2 className="mt-1 text-lg font-semibold text-slate-900">Review de l&apos;hébergement importé</h2>
+            <p className="mt-1 text-sm text-slate-600">
+              Validez ou corrigez ici les informations récupérées pour l&apos;hébergement avant la publication live.
+            </p>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="block text-sm font-medium text-slate-700">
+              Nom de l&apos;hébergement
+              <input
+                value={accommodationTitle}
+                onChange={(event) => setAccommodationTitle(event.target.value)}
+                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+              />
+            </label>
+            <label className="block text-sm font-medium text-slate-700">
+              Type d&apos;hébergement
+              <input
+                value={accommodationType}
+                onChange={(event) => setAccommodationType(event.target.value)}
+                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+              />
+            </label>
+          </div>
+
+          <label className="block text-sm font-medium text-slate-700">
+            Description
+            <textarea
+              value={accommodationDescription}
+              onChange={(event) => setAccommodationDescription(event.target.value)}
+              rows={5}
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+            />
+          </label>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="block text-sm font-medium text-slate-700">
+              Couchage
+              <textarea
+                value={accommodationBedInfo}
+                onChange={(event) => setAccommodationBedInfo(event.target.value)}
+                rows={4}
+                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+              />
+            </label>
+            <label className="block text-sm font-medium text-slate-700">
+              Sanitaires
+              <textarea
+                value={accommodationBathroomInfo}
+                onChange={(event) => setAccommodationBathroomInfo(event.target.value)}
+                rows={4}
+                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+              />
+            </label>
+            <label className="block text-sm font-medium text-slate-700">
+              Restauration
+              <textarea
+                value={accommodationCateringInfo}
+                onChange={(event) => setAccommodationCateringInfo(event.target.value)}
+                rows={4}
+                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+              />
+            </label>
+            <label className="block text-sm font-medium text-slate-700">
+              Accessibilité / PMR
+              <textarea
+                value={accommodationAccessibilityInfo}
+                onChange={(event) => setAccommodationAccessibilityInfo(event.target.value)}
+                rows={4}
+                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+              />
+            </label>
+          </div>
+
+          {fieldErrors.accommodations_json && (
+            <p className="text-sm text-rose-600">{fieldErrors.accommodations_json}</p>
+          )}
         </div>
       )}
 
@@ -509,21 +637,6 @@ export default function StayDraftReviewForm({
             <span className="mt-1 block text-xs text-rose-600">{fieldErrors.transport_options_json}</span>
           )}
         </label>
-
-        {!linkedAccommodation && (
-          <label className="block text-sm font-medium text-slate-700">
-            Hébergement (JSON)
-            <textarea
-              value={accommodationsJsonText}
-              onChange={(event) => setAccommodationsJsonText(event.target.value)}
-              rows={8}
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 font-mono text-xs"
-            />
-            {fieldErrors.accommodations_json && (
-              <span className="mt-1 block text-xs text-rose-600">{fieldErrors.accommodations_json}</span>
-            )}
-          </label>
-        )}
 
         <label className="block text-sm font-medium text-slate-700">
           Images (JSON)

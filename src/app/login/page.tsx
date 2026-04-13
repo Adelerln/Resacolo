@@ -9,6 +9,7 @@ export default async function LoginPage() {
   if (session) {
     if (session.role === 'ADMIN') redirect('/admin');
     if (session.role === 'ORGANISATEUR') redirect('/organisme');
+    if (session.role === 'CLIENT') redirect('/');
     redirect('/partenaire');
   }
 

@@ -32,12 +32,13 @@ const backOfficeLinks = [
 ];
 
 const headerLinkClass =
-  'whitespace-nowrap text-[15px] font-bold tracking-[0.03em] !text-[#37b5f4] transition-opacity hover:opacity-80 xl:text-base';
+  'whitespace-nowrap text-[15px] font-bold tracking-[0.03em] !text-[color:var(--color-primary)] transition-opacity hover:opacity-80 xl:text-base';
 const headerDropdownItemClass =
-  'block px-4 py-2 text-[15px] font-bold tracking-[0.03em] !text-[#37b5f4] hover:bg-slate-50 hover:opacity-80';
+  'block px-4 py-2 text-[15px] font-bold tracking-[0.03em] !text-[color:var(--color-primary)] hover:bg-slate-50 hover:opacity-80';
 const headerIconButtonClass =
   'flex h-9 w-9 items-center justify-center rounded-full bg-transparent transition hover:bg-slate-50 hover:opacity-80';
-const mobileHeaderLinkClass = 'block text-base font-semibold leading-snug !text-[#37b5f4]';
+const mobileHeaderLinkClass =
+  'block text-base font-semibold leading-snug !text-[color:var(--color-primary)]';
 
 function isLinkItem(
   item: (typeof links)[number]
@@ -129,7 +130,7 @@ export function MainNavigation() {
   const close = () => setOpen(false);
 
   return (
-    <header className="relative z-[100] overflow-visible border-b border-slate-200 bg-white/80 backdrop-blur">
+    <header className="font-accent sticky top-0 z-[100] overflow-visible border-b border-slate-200 bg-white/90 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-white/80">
       <Link
         href="/"
         className="absolute left-0 top-1/2 z-10 flex -translate-y-1/2 items-center pl-3 sm:pl-4 lg:pl-5"
@@ -143,10 +144,15 @@ export function MainNavigation() {
           priority
         />
       </Link>
-      <div className="section-container flex items-center justify-between gap-6 overflow-visible py-3 pl-24 sm:py-4 sm:pl-28 lg:pl-32 xl:pr-36 2xl:pr-40">
-        <div className="h-9 w-0 shrink-0 sm:h-10" aria-hidden />
-        <div className="hidden flex-1 items-center xl:flex">
-          <nav className="flex items-center gap-12 overflow-visible font-medium 2xl:gap-14">
+      {/* Même largeur / padding horizontaux que `.section-container` pour aligner nav et contenu ; Back Office est ancré au bord droit du header (comme le logo à gauche). */}
+      <div className="relative mx-auto flex w-full max-w-6xl items-center gap-2 px-4 py-3 sm:gap-3 sm:px-6 sm:py-4 lg:px-8">
+        <div
+          className="pointer-events-none h-9 w-[5.25rem] shrink-0 sm:h-10 sm:w-24 lg:w-28 xl:w-32"
+          aria-hidden
+        />
+        <div className="flex min-w-0 flex-1 items-center justify-end xl:justify-center">
+          <div className="hidden min-w-0 flex-1 items-center justify-center gap-10 overflow-visible xl:flex xl:gap-12 2xl:gap-16">
+          <nav className="flex min-w-0 items-center gap-14 overflow-visible font-medium lg:gap-16 xl:gap-20 2xl:gap-28">
             {links.map((link) => {
               if (isDropdownItem(link)) {
                 const isActive = link.children.some((c) => pathname === c.href);
@@ -162,14 +168,19 @@ export function MainNavigation() {
                       aria-expanded={dropdownOpen}
                       aria-haspopup="menu"
                       className={clsx(
-                        'flex items-center gap-1',
+                        'flex items-center gap-1.5 overflow-visible',
                         headerLinkClass,
                         isActive && 'opacity-100'
                       )}
                     >
                       {link.label}
                       <ChevronDown
-                        className={clsx('h-4 w-4 transition', dropdownOpen && 'rotate-180')}
+                        aria-hidden
+                        strokeWidth={2.5}
+                        className={clsx(
+                          'h-4 w-4 shrink-0 text-[color:var(--color-primary)] transition',
+                          dropdownOpen && 'rotate-180'
+                        )}
                       />
                     </button>
                     {dropdownOpen ? (
@@ -209,7 +220,7 @@ export function MainNavigation() {
               return null;
             })}
           </nav>
-          <div className="ml-auto flex items-center gap-7 pl-12 2xl:gap-8 2xl:pl-16">
+          <div className="flex shrink-0 items-center gap-7 2xl:gap-8">
             <Link
               href="/mon-compte"
               className={headerIconButtonClass}
@@ -260,17 +271,19 @@ export function MainNavigation() {
               )}
             </Link>
           </div>
+          </div>
+          <button
+            type="button"
+            className="rounded-lg border border-slate-200 p-2.5 text-slate-600 xl:hidden"
+            onClick={toggle}
+            aria-label="Ouvrir le menu"
+          >
+            {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </button>
         </div>
-        <button
-          className="rounded-lg border border-slate-200 p-2.5 text-slate-600 xl:hidden"
-          onClick={toggle}
-          aria-label="Ouvrir le menu"
-        >
-          {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-        </button>
       </div>
       <div
-        className="absolute right-2 top-1/2 z-20 hidden -translate-y-1/2 items-center sm:right-3 lg:right-4 xl:flex"
+        className="absolute right-3 top-1/2 z-20 hidden -translate-y-1/2 sm:right-4 lg:right-5 xl:flex"
         onMouseEnter={openBackOffice}
         onMouseLeave={closeBackOffice}
       >
@@ -278,7 +291,7 @@ export function MainNavigation() {
           type="button"
           aria-expanded={backOfficeOpen}
           aria-haspopup="menu"
-          className="btn btn-sm btn-accent-outline whitespace-nowrap text-[15px] font-bold tracking-[0.03em] !text-[#37b5f4] xl:text-base"
+          className="btn btn-sm btn-accent-outline whitespace-nowrap text-[15px] font-bold tracking-[0.03em] !text-[color:var(--color-primary)] xl:text-base"
         >
           Back Office
           <ChevronDown className={clsx('h-4 w-4 transition', backOfficeOpen && 'rotate-180')} />
@@ -309,7 +322,14 @@ export function MainNavigation() {
                 if (isDropdownItem(link)) {
                   return (
                     <li key={link.label}>
-                      <span className={mobileHeaderLinkClass}>{link.label}</span>
+                      <span className={`${mobileHeaderLinkClass} inline-flex items-center gap-1.5`}>
+                        {link.label}
+                        <ChevronDown
+                          aria-hidden
+                          strokeWidth={2.5}
+                          className="h-4 w-4 shrink-0 text-[color:var(--color-primary)]"
+                        />
+                      </span>
                       <ul className="mt-2 flex flex-col gap-2 pl-3">
                         {link.children.map((child) => (
                           <li key={child.href}>

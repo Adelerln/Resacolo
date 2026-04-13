@@ -6,6 +6,7 @@ import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers.
 import { normalizeStayCategories, STAY_CATEGORY_OPTIONS } from '@/lib/stay-categories';
 import { getStayAgeBounds, parseStayAges, STAY_AGE_OPTIONS } from '@/lib/stay-ages';
 import { isMissingRegionTextColumnError, normalizeStayRegion, STAY_REGION_OPTIONS } from '@/lib/stay-regions';
+import { maybeRecordPublicationFeeWhenStayPublished } from '@/lib/resacolo-fee-ledger.server';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import type { Database } from '@/types/supabase';
 
@@ -106,6 +107,14 @@ export default async function NewStayManualPage({ searchParams }: PageProps) {
       console.error('Erreur Supabase (create stay)', insertError?.message ?? 'unknown');
       redirect(withOrganizerQuery('/organisme/sejours/new/manual', organizerTenantId));
     }
+
+    await maybeRecordPublicationFeeWhenStayPublished(supabase, {
+      stayId: insertedStay.id,
+      organizerId: organizerTenantId,
+      previousStatus: undefined,
+      newStatus: normalizedStatus,
+      occurredAt: new Date().toISOString()
+    });
 
     redirect(withOrganizerQuery(`/organisme/sejours/${insertedStay?.id ?? ''}`, organizerTenantId));
   }

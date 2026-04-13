@@ -5,6 +5,7 @@ import SavedToast from '@/components/common/SavedToast';
 import { requireRole } from '@/lib/auth/require';
 import { formatStayAgeRange, getStayAgeBounds, normalizeStayAges, parseStayAges, STAY_AGE_OPTIONS } from '@/lib/stay-ages';
 import { isMissingRegionTextColumnError, normalizeStayRegion, STAY_REGION_OPTIONS } from '@/lib/stay-regions';
+import { maybeRecordPublicationFeeWhenStayPublished } from '@/lib/resacolo-fee-ledger.server';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { sessionStatusLabel, stayStatusLabel } from '@/lib/ui/labels';
 import type { Database } from '@/types/supabase';
@@ -103,14 +104,17 @@ export default async function AdminStayDetailPage({ params: paramsPromise, searc
     const region = normalizeStayRegion(formData.get('region_text'));
     const transportMode = String(formData.get('transport_mode') ?? '').trim();
 
+    const previousStatus = currentStay.status;
+    const nextStatus: Database['public']['Enums']['stay_status'] =
+      status === 'DRAFT' || status === 'PUBLISHED' || status === 'HIDDEN' || status === 'ARCHIVED'
+        ? status
+        : currentStay.status;
+
     const basePayload: Database['public']['Tables']['stays']['Update'] = {
       title,
       organizer_id: organizerId || currentStay.organizer_id,
       season_id: seasonId || currentStay.season_id,
-      status:
-        status === 'DRAFT' || status === 'PUBLISHED' || status === 'HIDDEN' || status === 'ARCHIVED'
-          ? status
-          : currentStay.status,
+      status: nextStatus,
       description: description || null,
       ages,
       age_min: ageMin,
@@ -134,6 +138,15 @@ export default async function AdminStayDetailPage({ params: paramsPromise, searc
       console.error('Erreur Supabase (admin update stay)', updateError.message);
       redirect(`/admin/sejours/${currentStay.id}`);
     }
+
+    const organizerForFee = organizerId || currentStay.organizer_id;
+    await maybeRecordPublicationFeeWhenStayPublished(supabase, {
+      stayId: currentStay.id,
+      organizerId: organizerForFee,
+      previousStatus,
+      newStatus: nextStatus,
+      occurredAt: new Date().toISOString()
+    });
 
     redirect(`/admin/sejours/${currentStay.id}?saved=1`);
   }

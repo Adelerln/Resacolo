@@ -6,9 +6,10 @@ import { requireRole } from '@/lib/auth/require';
 const adminNavLinks = [
   { href: '/admin/sejours', label: 'Séjours' },
   { href: '/admin/dashboard', label: 'Dashboard' },
+  { href: '/admin/finances', label: 'Recettes' },
   { href: '/admin/reservations', label: 'Réservations' },
   { href: '/admin/utilisateurs', label: 'Utilisateurs' },
-  { href: '/admin/organisateurs', label: 'Organisateurs' }
+  { href: '/admin/organizers', label: 'Organismes' }
 ];
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {

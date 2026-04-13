@@ -50,6 +50,21 @@ export async function repriceCheckout(checkoutId: string, items: CartItem[]) {
   });
 }
 
+export async function registerCheckoutClientAccount(input: {
+  firstName: string;
+  lastName: string;
+  email: string;
+  password: string;
+}) {
+  return fetchJson<{ ok: true; user: { id: string; email: string; name: string | null } }>(
+    '/api/auth/register-client',
+    {
+      method: 'POST',
+      body: JSON.stringify(input)
+    }
+  );
+}
+
 export async function createPaymentIntent(input: {
   checkoutId: string;
   items: CartItem[];

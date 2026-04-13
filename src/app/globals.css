@@ -1,4 +1,5 @@
 @import 'leaflet/dist/leaflet.css';
+@import '../styles/baloo2.css';
 
 @tailwind base;
 @tailwind components;
@@ -41,12 +42,34 @@
   --resacolo-orange-strong: #f48200;
   --resacolo-surface: #f8f8f8;
   --resacolo-ink: #404040;
+  --color-primary: #37b5f5;
+  /* Accent UI (header nav, etc.) — Baloo 2 via `src/styles/baloo2.css` */
+  --font-accent: 'Baloo 2', Arial, sans-serif;
 
   /* Design tokens */
   --hero-gradient: linear-gradient(135deg, #f2fbff 0%, #def4ff 42%, #ffffff 100%);
   --card-shadow: 0 2px 18px -4px rgb(82 176 234 / 0.14);
   --card-shadow-hover: 0 10px 36px -8px rgb(82 176 234 / 0.18);
   --financing-watermark: rgb(110 199 255 / 0.18);
+
+  /* Footer : léger recul pour rapprocher le « R » du texte (PNG avec marge + picto à gauche) */
+  --footer-logo-r-align-shift: 1.125rem;
+}
+
+@media (min-width: 640px) {
+  :root {
+    --footer-logo-r-align-shift: 1.25rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  :root {
+    --footer-logo-r-align-shift: 1.375rem;
+  }
+}
+
+.footer-logo-resacolo-link {
+  margin-left: calc(-1 * var(--footer-logo-r-align-shift));
 }
 
 /* ~90 % du précédent : proche d’un zoom navigateur à 90 %, tout en restant à 100 % de zoom */

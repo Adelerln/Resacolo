@@ -15,7 +15,7 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
   if (!email || !firstName || !lastName) {
     return NextResponse.redirect(
       new URL(
-        `/admin/organisateurs/${idOrSlug}/members/new?error=Tous%20les%20champs%20sont%20requis`,
+        `/admin/organizers/${idOrSlug}/members/new?error=Tous%20les%20champs%20sont%20requis`,
         req.url
       ),
       303
@@ -38,7 +38,7 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
   }
   if (!organizer) {
     return NextResponse.redirect(
-      new URL(`/admin/organisateurs/${idOrSlug}?error=Organisateur%20introuvable`, req.url),
+      new URL(`/admin/organizers/${idOrSlug}?error=Organisateur%20introuvable`, req.url),
       303
     );
   }
@@ -52,7 +52,7 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
     if (!tempPassword) {
       return NextResponse.redirect(
         new URL(
-          `/admin/organisateurs/${idOrSlug}/members/new?error=Mot%20de%20passe%20temporaire%20requis`,
+          `/admin/organizers/${idOrSlug}/members/new?error=Mot%20de%20passe%20temporaire%20requis`,
           req.url
         ),
         303
@@ -66,7 +66,7 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
     if (userError || !userData?.user) {
       return NextResponse.redirect(
         new URL(
-          `/admin/organisateurs/${idOrSlug}/members/new?error=${encodeURIComponent(
+          `/admin/organizers/${idOrSlug}/members/new?error=${encodeURIComponent(
             userError?.message ?? "Impossible de créer l'utilisateur"
           )}`,
           req.url
@@ -88,7 +88,7 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
   if (memberError) {
     return NextResponse.redirect(
       new URL(
-        `/admin/organisateurs/${idOrSlug}/members/new?error=${encodeURIComponent(
+        `/admin/organizers/${idOrSlug}/members/new?error=${encodeURIComponent(
           memberError.message ?? "Impossible d'ajouter le membre"
         )}`,
         req.url
@@ -98,7 +98,7 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
   }
 
   return NextResponse.redirect(
-    new URL(`/admin/organisateurs/${idOrSlug}?success=1`, req.url),
+    new URL(`/admin/organizers/${idOrSlug}?success=1`, req.url),
     303
   );
 }

@@ -61,9 +61,6 @@ export default function OrganizerCatalogTabs({
                 <h3 className="text-lg font-semibold text-slate-900">
                   {TABS.find((item) => item.id === openPanel)?.label}
                 </h3>
-                <p className="mt-1 text-sm text-slate-500">
-                  Configure cette partie de la fiche organisateur.
-                </p>
               </div>
               <button
                 type="button"

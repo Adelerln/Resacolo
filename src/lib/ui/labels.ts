@@ -36,6 +36,8 @@ export function accommodationStatusLabel(status?: string | null) {
       return 'Validé';
     case 'DRAFT':
       return 'Brouillon';
+    case 'ARCHIVED':
+      return 'Archivé';
     default:
       return status ?? '-';
   }
@@ -49,6 +51,8 @@ export function accommodationStatusBadgeClassName(status?: string | null) {
       return 'bg-emerald-100 text-emerald-800';
     case 'DRAFT':
       return 'bg-slate-100 text-slate-700';
+    case 'ARCHIVED':
+      return 'bg-rose-100 text-rose-800';
     default:
       return 'bg-slate-100 text-slate-700';
   }

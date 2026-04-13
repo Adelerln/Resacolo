@@ -8,30 +8,12 @@ import { CheckoutFrame } from '@/components/checkout/CheckoutFrame';
 import { useCart } from '@/context/CartContext';
 import { useCheckout } from '@/context/CheckoutContext';
 import { confirmPaymentManually, createPaymentIntent } from '@/lib/checkout/client';
+import type { CheckoutPricing } from '@/types/checkout';
 
 type PaymentInitData = {
   orderId: string;
   paymentId: string;
-  pricing: {
-    totalCents: number;
-    currency: 'EUR';
-    items: Array<{
-      cartItemId: string;
-      stayTitle: string;
-      sessionId: string;
-      organizerId: string;
-      basePriceCents: number;
-      transportPriceCents: number;
-      insurancePriceCents: number;
-      extraOptionPriceCents: number;
-      optionsPriceCents: number;
-      totalPriceCents: number;
-      transportOptionId: string | null;
-      insuranceOptionId: string | null;
-      extraOptionId: string | null;
-      extraOptionLabel: string | null;
-    }>;
-  };
+  pricing: CheckoutPricing;
   monetico: {
     reference: string;
     transactionId: string;
@@ -48,6 +30,17 @@ export default function CheckoutPaiementPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [paymentData, setPaymentData] = useState<PaymentInitData | null>(null);
+  const isContactComplete = useMemo(() => {
+    return Boolean(
+      contact.email &&
+        contact.billingFirstName &&
+        contact.billingLastName &&
+        contact.addressLine1 &&
+        contact.postalCode &&
+        contact.city &&
+        contact.phone
+    );
+  }, [contact]);
 
   const isParticipantsComplete = useMemo(() => {
     return items.every((item) => {
@@ -58,7 +51,7 @@ export default function CheckoutPaiementPage() {
 
   useEffect(() => {
     async function initializePayment() {
-      if (!hydrated || items.length === 0 || !contact.email || !isParticipantsComplete) {
+      if (!hydrated || items.length === 0 || !isContactComplete || !isParticipantsComplete) {
         setIsLoading(false);
         return;
       }
@@ -97,7 +90,9 @@ export default function CheckoutPaiementPage() {
               cartItemId: item.id,
               childFirstName: participant?.childFirstName ?? '',
               childLastName: participant?.childLastName ?? '',
-              childBirthdate: participant?.childBirthdate ?? ''
+              childBirthdate: participant?.childBirthdate ?? '',
+              childGender: participant?.childGender ?? '',
+              additionalInfo: participant?.additionalInfo ?? ''
             };
           })
         });
@@ -119,7 +114,7 @@ export default function CheckoutPaiementPage() {
     }
 
     initializePayment();
-  }, [checkoutId, contact, hydrated, isParticipantsComplete, items, participants]);
+  }, [checkoutId, contact, hydrated, isContactComplete, isParticipantsComplete, items, participants]);
 
   if (!hydrated) {
     return (
@@ -143,7 +138,7 @@ export default function CheckoutPaiementPage() {
     );
   }
 
-  if (!contact.email || !isParticipantsComplete) {
+  if (!isContactComplete || !isParticipantsComplete) {
     return (
       <CheckoutFrame
         step="paiement"

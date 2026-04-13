@@ -45,7 +45,7 @@ export function OrganizerStayPreviewCard({
 
   return (
     <article className="flex h-full w-full max-w-[320px] flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_18px_40px_-28px_rgba(15,23,42,0.35)]">
-      <div className="relative h-52 shrink-0 bg-slate-100">
+      <div className="relative h-52 shrink-0 overflow-hidden rounded-t-[28px] bg-slate-100">
         {overlayAction ? <div className="absolute left-3 top-3 z-10">{overlayAction}</div> : null}
         <Link href={href} className="relative block h-full w-full">
           {coverUrl ? (
@@ -139,7 +139,7 @@ export function OrganizerStayPreviewCard({
 
       <Link
         href={href}
-        className="mt-auto flex w-full shrink-0 items-center justify-center rounded-b-[26px] bg-[#6DC7FE] px-4 py-3.5 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-[#52B0EA]"
+        className="mt-auto flex w-full shrink-0 items-center justify-center rounded-b-[28px] bg-[#6DC7FE] px-4 py-3.5 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-[#52B0EA]"
       >
         DÉCOUVRIR LE SÉJOUR
       </Link>

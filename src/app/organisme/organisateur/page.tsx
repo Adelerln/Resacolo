@@ -17,6 +17,7 @@ import {
   extractOrganizerDurationMeta,
   sanitizeOrganizerRichText
 } from '@/lib/organizer-rich-text';
+import { syncOrganizerProfileCompletenessPercent } from '@/lib/organizer-profile-completeness';
 import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers.server';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { slugify } from '@/lib/utils';
@@ -240,6 +241,8 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
         .update({ education_project_path: projectPath })
         .eq('id', currentOrganizerId);
     }
+
+    await syncOrganizerProfileCompletenessPercent(supabase, currentOrganizerId);
 
     redirect(withOrganizerQuery('/organisme/organisateur?saved=1', currentOrganizerId));
   }

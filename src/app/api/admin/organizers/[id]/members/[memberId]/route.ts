@@ -23,7 +23,7 @@ export async function POST(
 
   if (memberError) {
     return NextResponse.redirect(
-      new URL(`/admin/organisateurs/${id}?error=${encodeURIComponent(memberError.message)}`, req.url),
+      new URL(`/admin/organizers/${id}?error=${encodeURIComponent(memberError.message)}`, req.url),
       303
     );
   }
@@ -32,11 +32,11 @@ export async function POST(
     const { error: userError } = await supabase.auth.admin.updateUserById(userId, { email });
     if (userError) {
       return NextResponse.redirect(
-        new URL(`/admin/organisateurs/${id}?error=${encodeURIComponent(userError.message)}`, req.url),
+        new URL(`/admin/organizers/${id}?error=${encodeURIComponent(userError.message)}`, req.url),
         303
       );
     }
   }
 
-  return NextResponse.redirect(new URL(`/admin/organisateurs/${id}?success=1`, req.url), 303);
+  return NextResponse.redirect(new URL(`/admin/organizers/${id}?success=1`, req.url), 303);
 }

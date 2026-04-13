@@ -15,6 +15,15 @@ export default function CheckoutParticipantsPage() {
   const { hydrated, contact, checkoutId, participants, updateParticipant } = useCheckout();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const isContactComplete = Boolean(
+    contact.email &&
+      contact.billingFirstName &&
+      contact.billingLastName &&
+      contact.addressLine1 &&
+      contact.postalCode &&
+      contact.city &&
+      contact.phone
+  );
 
   if (!hydrated) {
     return (
@@ -38,7 +47,7 @@ export default function CheckoutParticipantsPage() {
     );
   }
 
-  if (!contact.email) {
+  if (!isContactComplete) {
     return (
       <CheckoutFrame
         step="participants"
@@ -64,7 +73,9 @@ export default function CheckoutParticipantsPage() {
           cartItemId: item.id,
           childFirstName: participant?.childFirstName ?? '',
           childLastName: participant?.childLastName ?? '',
-          childBirthdate: participant?.childBirthdate ?? ''
+          childBirthdate: participant?.childBirthdate ?? '',
+          childGender: participant?.childGender ?? '',
+          additionalInfo: participant?.additionalInfo ?? ''
         };
       });
       await validateCheckoutParticipants(checkoutId, payload);

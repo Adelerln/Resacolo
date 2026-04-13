@@ -37,6 +37,8 @@ async function readImportInput(req: Request) {
       source_url?: unknown;
       organizerId?: unknown;
       organizer_id?: unknown;
+      selectedAccommodationId?: unknown;
+      selected_accommodation_id?: unknown;
     };
     return {
       sourceUrl:
@@ -50,6 +52,12 @@ async function readImportInput(req: Request) {
           ? body.organizerId
           : typeof body.organizer_id === 'string'
             ? body.organizer_id
+            : '',
+      selectedAccommodationId:
+        typeof body.selectedAccommodationId === 'string'
+          ? body.selectedAccommodationId
+          : typeof body.selected_accommodation_id === 'string'
+            ? body.selected_accommodation_id
             : ''
     };
   }
@@ -57,7 +65,10 @@ async function readImportInput(req: Request) {
   const formData = await req.formData();
   return {
     sourceUrl: String(formData.get('sourceUrl') ?? formData.get('source_url') ?? ''),
-    organizerId: String(formData.get('organizerId') ?? formData.get('organizer_id') ?? '')
+    organizerId: String(formData.get('organizerId') ?? formData.get('organizer_id') ?? ''),
+    selectedAccommodationId: String(
+      formData.get('selectedAccommodationId') ?? formData.get('selected_accommodation_id') ?? ''
+    )
   };
 }
 
@@ -70,7 +81,11 @@ function buildRawPayload(
   status: number,
   extracted: ReturnType<typeof extractStayData>,
   transportVariants: DraftTransportVariant[],
-  transportPriceDebug: DraftTransportPriceDebug[]
+  transportPriceDebug: DraftTransportPriceDebug[],
+  importOptions?: {
+    existingAccommodationId?: string | null;
+    existingAccommodationName?: string | null;
+  }
 ) {
   return {
     html,
@@ -82,7 +97,11 @@ function buildRawPayload(
     extracted,
     transport_variants: transportVariants,
     transport_matrix: transportVariants,
-    transport_price_debug: transportPriceDebug
+    transport_price_debug: transportPriceDebug,
+    import_options: {
+      existing_accommodation_id: importOptions?.existingAccommodationId ?? null,
+      existing_accommodation_name: importOptions?.existingAccommodationName ?? null
+    }
   };
 }
 
@@ -217,9 +236,14 @@ export async function POST(req: Request) {
     return NextResponse.redirect(new URL('/login', req.url), 303);
   }
 
-  const { sourceUrl: sourceUrlRaw, organizerId: organizerIdRaw } = await readImportInput(req);
+  const {
+    sourceUrl: sourceUrlRaw,
+    organizerId: organizerIdRaw,
+    selectedAccommodationId: selectedAccommodationIdRaw
+  } = await readImportInput(req);
   const sourceUrl = sourceUrlRaw.trim();
   const requestedOrganizerId = organizerIdRaw.trim();
+  const selectedAccommodationId = selectedAccommodationIdRaw.trim();
   const { selectedOrganizerId } = await resolveOrganizerSelection(
     requestedOrganizerId || undefined,
     isMockMode ? mockOrganizerTenant.id : session?.tenantId ?? null
@@ -249,6 +273,30 @@ export async function POST(req: Request) {
   }
 
   const supabase = getServerSupabaseClient();
+  let selectedAccommodation:
+    | {
+        id: string;
+        name: string;
+      }
+    | null = null;
+
+  if (selectedAccommodationId) {
+    const { data: accommodation, error: accommodationError } = await supabase
+      .from('accommodations')
+      .select('id,name')
+      .eq('id', selectedAccommodationId)
+      .eq('organizer_id', selectedOrganizerId)
+      .maybeSingle();
+
+    if (accommodationError || !accommodation) {
+      return redirectToOrganizerStayCreation(req, selectedOrganizerId, {
+        error: 'Hébergement introuvable pour cet organisateur.'
+      });
+    }
+
+    selectedAccommodation = accommodation;
+  }
+
   const { data: insertedDraft, error: insertError } = await supabase
     .from('stay_drafts')
     .insert({
@@ -319,7 +367,11 @@ export async function POST(req: Request) {
     fetchedHtml.status,
     extractedWithSmartImages,
     transportVariants,
-    transportPriceDebug
+    transportPriceDebug,
+    {
+      existingAccommodationId: selectedAccommodation?.id ?? null,
+      existingAccommodationName: selectedAccommodation?.name ?? null
+    }
   );
   const updatePayload = buildDraftUpdatePayload(
     draftColumns,

@@ -1,7 +1,10 @@
 import Link from 'next/link';
 import ErrorToast from '@/components/common/ErrorToast';
+import { formatAccommodationType } from '@/lib/accommodation-types';
+import { extractAccommodationLocationMeta } from '@/lib/accommodation-location';
 import { requireRole } from '@/lib/auth/require';
 import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers.server';
+import { getServerSupabaseClient } from '@/lib/supabase/server';
 
 type PageProps = {
   searchParams?: Promise<{
@@ -21,6 +24,7 @@ function formatRedirectValue(value?: string | string[]) {
 export default async function NewStayChoicePage({ searchParams }: PageProps) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const session = await requireRole('ORGANISATEUR');
+  const supabase = getServerSupabaseClient();
   const { selectedOrganizer, selectedOrganizerId } = await resolveOrganizerSelection(
     resolvedSearchParams?.organizerId,
     session.tenantId ?? null
@@ -31,6 +35,27 @@ export default async function NewStayChoicePage({ searchParams }: PageProps) {
   const draftIdParam = formatRedirectValue(resolvedSearchParams?.draftId);
   const aiParam = formatRedirectValue(resolvedSearchParams?.ai);
   const aiDraftIdParam = formatRedirectValue(resolvedSearchParams?.aiDraftId);
+  const { data: existingAccommodations } = selectedOrganizerId
+    ? await supabase
+        .from('accommodations')
+        .select('id,name,accommodation_type,description,status')
+        .eq('organizer_id', selectedOrganizerId)
+        .neq('status', 'ARCHIVED')
+        .order('name', { ascending: true })
+    : { data: [] };
+  const accommodationOptions = (existingAccommodations ?? []).map((accommodation) => {
+    const location = extractAccommodationLocationMeta(accommodation.description);
+    const primaryLabel = accommodation.accommodation_type
+      ? `${formatAccommodationType(accommodation.accommodation_type)}${
+          location.locationLabel ? ` (${location.locationLabel})` : ''
+        }`
+      : accommodation.name;
+
+    return {
+      id: accommodation.id,
+      label: `${primaryLabel} · ${accommodation.name}`
+    };
+  });
 
   return (
     <div className="space-y-6">
@@ -45,37 +70,19 @@ export default async function NewStayChoicePage({ searchParams }: PageProps) {
         </p>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-2">
-        <div className="rounded-2xl border border-slate-200 bg-white p-5">
-          <h2 className="text-lg font-semibold text-slate-900">Saisie manuelle</h2>
-          <p className="mt-2 text-sm leading-6 text-slate-600">
-            Crée un séjour à la main, champ par champ, si tu veux garder la main sur toute la
-            fiche dès le départ.
-          </p>
-          <div className="mt-5">
-            <Link
-              href={withOrganizerQuery('/organisme/sejours/new/manual', organizerId)}
-              className="inline-flex min-h-[44px] items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white"
-            >
-              Commencer la saisie manuelle
-            </Link>
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-slate-200 bg-white p-5">
-          <h2 className="text-lg font-semibold text-slate-900">Utiliser l&apos;IA</h2>
-          <p className="mt-2 text-sm leading-6 text-slate-600">
-            Prépare un brouillon à partir d&apos;une fiche existante, ou enrichis un draft déjà
-            créé avec une extraction IA complémentaire.
-          </p>
-          <div className="mt-5">
-            <a
-              href="#assistant-ia"
-              className="inline-flex min-h-[44px] items-center justify-center rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700"
-            >
-              Voir les options IA
-            </a>
-          </div>
+      <div className="max-w-xl rounded-2xl border border-slate-200 bg-white p-5">
+        <h2 className="text-lg font-semibold text-slate-900">Saisie manuelle</h2>
+        <p className="mt-2 text-sm leading-6 text-slate-600">
+          Crée un séjour à la main, champ par champ, si tu veux garder la main sur toute la fiche
+          dès le départ.
+        </p>
+        <div className="mt-5">
+          <Link
+            href={withOrganizerQuery('/organisme/sejours/new/manual', organizerId)}
+            className="inline-flex min-h-[44px] items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white"
+          >
+            Commencer la saisie manuelle
+          </Link>
         </div>
       </div>
 
@@ -89,25 +96,48 @@ export default async function NewStayChoicePage({ searchParams }: PageProps) {
           <form
             action="/api/import-stay"
             method="post"
-            className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end"
+            className="mt-4 space-y-4"
           >
-            <label className="block flex-1 text-sm font-medium text-slate-700">
-              URL de la fiche séjour
-              <input
-                name="sourceUrl"
-                type="url"
-                placeholder="https://exemple.com/fiche-sejour"
-                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-                required
-              />
-            </label>
+            <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_320px] sm:items-end">
+              <label className="block text-sm font-medium text-slate-700">
+                URL de la fiche séjour
+                <input
+                  name="sourceUrl"
+                  type="url"
+                  placeholder="https://exemple.com/fiche-sejour"
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+                  required
+                />
+              </label>
+              <label className="block text-sm font-medium text-slate-700">
+                Hébergement à rattacher
+                <select
+                  name="selectedAccommodationId"
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+                  defaultValue=""
+                >
+                  <option value="">Créer un nouvel hébergement depuis l&apos;import</option>
+                  {accommodationOptions.map((accommodation) => (
+                    <option key={accommodation.id} value={accommodation.id}>
+                      {accommodation.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <p className="text-xs leading-5 text-slate-500">
+              Si tu choisis un hébergement existant, l&apos;IA n&apos;extrait pas de nouvel
+              hébergement et le séjour importé sera rattaché directement à celui-ci.
+            </p>
             <input type="hidden" name="organizerId" value={organizerId ?? ''} />
-            <button
-              type="submit"
-              className="h-10 rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white"
-            >
-              Pré-remplir
-            </button>
+            <div>
+              <button
+                type="submit"
+                className="h-10 rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white"
+              >
+                Pré-remplir
+              </button>
+            </div>
           </form>
           {prefillParam === 'created' && draftIdParam && (
             <p className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">

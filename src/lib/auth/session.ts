@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import { cookies } from 'next/headers';
 
-export type AppRole = 'ADMIN' | 'ORGANISATEUR' | 'PARTENAIRE';
+export type AppRole = 'ADMIN' | 'ORGANISATEUR' | 'PARTENAIRE' | 'CLIENT';
 
 export type SessionPayload = {
   userId: string;

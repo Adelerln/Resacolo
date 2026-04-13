@@ -22,7 +22,7 @@ function mapRole(memberships: { role: string; tenantId: string | null }[]): {
   const partner = memberships.find((m) => m.role === 'PARTNER_ADMIN' || m.role === 'PARTNER_AGENT');
   if (partner) return { role: 'PARTENAIRE', tenantId: partner.tenantId };
 
-  return { role: 'PARTENAIRE', tenantId: null };
+  return { role: 'CLIENT', tenantId: null };
 }
 
 export async function POST(req: Request) {
@@ -63,6 +63,15 @@ export async function POST(req: Request) {
   });
 
   return NextResponse.redirect(
-    new URL(role === 'ADMIN' ? '/admin' : role === 'ORGANISATEUR' ? '/organisme' : '/partenaire', req.url)
+    new URL(
+      role === 'ADMIN'
+        ? '/admin'
+        : role === 'ORGANISATEUR'
+          ? '/organisme'
+          : role === 'PARTENAIRE'
+            ? '/partenaire'
+            : '/',
+      req.url
+    )
   );
 }

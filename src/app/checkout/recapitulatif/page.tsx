@@ -17,6 +17,15 @@ export default function CheckoutRecapitulatifPage() {
   const [pricing, setPricing] = useState<CheckoutPricing | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const isContactComplete = Boolean(
+    contact.email &&
+      contact.billingFirstName &&
+      contact.billingLastName &&
+      contact.addressLine1 &&
+      contact.postalCode &&
+      contact.city &&
+      contact.phone
+  );
 
   const isParticipantsComplete = useMemo(() => {
     return items.every((item) => {
@@ -70,7 +79,7 @@ export default function CheckoutRecapitulatifPage() {
     );
   }
 
-  if (!contact.email) {
+  if (!isContactComplete) {
     return (
       <CheckoutFrame
         step="recapitulatif"

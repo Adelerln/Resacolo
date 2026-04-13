@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
+import Link from 'next/link';
 import { Heart } from 'lucide-react';
 import { FavoriteToggleButton } from '@/components/favorites/FavoriteToggleButton';
 import { useFavorites } from '@/components/favorites/FavoritesProvider';
@@ -26,7 +27,7 @@ export function FavoritesPageClient({ stays }: { stays: Stay[] }) {
             Mes <span className="text-accent-500">favoris</span>
           </h1>
           <p className="mt-3 max-w-2xl text-sm text-slate-600 sm:text-base">
-            Retrouvez les séjours que vous avez enregistrés pour y revenir plus tard.
+            Retrouvez tous vos séjours favoris !
           </p>
         </div>
         <Heart className="mt-1 h-8 w-8 text-accent-500" />
@@ -41,8 +42,15 @@ export function FavoritesPageClient({ stays }: { stays: Stay[] }) {
           Connectez-vous avec votre compte client pour accéder à vos favoris.
         </div>
       ) : favoriteStays.length === 0 ? (
-        <div className="mt-8 rounded-3xl border border-slate-200 bg-white p-8 text-sm text-slate-500">
-          Vous n’avez pas encore ajouté de séjour en favori.
+        <div className="mt-8 rounded-3xl border border-slate-200 bg-white p-8 text-sm text-slate-600">
+          <p>
+            Votre liste de favoris est vide, n&apos;hésitez pas à ajouter des séjours en consultant le catalogue.
+          </p>
+          <div className="mt-6">
+            <Link href="/sejours" className="btn btn-primary btn-md inline-flex">
+              Voir le catalogue des séjours
+            </Link>
+          </div>
         </div>
       ) : (
         <div className="mt-8 grid grid-cols-1 gap-8 sm:grid-cols-2 xl:grid-cols-3">

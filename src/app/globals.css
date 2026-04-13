@@ -7,7 +7,7 @@
 
 @layer components {
   .btn {
-    @apply inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl font-semibold transition-colors;
+    @apply inline-flex min-h-[44px] cursor-pointer items-center justify-center gap-2 rounded-xl font-semibold transition-colors disabled:cursor-not-allowed;
   }
 
   .btn-md {

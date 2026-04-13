@@ -1,6 +1,20 @@
 import type { CartItem } from '@/types/cart';
 import type { CheckoutContact, CheckoutParticipant, CheckoutPricing } from '@/types/checkout';
 
+function readApiFailureMessage(status: number, data: Record<string, unknown>): string {
+  const fromError = data.error;
+  if (typeof fromError === 'string' && fromError.trim()) return fromError.trim();
+  const fromMessage = data.message;
+  if (typeof fromMessage === 'string' && fromMessage.trim()) return fromMessage.trim();
+  if (status >= 500) {
+    if (process.env.NODE_ENV === 'development') {
+      return `Erreur serveur (HTTP ${status}) — voir le terminal « next dev ». En local le checkout sans API est actif par défaut ; si tu vois ce message, recharge la page ou vérifie que tu n’as pas NEXT_PUBLIC_DEV_BYPASS_CHECKOUT=0.`;
+    }
+    return 'Le service est momentanément indisponible. Réessayez dans quelques instants ou contactez le support.';
+  }
+  return `La requête n’a pas pu aboutir (${status}).`;
+}
+
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     ...init,
@@ -10,13 +24,24 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
     }
   });
 
-  const data = (await response.json().catch(() => ({}))) as { error?: string } & T;
-
-  if (!response.ok) {
-    throw new Error(data.error ?? 'Une erreur est survenue.');
+  const raw = await response.text();
+  let data = {} as Record<string, unknown> & T;
+  if (raw) {
+    try {
+      data = JSON.parse(raw) as Record<string, unknown> & T;
+    } catch {
+      if (!response.ok) {
+        throw new Error(readApiFailureMessage(response.status, {}));
+      }
+      throw new Error('Réponse serveur invalide.');
+    }
   }
 
-  return data;
+  if (!response.ok) {
+    throw new Error(readApiFailureMessage(response.status, data));
+  }
+
+  return data as T;
 }
 
 export async function createCheckoutSession(items: CartItem[]) {

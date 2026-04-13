@@ -165,7 +165,8 @@ function extractStayAgeBounds(stay: Stay): AgeBounds | null {
     return { min: 3, max: rawMax };
   }
 
-  const numbers = (stay.ageRange.match(/\d{1,2}/g) ?? [])
+  const ageRangeText = typeof stay.ageRange === 'string' ? stay.ageRange : '';
+  const numbers = (ageRangeText.match(/\d{1,2}/g) ?? [])
     .map((value) => Number.parseInt(value, 10))
     .filter((value) => Number.isFinite(value));
 
@@ -348,7 +349,7 @@ export function buildStayCatalogFilterOptions(stays: Stay[]): StayCatalogFilterO
       }
     }
 
-    uniq(stay.categories.map((value) => normalizeSpaces(String(value).toLowerCase())))
+    uniq((stay.categories ?? []).map((value) => normalizeSpaces(String(value).toLowerCase())))
       .filter(Boolean)
       .forEach((category) => {
         const current = categoryCounts.get(category);

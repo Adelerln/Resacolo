@@ -239,10 +239,10 @@ export function FaqHubClient() {
           />
         </div>
 
-        <div className="relative z-[1] mx-auto w-full max-w-5xl px-4 pb-6 text-left text-white sm:px-6 sm:pb-10">
+        <div className="relative z-[1] mx-auto w-full max-w-5xl px-4 pb-6 pr-[clamp(1rem,min(42vw,20rem),22rem)] text-left text-white sm:px-6 sm:pb-10 sm:pr-[clamp(1.25rem,min(46vw,24rem),26rem)] lg:pr-[clamp(1.5rem,min(44vw,26rem),28rem)]">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/90 sm:text-[13px]">Aide & conseils</p>
           <h1 className="font-display mt-4 text-5xl font-bold tracking-tight sm:mt-5 sm:text-6xl lg:text-7xl">FAQ</h1>
-          <p className="mt-5 max-w-xl text-justify text-base leading-relaxed text-white/95 sm:mt-6 sm:max-w-2xl sm:text-lg">
+          <p className="mt-5 max-w-full text-justify text-base leading-relaxed text-white/95 sm:mt-6 sm:max-w-[42rem] sm:text-lg">
             Des interrogations ? Nous avons référencé diverses questions que vous pourriez vous poser. Prenez le temps
             de parcourir notre FAQ. Pour toute précision sur une colonie de vacances, merci d&apos;envoyer un mail à
             l&apos;organisateur du séjour via le formulaire de contact.

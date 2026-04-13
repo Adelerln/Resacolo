@@ -1,32 +1,27 @@
 'use client';
 
 import { AnimatePresence, motion } from 'framer-motion';
-import { usePathname, useSearchParams } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
+import { usePathname } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 
 const WIPE_DURATION = 0.82;
 
 export function PageTransition({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const routeKey = useMemo(() => {
-    const query = searchParams.toString();
-    return query ? `${pathname}?${query}` : pathname;
-  }, [pathname, searchParams]);
 
   const [barVisible, setBarVisible] = useState(true);
   useEffect(() => {
     setBarVisible(true);
     const t = setTimeout(() => setBarVisible(false), WIPE_DURATION * 1000);
     return () => clearTimeout(t);
-  }, [routeKey]);
+  }, [pathname]);
 
   return (
     <>
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
-          key={routeKey}
+          key={pathname}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -38,7 +33,7 @@ export function PageTransition({ children }: { children: ReactNode }) {
 
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
-          key={`wipe-${routeKey}`}
+          key={`wipe-${pathname}`}
           initial={{ scaleX: 1 }}
           animate={{ scaleX: 0 }}
           exit={{ scaleX: 0 }}
@@ -49,7 +44,7 @@ export function PageTransition({ children }: { children: ReactNode }) {
 
       {/* Barre visible pendant la transition, disparaît quand le wipe est terminé */}
       <motion.div
-        key={`progress-${routeKey}`}
+        key={`progress-${pathname}`}
         initial={{ scaleX: 0 }}
         animate={{ scaleX: 1, opacity: barVisible ? 1 : 0 }}
         transition={{

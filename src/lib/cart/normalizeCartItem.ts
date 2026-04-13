@@ -1,5 +1,10 @@
 import type { Stay } from '@/types/stay';
-import { createCartItemId, type CartItem, type CartItemSelection } from '@/types/cart';
+import {
+  createCartItemId,
+  type CartItem,
+  type CartItemSelection,
+  type CartItemSelectionLabels
+} from '@/types/cart';
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
@@ -20,6 +25,17 @@ function asNumberOrNull(value: unknown): number | null {
 function asNullableId(value: unknown): string | null {
   if (value === null || value === undefined) return null;
   return asString(value);
+}
+
+function normalizeSelectionLabels(raw: unknown): CartItemSelectionLabels | undefined {
+  const record = asRecord(raw);
+  if (!record) return undefined;
+  const sessionLine = asString(record.sessionLine);
+  const transportLine = asString(record.transportLine);
+  const insuranceLine = asString(record.insuranceLine);
+  const extraLine = asString(record.extraLine);
+  if (!sessionLine && !transportLine && !insuranceLine && !extraLine) return undefined;
+  return { sessionLine, transportLine, insuranceLine, extraLine };
 }
 
 function normalizeSelection(value: unknown): CartItemSelection {
@@ -66,6 +82,7 @@ function normalizeExistingCartItem(value: Record<string, unknown>): CartItem | n
     coverImage: asString(value.coverImage) ?? undefined,
     unitPrice: asNumberOrNull(value.unitPrice),
     selection: normalizeSelection(value.selection),
+    selectionLabels: normalizeSelectionLabels(value.selectionLabels),
     addedAt: asString(value.addedAt) ?? new Date().toISOString()
   };
 }
@@ -73,6 +90,7 @@ function normalizeExistingCartItem(value: Record<string, unknown>): CartItem | n
 export function createCartItemFromStay(stay: Stay, input: {
   unitPrice: number | null;
   selection: Partial<CartItemSelection>;
+  selectionLabels?: CartItemSelectionLabels;
 }): CartItem {
   return {
     id: createCartItemId(),
@@ -97,6 +115,7 @@ export function createCartItemFromStay(stay: Stay, input: {
       insuranceOptionId: input.selection.insuranceOptionId ?? null,
       extraOptionId: input.selection.extraOptionId ?? null
     },
+    selectionLabels: input.selectionLabels,
     addedAt: new Date().toISOString()
   };
 }
@@ -139,6 +158,7 @@ export function normalizeCartStorageItem(value: unknown): CartItem | null {
     coverImage: asString(record.coverImage) ?? undefined,
     unitPrice: asNumberOrNull(record.priceFrom),
     selection: normalizeSelection(selectedBooking),
+    selectionLabels: normalizeSelectionLabels(record.selectionLabels),
     addedAt: new Date().toISOString()
   };
 }

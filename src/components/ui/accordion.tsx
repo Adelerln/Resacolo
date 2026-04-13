@@ -16,19 +16,22 @@ type AccordionContextValue = {
 const AccordionContext = React.createContext<AccordionContextValue | null>(null);
 const ItemContext = React.createContext<{ value: string } | null>(null);
 
-interface AccordionProps extends React.HTMLAttributes<HTMLDivElement> {
+type AccordionProps = Omit<React.HTMLAttributes<HTMLDivElement>, 'defaultValue'> & {
   type?: AccordionType;
   collapsible?: boolean;
-}
+  /** Sections ouvertes au montage (surtout utile avec `type="multiple"`). */
+  defaultValue?: string[];
+};
 
 export function Accordion({
   className,
   type = 'single',
   collapsible = false,
+  defaultValue,
   children,
   ...props
 }: AccordionProps) {
-  const [openValues, setOpenValues] = React.useState<string[]>([]);
+  const [openValues, setOpenValues] = React.useState<string[]>(() => defaultValue ?? []);
 
   const toggleValue = React.useCallback(
     (value: string) => {

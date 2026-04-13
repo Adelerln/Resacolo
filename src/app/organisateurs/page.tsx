@@ -44,14 +44,14 @@ export default async function OrganisateursPage() {
     <div className="min-h-screen bg-white">
       {/* Section A: Intro Header */}
       <section className="relative bg-[#f5f5f5]">
-        <div className="section-container py-16 md:py-20">
+        <div className="section-container pb-16 pt-8 md:pb-20 md:pt-10">
         <div className="grid gap-10 lg:grid-cols-2 lg:items-center lg:gap-16">
           <div className="space-y-6">
             <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">
               À propos
             </p>
             <h1
-              className="font-display text-3xl font-bold leading-[1.3] sm:text-4xl lg:text-[3.25rem]"
+              className="font-display text-3xl font-bold leading-[1.15] sm:text-4xl sm:leading-[1.17] lg:text-[3.25rem] lg:leading-[1.2]"
               style={{ color: ORIGIN_GRAY }}
             >
               Les <span className="text-accent-500">organisateurs</span> de séjours

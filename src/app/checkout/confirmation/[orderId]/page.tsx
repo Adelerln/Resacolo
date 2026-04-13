@@ -7,6 +7,7 @@ import { CheckoutFrame } from '@/components/checkout/CheckoutFrame';
 import { useCart } from '@/context/CartContext';
 import { useCheckout } from '@/context/CheckoutContext';
 import { getOrderStatus } from '@/lib/checkout/client';
+import { isDevBypassCheckout } from '@/lib/checkout/dev-bypass';
 import { formatEuroFromCents } from '@/types/checkout';
 
 type OrderStatusResponse = {
@@ -33,6 +34,28 @@ export default function CheckoutConfirmationPage() {
 
   useEffect(() => {
     if (!orderId) return;
+
+    if (
+      mode === 'dev-bypass' &&
+      (isDevBypassCheckout() || process.env.NODE_ENV === 'development')
+    ) {
+      setOrder({
+        orderId,
+        status: 'PAID',
+        paidAt: new Date().toISOString(),
+        paymentStatus: 'PAID',
+        totalCents: 0,
+        currency: 'EUR'
+      });
+      setErrorMessage(null);
+      setIsLoading(false);
+      if (!checkoutResetDoneRef.current) {
+        clearCart();
+        resetCheckout();
+        checkoutResetDoneRef.current = true;
+      }
+      return;
+    }
 
     let cancelled = false;
     let interval: ReturnType<typeof setInterval> | null = null;
@@ -75,7 +98,7 @@ export default function CheckoutConfirmationPage() {
       cancelled = true;
       if (interval) clearInterval(interval);
     };
-  }, [clearCart, orderId, resetCheckout]);
+  }, [clearCart, mode, orderId, resetCheckout]);
 
   return (
     <CheckoutFrame
@@ -110,6 +133,11 @@ export default function CheckoutConfirmationPage() {
           )}
           {mode === 'monetico-mock' ? (
             <p className="text-xs text-slate-500">Mode de test local: paiement Monetico mock simulé.</p>
+          ) : null}
+          {mode === 'dev-bypass' ? (
+            <p className="text-xs text-amber-800">
+              Mode dev : confirmation fictive (NEXT_PUBLIC_DEV_BYPASS_CHECKOUT=1), sans commande en base.
+            </p>
           ) : null}
         </div>
       ) : null}

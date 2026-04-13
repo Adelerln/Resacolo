@@ -60,7 +60,8 @@ export function Footer({ hideHelpAndLegal = false }: { hideHelpAndLegal?: boolea
           alt=""
           width={320}
           height={240}
-          className="h-auto w-28 object-contain sm:w-36 lg:w-52 xl:w-64"
+          className="w-28 object-contain sm:w-36 lg:w-52 xl:w-64"
+          style={{ height: 'auto' }}
         />
       </div>
 

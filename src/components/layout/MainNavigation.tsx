@@ -143,153 +143,122 @@ export function MainNavigation() {
           priority
         />
       </Link>
-      <div className="section-container flex items-center justify-between gap-6 overflow-visible py-3 pl-24 sm:py-4 sm:pl-28 lg:pl-32">
+      <div className="section-container flex items-center justify-between gap-6 overflow-visible py-3 pl-24 sm:py-4 sm:pl-28 lg:pl-32 xl:pr-36 2xl:pr-40">
         <div className="h-9 w-0 shrink-0 sm:h-10" aria-hidden />
-        <nav className="hidden items-center gap-9 overflow-visible font-medium xl:flex">
-          {links.map((link) => {
-            if (isDropdownItem(link)) {
-              const isActive = link.children.some((c) => pathname === c.href);
-              return (
-                <div
-                  key={link.label}
-                  className="relative"
-                  onMouseEnter={openDropdown}
-                  onMouseLeave={closeDropdown}
-                >
-                  <button
-                    type="button"
-                    aria-expanded={dropdownOpen}
-                    aria-haspopup="menu"
-                    className={clsx(
-                      'flex items-center gap-1',
-                      headerLinkClass,
-                      isActive && 'opacity-100'
-                    )}
+        <div className="hidden flex-1 items-center xl:flex">
+          <nav className="flex items-center gap-12 overflow-visible font-medium 2xl:gap-14">
+            {links.map((link) => {
+              if (isDropdownItem(link)) {
+                const isActive = link.children.some((c) => pathname === c.href);
+                return (
+                  <div
+                    key={link.label}
+                    className="relative"
+                    onMouseEnter={openDropdown}
+                    onMouseLeave={closeDropdown}
                   >
-                    {link.label}
-                    <ChevronDown
-                      className={clsx('h-4 w-4 transition', dropdownOpen && 'rotate-180')}
-                    />
-                  </button>
-                  {dropdownOpen ? (
-                    <div className="absolute left-0 top-full z-50 min-w-[260px] pt-1">
-                      <div className="rounded-xl border border-slate-200 bg-white py-2 shadow-lg">
-                        {link.children.map((child) => (
-                          <Link
-                            key={child.href}
-                            href={child.href}
-                            className={clsx(
-                              headerDropdownItemClass,
-                              pathname === child.href && 'bg-brand-50'
-                            )}
-                          >
-                            {child.label}
-                          </Link>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-              );
-            }
-            if (isLinkItem(link)) {
-              const isAnchor = link.href.startsWith('#');
-              const isActive = !isAnchor && pathname === link.href;
-              return (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  className={clsx(headerLinkClass, isActive && 'opacity-100')}
-                >
-                  {link.label}
-                </Link>
-              );
-            }
-            return null;
-          })}
-        </nav>
-        <div className="hidden items-center gap-6 xl:flex">
-          <Link
-            href="/mon-compte"
-            className={headerIconButtonClass}
-            aria-label="Mon compte"
-          >
-            <Image
-              src="/image/header/pictos_header/icon-mon-compte.png"
-              alt=""
-              width={16}
-              height={16}
-              className="h-4 w-4 object-contain"
-            />
-          </Link>
-          <Link
-            href="/account/favorites"
-            className={clsx(headerIconButtonClass, 'relative')}
-            aria-label="Favoris"
-          >
-            <Image
-              src="/image/header/pictos_header/icon-favoris.png"
-              alt=""
-              width={16}
-              height={16}
-              className="h-4 w-4 object-contain"
-            />
-            {favoriteIdsArray.length > 0 && (
-              <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent-500 px-1 text-[10px] font-semibold text-white">
-                {favoriteIdsArray.length > 99 ? '99+' : favoriteIdsArray.length}
-              </span>
-            )}
-          </Link>
-          <Link
-            href="/panier"
-            className={clsx(headerIconButtonClass, 'relative')}
-            aria-label="Panier"
-          >
-            <Image
-              src="/image/header/pictos_header/icon-panier.png"
-              alt=""
-              width={16}
-              height={16}
-              className="h-4 w-4 object-contain"
-            />
-            {cartCount > 0 && (
-              <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-accent-500 text-[10px] font-semibold text-white">
-                {cartCount > 99 ? '99+' : cartCount}
-              </span>
-            )}
-          </Link>
-          <div
-            className="relative"
-            onMouseEnter={openBackOffice}
-            onMouseLeave={closeBackOffice}
-          >
-            <button
-              type="button"
-              aria-expanded={backOfficeOpen}
-              aria-haspopup="menu"
-              className="btn btn-sm btn-accent-outline text-[15px] font-bold tracking-[0.03em] !text-[#37b5f4] xl:text-base"
-            >
-              Back Office
-              <ChevronDown className={clsx('h-4 w-4 transition', backOfficeOpen && 'rotate-180')} />
-            </button>
-            {backOfficeOpen ? (
-              <div className="absolute right-0 top-full z-50 min-w-[200px] pt-2">
-                <div className="rounded-xl border border-slate-200 bg-white py-2 shadow-lg">
-                  {backOfficeLinks.map((item) => (
-                    <Link
-                      key={item.href}
-                      href={item.href}
+                    <button
+                      type="button"
+                      aria-expanded={dropdownOpen}
+                      aria-haspopup="menu"
                       className={clsx(
-                        'block px-4 py-2 text-slate-700 hover:bg-slate-50 hover:text-brand-500',
-                        pathname === item.href && 'bg-brand-50 text-brand-600'
+                        'flex items-center gap-1',
+                        headerLinkClass,
+                        isActive && 'opacity-100'
                       )}
                     >
-                      {item.label}
-                    </Link>
-                  ))}
-                </div>
-              </div>
-            ) : null}
+                      {link.label}
+                      <ChevronDown
+                        className={clsx('h-4 w-4 transition', dropdownOpen && 'rotate-180')}
+                      />
+                    </button>
+                    {dropdownOpen ? (
+                      <div className="absolute left-0 top-full z-50 min-w-[260px] pt-1">
+                        <div className="rounded-xl border border-slate-200 bg-white py-2 shadow-lg">
+                          {link.children.map((child) => (
+                            <Link
+                              key={child.href}
+                              href={child.href}
+                              className={clsx(
+                                headerDropdownItemClass,
+                                pathname === child.href && 'bg-brand-50'
+                              )}
+                            >
+                              {child.label}
+                            </Link>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              }
+              if (isLinkItem(link)) {
+                const isAnchor = link.href.startsWith('#');
+                const isActive = !isAnchor && pathname === link.href;
+                return (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    className={clsx(headerLinkClass, isActive && 'opacity-100')}
+                  >
+                    {link.label}
+                  </Link>
+                );
+              }
+              return null;
+            })}
+          </nav>
+          <div className="ml-auto flex items-center gap-7 pl-12 2xl:gap-8 2xl:pl-16">
+            <Link
+              href="/mon-compte"
+              className={headerIconButtonClass}
+              aria-label="Mon compte"
+            >
+              <Image
+                src="/image/header/pictos_header/icon-mon-compte.png"
+                alt=""
+                width={16}
+                height={16}
+                className="h-4 w-4 object-contain"
+              />
+            </Link>
+            <Link
+              href="/account/favorites"
+              className={clsx(headerIconButtonClass, 'relative')}
+              aria-label="Favoris"
+            >
+              <Image
+                src="/image/header/pictos_header/icon-favoris.png"
+                alt=""
+                width={16}
+                height={16}
+                className="h-4 w-4 object-contain"
+              />
+              {favoriteIdsArray.length > 0 && (
+                <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent-500 px-1 text-[10px] font-semibold text-white">
+                  {favoriteIdsArray.length > 99 ? '99+' : favoriteIdsArray.length}
+                </span>
+              )}
+            </Link>
+            <Link
+              href="/panier"
+              className={clsx(headerIconButtonClass, 'relative')}
+              aria-label="Panier"
+            >
+              <Image
+                src="/image/header/pictos_header/icon-panier.png"
+                alt=""
+                width={16}
+                height={16}
+                className="h-4 w-4 object-contain"
+              />
+              {cartCount > 0 && (
+                <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-accent-500 text-[10px] font-semibold text-white">
+                  {cartCount > 99 ? '99+' : cartCount}
+                </span>
+              )}
+            </Link>
           </div>
         </div>
         <button
@@ -299,6 +268,39 @@ export function MainNavigation() {
         >
           {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
         </button>
+      </div>
+      <div
+        className="absolute right-2 top-1/2 z-20 hidden -translate-y-1/2 items-center sm:right-3 lg:right-4 xl:flex"
+        onMouseEnter={openBackOffice}
+        onMouseLeave={closeBackOffice}
+      >
+        <button
+          type="button"
+          aria-expanded={backOfficeOpen}
+          aria-haspopup="menu"
+          className="btn btn-sm btn-accent-outline whitespace-nowrap text-[15px] font-bold tracking-[0.03em] !text-[#37b5f4] xl:text-base"
+        >
+          Back Office
+          <ChevronDown className={clsx('h-4 w-4 transition', backOfficeOpen && 'rotate-180')} />
+        </button>
+        {backOfficeOpen ? (
+          <div className="absolute right-0 top-full z-50 min-w-[200px] pt-2">
+            <div className="rounded-xl border border-slate-200 bg-white py-2 shadow-lg">
+              {backOfficeLinks.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={clsx(
+                    'block px-4 py-2 text-slate-700 hover:bg-slate-50 hover:text-brand-500',
+                    pathname === item.href && 'bg-brand-50 text-brand-600'
+                  )}
+                >
+                  {item.label}
+                </Link>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </div>
       {open ? (
         <nav className="overflow-hidden border-t border-slate-200 bg-white px-4 py-4 sm:px-6 xl:hidden">

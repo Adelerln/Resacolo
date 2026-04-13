@@ -459,9 +459,11 @@ export default function HomePage() {
                   }}
                 >
                   {inspiLoopCards.map((card, index) => (
-                    <div
+                    <Link
                       key={`${card.src}-${index}`}
-                      className="group relative shrink-0 overflow-hidden rounded-[14px] bg-slate-100 shadow-md"
+                      href={card.href}
+                      title={`Découvrir : ${card.title}`}
+                      className="group relative block shrink-0 cursor-pointer overflow-hidden rounded-[14px] bg-slate-100 shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 focus-visible:ring-offset-2"
                       style={{ width: inspiCardWidthPx > 0 ? `${inspiCardWidthPx}px` : '100%' }}
                     >
                       <div className="relative aspect-[4/5]">
@@ -495,16 +497,13 @@ export default function HomePage() {
                           >
                             {card.description}
                           </p>
-                          <Link
-                            href={card.href}
-                            className="mt-4 inline-flex w-fit items-center gap-2 rounded-xl bg-accent-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-accent-600"
-                          >
+                          <span className="cta-orange-sweep mt-4 inline-flex w-fit items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-white">
                             Découvrir
                             <ArrowRight size={16} />
-                          </Link>
+                          </span>
                         </div>
                       </div>
-                    </div>
+                    </Link>
                   ))}
                 </div>
               </div>
@@ -609,9 +608,9 @@ export default function HomePage() {
           >
             <Link
               href="/faq"
-              className="inline-flex items-center gap-2 rounded-xl bg-accent-500 px-6 py-3 font-semibold text-white shadow-md hover:bg-accent-600 transition-colors"
+              className="cta-orange-sweep inline-flex items-center gap-2 rounded-xl px-6 py-3 font-semibold text-white shadow-md"
             >
-              En savoir plus
+              Commencer
               <ChevronRight className="h-4 w-4" />
             </Link>
           </motion.div>
@@ -787,7 +786,7 @@ export default function HomePage() {
                     href={aid.href}
                     target="_blank"
                     rel="noreferrer"
-                    className="resacolo-card flex h-[118px] w-full cursor-pointer flex-col items-center justify-center gap-1.5 !px-4 !py-3 text-center"
+                    className="aid-card-sweep resacolo-card flex h-[118px] w-full cursor-pointer flex-col items-center justify-center gap-1.5 !px-4 !py-3 text-center"
                     initial={{ opacity: 0, y: 20 }}
                     whileInView={{ opacity: 1, y: 0 }}
                     viewport={{ once: true }}
@@ -808,7 +807,7 @@ export default function HomePage() {
                         <aid.icon size={19} />
                       </div>
                     )}
-                    <span className="text-sm font-extrabold !text-[#505050]">{aid.label}</span>
+                    <span className="text-sm font-extrabold text-[#505050]">{aid.label}</span>
                   </motion.a>
                 ))}
               </div>
@@ -823,7 +822,7 @@ export default function HomePage() {
         <div className="section-container flex justify-center">
           <Link
             href="/contact"
-            className="inline-flex items-center justify-center rounded-full bg-[#FA8500] px-10 py-4 text-base font-bold uppercase tracking-widest text-white shadow-[0_16px_30px_-18px_rgba(250,133,0,0.7)] transition hover:opacity-90"
+            className="cta-orange-sweep inline-flex items-center justify-center rounded-full px-10 py-4 text-base font-bold uppercase tracking-widest text-white shadow-[0_16px_30px_-18px_rgba(250,133,0,0.7)] transition"
           >
             Nous contacter
           </Link>

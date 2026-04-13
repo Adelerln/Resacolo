@@ -12,10 +12,15 @@ function stripHtmlTags(value: string) {
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<\/p>/gi, '\n')
     .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;|&#160;/gi, ' ')
     .replace(/\s+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .replace(/[ \t]{2,}/g, ' ')
     .trim();
+}
+
+function applyFrenchNbspBeforePunctuation(value: string) {
+  return value.replace(/ ([!?;:])/g, '&nbsp;$1');
 }
 
 const ORGANIZER_DURATION_META_PATTERN = /<!--\s*resacolo:duration:(\d*):(\d*)\s*-->/i;
@@ -56,7 +61,7 @@ export function sanitizeOrganizerRichText(value?: string | null) {
   html = html.replace(/<(strong|b|em|i|u|li|p|ul|ol)([^>]*)>/gi, '<$1>');
   html = html.replace(/<br>/gi, '<br />');
 
-  return html.trim();
+  return applyFrenchNbspBeforePunctuation(html.trim());
 }
 
 export function extractOrganizerDurationMeta(value?: string | null) {

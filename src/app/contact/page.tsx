@@ -293,7 +293,7 @@ export default function ContactPage() {
                 <button
                   type="submit"
                   disabled={status === 'loading'}
-                  className="w-full rounded-xl px-8 py-4 font-semibold uppercase tracking-wide text-white shadow-md transition hover:opacity-95 disabled:opacity-70 sm:w-auto"
+                  className="cta-orange-sweep w-full rounded-xl px-8 py-4 font-semibold uppercase tracking-wide text-white shadow-md transition disabled:opacity-70 sm:w-auto"
                   style={{ backgroundColor: ORANGE }}
                 >
                   {status === 'loading' ? 'Envoi…' : 'Envoyer'}

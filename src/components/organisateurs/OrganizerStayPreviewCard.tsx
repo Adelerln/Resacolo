@@ -41,10 +41,10 @@ export function OrganizerStayPreviewCard({
   const body =
     description?.trim() || summary?.trim() || 'Présentation du séjour à venir.';
   const subtitle = summary?.trim() && summary.trim() !== title.trim() ? summary.trim() : null;
-  const metaTextClass = 'text-xs font-semibold leading-snug text-black';
+  const metaTextClass = 'text-xs font-semibold leading-snug text-black transition-colors group-hover:text-white';
 
   return (
-    <article className="flex h-full w-full max-w-[320px] flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_18px_40px_-28px_rgba(15,23,42,0.35)]">
+    <article className="group flex h-full w-full max-w-[320px] flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_18px_40px_-28px_rgba(15,23,42,0.35)]">
       <div className="relative h-52 shrink-0 overflow-hidden rounded-t-[28px] bg-slate-100">
         {overlayAction ? <div className="absolute left-3 top-3 z-10">{overlayAction}</div> : null}
         <Link href={href} className="relative block h-full w-full">
@@ -74,75 +74,86 @@ export function OrganizerStayPreviewCard({
               />
             </div>
           ) : null}
-          <span className="absolute bottom-3 left-3 rounded-full bg-[#FA8500] px-3 py-1 text-xs font-bold text-white shadow-sm">
-            {ageRangeLabel}
-          </span>
-          <span className="absolute bottom-3 right-3 inline-flex items-center gap-1.5 rounded-full bg-white px-2.5 py-1 text-xs font-bold uppercase tracking-wide text-[#FA8500] shadow-sm">
-            <Image
-              src={seasonIconSrc}
-              alt=""
-              width={20}
-              height={20}
-              className="h-5 w-5 shrink-0 object-contain"
-            />
-            <span>{seasonBadge}</span>
-          </span>
         </Link>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 px-4 py-2">
-        <span className={`flex min-w-0 items-start gap-2 ${metaTextClass}`}>
-          <Image
-            src={MAP_BLEU}
-            alt=""
-            width={24}
-            height={24}
-            className="mt-0.5 h-5 w-5 shrink-0 object-contain"
-          />
-          <span className="min-w-0 break-words line-clamp-3">{locationLabel}</span>
+      <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-4 py-2.5 transition-colors group-hover:border-white/30">
+        <span className="inline-flex items-center rounded-full bg-[#FA8500] px-3 py-1 text-xs font-bold text-white shadow-sm">
+          {ageRangeLabel}
         </span>
-        <span className={`flex min-w-0 items-center justify-end gap-2 text-right ${metaTextClass}`}>
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-2.5 py-1 text-xs font-bold uppercase tracking-wide text-[#FA8500] shadow-sm transition-colors group-hover:bg-white/90 group-hover:text-[#37B5F5]">
           <Image
-            src="/image/sejours/pictos_duree/duree.png"
+            src={seasonIconSrc}
             alt=""
-            width={24}
-            height={24}
+            width={20}
+            height={20}
             className="h-5 w-5 shrink-0 object-contain"
           />
-          <span className="min-w-0">{durationLabel}</span>
+          <span>{seasonBadge}</span>
         </span>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col px-4 pb-0 pt-2 text-center">
-        <h3 className="text-lg font-bold leading-snug text-[#505050]">{title}</h3>
-        {subtitle ? (
-          <p className="mt-2 line-clamp-2 text-sm font-bold leading-snug text-[#505050]">{subtitle}</p>
-        ) : null}
-        <p className="mt-3 line-clamp-4 flex-1 text-sm leading-6 text-slate-600">{body}</p>
-        <p className="mt-4 shrink-0 text-base font-semibold text-slate-600">
-          {priceFromEuros != null ? (
-            <>
-              À partir de{' '}
-              <span className="text-xl font-bold text-[#FA8500]">
-                {priceFromEuros.toLocaleString('fr-FR', {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2
-                })}
-                €
-              </span>
-            </>
-          ) : (
-            <span className="text-lg font-bold text-[#FA8500]">Sur demande</span>
-          )}
-        </p>
-      </div>
+      <div className="card-blue-vertical-sweep flex min-h-0 flex-1 flex-col">
+        <div className="grid grid-cols-2 gap-2 px-4 py-2">
+          <span className={`flex min-w-0 items-start gap-2 ${metaTextClass}`}>
+            <Image
+              src={MAP_BLEU}
+              alt=""
+              width={24}
+              height={24}
+              className="mt-0.5 h-5 w-5 shrink-0 object-contain"
+            />
+            <span className="min-w-0 break-words line-clamp-3">{locationLabel}</span>
+          </span>
+          <span className={`flex min-w-0 items-center justify-end gap-2 text-right ${metaTextClass}`}>
+            <Image
+              src="/image/sejours/pictos_duree/duree.png"
+              alt=""
+              width={24}
+              height={24}
+              className="h-5 w-5 shrink-0 object-contain"
+            />
+            <span className="min-w-0">{durationLabel}</span>
+          </span>
+        </div>
 
-      <Link
-        href={href}
-        className="mt-auto flex w-full shrink-0 items-center justify-center rounded-b-[28px] bg-[#6DC7FE] px-4 py-3.5 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-[#52B0EA]"
-      >
-        DÉCOUVRIR LE SÉJOUR
-      </Link>
+        <div className="flex min-h-0 flex-1 flex-col px-4 pb-0 pt-2 text-center">
+          <h3 className="text-lg font-bold leading-snug text-[#505050] transition-colors group-hover:text-white">{title}</h3>
+          {subtitle ? (
+            <p className="mt-2 line-clamp-2 text-sm font-bold leading-snug text-[#505050] transition-colors group-hover:text-white">
+              {subtitle}
+            </p>
+          ) : null}
+          <p className="mt-3 line-clamp-4 flex-1 text-sm leading-6 text-slate-600 transition-colors group-hover:text-white">
+            {body}
+          </p>
+          <p className="mt-4 shrink-0 text-base font-semibold text-slate-600 transition-colors group-hover:text-white">
+            {priceFromEuros != null ? (
+              <>
+                À partir de{' '}
+                <span className="text-xl font-bold text-[#FA8500] transition-colors group-hover:text-white">
+                  {priceFromEuros.toLocaleString('fr-FR', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2
+                  })}
+                  €
+                </span>
+              </>
+            ) : (
+              <span className="text-lg font-bold text-[#FA8500] transition-colors group-hover:text-white">
+                Sur demande
+              </span>
+            )}
+          </p>
+        </div>
+
+        <Link
+          href={href}
+          className="mt-auto flex w-full shrink-0 items-center justify-center border-t border-slate-100 px-4 py-3.5 text-sm font-bold uppercase tracking-wide text-[#37B5F5] transition-colors group-hover:border-white/30 group-hover:text-white"
+        >
+          DÉCOUVRIR LE SÉJOUR
+        </Link>
+      </div>
     </article>
   );
 }

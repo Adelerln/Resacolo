@@ -19,17 +19,19 @@ export function OrganisateursGridWithModal({ organizers }: OrganisateursGridWith
     <>
       <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
         {organizers.map((org) => (
-          <article
+          <Link
             key={org.slug}
-            className="flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-md transition hover:shadow-lg"
+            href={`/organisateurs/${org.slug}`}
+            title={`Voir l’organisateur ${org.name}`}
+            className="card-blue-vertical-sweep group flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-md transition hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 focus-visible:ring-offset-2"
           >
             <div className="flex min-h-[170px] flex-1 flex-col items-center justify-center px-4 py-8">
-                {org.logoUrl ? (
-                  <img
-                    src={org.logoUrl}
-                    alt={org.name}
-                    className="max-h-28 w-auto object-contain"
-                  />
+              {org.logoUrl ? (
+                <img
+                  src={org.logoUrl}
+                  alt={org.name}
+                  className="max-h-28 w-auto object-contain"
+                />
               ) : (
                 <div className="flex h-16 w-full items-center justify-center rounded-lg bg-slate-100">
                   <span className="text-xs font-semibold uppercase text-slate-400">
@@ -38,11 +40,11 @@ export function OrganisateursGridWithModal({ organizers }: OrganisateursGridWith
                 </div>
               )}
             </div>
-            <div className="flex min-h-[126px] flex-col border-t border-slate-100 px-4 py-4">
-              <h3 className="text-center text-[21px] font-bold leading-[1.4] text-[#6DC7FE]">
+            <div className="flex min-h-[126px] flex-col border-t border-slate-100 px-4 py-4 transition-colors group-hover:border-white/35 group-focus-visible:border-white/35">
+              <h3 className="text-center text-[21px] font-bold leading-[1.4] text-[#6DC7FE] transition-colors group-hover:text-white group-focus-visible:text-white">
                 {org.name}
               </h3>
-              <ul className="mt-3 space-y-1 text-center text-sm text-slate-500">
+              <ul className="mt-3 space-y-1 text-center text-sm text-slate-500 transition-colors group-hover:text-white/95 group-focus-visible:text-white/95">
                 <li>
                   <strong>Création :</strong> {org.creationYear ?? '-'}
                 </li>
@@ -54,13 +56,10 @@ export function OrganisateursGridWithModal({ organizers }: OrganisateursGridWith
                 </li>
               </ul>
             </div>
-            <Link
-              href={`/organisateurs/${org.slug}`}
-              className="flex w-full items-center justify-center rounded-b-xl bg-brand-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-brand-600"
-            >
+            <div className="flex w-full items-center justify-center border-t border-slate-100 px-4 py-3 text-sm font-semibold tracking-wide text-brand-600 transition-colors group-hover:border-white/35 group-hover:text-white group-focus-visible:border-white/35 group-focus-visible:text-white">
               PLUS DE DÉTAILS
-            </Link>
-          </article>
+            </div>
+          </Link>
         ))}
       </div>
     </>

@@ -4,6 +4,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { OrganizerStayPreviewCard } from '@/components/organisateurs/OrganizerStayPreviewCard';
+import { HorizontalCardsCarousel } from '@/components/organisateurs/HorizontalCardsCarousel';
 import { ExternalLink, MapPin } from 'lucide-react';
 import { formatAccommodationType } from '@/lib/accommodation-types';
 import { extractAccommodationLocationMeta } from '@/lib/accommodation-location';
@@ -707,7 +708,7 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
                 {organizerDisplayName}
               </h1>
               <div
-                className="mt-5 text-justify text-[0.88rem] font-medium leading-[1.6] text-slate-600 sm:text-[0.95rem] [&_b]:text-[1rem] [&_b]:font-extrabold [&_br]:block [&_br]:content-[''] [&_em]:italic [&_i]:italic [&_li]:ml-5 [&_li]:list-disc [&_li]:pl-1 [&_ol]:ml-5 [&_ol]:list-decimal [&_ol]:space-y-2 [&_p]:mb-4 [&_strong]:text-[1rem] [&_strong]:font-extrabold [&_u]:underline [&_ul]:space-y-2 sm:[&_b]:text-[1.05rem] sm:[&_strong]:text-[1.05rem]"
+                className="mt-5 text-left text-[0.88rem] font-medium leading-[1.6] text-slate-600 sm:text-[0.95rem] [&_b]:text-[1rem] [&_b]:font-extrabold [&_br]:block [&_br]:content-[''] [&_em]:italic [&_i]:italic [&_li]:ml-5 [&_li]:list-disc [&_li]:pl-1 [&_ol]:ml-5 [&_ol]:list-decimal [&_ol]:space-y-2 [&_p]:mb-4 [&_strong]:text-[1rem] [&_strong]:font-extrabold [&_u]:underline [&_ul]:space-y-2 sm:[&_b]:text-[1.05rem] sm:[&_strong]:text-[1.05rem]"
                 dangerouslySetInnerHTML={{ __html: presentationHtml }}
               />
               {projectUrl && (
@@ -890,8 +891,8 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
             </div>
 
             {accommodations.length > 0 ? (
-              <div className="-mx-4 overflow-x-auto px-4 pb-3">
-                <div className="flex min-w-max gap-5">
+              <HorizontalCardsCarousel>
+                <div className="flex min-w-max gap-5 pr-2">
                   {accommodations.map((accommodation) => {
                     const locationLabel =
                       accommodation.locationLabel ?? accommodation.linkedStayLocations.find(Boolean) ?? '';
@@ -925,7 +926,7 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
                     );
                   })}
                 </div>
-              </div>
+              </HorizontalCardsCarousel>
             ) : (
               <div className="rounded-[28px] border border-dashed border-slate-200 bg-white p-8 text-sm text-slate-500">
                 Aucun hébergement n’est encore présenté pour cet organisateur.
@@ -989,7 +990,7 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
           <div className="mt-8 flex justify-center">
             <Link
               href={organizerCatalogHref}
-              className="inline-flex items-center rounded-full border border-[#6DC7FE] bg-[#6DC7FE] px-6 py-3 text-sm font-bold text-white transition hover:bg-white hover:text-[#6DC7FE]"
+              className="cta-orange-sweep inline-flex items-center rounded-full px-6 py-3 text-sm font-bold text-white"
             >
               Découvrir les autres séjours
             </Link>

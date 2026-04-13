@@ -131,28 +131,20 @@ export function MainNavigation() {
 
   return (
     <header className="font-accent sticky top-0 z-[100] overflow-visible border-b border-slate-200 bg-white/90 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-white/80">
-      <Link
-        href="/"
-        className="absolute left-0 top-1/2 z-10 flex -translate-y-1/2 items-center pl-3 sm:pl-4 lg:pl-5"
-      >
-        <Image
-          src="/image/accueil/images_accueil/logo-resacolo.png"
-          alt="Resacolo"
-          width={140}
-          height={40}
-          className="h-9 w-auto sm:h-10"
-          priority
-        />
-      </Link>
-      {/* Même largeur / padding horizontaux que `.section-container` pour aligner nav et contenu ; Back Office est ancré au bord droit du header (comme le logo à gauche). */}
-      <div className="relative mx-auto flex w-full max-w-6xl items-center gap-2 px-4 py-3 sm:gap-3 sm:px-6 sm:py-4 lg:px-8">
-        <div
-          className="pointer-events-none h-9 w-[5.25rem] shrink-0 sm:h-10 sm:w-24 lg:w-28 xl:w-32"
-          aria-hidden
-        />
-        <div className="flex min-w-0 flex-1 items-center justify-end xl:justify-center">
-          <div className="hidden min-w-0 flex-1 items-center justify-center gap-10 overflow-visible xl:flex xl:gap-12 2xl:gap-16">
-          <nav className="flex min-w-0 items-center gap-14 overflow-visible font-medium lg:gap-16 xl:gap-20 2xl:gap-28">
+      <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-6 sm:py-4 lg:px-8 xl:grid xl:grid-cols-[auto_minmax(0,1fr)_auto] xl:gap-4">
+        <Link href="/" className="flex shrink-0 items-center" title="Retour à l’accueil">
+          <Image
+            src="/image/accueil/images_accueil/logo-resacolo.png"
+            alt="Resacolo"
+            width={140}
+            height={40}
+            className="h-9 w-auto sm:h-10"
+            priority
+          />
+        </Link>
+
+        <div className="hidden min-w-0 items-center justify-center xl:flex">
+          <nav className="flex min-w-0 items-center gap-6 overflow-visible font-medium xl:gap-7 2xl:gap-8">
             {links.map((link) => {
               if (isDropdownItem(link)) {
                 const isActive = link.children.some((c) => pathname === c.href);
@@ -167,6 +159,7 @@ export function MainNavigation() {
                       type="button"
                       aria-expanded={dropdownOpen}
                       aria-haspopup="menu"
+                      title={link.label}
                       className={clsx(
                         'flex items-center gap-1.5 overflow-visible',
                         headerLinkClass,
@@ -190,6 +183,7 @@ export function MainNavigation() {
                             <Link
                               key={child.href}
                               href={child.href}
+                              title={child.label}
                               className={clsx(
                                 headerDropdownItemClass,
                                 pathname === child.href && 'bg-brand-50'
@@ -211,6 +205,7 @@ export function MainNavigation() {
                   <Link
                     key={link.href}
                     href={link.href}
+                    title={link.label}
                     className={clsx(headerLinkClass, isActive && 'opacity-100')}
                   >
                     {link.label}
@@ -219,12 +214,51 @@ export function MainNavigation() {
               }
               return null;
             })}
+            <div
+              className="relative"
+              onMouseEnter={openBackOffice}
+              onMouseLeave={closeBackOffice}
+            >
+              <button
+                type="button"
+                aria-expanded={backOfficeOpen}
+                aria-haspopup="menu"
+                title="Back Office"
+                className="btn btn-sm btn-accent-outline whitespace-nowrap text-[15px] font-bold tracking-[0.03em] !text-[color:var(--color-primary)] xl:text-base"
+              >
+                Back Office
+                <ChevronDown className={clsx('h-4 w-4 transition', backOfficeOpen && 'rotate-180')} />
+              </button>
+              {backOfficeOpen ? (
+                <div className="absolute left-0 top-full z-50 min-w-[200px] pt-2">
+                  <div className="rounded-xl border border-slate-200 bg-white py-2 shadow-lg">
+                    {backOfficeLinks.map((item) => (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        title={item.label}
+                        className={clsx(
+                          'block px-4 py-2 text-slate-700 hover:bg-slate-50 hover:text-brand-500',
+                          pathname === item.href && 'bg-brand-50 text-brand-600'
+                        )}
+                      >
+                        {item.label}
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </div>
           </nav>
-          <div className="flex shrink-0 items-center gap-7 2xl:gap-8">
+        </div>
+
+        <div className="flex shrink-0 items-center gap-2 sm:gap-3 xl:justify-self-end">
+          <div className="hidden items-center gap-3 xl:flex 2xl:gap-4">
             <Link
               href="/mon-compte"
               className={headerIconButtonClass}
               aria-label="Mon compte"
+              title="Mon compte"
             >
               <Image
                 src="/image/header/pictos_header/icon-mon-compte.png"
@@ -238,6 +272,7 @@ export function MainNavigation() {
               href="/account/favorites"
               className={clsx(headerIconButtonClass, 'relative')}
               aria-label="Favoris"
+              title="Favoris"
             >
               <Image
                 src="/image/header/pictos_header/icon-favoris.png"
@@ -256,6 +291,7 @@ export function MainNavigation() {
               href="/panier"
               className={clsx(headerIconButtonClass, 'relative')}
               aria-label="Panier"
+              title="Panier"
             >
               <Image
                 src="/image/header/pictos_header/icon-panier.png"
@@ -271,49 +307,16 @@ export function MainNavigation() {
               )}
             </Link>
           </div>
-          </div>
           <button
             type="button"
             className="rounded-lg border border-slate-200 p-2.5 text-slate-600 xl:hidden"
             onClick={toggle}
-            aria-label="Ouvrir le menu"
+            aria-label={open ? 'Fermer le menu' : 'Ouvrir le menu'}
+            title={open ? 'Fermer le menu' : 'Ouvrir le menu'}
           >
             {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
         </div>
-      </div>
-      <div
-        className="absolute right-3 top-1/2 z-20 hidden -translate-y-1/2 sm:right-4 lg:right-5 xl:flex"
-        onMouseEnter={openBackOffice}
-        onMouseLeave={closeBackOffice}
-      >
-        <button
-          type="button"
-          aria-expanded={backOfficeOpen}
-          aria-haspopup="menu"
-          className="btn btn-sm btn-accent-outline whitespace-nowrap text-[15px] font-bold tracking-[0.03em] !text-[color:var(--color-primary)] xl:text-base"
-        >
-          Back Office
-          <ChevronDown className={clsx('h-4 w-4 transition', backOfficeOpen && 'rotate-180')} />
-        </button>
-        {backOfficeOpen ? (
-          <div className="absolute right-0 top-full z-50 min-w-[200px] pt-2">
-            <div className="rounded-xl border border-slate-200 bg-white py-2 shadow-lg">
-              {backOfficeLinks.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={clsx(
-                    'block px-4 py-2 text-slate-700 hover:bg-slate-50 hover:text-brand-500',
-                    pathname === item.href && 'bg-brand-50 text-brand-600'
-                  )}
-                >
-                  {item.label}
-                </Link>
-              ))}
-            </div>
-          </div>
-        ) : null}
       </div>
       {open ? (
         <nav className="overflow-hidden border-t border-slate-200 bg-white px-4 py-4 sm:px-6 xl:hidden">
@@ -336,6 +339,7 @@ export function MainNavigation() {
                             <Link
                               href={child.href}
                               onClick={close}
+                              title={child.label}
                               className={clsx(
                                 mobileHeaderLinkClass,
                                 pathname === child.href && 'opacity-100'
@@ -357,6 +361,7 @@ export function MainNavigation() {
                       <Link
                         href={link.href}
                         onClick={close}
+                        title={link.label}
                         className={clsx(mobileHeaderLinkClass, isActive && 'opacity-100')}
                       >
                         {link.label}
@@ -374,6 +379,7 @@ export function MainNavigation() {
                       <Link
                         href={item.href}
                         onClick={close}
+                        title={item.label}
                         className={clsx(
                           mobileHeaderLinkClass,
                           pathname === item.href && 'opacity-100'
@@ -390,6 +396,7 @@ export function MainNavigation() {
                   <Link
                     href="/mon-compte"
                     onClick={close}
+                    title="Mon compte"
                     className="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
                   >
                     Mon compte
@@ -397,6 +404,7 @@ export function MainNavigation() {
                   <Link
                     href="/account/favorites"
                     onClick={close}
+                    title="Favoris"
                     className="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
                   >
                     Favoris {favoriteIdsArray.length > 0 ? `(${favoriteIdsArray.length > 99 ? '99+' : favoriteIdsArray.length})` : ''}
@@ -404,6 +412,7 @@ export function MainNavigation() {
                   <Link
                     href="/panier"
                     onClick={close}
+                    title="Panier"
                     className="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
                   >
                     Panier {cartCount > 0 ? `(${cartCount > 99 ? '99+' : cartCount})` : ''}

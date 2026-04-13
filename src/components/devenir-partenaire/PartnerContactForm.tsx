@@ -164,7 +164,7 @@ export function PartnerContactForm() {
   };
 
   return (
-    <section id="demande-partenariat" className="section-container pb-20">
+    <section id="demande-partenariat" className="section-container pb-20 pt-16 md:pt-20">
       <Script
         src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"
         strategy="afterInteractive"
@@ -275,7 +275,7 @@ export function PartnerContactForm() {
             <button
               type="submit"
               disabled={status === 'loading'}
-              className="rounded-full px-8 py-3 text-sm font-semibold uppercase tracking-wide text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-70"
+              className="cta-orange-sweep rounded-full px-8 py-3 text-sm font-semibold uppercase tracking-wide text-white transition disabled:cursor-not-allowed disabled:opacity-70"
               style={{ backgroundColor: ORANGE }}
             >
               {status === 'loading' ? 'Envoi…' : 'Envoyer'}

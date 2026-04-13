@@ -548,7 +548,7 @@ export default function CheckoutInformationsPage() {
           <div className="space-y-3">
             <button
               type="submit"
-              className="mx-auto flex min-h-[46px] w-full max-w-[280px] items-center justify-center rounded-xl bg-accent-500 px-5 py-2 text-center text-sm font-bold uppercase tracking-wide text-white shadow-md transition hover:bg-accent-600 disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-[48px] sm:max-w-[320px] sm:text-base"
+              className="cta-orange-sweep mx-auto flex min-h-[46px] w-full max-w-[280px] items-center justify-center rounded-xl px-5 py-2 text-center text-sm font-bold uppercase tracking-wide text-white shadow-md disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-[48px] sm:max-w-[320px] sm:text-base"
               disabled={isSubmitting || isLoadingPricing || items.length === 0 || !isParticipantsComplete}
             >
               {isSubmitting

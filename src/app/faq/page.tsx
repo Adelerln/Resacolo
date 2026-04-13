@@ -49,7 +49,7 @@ export default function FaqPage() {
           <div className="mt-8 flex w-full justify-start">
             <Link
               href="/contact"
-              className="inline-flex cursor-pointer items-center justify-center rounded-xl bg-accent-500 px-8 py-4 font-semibold uppercase tracking-wide text-white shadow-md transition-colors hover:bg-accent-600 sm:w-auto"
+              className="cta-orange-sweep inline-flex cursor-pointer items-center justify-center rounded-xl px-8 py-4 font-semibold uppercase tracking-wide text-white shadow-md sm:w-auto"
             >
               Contactez un des organisateurs
             </Link>

@@ -16,13 +16,13 @@ export default function RejoindreResacoloPage() {
     <div className="min-h-screen bg-white">
       <section className="relative bg-slate-100 pb-16 pt-14 md:pb-20 md:pt-16 lg:pb-24 lg:pt-20">
         <div className="section-container grid min-h-0 gap-7 pb-3 md:grid-cols-2 md:items-center md:gap-10 md:pb-5 lg:gap-12">
-          <div>
+          <div className="max-w-2xl text-left">
             <p className="text-xs font-extrabold uppercase tracking-widest text-slate-500">À propos</p>
-            <h1 className="mt-4 font-display text-3xl font-bold leading-[1.06] text-slate-900 sm:text-4xl lg:text-[3.25rem]">
+            <h1 className="mt-3 text-left font-display text-3xl font-bold leading-[1.06] text-slate-900 sm:text-4xl lg:text-[3.25rem]">
               <span style={{ color: ORANGE }}>Rejoindre </span>
               <span style={{ color: ORIGIN_GRAY }}>Resacolo</span>
             </h1>
-            <p className="mt-6 max-w-xl text-justify font-medium leading-relaxed text-slate-600">
+            <p className="mt-4 max-w-xl font-medium leading-relaxed text-slate-600">
               Vous portez des colonies de vacances ou des séjours jeunesse&nbsp;? Rejoignez le collectif Resacolo pour
               gagner en visibilité dans un cadre qualitatif et mutualiste.
               <br />
@@ -68,7 +68,7 @@ export default function RejoindreResacoloPage() {
         </div>
       </section>
 
-      <section className="section-container pb-20">
+      <section className="section-container pb-20 pt-16 md:pt-20">
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="bg-white px-6 py-8 md:px-10 md:py-10">
             <h2 className="text-center text-3xl font-bold text-slate-900 sm:text-4xl">
@@ -163,7 +163,7 @@ export default function RejoindreResacoloPage() {
               <p className="text-sm text-slate-500">* champs obligatoires</p>
               <button
                 type="submit"
-                className="inline-flex items-center gap-2 rounded-xl bg-accent-500 px-8 py-3 text-sm font-semibold uppercase tracking-wide text-white shadow-sm transition hover:bg-accent-600"
+                className="cta-orange-sweep inline-flex items-center gap-2 rounded-xl px-8 py-3 text-sm font-semibold uppercase tracking-wide text-white shadow-sm transition"
               >
                 <Mail className="h-4 w-4" />
                 Envoyer la demande

@@ -877,7 +877,7 @@ export function StayDetailView({ stay }: { stay: Stay }) {
                     type="button"
                     onClick={handleReserver}
                     disabled={!hasSessions || !hasOpenSessions || isCheckingAvailability}
-                    className="mt-4 flex w-full items-center justify-center rounded-xl bg-accent-500 px-6 py-3.5 text-base font-semibold text-white shadow-md transition-colors hover:bg-accent-600 disabled:cursor-not-allowed disabled:bg-slate-300"
+                    className="cta-orange-sweep mt-4 flex w-full items-center justify-center rounded-xl px-6 py-3.5 text-base font-semibold text-white shadow-md disabled:cursor-not-allowed disabled:bg-slate-300"
                   >
                     {isCheckingAvailability ? 'Vérification...' : 'Réserver maintenant'}
                   </button>
@@ -926,7 +926,7 @@ export function StayDetailView({ stay }: { stay: Stay }) {
               </div>
               <Link
                 href="/organisateurs"
-                className="mt-4 inline-block rounded-xl bg-accent-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-accent-600"
+                className="cta-orange-sweep mt-4 inline-block rounded-xl px-4 py-2 text-sm font-semibold text-white"
               >
                 En savoir plus
               </Link>

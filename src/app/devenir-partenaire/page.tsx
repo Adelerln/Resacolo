@@ -90,15 +90,15 @@ const formulas = [
 export default function DevenirPartenairePage() {
   return (
     <div className="min-h-screen bg-white">
-      <section className="relative bg-slate-100 pb-12 pt-10 md:pb-14 md:pt-14 lg:pb-16">
+      <section className="bg-slate-100 pb-16 pt-12 md:pb-20 md:pt-16 lg:pb-24">
         <div className="section-container grid min-h-0 gap-7 pb-1 md:grid-cols-2 md:items-center md:gap-10 md:pb-2 lg:gap-12">
-          <div>
+          <div className="max-w-2xl text-left">
             <p className="text-xs font-extrabold uppercase tracking-widest text-slate-500">À propos</p>
-            <h1 className="mt-4 font-display text-3xl font-bold leading-[1.15] text-slate-900 sm:text-4xl sm:leading-[1.17] lg:text-[3.25rem] lg:leading-[1.2]">
+            <h1 className="mt-3 text-left font-display text-3xl font-bold leading-[1.15] text-slate-900 sm:text-4xl sm:leading-[1.17] lg:text-[3.25rem] lg:leading-[1.2]">
               <span style={{ color: ORIGIN_GRAY }}>Les conditions de </span>
               <span style={{ color: ORANGE }}>partenariat</span>
             </h1>
-            <p className="mt-6 max-w-xl text-justify font-medium leading-relaxed text-slate-600">
+            <p className="mt-4 max-w-xl font-medium leading-relaxed text-slate-600">
               Devenir partenaire de RESACOLO, c&apos;est promouvoir et faciliter le départ en colonie de vacances !
               Sensibiliser vos publics aux bienfaits des colonies de vacances en privilégiant la plateforme des
               professionnels du secteur et son catalogue de séjours riche et diversifié.
@@ -121,38 +121,35 @@ export default function DevenirPartenairePage() {
           </div>
         </div>
 
-        {/* Frise centrée sur la limite hero (gris) / section suivante (blanc) */}
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 translate-y-1/2 px-0 sm:px-4">
-          <div className="section-container pointer-events-auto">
-            <div className="rounded-[24px] border border-slate-100 bg-white px-4 py-5 shadow-[0_16px_44px_rgba(15,23,42,0.08)] sm:px-6 sm:py-6">
-              <div className="flex flex-col gap-5 lg:flex-row lg:items-stretch lg:justify-between lg:gap-0">
-                {processSteps.map((step, index) => (
-                  <Fragment key={step.text}>
-                    <article className="flex min-w-0 flex-1 flex-col items-center rounded-xl bg-slate-50/80 p-4 text-center lg:bg-transparent lg:p-3">
-                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent-50">
-                        <step.icon className="h-5 w-5 text-accent-500" aria-hidden />
-                      </div>
-                      <p className="mt-3 max-w-[14rem] text-sm font-semibold leading-snug text-slate-700 sm:max-w-none">
-                        {step.text}
-                      </p>
-                    </article>
-                    {index < processSteps.length - 1 ? (
-                      <div
-                        className="hidden shrink-0 items-center justify-center self-center px-1 lg:flex"
-                        aria-hidden
-                      >
-                        <ChevronRight className="h-6 w-6 text-accent-500" strokeWidth={2.25} />
-                      </div>
-                    ) : null}
-                  </Fragment>
-                ))}
-              </div>
+        <div className="section-container mt-10 md:mt-12 lg:mt-14">
+          <div className="rounded-[24px] border border-slate-100 bg-white px-4 py-5 shadow-[0_16px_44px_rgba(15,23,42,0.08)] sm:px-6 sm:py-6">
+            <div className="flex flex-col gap-5 lg:flex-row lg:items-stretch lg:justify-between lg:gap-0">
+              {processSteps.map((step, index) => (
+                <Fragment key={step.text}>
+                  <article className="flex min-w-0 flex-1 flex-col items-center rounded-xl bg-slate-50/80 p-4 text-center lg:bg-transparent lg:p-3">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent-50">
+                      <step.icon className="h-5 w-5 text-accent-500" aria-hidden />
+                    </div>
+                    <p className="mt-3 max-w-[14rem] text-sm font-semibold leading-snug text-slate-700 sm:max-w-none">
+                      {step.text}
+                    </p>
+                  </article>
+                  {index < processSteps.length - 1 ? (
+                    <div
+                      className="hidden shrink-0 items-center justify-center self-center px-1 lg:flex"
+                      aria-hidden
+                    >
+                      <ChevronRight className="h-6 w-6 text-accent-500" strokeWidth={2.25} />
+                    </div>
+                  ) : null}
+                </Fragment>
+              ))}
             </div>
           </div>
         </div>
       </section>
 
-      <section className="bg-white pb-16 pt-24 md:pb-20 md:pt-28 lg:pt-32">
+      <section className="bg-white pb-20 pt-16 md:pb-24 md:pt-20">
         <div className="section-container">
           <h2 className="text-center font-display text-2xl font-bold leading-tight text-slate-900 sm:text-3xl lg:text-4xl">
             Privilégier <span style={{ color: ORIGIN_BLUE }}>RESACOLO</span>
@@ -175,7 +172,7 @@ export default function DevenirPartenairePage() {
         </div>
       </section>
 
-      <section className="bg-white pb-16 md:pb-20">
+      <section className="bg-white pb-20 pt-14 md:pb-24 md:pt-16">
         <div className="section-container">
           <h2 className="text-center font-display text-2xl font-bold leading-tight text-slate-900 sm:text-3xl lg:text-4xl">
             <span style={{ color: ORIGIN_GRAY }}>Nos formules </span>

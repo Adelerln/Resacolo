@@ -3,9 +3,10 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { MapPin, Users, Trash2 } from 'lucide-react';
+import { Bus, Calendar, Layers, MapPin, Shield, Trash2, Users } from 'lucide-react';
 import { useCart } from '@/context/CartContext';
 import { getMockImageUrl, mockImages } from '@/lib/mockImages';
+import type { CartItem } from '@/types/cart';
 
 function formatPrice(price?: number | null) {
   if (!price) return 'Sur demande';
@@ -15,6 +16,46 @@ function formatPrice(price?: number | null) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   }).format(price);
+}
+
+type SelectionRow = { Icon: typeof Calendar; label: string; text: string };
+
+function getPanierSelectionRows(item: CartItem): SelectionRow[] {
+  const L = item.selectionLabels;
+  const sel = item.selection;
+  const rows: SelectionRow[] = [];
+
+  const sessionText =
+    L?.sessionLine?.trim() ||
+    (sel.sessionId
+      ? 'Session enregistrée. Rouvrez la fiche du séjour puis ajoutez-le à nouveau au panier pour afficher les dates.'
+      : '');
+  if (sessionText) {
+    rows.push({ Icon: Calendar, label: 'Session', text: sessionText });
+  }
+
+  const transportText =
+    L?.transportLine?.trim() ||
+    (sel.transportMode === 'Sans transport'
+      ? 'Sans transport'
+      : [sel.departureCity, sel.returnCity].filter(Boolean).join(' → ') || sel.transportMode);
+  if (transportText) {
+    rows.push({ Icon: Bus, label: 'Transport', text: transportText });
+  }
+
+  const insuranceText =
+    L?.insuranceLine?.trim() || (sel.insuranceOptionId ? 'Assurance sélectionnée.' : '');
+  if (insuranceText) {
+    rows.push({ Icon: Shield, label: 'Assurance', text: insuranceText });
+  }
+
+  const extraText =
+    L?.extraLine?.trim() || (sel.extraOptionId ? 'Option complémentaire sélectionnée.' : '');
+  if (extraText) {
+    rows.push({ Icon: Layers, label: 'Option complémentaire', text: extraText });
+  }
+
+  return rows;
 }
 
 export default function PanierPage() {
@@ -59,7 +100,9 @@ export default function PanierPage() {
       </p>
 
       <div className="mt-10 space-y-6">
-        {items.map((item, index) => (
+        {items.map((item, index) => {
+          const selectionRows = getPanierSelectionRows(item);
+          return (
           <article
             key={`${item.id}-${index}`}
             className="flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm sm:flex-row"
@@ -92,6 +135,22 @@ export default function PanierPage() {
                     {item.ageRange}
                   </span>
                 </div>
+                {selectionRows.length > 0 ? (
+                  <ul className="mt-4 space-y-2.5 border-t border-slate-100 pt-4">
+                    {selectionRows.map((row) => {
+                      const RowIcon = row.Icon;
+                      return (
+                        <li key={row.label} className="flex gap-2.5 text-sm text-slate-600">
+                          <RowIcon className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" aria-hidden />
+                          <div>
+                            <span className="font-semibold text-slate-700">{row.label}</span>
+                            <span className="block text-slate-600">{row.text}</span>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : null}
               </div>
               <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-4">
                 <p className="text-lg font-semibold text-accent-600">
@@ -109,7 +168,8 @@ export default function PanierPage() {
               </div>
             </div>
           </article>
-        ))}
+          );
+        })}
       </div>
 
       <div className="mt-10 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">

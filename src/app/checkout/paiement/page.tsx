@@ -3,11 +3,11 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
-import { CheckoutCartSummary } from '@/components/checkout/CheckoutCartSummary';
 import { CheckoutFrame } from '@/components/checkout/CheckoutFrame';
 import { useCart } from '@/context/CartContext';
 import { useCheckout } from '@/context/CheckoutContext';
 import { confirmPaymentManually, createPaymentIntent } from '@/lib/checkout/client';
+import { buildDevMockPricing, isDevBypassCheckout } from '@/lib/checkout/dev-bypass';
 import type { CheckoutPricing } from '@/types/checkout';
 
 type PaymentInitData = {
@@ -51,7 +51,29 @@ export default function CheckoutPaiementPage() {
 
   useEffect(() => {
     async function initializePayment() {
-      if (!hydrated || items.length === 0 || !isContactComplete || !isParticipantsComplete) {
+      if (!hydrated || items.length === 0) {
+        setIsLoading(false);
+        return;
+      }
+
+      if (!isDevBypassCheckout() && (!isContactComplete || !isParticipantsComplete)) {
+        setIsLoading(false);
+        return;
+      }
+
+      if (isDevBypassCheckout()) {
+        const mockPricing = buildDevMockPricing(items);
+        setPaymentData({
+          orderId: 'dev-order',
+          paymentId: 'dev-payment',
+          pricing: mockPricing,
+          monetico: {
+            reference: 'DEV-REF',
+            transactionId: 'DEV-TXN',
+            paymentUrl: '#',
+            testMode: true
+          }
+        });
         setIsLoading(false);
         return;
       }
@@ -138,7 +160,7 @@ export default function CheckoutPaiementPage() {
     );
   }
 
-  if (!isContactComplete || !isParticipantsComplete) {
+  if (!isDevBypassCheckout() && (!isContactComplete || !isParticipantsComplete)) {
     return (
       <CheckoutFrame
         step="paiement"
@@ -160,6 +182,14 @@ export default function CheckoutPaiementPage() {
     setIsSubmitting(true);
 
     try {
+      if (isDevBypassCheckout()) {
+        sessionStorage.removeItem(cacheKey);
+        clearCart();
+        resetCheckout();
+        router.push('/checkout/confirmation/dev-order?mode=dev-bypass');
+        return;
+      }
+
       await confirmPaymentManually({
         checkoutId,
         orderId: paymentData.orderId,
@@ -182,7 +212,6 @@ export default function CheckoutPaiementPage() {
       step="paiement"
       title="Paiement"
       subtitle="Réglez votre commande directement sur le site."
-      aside={<CheckoutCartSummary items={items} pricing={paymentData?.pricing ?? null} />}
     >
       {isLoading ? <p className="text-sm text-slate-500">Préparation du paiement...</p> : null}
 

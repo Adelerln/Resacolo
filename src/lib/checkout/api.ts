@@ -15,5 +15,14 @@ export function getApiErrorMessage(error: unknown) {
     return error.message;
   }
 
+  if (typeof error === 'string' && error.trim().length > 0) {
+    return error.trim();
+  }
+
+  if (typeof error === 'object' && error !== null && 'message' in error) {
+    const msg = (error as { message: unknown }).message;
+    if (typeof msg === 'string' && msg.trim().length > 0) return msg.trim();
+  }
+
   return 'Une erreur est survenue.';
 }

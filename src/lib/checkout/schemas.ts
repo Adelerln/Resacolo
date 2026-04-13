@@ -14,6 +14,15 @@ export const cartSelectionSchema = z.object({
   extraOptionId: nullableIdSchema
 });
 
+export const cartItemSelectionLabelsSchema = z
+  .object({
+    sessionLine: z.string().trim().optional(),
+    transportLine: z.string().trim().optional(),
+    insuranceLine: z.string().trim().optional(),
+    extraLine: z.string().trim().optional()
+  })
+  .optional();
+
 export const cartItemSchema = z.object({
   id: z.string().trim().min(1),
   stayId: z.string().trim().min(1),
@@ -27,6 +36,7 @@ export const cartItemSchema = z.object({
   coverImage: z.string().trim().optional(),
   unitPrice: z.number().nullable(),
   selection: cartSelectionSchema,
+  selectionLabels: cartItemSelectionLabelsSchema,
   addedAt: z.string().trim().min(1)
 });
 

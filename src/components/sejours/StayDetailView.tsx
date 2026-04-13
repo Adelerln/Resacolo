@@ -24,6 +24,7 @@ import {
 import { FavoriteToggleButton } from '@/components/favorites/FavoriteToggleButton';
 import type { Stay, StayInsuranceOption, StaySessionOption, StayTransportOption } from '@/types/stay';
 import { useCart } from '@/context/CartContext';
+import { formatSessionDateRangeFr } from '@/lib/cart/formatSessionRange';
 import { createCartItemFromStay } from '@/lib/cart/normalizeCartItem';
 import { FILTER_LABELS } from '@/lib/constants';
 import { getMockImageUrl, mockImages } from '@/lib/mockImages';
@@ -387,6 +388,29 @@ export function StayDetailView({ stay }: { stay: Stay }) {
     }
 
     setBookingError(null);
+
+    let transportLine: string | null = null;
+    if (transportMode === 'Sans transport') {
+      transportLine = 'Sans transport';
+    } else if (isDifferentiatedTransport) {
+      const chunks: string[] = [];
+      if (selectedDepartureTransportOption) {
+        chunks.push(`Aller : ${formatTransportLabel(selectedDepartureTransportOption)}`);
+      } else if (selectedDepartureCity) {
+        chunks.push(`Aller : ${selectedDepartureCity}`);
+      }
+      if (selectedReturnTransportOption) {
+        chunks.push(`Retour : ${formatTransportLabel(selectedReturnTransportOption)}`);
+      } else if (selectedReturnCity) {
+        chunks.push(`Retour : ${selectedReturnCity}`);
+      }
+      transportLine = chunks.length > 0 ? chunks.join(' — ') : 'Transport aller / retour';
+    } else if (selectedTransportOption) {
+      transportLine = formatTransportLabel(selectedTransportOption);
+    } else {
+      transportLine = transportMode;
+    }
+
     addItem(
       createCartItemFromStay(stay, {
         unitPrice: estimatedPrice ?? null,
@@ -400,6 +424,16 @@ export function StayDetailView({ stay }: { stay: Stay }) {
           returnCity: selectedReturnCity || null,
           insuranceOptionId: selectedInsuranceOption?.id ?? null,
           extraOptionId: selectedExtraOption?.id ?? null
+        },
+        selectionLabels: {
+          sessionLine: selectedSession
+            ? formatSessionDateRangeFr(selectedSession.startDate, selectedSession.endDate)
+            : null,
+          transportLine,
+          insuranceLine: selectedInsuranceOption ? formatInsuranceLabel(selectedInsuranceOption) : null,
+          extraLine: selectedExtraOption
+            ? `${selectedExtraOption.label} · ${formatPrice(selectedExtraOption.amount)}`
+            : null
         }
       })
     );

@@ -22,8 +22,9 @@ function isSessionAvailable(session: SessionRow) {
   return true;
 }
 
-export async function GET(_: Request, { params }: { params: { id: string } }) {
-  const sessionId = params.id?.trim();
+export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const sessionId = id?.trim();
 
   if (!sessionId) {
     return NextResponse.json({ error: 'Session invalide.' }, { status: 400 });

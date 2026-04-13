@@ -14,8 +14,6 @@ import {
   AccordionItem,
   AccordionTrigger
 } from '@/components/ui/accordion';
-import { Card, CardContent, CardDescription, CardTitle } from '@/components/ui/card';
-import { FavoriteStayButton } from '@/components/sejours/FavoriteStayButton';
 import {
   EMPTY_STAY_CATALOG_FILTERS,
   DEFAULT_STAY_CATALOG_SORT,
@@ -80,93 +78,26 @@ function toggleListValue<TValue extends string>(list: TValue[], value: TValue) {
 
 function StayCard({ stay }: { stay: Stay }) {
   const season = resolveStaySeasonPicto(stay.seasonName || stay.period[0] || null);
+
   return (
-    <Link href={`/sejours/${stay.slug}`} className="block transition-opacity hover:opacity-95">
-      <Card className="overflow-hidden rounded-3xl border-slate-200/90 shadow-[0_14px_30px_-24px_rgba(15,23,42,0.42)]">
-        <div className="relative h-56 w-full">
-          <Image
-            src={stay.coverImage || getMockImageUrl(mockImages.sejours.fallbackCover, 1200, 80)}
-            alt={stay.title}
-            fill
-            className="object-cover"
-            sizes="(max-width: 768px) 100vw, 33vw"
-          />
-          <div className="absolute left-3 top-3 z-10">
-            <FavoriteStayButton stayId={stay.id} stopPropagation />
-          </div>
-          <div className="absolute right-3 top-3 h-11 w-11 overflow-hidden rounded-full border-2 border-white bg-white shadow">
-            <Image
-              src={organizerLogo}
-              alt="Organisateur"
-              fill
-              className="object-contain p-1"
-              sizes="44px"
-            />
-          </div>
-          <span className="absolute bottom-3 left-3 rounded-full bg-accent-500 px-3 py-1 text-xs font-semibold text-white">
-            {stay.ageRange || 'Tous âges'}
-          </span>
-          <span className="absolute bottom-3 right-3 inline-flex items-center gap-1 rounded-full bg-white px-3 py-1 text-xs font-semibold text-accent-500">
-            <Sun className="h-3.5 w-3.5" />
-            {seasonLabel}
-          </span>
-        </div>
-
-        <CardContent className="flex flex-col space-y-4 p-4 pt-5 sm:pt-6">
-          <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-semibold text-[#6DC7FE]">
-            <span className="inline-flex min-w-0 items-center gap-2">
-              <MapPin className="h-5 w-5 shrink-0" aria-hidden />
-              <span className="min-w-0 truncate">{locationLabel}</span>
-            </span>
-            <span className="inline-flex shrink-0 items-center gap-2">
-              <Image
-                src="/image/sejours/pictos_duree/duree.png"
-                alt=""
-                width={24}
-                height={24}
-                className="h-5 w-5 object-contain"
-              />
-              <span>{stay.duration || 'Durée à venir'}</span>
-            </span>
-          </div>
-
-          <div className="space-y-2 pt-1 text-center">
-            <CardTitle className="text-lg font-bold text-slate-900 sm:text-xl">{stay.title}</CardTitle>
-            <CardDescription className="text-sm text-slate-500">{stay.organizer.name}</CardDescription>
-            <p
-              className="text-sm leading-6 text-slate-600"
-              style={{
-                display: '-webkit-box',
-                WebkitLineClamp: 3,
-                WebkitBoxOrient: 'vertical',
-                overflow: 'hidden'
-              }}
-            >
-              {description}
-            </p>
-          </div>
-          <p className="text-center text-base font-semibold text-slate-600">
-            {typeof stay.priceFrom === 'number' ? (
-              <>
-                À partir de{' '}
-                <span className="text-xl font-bold text-accent-500">
-                  {stay.priceFrom.toLocaleString('fr-FR', {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2
-                  })}
-                  €
-                </span>
-              </>
-            ) : (
-              <span className="text-lg font-bold text-accent-500">Sur demande</span>
-            )}
-          </p>
-          <div className="mt-2 flex w-[calc(100%+2rem)] max-w-none -mx-4 -mb-4 items-center justify-center bg-[#6DC7FE] py-3.5 text-sm font-bold uppercase tracking-wide text-white sm:w-[calc(100%+3rem)] sm:-mx-6 sm:-mb-6">
-            DÉCOUVRIR LE SÉJOUR
-          </div>
-        </CardContent>
-      </Card>
-    </Link>
+    <div className="flex justify-center">
+      <OrganizerStayPreviewCard
+        title={stay.title}
+        summary={stay.summary}
+        description={stay.description}
+        locationLabel={stay.location || stay.region || 'Lieu à préciser'}
+        ageRangeLabel={stay.ageRange || 'Tous âges'}
+        seasonIconSrc={season.iconPath}
+        seasonBadge={season.badgeText}
+        durationLabel={stay.duration || 'Durée à venir'}
+        priceFromEuros={stay.priceFrom}
+        coverUrl={stay.coverImage || getMockImageUrl(mockImages.sejours.fallbackCover, 1200, 80)}
+        href={`/sejours/${stay.slug}`}
+        organizerLogoUrl={stay.organizer.logoUrl ?? null}
+        organizerName={stay.organizer.name}
+        overlayAction={<FavoriteToggleButton stayId={stay.id} />}
+      />
+    </div>
   );
 }
 

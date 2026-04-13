@@ -19,12 +19,14 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <MainNavigation />
-      <main className="flex-1 min-h-0">
-        <Suspense fallback={<div className="min-h-screen">{children}</div>}>{children}</Suspense>
-      </main>
-      <Footer hideHelpAndLegal={hideFooterHelpAndLegal} />
-    </div>
+    <FavoritesProvider>
+      <div className="flex min-h-screen flex-col">
+        <MainNavigation />
+        <main className="flex-1 min-h-0">
+          <Suspense fallback={<div className="min-h-screen">{children}</div>}>{children}</Suspense>
+        </main>
+        <Footer hideHelpAndLegal={hideFooterHelpAndLegal} />
+      </div>
+    </FavoritesProvider>
   );
 }

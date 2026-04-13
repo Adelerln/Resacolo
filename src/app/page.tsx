@@ -378,6 +378,7 @@ export default function HomePage() {
                       width={56}
                       height={56}
                       className="h-14 w-14 object-contain"
+                      priority={i === 0}
                     />
                   </div>
                   <p className="text-slate-700 font-medium">{item.text}</p>

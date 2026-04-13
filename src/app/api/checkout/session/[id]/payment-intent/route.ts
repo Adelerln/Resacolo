@@ -6,13 +6,14 @@ import { getApiErrorMessage } from '@/lib/checkout/api';
 
 export const runtime = 'nodejs';
 
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const { id: checkoutId } = await params;
     const body = checkoutPaymentIntentBodySchema.parse(await req.json());
     const clientUserId = await getOrCreateClientUserId();
 
     const result = await prepareCheckoutPayment({
-      checkoutId: params.id,
+      checkoutId,
       clientUserId,
       items: body.items,
       contact: body.contact,

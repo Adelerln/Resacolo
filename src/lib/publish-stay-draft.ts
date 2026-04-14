@@ -1587,6 +1587,8 @@ async function syncAccommodation(
 
   const now = new Date().toISOString();
   let accommodationId = currentAccommodationId;
+  const accommodationValidatedAt = draft.validated_at ?? now;
+  const accommodationValidatedByUserId = draft.validated_by_user_id ?? null;
   const extractedData: Json = {
     source: 'stay_draft_publication',
     draft_id: draft.id,
@@ -1609,6 +1611,9 @@ async function syncAccommodation(
       status: 'DRAFT',
       validated_at: null,
       validated_by_user_id: null,
+      status: 'VALIDATED',
+      validated_at: accommodationValidatedAt,
+      validated_by_user_id: accommodationValidatedByUserId,
       updated_at: now
     };
 
@@ -1644,6 +1649,9 @@ async function syncAccommodation(
       status: 'DRAFT',
       validated_at: null,
       validated_by_user_id: null,
+      status: 'VALIDATED',
+      validated_at: accommodationValidatedAt,
+      validated_by_user_id: accommodationValidatedByUserId,
       created_at: now,
       updated_at: now
     };

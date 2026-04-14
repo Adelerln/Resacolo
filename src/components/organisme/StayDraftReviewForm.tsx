@@ -54,6 +54,10 @@ function parseCommaSeparatedList(value: string): string[] {
     .filter(Boolean);
 }
 
+function prettyJson(value: unknown): string {
+  return JSON.stringify(value, null, 2);
+}
+
 export default function StayDraftReviewForm({
   draftId,
   organizerId,

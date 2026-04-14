@@ -1,9 +1,14 @@
 import { NextResponse } from 'next/server';
+import { requireApiAdmin } from '@/lib/auth/api';
+import { isOrganizerAccessRole } from '@/lib/organizer-access';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 
 export const runtime = 'nodejs';
 
 export async function POST(req: Request, context: { params: Promise<{ id: string }> }) {
+  const unauthorized = await requireApiAdmin(req);
+  if (unauthorized) return unauthorized;
+
   const { id: idOrSlug } = await context.params;
   const formData = await req.formData();
   const email = String(formData.get('email') ?? '').trim();
@@ -16,6 +21,15 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
     return NextResponse.redirect(
       new URL(
         `/admin/organizers/${idOrSlug}/members/new?error=Tous%20les%20champs%20sont%20requis`,
+        req.url
+      ),
+      303
+    );
+  }
+  if (!isOrganizerAccessRole(role)) {
+    return NextResponse.redirect(
+      new URL(
+        `/admin/organizers/${idOrSlug}/members/new?error=${encodeURIComponent('Role invalide')}`,
         req.url
       ),
       303

@@ -1,4 +1,5 @@
 import { requireRole } from '@/lib/auth/require';
+import { ORGANIZER_ACCESS_ROLE_VALUES } from '@/lib/organizer-access';
 
 type PageProps = { params: Promise<{ id: string }>; searchParams?: { error?: string } };
 
@@ -66,9 +67,11 @@ export default async function AdminOrganizerMemberNewPage({ params: paramsPromis
             defaultValue="EDITOR"
             className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
           >
-            <option value="OWNER">OWNER</option>
-            <option value="EDITOR">EDITOR</option>
-            <option value="RESERVATION_MANAGER">RESERVATION_MANAGER</option>
+            {ORGANIZER_ACCESS_ROLE_VALUES.map((value) => (
+              <option key={value} value={value}>
+                {value}
+              </option>
+            ))}
           </select>
         </label>
         <button className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">

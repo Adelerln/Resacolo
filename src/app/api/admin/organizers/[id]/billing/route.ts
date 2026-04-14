@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getSession } from '@/lib/auth/session';
+import { requireApiAdmin } from '@/lib/auth/api';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 
 export const runtime = 'nodejs';
@@ -21,10 +21,8 @@ function parseEurosToCents(raw: string): number | null {
 }
 
 export async function POST(req: Request, context: { params: Promise<{ id: string }> }) {
-  const session = await getSession();
-  if (!session || session.role !== 'ADMIN') {
-    return NextResponse.redirect(new URL('/login', req.url), 303);
-  }
+  const unauthorized = await requireApiAdmin(req);
+  if (unauthorized) return unauthorized;
 
   const { id: idOrSlug } = await context.params;
   const formData = await req.formData();

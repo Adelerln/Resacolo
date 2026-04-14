@@ -26,6 +26,7 @@ export interface StayFilters {
 export interface OrganizerInfo {
   name: string;
   website: string;
+  slug?: string;
   logoUrl?: string;
   description?: string;
 }
@@ -71,6 +72,8 @@ export interface Stay {
   id: string;
   title: string;
   slug: string;
+  canonicalSlug: string;
+  legacySlugs?: string[];
   summary: string;
   description: string;
   seasonId: string;

@@ -4,11 +4,14 @@ export const StaySchema = z.object({
   id: z.string(),
   title: z.string(),
   slug: z.string(),
+  canonicalSlug: z.string(),
+  legacySlugs: z.array(z.string()).optional(),
   summary: z.string(),
   description: z.string(),
   organizer: z.object({
     name: z.string(),
-    website: z.string().url(),
+    website: z.string().url().or(z.literal('')),
+    slug: z.string().optional(),
     logoUrl: z.string().url().optional(),
     description: z.string().optional()
   }),

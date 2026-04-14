@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { ChevronDown, ChevronUp, Pencil } from 'lucide-react';
+import { ORGANIZER_ACCESS_ROLE_VALUES, type OrganizerAccessRole } from '@/lib/organizer-access';
 
 type MemberRow = {
   id: string;
@@ -10,16 +11,16 @@ type MemberRow = {
   last_name: string | null;
   email: string | null;
   organizerName: string | null;
-  role: 'OWNER' | 'EDITOR' | 'RESERVATION_MANAGER';
+  role: OrganizerAccessRole;
 };
 
 type SortKey = 'first_name' | 'last_name' | 'email' | 'organizerName' | 'role';
 
-const ROLE_LABELS: Record<MemberRow['role'], string> = {
+const ROLE_LABELS = {
   OWNER: 'Propriétaire',
   EDITOR: 'Éditeur',
   RESERVATION_MANAGER: 'Gestionnaire réservations'
-};
+} satisfies Record<OrganizerAccessRole, string>;
 
 export function AdminUsersTable({ members }: { members: MemberRow[] }) {
   const [editing, setEditing] = useState<MemberRow | null>(null);
@@ -29,11 +30,11 @@ export function AdminUsersTable({ members }: { members: MemberRow[] }) {
   } | null>(null);
 
   const roleOptions = useMemo(
-    () => [
-      { value: 'OWNER', label: ROLE_LABELS.OWNER },
-      { value: 'EDITOR', label: ROLE_LABELS.EDITOR },
-      { value: 'RESERVATION_MANAGER', label: ROLE_LABELS.RESERVATION_MANAGER }
-    ],
+    () =>
+      ORGANIZER_ACCESS_ROLE_VALUES.map((role) => ({
+        value: role,
+        label: ROLE_LABELS[role]
+      })),
     []
   );
 

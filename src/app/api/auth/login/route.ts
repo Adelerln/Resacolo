@@ -13,7 +13,7 @@ function mapRole(memberships: { role: string; tenantId: string | null }[]): {
   role: AppRole;
   tenantId?: string | null;
 } {
-  const admin = memberships.find((m) => m.role === 'PLATFORM_ADMIN');
+  const admin = memberships.find((m) => m.role === 'PLATFORM_ADMIN' || m.role === 'SUPPORT');
   if (admin) return { role: 'ADMIN', tenantId: null };
 
   const organizer = memberships.find((m) => m.role === 'ORGANIZER_ADMIN' || m.role === 'ORGANIZER_AGENT');

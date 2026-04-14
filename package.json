@@ -4,6 +4,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "check:seo": "node scripts/check-seo.mjs",
+    "ci:seo": "npm run build && npm run check:seo",
     "start": "next start",
     "lint": "eslint .",
     "seed": "node prisma/seed.js",

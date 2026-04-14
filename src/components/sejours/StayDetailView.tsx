@@ -30,6 +30,7 @@ import { FILTER_LABELS } from '@/lib/constants';
 import { getMockImageUrl, mockImages } from '@/lib/mockImages';
 import StayLocationMap from '@/components/sejours/StayLocationMap';
 import { FavoriteStayButton } from '@/components/sejours/FavoriteStayButton';
+import { slugify } from '@/lib/utils';
 
 type TabId = 'sejour' | 'programme' | 'hebergement' | 'encadrement' | 'infos';
 
@@ -105,6 +106,11 @@ function getCategoryIcon(category: Stay['categories'][number]) {
     default:
       return Palette;
   }
+}
+
+function getOrganizerHref(stay: Stay) {
+  const organizerSlug = stay.organizer.slug?.trim() || slugify(stay.organizer.name);
+  return organizerSlug ? `/organisateurs/${organizerSlug}` : '/organisateurs';
 }
 
 // Build a simple programme from description (split by double newline or "Jour")
@@ -468,6 +474,8 @@ export function StayDetailView({ stay }: { stay: Stay }) {
   const firstCategory = stay.filters.categories[0];
   const themeLabel = firstCategory ? formatLabel('categories', firstCategory) : stay.title;
   const ThemeIcon = firstCategory ? getCategoryIcon(firstCategory) : Palette;
+  const organizerHref = getOrganizerHref(stay);
+  const heroImageAlt = `Photo du séjour ${stay.title}${stay.location ? ` à ${stay.location}` : ''}`;
 
   return (
     <div className="min-h-screen bg-white">
@@ -475,7 +483,7 @@ export function StayDetailView({ stay }: { stay: Stay }) {
       <section className="relative h-[240px] w-full overflow-hidden sm:h-[300px] md:h-[360px]">
         <Image
           src={stay.coverImage || galleryImages[0]}
-          alt=""
+          alt={heroImageAlt}
           fill
           className="object-cover"
           sizes="100vw"
@@ -490,6 +498,26 @@ export function StayDetailView({ stay }: { stay: Stay }) {
       </section>
 
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <nav aria-label="Fil d’Ariane" className="mb-6 text-sm text-slate-500">
+          <ol className="flex flex-wrap items-center gap-2">
+            <li>
+              <Link href="/" className="hover:text-slate-700">
+                Accueil
+              </Link>
+            </li>
+            <li aria-hidden>›</li>
+            <li>
+              <Link href="/sejours" className="hover:text-slate-700">
+                Séjours
+              </Link>
+            </li>
+            <li aria-hidden>›</li>
+            <li className="text-slate-700" aria-current="page">
+              {stay.title}
+            </li>
+          </ol>
+        </nav>
+
         <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_360px] xl:gap-10">
           {/* Main column */}
           <article className="min-w-0">
@@ -545,7 +573,7 @@ export function StayDetailView({ stay }: { stay: Stay }) {
                 <div key={i} className="relative aspect-[4/3] overflow-hidden rounded-xl bg-slate-100">
                   <Image
                     src={src}
-                    alt=""
+                    alt={`Vue ${i + 1} du séjour ${stay.title}`}
                     fill
                     loading="eager"
                     className="object-cover"
@@ -909,7 +937,7 @@ export function StayDetailView({ stay }: { stay: Stay }) {
                   <div className="relative h-14 w-14 overflow-hidden rounded-full bg-slate-100">
                     <Image
                       src={stay.organizer.logoUrl}
-                      alt=""
+                      alt={`Logo ${stay.organizer.name}`}
                       fill
                       sizes="56px"
                       className="object-cover"
@@ -925,7 +953,7 @@ export function StayDetailView({ stay }: { stay: Stay }) {
                 </div>
               </div>
               <Link
-                href="/organisateurs"
+                href={organizerHref}
                 className="cta-orange-sweep mt-4 inline-block rounded-xl px-4 py-2 text-sm font-semibold text-white"
               >
                 En savoir plus

@@ -1,17 +1,11 @@
 import { requireRole } from '@/lib/auth/require';
+import { normalizeOrganizerAccessRole } from '@/lib/organizer-access';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { AdminUsersTable } from '@/components/admin/AdminUsersTable';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
-
-type AdminRole = 'OWNER' | 'EDITOR' | 'RESERVATION_MANAGER';
-
-function normalizeRole(role: string): AdminRole {
-  if (role === 'OWNER' || role === 'RESERVATION_MANAGER') return role;
-  return 'EDITOR';
-}
 
 export default async function AdminUsersPage() {
   await requireRole('ADMIN');
@@ -37,7 +31,7 @@ export default async function AdminUsersPage() {
       const { data: userData } = await supabase.auth.admin.getUserById(member.user_id);
       return {
         ...member,
-        role: normalizeRole(member.role),
+        role: normalizeOrganizerAccessRole(member.role),
         email: userData?.user?.email ?? null,
         organizerName: organizerById.get(member.organizer_id) ?? null
       };

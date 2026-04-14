@@ -9,6 +9,11 @@ export type OrganizerWorkspaceSection =
 
 export const ORGANIZER_ACCESS_COOKIE_NAME = 'resacolo_organizer_access_role';
 export const DEFAULT_ORGANIZER_ACCESS_ROLE: OrganizerAccessRole = 'EDITOR';
+export const ORGANIZER_ACCESS_ROLE_VALUES = [
+  'OWNER',
+  'EDITOR',
+  'RESERVATION_MANAGER'
+] as const;
 
 export const ORGANIZER_ACCESS_LABELS: Record<OrganizerAccessRole, string> = {
   OWNER: 'Propriétaire',
@@ -35,7 +40,10 @@ const ORGANIZER_NAV_LINKS: Array<{
 ];
 
 export function isOrganizerAccessRole(value: string | null | undefined): value is OrganizerAccessRole {
-  return value === 'OWNER' || value === 'EDITOR' || value === 'RESERVATION_MANAGER';
+  return (
+    typeof value === 'string' &&
+    (ORGANIZER_ACCESS_ROLE_VALUES as readonly string[]).includes(value)
+  );
 }
 
 export function normalizeOrganizerAccessRole(

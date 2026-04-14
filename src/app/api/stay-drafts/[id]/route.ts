@@ -15,6 +15,7 @@ import {
   normalizeStayTransportLogisticsMode
 } from '@/lib/stay-draft-content';
 import { mapToCanonicalStayRegion } from '@/lib/stay-regions';
+import { sanitizeSeoTags, sanitizeSeoText } from '@/lib/stay-seo';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { normalizeStayTitle } from '@/lib/stay-title';
 import type { Database, Json } from '@/types/supabase';
@@ -46,6 +47,28 @@ const bodySchema = z.object({
   transport_options_json: arrayOfObjectsSchema,
   accommodations_json: z.record(z.unknown()).nullable().optional().default(null),
   images: z.array(z.string()).optional().default([]),
+  seo_primary_keyword: z.string().optional().default(''),
+  seo_secondary_keywords: z.array(z.string()).optional().default([]),
+  seo_target_city: z.string().optional().default(''),
+  seo_target_region: z.string().optional().default(''),
+  seo_search_intents: z.array(z.string()).optional().default([]),
+  seo_title: z.string().optional().default(''),
+  seo_meta_description: z.string().optional().default(''),
+  seo_intro_text: z.string().optional().default(''),
+  seo_h1_variant: z.string().optional().default(''),
+  seo_internal_link_anchor_suggestions: z.array(z.string()).optional().default([]),
+  seo_slug_candidate: z.string().optional().default(''),
+  seo_score: z.number().int().min(0).max(100).nullable().optional().default(null),
+  seo_checks: z
+    .array(
+      z.object({
+        code: z.string().trim().min(1),
+        level: z.enum(['ok', 'warning', 'info']),
+        message: z.string().trim().min(1)
+      })
+    )
+    .optional()
+    .default([])
   video_urls: z.array(z.string()).optional().default([])
 });
 
@@ -89,6 +112,22 @@ function asObject(value: Json | null): Record<string, unknown> {
 
 function normalizeStatus(value: string | null | undefined): string {
   return normalizeString(value).toLowerCase();
+}
+
+function isMissingSeoColumnsError(message: string | null | undefined): boolean {
+  const normalized = String(message ?? '').toLowerCase();
+  if (!normalized) return false;
+  return normalized.includes('column') && normalized.includes('seo_') && normalized.includes('does not exist');
+}
+
+function removeSeoFields(payload: Record<string, unknown>): Record<string, unknown> {
+  const nextPayload = { ...payload };
+  for (const key of Object.keys(nextPayload)) {
+    if (key.startsWith('seo_')) {
+      delete nextPayload[key];
+    }
+  }
+  return nextPayload;
 }
 
 async function updateDraftPublicationMetadata(input: {
@@ -186,6 +225,19 @@ async function parseBody(req: Request): Promise<{ payload: StayDraftReviewPayloa
     transport_options_json: data.transport_options_json,
     accommodations_json: data.accommodations_json,
     images: data.images.map((image) => normalizeString(image)).filter(Boolean),
+    seo_primary_keyword: sanitizeSeoText(data.seo_primary_keyword),
+    seo_secondary_keywords: sanitizeSeoTags(data.seo_secondary_keywords),
+    seo_target_city: sanitizeSeoText(data.seo_target_city),
+    seo_target_region: sanitizeSeoText(data.seo_target_region),
+    seo_search_intents: sanitizeSeoTags(data.seo_search_intents),
+    seo_title: sanitizeSeoText(data.seo_title),
+    seo_meta_description: sanitizeSeoText(data.seo_meta_description),
+    seo_intro_text: sanitizeSeoText(data.seo_intro_text),
+    seo_h1_variant: sanitizeSeoText(data.seo_h1_variant),
+    seo_internal_link_anchor_suggestions: sanitizeSeoTags(data.seo_internal_link_anchor_suggestions),
+    seo_slug_candidate: sanitizeSeoText(data.seo_slug_candidate),
+    seo_score: data.seo_score,
+    seo_checks: data.seo_checks
     video_urls: data.video_urls.map((url) => normalizeString(url)).filter(Boolean)
   };
 
@@ -256,6 +308,19 @@ async function handleUpdate(req: Request, params: { id: string }, mode: 'save' |
     transport_options_json: parsedBody.payload.transport_options_json,
     accommodations_json: parsedBody.payload.accommodations_json,
     images: parsedBody.payload.images.length > 0 ? parsedBody.payload.images : null,
+    seo_primary_keyword: toNullableString(parsedBody.payload.seo_primary_keyword),
+    seo_secondary_keywords: parsedBody.payload.seo_secondary_keywords,
+    seo_target_city: toNullableString(parsedBody.payload.seo_target_city),
+    seo_target_region: toNullableString(parsedBody.payload.seo_target_region),
+    seo_search_intents: parsedBody.payload.seo_search_intents,
+    seo_title: toNullableString(parsedBody.payload.seo_title),
+    seo_meta_description: toNullableString(parsedBody.payload.seo_meta_description),
+    seo_intro_text: toNullableString(parsedBody.payload.seo_intro_text),
+    seo_h1_variant: toNullableString(parsedBody.payload.seo_h1_variant),
+    seo_internal_link_anchor_suggestions: parsedBody.payload.seo_internal_link_anchor_suggestions,
+    seo_slug_candidate: toNullableString(parsedBody.payload.seo_slug_candidate),
+    seo_score: parsedBody.payload.seo_score,
+    seo_checks: parsedBody.payload.seo_checks,
     raw_payload: {
       ...currentRawPayload,
       video_urls:
@@ -270,13 +335,26 @@ async function handleUpdate(req: Request, params: { id: string }, mode: 'save' |
     updatePayload.validated_by_user_id = validatedByUserId;
   }
 
-  const { data: updatedDraft, error } = await supabase
+  let { data: updatedDraft, error } = await supabase
     .from('stay_drafts')
     .update(updatePayload)
     .eq('id', params.id)
     .eq('organizer_id', selectedOrganizerId)
     .select(REVIEW_DRAFT_SELECT)
     .maybeSingle();
+
+  if ((error || !updatedDraft) && isMissingSeoColumnsError(error?.message)) {
+    const fallbackPayload = removeSeoFields(updatePayload);
+    const fallback = await supabase
+      .from('stay_drafts')
+      .update(fallbackPayload)
+      .eq('id', params.id)
+      .eq('organizer_id', selectedOrganizerId)
+      .select(REVIEW_DRAFT_SELECT)
+      .maybeSingle();
+    updatedDraft = fallback.data;
+    error = fallback.error;
+  }
 
   if (error || !updatedDraft) {
     return NextResponse.json(

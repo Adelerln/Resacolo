@@ -92,7 +92,7 @@ function StayCard({ stay }: { stay: Stay }) {
         durationLabel={stay.duration || 'Durée à venir'}
         priceFromEuros={stay.priceFrom}
         coverUrl={stay.coverImage || getMockImageUrl(mockImages.sejours.fallbackCover, 1200, 80)}
-        href={`/sejours/${stay.slug}`}
+        href={`/sejours/${stay.canonicalSlug}`}
         organizerLogoUrl={stay.organizer.logoUrl ?? null}
         organizerName={stay.organizer.name}
         overlayAction={<FavoriteToggleButton stayId={stay.id} />}

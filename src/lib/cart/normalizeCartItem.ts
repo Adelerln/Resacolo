@@ -95,7 +95,7 @@ export function createCartItemFromStay(stay: Stay, input: {
   return {
     id: createCartItemId(),
     stayId: stay.id,
-    slug: stay.slug,
+    slug: stay.canonicalSlug,
     title: stay.title,
     organizerId: stay.organizerId,
     organizerName: stay.organizer.name,

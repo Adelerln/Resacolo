@@ -98,6 +98,25 @@ function asStringArray(value: Json | null): string[] {
   return [];
 }
 
+function asSeoChecks(
+  value: Json | null
+): Array<{ code: string; level: 'ok' | 'warning' | 'info'; message: string }> {
+  if (!Array.isArray(value)) return [];
+  return (value as unknown[])
+    .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+    .map((item) => {
+      const code = typeof item.code === 'string' ? item.code.trim() : '';
+      const level = item.level === 'ok' || item.level === 'warning' || item.level === 'info' ? item.level : null;
+      const message = typeof item.message === 'string' ? item.message.trim() : '';
+      if (!code || !level || !message) return null;
+      return { code, level, message };
+    })
+    .filter(
+      (item): item is { code: string; level: 'ok' | 'warning' | 'info'; message: string } =>
+        Boolean(item)
+    );
+}
+
 function readExistingAccommodationId(rawPayload: Record<string, unknown>): string | null {
   const importOptions = rawPayload.import_options;
   if (!isPlainRecord(importOptions)) return null;
@@ -187,6 +206,22 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
       !linkedAccommodation && Object.keys(accommodationsObject).length > 0
         ? accommodationsObject
         : null,
+    images: asStringArray(draft.images),
+    seo_primary_keyword: normalizeString(draft.seo_primary_keyword),
+    seo_secondary_keywords: draft.seo_secondary_keywords ?? [],
+    seo_target_city: normalizeString(draft.seo_target_city),
+    seo_target_region: normalizeString(draft.seo_target_region),
+    seo_search_intents: draft.seo_search_intents ?? [],
+    seo_title: normalizeString(draft.seo_title),
+    seo_meta_description: normalizeString(draft.seo_meta_description),
+    seo_intro_text: normalizeString(draft.seo_intro_text),
+    seo_h1_variant: normalizeString(draft.seo_h1_variant),
+    seo_internal_link_anchor_suggestions: draft.seo_internal_link_anchor_suggestions ?? [],
+    seo_slug_candidate: normalizeString(draft.seo_slug_candidate),
+    seo_score: Number.isFinite(draft.seo_score) ? draft.seo_score : null,
+    seo_checks: asSeoChecks(draft.seo_checks),
+    seo_generated_at: draft.seo_generated_at,
+    seo_generation_source: normalizeString(draft.seo_generation_source) || null
     images: normalizeImportedImageUrlList(asStringArray(draft.images)),
     video_urls: normalizeImportedVideoUrlList(fallbackVideoUrls)
   };

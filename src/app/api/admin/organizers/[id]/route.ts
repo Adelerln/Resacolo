@@ -3,7 +3,7 @@ import {
   embedOrganizerDurationMeta,
   extractOrganizerDurationMeta
 } from '@/lib/organizer-rich-text';
-import { getSession } from '@/lib/auth/session';
+import { requireApiAdmin } from '@/lib/auth/api';
 import { syncOrganizerProfileCompletenessPercent } from '@/lib/organizer-profile-completeness';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { slugify } from '@/lib/utils';
@@ -11,10 +11,8 @@ import { slugify } from '@/lib/utils';
 export const runtime = 'nodejs';
 
 export async function POST(req: Request, context: { params: Promise<{ id: string }> }) {
-  const session = await getSession();
-  if (!session || session.role !== 'ADMIN') {
-    return NextResponse.redirect(new URL('/login', req.url), 303);
-  }
+  const unauthorized = await requireApiAdmin(req);
+  if (unauthorized) return unauthorized;
 
   const { id: idOrSlug } = await context.params;
   const formData = await req.formData();

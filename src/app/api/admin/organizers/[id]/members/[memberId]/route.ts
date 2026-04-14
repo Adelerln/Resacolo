@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server';
+import { requireApiAdmin } from '@/lib/auth/api';
+import { isOrganizerAccessRole } from '@/lib/organizer-access';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 
 export const runtime = 'nodejs';
@@ -7,6 +9,9 @@ export async function POST(
   req: Request,
   context: { params: Promise<{ id: string; memberId: string }> }
 ) {
+  const unauthorized = await requireApiAdmin(req);
+  if (unauthorized) return unauthorized;
+
   const { id, memberId } = await context.params;
   const formData = await req.formData();
   const role = String(formData.get('role') ?? '').trim();
@@ -14,6 +19,13 @@ export async function POST(
   const lastName = String(formData.get('last_name') ?? '').trim();
   const email = String(formData.get('email') ?? '').trim();
   const userId = String(formData.get('user_id') ?? '').trim();
+
+  if (!isOrganizerAccessRole(role)) {
+    return NextResponse.redirect(
+      new URL(`/admin/organizers/${id}?error=${encodeURIComponent('Role invalide')}`, req.url),
+      303
+    );
+  }
 
   const supabase = getServerSupabaseClient();
   const { error: memberError } = await supabase

@@ -20,7 +20,7 @@ import {
   extractOrganizerDurationMeta,
   extractOrganizerPresentationSummary
 } from '@/lib/organizer-rich-text';
-import { getStays } from '@/lib/stays';
+import { getStays, getStayCanonicalPath } from '@/lib/stays';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { slugify } from '@/lib/utils';
 
@@ -197,10 +197,6 @@ function buildFeaturedStaySessionMeta(sessions: FeaturedSessionRow[]) {
     durationLabel: formatAggregatedStayDays(dayCounts),
     priceFrom: minPrice
   };
-}
-
-function formatStayHref(organizerName: string, stayTitle: string, stayId: string) {
-  return `/sejours/${slugify(`${organizerName}-${stayTitle}`) || stayId}`;
 }
 
 function formatAccommodationCarouselLabel(type?: string | null, locationLabel?: string | null) {
@@ -608,6 +604,9 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
     };
   });
   const featuredPublishedStays = publishedStays.slice(0, 3);
+  const stayCanonicalPathById = new Map(
+    (await getStays()).map((stay) => [stay.id, getStayCanonicalPath(stay)])
+  );
   const organizerCatalogHref = `/sejours?organizer=${encodeURIComponent(organizerName)}`;
 
   const presentationHtml = buildOrganizerPresentationHtml(
@@ -972,7 +971,7 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
                   durationLabel={sessionMeta.durationLabel}
                   priceFromEuros={sessionMeta.priceFrom}
                   coverUrl={coverUrl}
-                  href={formatStayHref(organizerName, stay.title, stay.id)}
+                  href={stayCanonicalPathById.get(stay.id) ?? '/sejours'}
                   organizerLogoUrl={logoUrl}
                   organizerName={organizerDisplayName}
                 />

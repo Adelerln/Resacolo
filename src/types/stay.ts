@@ -26,6 +26,7 @@ export interface StayFilters {
 export interface OrganizerInfo {
   name: string;
   website: string;
+  slug?: string;
   logoUrl?: string;
   description?: string;
 }
@@ -67,10 +68,34 @@ export interface StayBookingOptions {
   extraOptions: StayExtraOption[];
 }
 
+export interface StaySeo {
+  primaryKeyword?: string;
+  secondaryKeywords: string[];
+  targetCity?: string;
+  targetRegion?: string;
+  searchIntents: string[];
+  title?: string;
+  metaDescription?: string;
+  introText?: string;
+  h1Variant?: string;
+  internalLinkAnchorSuggestions?: string[];
+  slugCandidate?: string;
+  score?: number;
+  checks?: Array<{
+    code: string;
+    level: 'ok' | 'warning' | 'info';
+    message: string;
+  }>;
+  generatedAt?: string;
+  generationSource?: string;
+}
+
 export interface Stay {
   id: string;
   title: string;
   slug: string;
+  canonicalSlug: string;
+  legacySlugs?: string[];
   summary: string;
   description: string;
   seasonId: string;
@@ -94,6 +119,7 @@ export interface Stay {
   coverImage?: string;
   filters: StayFilters;
   bookingOptions?: StayBookingOptions;
+  seo?: StaySeo;
   sourceUrl?: string;
   rawContext?: Record<string, unknown>;
   updatedAt: string;

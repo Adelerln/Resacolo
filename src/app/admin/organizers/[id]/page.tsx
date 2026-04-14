@@ -2,6 +2,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { requireRole } from '@/lib/auth/require';
+import { ORGANIZER_ACCESS_ROLE_VALUES } from '@/lib/organizer-access';
 import { extractOrganizerDurationMeta } from '@/lib/organizer-rich-text';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import type { Database } from '@/types/supabase';
@@ -507,9 +508,11 @@ export default async function AdminOrganizerDetailPage({ params: paramsPromise, 
                       defaultValue={member.role}
                       className="min-h-[42px] rounded-lg border border-slate-200 px-3 py-2 text-sm"
                     >
-                      <option value="OWNER">OWNER</option>
-                      <option value="EDITOR">EDITOR</option>
-                      <option value="RESERVATION_MANAGER">RESERVATION_MANAGER</option>
+                      {ORGANIZER_ACCESS_ROLE_VALUES.map((value) => (
+                        <option key={value} value={value}>
+                          {value}
+                        </option>
+                      ))}
                     </select>
                   </td>
                   <td className="px-4 py-3 text-slate-600">

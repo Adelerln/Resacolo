@@ -7,11 +7,14 @@ import RemainingPlacesEditor from '@/components/organisme/RemainingPlacesEditor'
 import StayInsuranceForm from '@/components/organisme/StayInsuranceForm';
 import StayEditorialTabs from '@/components/organisme/StayEditorialTabs';
 import StayFloatingSaveButton from '@/components/organisme/StayFloatingSaveButton';
+import StaySeoEditor from '@/components/organisme/StaySeoEditor';
 import StayTransportCardEffects from '@/components/organisme/StayTransportCardEffects';
 import { extractAccommodationLocationMeta } from '@/lib/accommodation-location';
 import { requireRole } from '@/lib/auth/require';
 import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers.server';
+import { getStayCanonicalPath, getStays } from '@/lib/stays';
 import { normalizeStayCategories, STAY_CATEGORY_OPTIONS } from '@/lib/stay-categories';
+import { sanitizeSeoTags, sanitizeSeoText } from '@/lib/stay-seo';
 import { formatStayAgeRange, getStayAgeBounds, normalizeStayAges, parseStayAges, STAY_AGE_OPTIONS } from '@/lib/stay-ages';
 import { isMissingRegionTextColumnError, normalizeStayRegion, STAY_REGION_OPTIONS } from '@/lib/stay-regions';
 import { getReservedSessionCounts } from '@/lib/session-reservations';
@@ -100,6 +103,19 @@ function getNextAvailablePosition(positions: number[]) {
     nextPosition += 1;
   }
   return nextPosition;
+}
+
+function isMissingSeoColumnsError(message: string | null | undefined) {
+  const normalizedMessage = (message ?? '').toLowerCase();
+  return (
+    normalizedMessage.includes('seo_primary_keyword') ||
+    normalizedMessage.includes('seo_secondary_keywords') ||
+    normalizedMessage.includes('seo_target_city') ||
+    normalizedMessage.includes('seo_target_region') ||
+    normalizedMessage.includes('seo_search_intents') ||
+    normalizedMessage.includes('seo_title') ||
+    normalizedMessage.includes('seo_meta_description')
+  );
 }
 
 export default async function OrganizerStayDetailPage({ params: paramsPromise, searchParams }: PageProps) {
@@ -195,6 +211,13 @@ export default async function OrganizerStayDetailPage({ params: paramsPromise, s
     if (indexB === -1) return -1;
     return indexA - indexB;
   });
+  const seasonNameById = Object.fromEntries(seasons.map((season) => [season.id, season.name]));
+  const stayAgeRange = formatStayAgeRange(selectedAges);
+  const allPublishedStays = await getStays();
+  const stayCanonicalPathPreview = getStayCanonicalPath(
+    allPublishedStays.find((item) => item.id === currentStay.id)?.canonicalSlug ??
+      (slugify(currentStay.title) || currentStay.id)
+  );
   const sessions = sessionsRaw ?? [];
   const reservedSessionCounts = await getReservedSessionCounts(
     supabase,
@@ -242,6 +265,17 @@ export default async function OrganizerStayDetailPage({ params: paramsPromise, s
     const region = normalizeStayRegion(formData.get('region_text'));
     const transportMode = String(formData.get('transport_mode') ?? '').trim();
     const transportText = String(formData.get('transport_text') ?? '').trim();
+    const seoPrimaryKeyword = sanitizeSeoText(formData.get('seo_primary_keyword')) || null;
+    const seoSecondaryKeywords = sanitizeSeoTags(
+      formData.getAll('seo_secondary_keywords').map((value) => String(value))
+    );
+    const seoTargetCity = sanitizeSeoText(formData.get('seo_target_city')) || null;
+    const seoTargetRegion = sanitizeSeoText(formData.get('seo_target_region')) || null;
+    const seoSearchIntents = sanitizeSeoTags(
+      formData.getAll('seo_search_intents').map((value) => String(value))
+    );
+    const seoTitle = sanitizeSeoText(formData.get('seo_title')) || null;
+    const seoMetaDescription = sanitizeSeoText(formData.get('seo_meta_description')) || null;
     const partnerDiscountRaw = String(formData.get('partner_discount_percent') ?? '').trim().replace(',', '.');
     let partnerDiscountPercent: number | null = null;
     if (partnerDiscountRaw !== '') {
@@ -306,15 +340,59 @@ export default async function OrganizerStayDetailPage({ params: paramsPromise, s
       partner_discount_percent: partnerDiscountPercent
     };
 
+    const seoPayload: Database['public']['Tables']['stays']['Update'] = {
+      seo_primary_keyword: seoPrimaryKeyword,
+      seo_secondary_keywords: seoSecondaryKeywords,
+      seo_target_city: seoTargetCity,
+      seo_target_region: seoTargetRegion,
+      seo_search_intents: seoSearchIntents,
+      seo_title: seoTitle,
+      seo_meta_description: seoMetaDescription
+    };
+    const payloadWithRegionAndSeo = { ...basePayload, region_text: region, ...seoPayload };
+    const payloadWithSeo = { ...basePayload, ...seoPayload };
     const payloadWithRegion = { ...basePayload, region_text: region };
     let updateError: { message: string } | null = null;
 
-    const firstAttempt = await supabase.from('stays').update(payloadWithRegion).eq('id', currentStay.id);
+    const firstAttempt = await supabase
+      .from('stays')
+      .update(payloadWithRegionAndSeo)
+      .eq('id', currentStay.id);
     updateError = firstAttempt.error;
 
-    if (updateError && isMissingRegionTextColumnError(updateError.message)) {
-      const fallbackAttempt = await supabase.from('stays').update(basePayload).eq('id', currentStay.id);
-      updateError = fallbackAttempt.error;
+    if (updateError) {
+      const missingRegion = isMissingRegionTextColumnError(updateError.message);
+      const missingSeo = isMissingSeoColumnsError(updateError.message);
+
+      if (missingRegion && missingSeo) {
+        const fallbackWithoutRegion = await supabase
+          .from('stays')
+          .update(payloadWithSeo)
+          .eq('id', currentStay.id);
+        updateError = fallbackWithoutRegion.error;
+
+        if (updateError && isMissingSeoColumnsError(updateError.message)) {
+          const fallbackBase = await supabase.from('stays').update(basePayload).eq('id', currentStay.id);
+          updateError = fallbackBase.error;
+        }
+      } else if (missingRegion) {
+        const fallbackWithoutRegion = await supabase
+          .from('stays')
+          .update(payloadWithSeo)
+          .eq('id', currentStay.id);
+        updateError = fallbackWithoutRegion.error;
+      } else if (missingSeo) {
+        const fallbackWithoutSeo = await supabase
+          .from('stays')
+          .update(payloadWithRegion)
+          .eq('id', currentStay.id);
+        updateError = fallbackWithoutSeo.error;
+
+        if (updateError && isMissingRegionTextColumnError(updateError.message)) {
+          const fallbackBase = await supabase.from('stays').update(basePayload).eq('id', currentStay.id);
+          updateError = fallbackBase.error;
+        }
+      }
     }
 
     if (updateError) {
@@ -1049,6 +1127,38 @@ export default async function OrganizerStayDetailPage({ params: paramsPromise, s
             </select>
           </label>
         </section>
+
+        <StaySeoEditor
+          canonicalPath={stayCanonicalPathPreview}
+          seasonNameById={seasonNameById}
+          initialContext={{
+            title: currentStay.title,
+            summary: currentStay.summary ?? '',
+            description: currentStay.description ?? '',
+            activitiesText: currentStay.activities_text ?? '',
+            programText: currentStay.program_text ?? '',
+            location: currentStay.location_text ?? '',
+            region: currentStay.region_text ?? '',
+            seasonName: seasonNameById[currentStay.season_id] ?? '',
+            ageRange: stayAgeRange,
+            categories: currentStay.categories ?? []
+          }}
+          initialSeo={{
+            primaryKeyword: currentStay.seo_primary_keyword ?? undefined,
+            secondaryKeywords: currentStay.seo_secondary_keywords ?? [],
+            targetCity: currentStay.seo_target_city ?? undefined,
+            targetRegion: currentStay.seo_target_region ?? undefined,
+            searchIntents: currentStay.seo_search_intents ?? [],
+            title: currentStay.seo_title ?? undefined,
+            metaDescription: currentStay.seo_meta_description ?? undefined
+          }}
+          generation={{
+            endpoint: `/api/organizer/stays/${currentStay.id}/seo`,
+            organizerId: selectedOrganizerId,
+            initialGeneratedAt: currentStay.seo_generated_at,
+            initialGenerationSource: currentStay.seo_generation_source
+          }}
+        />
 
         <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
           <h2 className="text-lg font-semibold text-slate-900">Tarifs et conditions commerciales</h2>

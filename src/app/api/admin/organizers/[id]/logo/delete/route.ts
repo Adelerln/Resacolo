@@ -1,10 +1,14 @@
 import { NextResponse } from 'next/server';
+import { requireApiAdmin } from '@/lib/auth/api';
 import { syncOrganizerProfileCompletenessPercent } from '@/lib/organizer-profile-completeness';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 
 export const runtime = 'nodejs';
 
 export async function POST(req: Request, context: { params: Promise<{ id: string }> }) {
+  const unauthorized = await requireApiAdmin(req);
+  if (unauthorized) return unauthorized;
+
   const { id: slug } = await context.params;
   const supabase = getServerSupabaseClient();
 

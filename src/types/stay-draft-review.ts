@@ -15,6 +15,7 @@ export type StayDraftReviewPayload = {
   transport_options_json: Array<Record<string, unknown>>;
   accommodations_json: Record<string, unknown> | null;
   images: string[];
+  video_urls: string[];
 };
 
 export type StayDraftReviewFieldErrorKey =
@@ -34,6 +35,7 @@ export type StayDraftReviewFieldErrorKey =
   | 'transport_options_json'
   | 'accommodations_json'
   | 'images'
+  | 'video_urls'
   | 'form';
 
 export type StayDraftReviewFieldErrors = Partial<Record<StayDraftReviewFieldErrorKey, string>>;

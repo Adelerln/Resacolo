@@ -217,17 +217,21 @@ export default async function NewStayManualPage({ searchParams }: PageProps) {
           </select>
         </label>
         <label className="block text-sm font-medium text-slate-700">
-          Statut
+          Statut de publication
           <select
             name="status"
-            defaultValue="PUBLISHED"
+            defaultValue="DRAFT"
             className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
           >
-            <option value="PUBLISHED">Publié</option>
-            <option value="DRAFT">Brouillon</option>
+            <option value="DRAFT">Brouillon (recommandé : finaliser avant publication)</option>
+            <option value="PUBLISHED">Publié sur le catalogue</option>
             <option value="HIDDEN">Masqué</option>
             <option value="ARCHIVED">Archivé</option>
           </select>
+          <span className="mt-1 block text-xs text-slate-500">
+            Tu peux enregistrer en brouillon puis ouvrir la fiche séjour pour tout peaufiner avant de repasser en
+            « Publié ».
+          </span>
         </label>
         <button className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">
           Creer

@@ -6,6 +6,11 @@ type GoogleMapsCityInputProps = {
   name: string;
   label: string;
   defaultValue?: string;
+  /** Mode contrôlé (ex. relecture de brouillon sans submit HTML natif). */
+  value?: string;
+  onValueChange?: (next: string) => void;
+  /** Affiche une ligne d’aide sur l’API des communes (désactivé par défaut). */
+  showApiHint?: boolean;
   required?: boolean;
   className?: string;
 };
@@ -47,25 +52,40 @@ export default function GoogleMapsCityInput({
   name,
   label,
   defaultValue = '',
+  value: controlledValue,
+  onValueChange,
   required = false,
   className
 }: GoogleMapsCityInputProps) {
+  const isControlled = typeof onValueChange === 'function';
   const containerRef = useRef<HTMLLabelElement | null>(null);
   const hasUserTypedRef = useRef(false);
   const skipNextLookupRef = useRef(false);
-  const [value, setValue] = useState(defaultValue);
+  const [internalValue, setInternalValue] = useState(defaultValue);
+  const displayValue = isControlled ? (controlledValue ?? '') : internalValue;
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  /** Incrémenté au focus pour relancer une recherche si le champ est déjà prérempli. */
+  const [focusLookupTick, setFocusLookupTick] = useState(0);
+
+  function commitValue(next: string) {
+    if (isControlled) {
+      onValueChange!(next);
+    } else {
+      setInternalValue(next);
+    }
+  }
 
   useEffect(() => {
+    if (isControlled) return;
     hasUserTypedRef.current = false;
     skipNextLookupRef.current = false;
-    setValue(defaultValue);
+    setInternalValue(defaultValue);
     setSuggestions([]);
     setIsOpen(false);
     setIsLoading(false);
-  }, [defaultValue]);
+  }, [defaultValue, isControlled]);
 
   useEffect(() => {
     if (!hasUserTypedRef.current) {
@@ -83,7 +103,7 @@ export default function GoogleMapsCityInput({
       return;
     }
 
-    if (value.trim().length < 2) {
+    if (displayValue.trim().length < 2) {
       setSuggestions([]);
       setIsOpen(false);
       setIsLoading(false);
@@ -96,7 +116,7 @@ export default function GoogleMapsCityInput({
       try {
         const response = await fetch(
           `https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(
-            value.trim()
+            displayValue.trim()
           )}&type=municipality&autocomplete=1&limit=6`,
           {
             signal: controller.signal,
@@ -133,7 +153,7 @@ export default function GoogleMapsCityInput({
       controller.abort();
       window.clearTimeout(timeout);
     };
-  }, [value]);
+  }, [displayValue, focusLookupTick]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -152,19 +172,23 @@ export default function GoogleMapsCityInput({
       <div className="relative mt-1">
         <input
           name={name}
-          value={value}
+          value={displayValue}
           onChange={(event) => {
             hasUserTypedRef.current = true;
-            setValue(event.target.value);
+            commitValue(event.target.value);
           }}
           onFocus={() => {
+            if (displayValue.trim().length >= 2) {
+              hasUserTypedRef.current = true;
+              setFocusLookupTick((n) => n + 1);
+            }
             if (hasUserTypedRef.current && suggestions.length > 0) {
               setIsOpen(true);
             }
           }}
           required={required}
           autoComplete="off"
-          placeholder="Commence à saisir une ville"
+          placeholder="Commence à saisir une ville (ex. Moncoutant…)"
           className="w-full rounded-lg border border-slate-200 px-3 py-2"
         />
         {isLoading && (
@@ -181,7 +205,7 @@ export default function GoogleMapsCityInput({
                     type="button"
                     onClick={() => {
                       skipNextLookupRef.current = true;
-                      setValue(suggestion.city);
+                      commitValue(suggestion.city);
                       setSuggestions([]);
                       setIsOpen(false);
                     }}

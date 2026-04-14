@@ -2,9 +2,9 @@
 
 import Link from 'next/link';
 import { Fragment, useEffect, useRef, useState } from 'react';
-import { Pencil } from 'lucide-react';
+import { Pencil, Trash2 } from 'lucide-react';
 import RemainingPlacesEditor from '@/components/organisme/RemainingPlacesEditor';
-import { sessionStatusLabel, stayStatusLabel } from '@/lib/ui/labels';
+import { sessionStatusLabel, stayDraftStatusLabel, stayStatusBadgeClassName, stayStatusLabel } from '@/lib/ui/labels';
 import { withOrganizerQuery } from '@/lib/organizers';
 
 type StaySessionListItem = {
@@ -26,10 +26,20 @@ type StayListItem = {
   sessions: StaySessionListItem[];
 };
 
+type ImportDraftListItem = {
+  id: string;
+  title: string;
+  status: string | null;
+  updatedAt: string;
+};
+
 type OrganizerStaysTableProps = {
   stays: StayListItem[];
   organizerId?: string | null;
+  importDrafts?: ImportDraftListItem[];
   updateSessionRemainingPlacesAction: (formData: FormData) => void;
+  deleteStayAction: (formData: FormData) => void;
+  deleteImportDraftAction?: (formData: FormData) => void;
   defaultOpenStayIds?: string[];
   defaultEditingSessionId?: string | null;
 };
@@ -73,7 +83,10 @@ function availabilityClassName(availability: StayListItem['availability']) {
 export default function OrganizerStaysTable({
   stays,
   organizerId,
+  importDrafts = [],
   updateSessionRemainingPlacesAction,
+  deleteStayAction,
+  deleteImportDraftAction,
   defaultOpenStayIds = [],
   defaultEditingSessionId = null
 }: OrganizerStaysTableProps) {
@@ -109,6 +122,71 @@ export default function OrganizerStaysTable({
   });
 
   return (
+    <div className="space-y-6">
+      {importDrafts.length > 0 && (
+        <div className="overflow-hidden rounded-2xl border border-amber-200 bg-amber-50/40">
+          <div className="border-b border-amber-200/80 bg-amber-100/50 px-4 py-3">
+            <h2 className="text-sm font-semibold text-amber-950">Brouillons d&apos;import (IA)</h2>
+            <p className="mt-1 text-xs text-amber-900/90">
+              Ces fiches ne sont pas encore publiées sur le catalogue. Ouvrez la relecture pour finaliser ou
+              valider.
+            </p>
+          </div>
+          <ul className="divide-y divide-amber-200/60">
+            {importDrafts.map((draft) => (
+              <li key={draft.id} className="px-4 py-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-slate-900">{draft.title || 'Sans titre'}</p>
+                    <p className="text-xs text-slate-500">
+                      Mis à jour le {new Date(draft.updatedAt).toLocaleString('fr-FR')}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-end gap-2 sm:flex-shrink-0 sm:flex-nowrap">
+                    <span className="inline-flex rounded-full bg-white px-3 py-1 text-xs font-semibold text-amber-950 ring-1 ring-amber-300/80">
+                      {stayDraftStatusLabel(draft.status)}
+                    </span>
+                    <Link
+                      href={withOrganizerQuery(`/organisme/sejours/drafts/${draft.id}`, organizerId)}
+                      className="inline-flex rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white"
+                    >
+                      Ouvrir la relecture
+                    </Link>
+                    {deleteImportDraftAction ? (
+                      <form
+                        action={deleteImportDraftAction}
+                        onSubmit={(event) => {
+                          if (
+                            !window.confirm(
+                              `Supprimer définitivement le brouillon d'import « ${draft.title || 'Sans titre'} » ?`
+                            )
+                          ) {
+                            event.preventDefault();
+                          }
+                        }}
+                      >
+                        <input type="hidden" name="draft_id" value={draft.id} />
+                        {organizerId ? (
+                          <input type="hidden" name="organizer_id" value={organizerId} />
+                        ) : null}
+                        <button
+                          type="submit"
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-rose-200 text-rose-600 transition hover:bg-rose-50"
+                          aria-label={`Supprimer le brouillon ${draft.title || 'Sans titre'}`}
+                          title="Supprimer ce brouillon"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </form>
+                    ) : null}
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
       <div className="border-b border-slate-200 bg-slate-50/70 px-4 py-4">
         <div className="grid gap-3 md:grid-cols-2">
@@ -188,7 +266,13 @@ export default function OrganizerStaysTable({
                     </td>
                     <td className="px-4 py-3 font-medium text-slate-900">{stay.title}</td>
                     <td className="px-4 py-3 text-slate-600">{stay.seasonName}</td>
-                    <td className="px-4 py-3 text-slate-600">{stayStatusLabel(stay.status)}</td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${stayStatusBadgeClassName(stay.status)}`}
+                      >
+                        {stayStatusLabel(stay.status)}
+                      </span>
+                    </td>
                     <td className="px-4 py-3">
                       <span
                         className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${availabilityClassName(stay.availability)}`}
@@ -199,6 +283,28 @@ export default function OrganizerStaysTable({
                     <td className="px-4 py-3 text-slate-600">{stay.locationText || '-'}</td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-3">
+                        <form
+                          action={deleteStayAction}
+                          onSubmit={(event) => {
+                            if (
+                              !window.confirm(
+                                `Supprimer définitivement le séjour "${stay.title}" ?`
+                              )
+                            ) {
+                              event.preventDefault();
+                            }
+                          }}
+                        >
+                          <input type="hidden" name="stay_id" value={stay.id} />
+                          <button
+                            type="submit"
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-rose-200 text-rose-600 transition hover:bg-rose-50"
+                            aria-label={`Supprimer le séjour ${stay.title}`}
+                            title="Supprimer le séjour"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </form>
                         <Link
                           href={withOrganizerQuery(`/organisme/sejours/${stay.id}`, organizerId)}
                           className="inline-flex items-center gap-1 rounded-lg border border-orange-200 px-3 py-1 text-xs font-semibold text-orange-600"
@@ -328,13 +434,16 @@ export default function OrganizerStaysTable({
             {filteredStays.length === 0 && (
               <tr>
                 <td colSpan={7} className="px-4 py-8 text-sm text-slate-500">
-                  Aucun séjour ne correspond aux filtres sélectionnés.
+                  {stays.length === 0
+                    ? 'Aucun séjour déclaré pour le moment.'
+                    : 'Aucun séjour ne correspond aux filtres sélectionnés.'}
                 </td>
               </tr>
             )}
           </tbody>
         </table>
       </div>
+    </div>
     </div>
   );
 }

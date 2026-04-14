@@ -3,6 +3,10 @@ import type { AnyNode } from 'domhandler';
 import { createHash } from 'crypto';
 import iconv from 'iconv-lite';
 import { STAY_REGION_OPTIONS } from '@/lib/stay-regions';
+import {
+  extractVideoUrlsFromArbitraryString,
+  isVideoUrlCandidate
+} from '@/lib/stay-draft-url-extract';
 
 const REQUEST_TIMEOUT_MS = 15_000;
 const MAX_TEXT_SCAN_LENGTH = 140_000;
@@ -609,7 +613,7 @@ function parseAgeRange(text: string): { ageMin: number; ageMax: number } | null 
   return { ageMin: fallback.ageMin, ageMax: fallback.ageMax };
 }
 
-function parseFrenchAmount(raw: string): number | null {
+function parseFrenchAmount(raw: string, minEur: number = 30, maxEur: number = 20_000): number | null {
   const cleaned = raw.replace(/\u00a0/g, ' ').replace(/[^\d,.\s]/g, '').trim();
   if (!cleaned) return null;
 
@@ -632,25 +636,29 @@ function parseFrenchAmount(raw: string): number | null {
   const amount = Number(normalized);
   if (!Number.isFinite(amount)) return null;
   const rounded = Math.round(amount);
-  if (rounded < 30 || rounded > 20_000) return null;
+  if (rounded < minEur || rounded > maxEur) return null;
   return rounded;
 }
 
-function findPriceInText(text: string): number | null {
+function findPriceInTextWithMin(text: string, minEur: number): number | null {
   const fromMatch = text.match(/\b(?:à\s+partir\s+de|dès)\s*([0-9][0-9\s.,]*)\s*(?:€|euros?)/i);
   if (fromMatch?.[1]) {
-    const amount = parseFrenchAmount(fromMatch[1]);
+    const amount = parseFrenchAmount(fromMatch[1], minEur, 20_000);
     if (amount !== null) return amount;
   }
 
   const genericPattern = /\b([0-9][0-9\s.,]{1,})\s*(?:€|euros?)/gi;
   let match: RegExpExecArray | null = null;
   while ((match = genericPattern.exec(text)) !== null) {
-    const amount = parseFrenchAmount(match[1]);
+    const amount = parseFrenchAmount(match[1], minEur, 20_000);
     if (amount !== null) return amount;
   }
 
   return null;
+}
+
+function findPriceInText(text: string): number | null {
+  return findPriceInTextWithMin(text, 30);
 }
 
 function findPriceInJsonLd(blocks: unknown[]): number | null {
@@ -670,7 +678,7 @@ function findPriceInJsonLd(blocks: unknown[]): number | null {
       const rounded = Math.round(priceRaw);
       if (rounded >= 30 && rounded <= 20_000) return rounded;
     } else if (typeof priceRaw === 'string') {
-      const parsed = parseFrenchAmount(priceRaw);
+      const parsed = parseFrenchAmount(priceRaw, 30, 20_000);
       if (parsed !== null) return parsed;
     }
 
@@ -917,6 +925,40 @@ function extractImages($: CheerioAPI, sourceUrl: string): string[] {
   return collectImageCandidates($, sourceUrl)
     .map((candidate) => candidate.url)
     .slice(0, MAX_IMAGES);
+}
+
+export function extractVideoUrls(html: string, sourceUrl: string): string[] {
+  const $ = load(html);
+  const values = new Set<string>();
+
+  const addCandidate = (raw: string | null | undefined) => {
+    const normalized = normalizeWhitespace(raw);
+    if (!normalized) return;
+    if (/^javascript:/i.test(normalized)) {
+      for (const embedded of extractVideoUrlsFromArbitraryString(normalized)) {
+        values.add(embedded);
+      }
+      return;
+    }
+    const absolute = toAbsoluteUrl(normalized, sourceUrl);
+    if (!absolute || !isVideoUrlCandidate(absolute)) return;
+    values.add(absolute);
+  };
+
+  $('a[href], iframe[src], video[src], source[src], [data-video], [data-video-url], [data-youtube], [data-vimeo]').each(
+    (_, element) => {
+      addCandidate($(element).attr('href'));
+      addCandidate($(element).attr('src'));
+      addCandidate($(element).attr('data-video'));
+      addCandidate($(element).attr('data-video-url'));
+      addCandidate($(element).attr('data-youtube'));
+      addCandidate($(element).attr('data-vimeo'));
+      addCandidate($(element).attr('data-src'));
+      addCandidate($(element).attr('data-url'));
+    }
+  );
+
+  return Array.from(values);
 }
 
 function buildImageSelectionContextTokens(context: ImageSelectionContext): Set<string> {
@@ -1942,8 +1984,43 @@ function detectSessionAvailability(snippet: string): DraftSessionItem['availabil
   return null;
 }
 
-function extractSessions(visibleText: string): DraftSessionItem[] | null {
+function extractReservationCallToAction(
+  $: CheerioAPI,
+  visibleText: string
+): DraftSessionItem['availability'] {
+  const pageKey = simplifyForMatch(visibleText);
+  if (!pageKey) return null;
+  if (/\bcomplet|indisponible|sold out|inscriptions closes|inscriptions fermees\b/i.test(pageKey)) {
+    return 'full';
+  }
+
+  const ctaText = $('a, button, input[type="submit"], input[type="button"]')
+    .toArray()
+    .map((node) =>
+      normalizeWhitespace(
+        [
+          $(node).text(),
+          $(node).attr('value') ?? '',
+          $(node).attr('aria-label') ?? '',
+          $(node).attr('title') ?? ''
+        ].join(' ')
+      )
+    )
+    .filter(Boolean)
+    .slice(0, 60)
+    .join(' ');
+  const ctaKey = simplifyForMatch(ctaText);
+
+  if (/\b(reserver|je reserve|inscription|s inscrire|book now|booker)\b/i.test(ctaKey)) {
+    return 'available';
+  }
+
+  return null;
+}
+
+function extractSessions($: CheerioAPI, visibleText: string): DraftSessionItem[] | null {
   const sessions: DraftSessionItem[] = [];
+  const defaultAvailability = extractReservationCallToAction($, visibleText);
 
   const patternMonthSame =
     /\bdu\s+(\d{1,2})\s+(?:au|a|à)\s+(\d{1,2})\s+([A-Za-zÀ-ÖØ-öø-ÿ]+)\s+(\d{4})\b/gi;
@@ -1965,7 +2042,7 @@ function extractSessions(visibleText: string): DraftSessionItem[] | null {
       start_date: startDate,
       end_date: endDate,
       price: findPriceInText(snippet),
-      availability: detectSessionAvailability(snippet)
+      availability: detectSessionAvailability(snippet) ?? defaultAvailability
     });
   }
 
@@ -1985,7 +2062,7 @@ function extractSessions(visibleText: string): DraftSessionItem[] | null {
       start_date: startDate,
       end_date: endDate,
       price: findPriceInText(snippet),
-      availability: detectSessionAvailability(snippet)
+      availability: detectSessionAvailability(snippet) ?? defaultAvailability
     });
   }
 
@@ -2000,16 +2077,18 @@ function detectTransportMode(transportText: string | null, visibleText: string):
   const source = simplifyForMatch([transportText, visibleText].filter(Boolean).join(' '));
   if (!source) return null;
 
-  const modes = new Set<string>();
-  if (/\btrain\b/.test(source)) modes.add('train');
-  if (/\bavion\b/.test(source)) modes.add('avion');
-  if (/\bbus\b/.test(source)) modes.add('bus');
-  if (/\bcar\b/.test(source)) modes.add('car');
-  if (/\b(depose|deposee|depose sur|depose centre|rendez vous sur place|sur place)\b/.test(source)) {
-    modes.add('dépose centre');
-  }
+  const hasTrain = /\btrain\b/.test(source);
+  const hasPlane = /\bavion\b/.test(source);
+  const hasCoach = /\b(bus|car)\b/.test(source);
+  const hasOnSite = /\b(depose|deposee|depose sur|depose centre|rendez vous sur place|sur place)\b/.test(source);
 
-  return modes.size === 1 ? Array.from(modes)[0] : null;
+  if (hasTrain && hasCoach) return 'train puis car';
+  if (hasPlane && hasCoach) return 'avion puis car';
+  if (hasTrain) return 'train';
+  if (hasPlane) return 'avion';
+  if (hasCoach) return 'car';
+  if (hasOnSite) return 'arrivée sur place';
+  return null;
 }
 
 type TransportSelectDirection = 'outbound' | 'return' | 'generic';
@@ -2120,6 +2199,11 @@ function detectTransportDirection(context: string): TransportSelectDirection | n
   if (hasOutbound && !hasReturn) return 'outbound';
   if (hasReturn && !hasOutbound) return 'return';
   if (hasTransport) return 'generic';
+
+  if (/pdtopt|optvalueid|optvalue|hubville|villedepart|ville_depart|choixville/i.test(key)) {
+    return 'generic';
+  }
+
   return null;
 }
 
@@ -2133,7 +2217,9 @@ function buildTransportSelectContext($: CheerioAPI, select: AnyNode): string {
   const linkedLabel = id
     ? normalizeWhitespace($(`label[for="${id}"]`).first().text())
     : '';
-  const parentText = normalizeWhitespace(node.closest('td,th,tr,div,fieldset,section,form').first().text());
+  const parentText = normalizeWhitespace(
+    node.closest('td,th,tr,div,fieldset,section,form').first().text().slice(0, 1400)
+  );
 
   return normalizeWhitespace([id, name, ariaLabel, title, className, linkedLabel, parentText].join(' '));
 }
@@ -2220,6 +2306,11 @@ function extractCurrentPriceEur($: CheerioAPI, visibleText: string): number | nu
     '[id*="prix"]',
     '[class*="price"]',
     '[id*="price"]',
+    '[class*="tarif"]',
+    '[id*="tarif"]',
+    '[class*="montant"]',
+    '[data-price]',
+    '[data-testid*="price" i]',
     '.prix',
     '.price'
   ];
@@ -2235,12 +2326,12 @@ function extractCurrentPriceEur($: CheerioAPI, visibleText: string): number | nu
         ].join(' ')
       );
       if (!content) continue;
-      const price = findPriceInText(content);
+      const price = findPriceInTextWithMin(content, 0);
       if (price !== null) return price;
     }
   }
 
-  return findPriceInText(visibleText);
+  return findPriceInTextWithMin(visibleText, 0);
 }
 
 function extractCurrentPriceCents($: CheerioAPI, visibleText: string): number | null {
@@ -2293,7 +2384,7 @@ function parseTransportPage(html: string, sourceUrl: string): ParsedTransportPag
   return parsed;
 }
 
-function isTransportBaseReference(value: string | null | undefined): boolean {
+export function isTransportBaseReference(value: string | null | undefined): boolean {
   const key = simplifyForMatch(value ?? '');
   if (!key) return false;
   return TRANSPORT_BASE_REFERENCE_KEYS.some((candidate) =>
@@ -2747,7 +2838,7 @@ export function extractStayData(html: string, sourceUrl: string): ExtractedStayD
   const requiredDocumentsText = normalizeParagraph(requiredDocumentsSection?.text ?? null);
   const transportText = normalizeParagraph(transportSection?.text ?? null);
   const transportMode = detectTransportMode(transportText, visibleText);
-  const sessionsJson = extractSessions(visibleText);
+  const sessionsJson = extractSessions($, visibleText);
   const accommodationsJson = extractAccommodation(sections);
 
   return {

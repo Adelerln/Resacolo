@@ -1,10 +1,22 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { embedAccommodationLocationMeta } from '@/lib/accommodation-location';
+import { repairAccommodationImportLocation } from '@/lib/french-department-codes';
 import {
+  ensurePrimaryStaySettingCategory,
   normalizeStayDraftCategories,
   stayCategoryLabelToValue,
   stayCategoryValueToLabel,
   type StayCategoryValue
 } from '@/lib/stay-categories';
+import {
+  normalizeAccommodationTypeToken,
+  normalizeLocationMode
+} from '@/lib/stay-draft-accommodation-import';
+import { expandDraftAges } from '@/lib/stay-draft-content';
+import {
+  removeStayMediaStorageFiles,
+  uploadImportedStayImages
+} from '@/lib/stay-media-storage';
 import { mapToCanonicalStayRegion } from '@/lib/stay-regions';
 import { normalizeStayTitle } from '@/lib/stay-title';
 import { maybeRecordPublicationFeeWhenStayPublished } from '@/lib/resacolo-fee-ledger.server';
@@ -300,6 +312,18 @@ function asObject(value: Json | null): Record<string, unknown> {
   return {};
 }
 
+function coerceAccommodationJsonObject(value: Json | null): Record<string, unknown> {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      if (isPlainObject(item)) {
+        return repairAccommodationImportLocation({ ...item });
+      }
+    }
+    return {};
+  }
+  return repairAccommodationImportLocation(asObject(value));
+}
+
 function asRecordArray(value: Json | null): Array<Record<string, unknown>> {
   if (Array.isArray(value)) {
     const output: Array<Record<string, unknown>> = [];
@@ -436,29 +460,7 @@ function inferLiveCategoriesFromContent(content: string): StayCategoryValue[] {
 }
 
 function normalizeAges(ages: number[] | null, ageMin: number | null, ageMax: number | null): number[] {
-  const fromArray = (ages ?? []).filter((age) => Number.isInteger(age) && age >= 3 && age <= 25);
-  const sortedFromArray = Array.from(new Set(fromArray)).sort((a, b) => a - b);
-  if (sortedFromArray.length > 0) {
-    return sortedFromArray;
-  }
-
-  const min = typeof ageMin === 'number' && ageMin >= 3 && ageMin <= 25 ? ageMin : null;
-  const max = typeof ageMax === 'number' && ageMax >= 3 && ageMax <= 25 ? ageMax : null;
-
-  if (min !== null && max !== null) {
-    const start = Math.min(min, max);
-    const end = Math.max(min, max);
-    const values: number[] = [];
-    for (let age = start; age <= end; age += 1) {
-      values.push(age);
-    }
-    return values;
-  }
-
-  if (min !== null) return [min];
-  if (max !== null) return [max];
-
-  return [];
+  return expandDraftAges(ages, ageMin, ageMax);
 }
 
 function normalizeTransportMode(
@@ -936,17 +938,27 @@ function parseAccommodation(
   accessibilityInfo: string | null;
   accommodationType: string;
 } | null {
-  const object = asObject(value);
+  const object = coerceAccommodationJsonObject(value);
   if (Object.keys(object).length === 0) return null;
 
-  const title = sanitizeAccommodationText(String(object.title ?? ''), { maxLength: 160 });
-  const description = sanitizeAccommodationText(String(object.description ?? ''), { maxLength: 2_200 });
-  const descriptionText = description ?? '';
+  const titleRaw =
+    object.title ?? object.nom ?? object.name ?? object.nom_hebergement ?? object.nom_de_l_hebergement ?? '';
+  const title = sanitizeAccommodationText(String(titleRaw), { maxLength: 160 });
+  const descriptionRaw = sanitizeAccommodationText(String(object.description ?? ''), { maxLength: 2_200 });
+  const descriptionText = descriptionRaw ?? '';
   const locationHint = sanitizeAccommodationText(
     String(object.location ?? object.location_text ?? object.city ?? context?.locationText ?? ''),
     { maxLength: 120 }
   );
   const sourceText = [title, descriptionText].filter(Boolean).join('\n');
+
+  const typesFromJson = Array.isArray(object.accommodation_types)
+    ? object.accommodation_types.filter((item): item is string => typeof item === 'string')
+    : [];
+  const normalizedTypes = typesFromJson
+    .map((t) => normalizeAccommodationTypeToken(t))
+    .filter((t): t is string => Boolean(t));
+  const uniqueTypes = Array.from(new Set(normalizedTypes));
 
   const bedInfo =
     cleanupBedInfo(sanitizeAccommodationText(String(object.bed_info ?? object.sleeping_info ?? ''), { maxLength: 220 })) ??
@@ -957,17 +969,42 @@ function parseAccommodation(
   const cateringInfo =
     cleanupCateringInfo(sanitizeAccommodationText(String(object.catering_info ?? object.food_info ?? ''), { maxLength: 220 })) ??
     extractCateringInfo(sourceText);
-  const accessibilityInfo = normalizeAccommodationAccessibility(
+  let accessibilityInfo = normalizeAccommodationAccessibility(
     sanitizeAccommodationText(String(object.accessibility_info ?? object.pmr_info ?? ''), { maxLength: 220 }) ??
       extractSectionFromText(sourceText, ACCESSIBILITY_KEYS)
   );
-  const accommodationType = normalizeAccommodationType(
-    sanitizeAccommodationText(String(object.accommodation_type ?? ''), { maxLength: 80 }),
-    [title, descriptionText, bedInfo, locationHint].filter(Boolean).join(' ')
-  );
+  const pmrFlag =
+    object.pmr_accessible === true ||
+    object.pmr_accessible === 'true' ||
+    object.pmr_accessible === 1 ||
+    object.pmr_accessible === '1';
+  if (pmrFlag) {
+    const pmrPhrase = 'Repéré comme accessible aux personnes à mobilité réduite (PMR).';
+    accessibilityInfo = accessibilityInfo ? `${accessibilityInfo} ${pmrPhrase}` : pmrPhrase;
+  }
+
+  const accommodationTypeFromList =
+    uniqueTypes.length > 1 ? 'mixte' : uniqueTypes.length === 1 ? uniqueTypes[0]! : null;
+  const accommodationType =
+    accommodationTypeFromList ??
+    normalizeAccommodationType(
+      sanitizeAccommodationText(String(object.accommodation_type ?? ''), { maxLength: 80 }),
+      [title, descriptionText, bedInfo, locationHint].filter(Boolean).join(' ')
+    );
+
+  const locationModeNorm = normalizeLocationMode(object.location_mode);
+  const description = embedAccommodationLocationMeta(descriptionRaw, {
+    locationMode: locationModeNorm ?? '',
+    locationCity: sanitizeAccommodationText(String(object.location_city ?? ''), { maxLength: 120 }),
+    locationDepartmentCode: sanitizeAccommodationText(String(object.location_department_code ?? ''), {
+      maxLength: 8
+    }),
+    locationCountry: sanitizeAccommodationText(String(object.location_country ?? ''), { maxLength: 80 }),
+    itinerantZone: sanitizeAccommodationText(String(object.itinerant_zone ?? ''), { maxLength: 200 })
+  });
   const resolvedName = buildAccommodationName({
     title,
-    description,
+    description: descriptionText,
     locationHint,
     accommodationType
   });
@@ -1000,6 +1037,13 @@ function readLivePublication(rawPayload: Record<string, unknown>): {
     stayId: typeof live.stay_id === 'string' ? live.stay_id : null,
     accommodationId: typeof live.accommodation_id === 'string' ? live.accommodation_id : null
   };
+}
+
+function readDraftAccommodationPreviewId(rawPayload: Record<string, unknown>): string | null {
+  const preview = rawPayload.draft_accommodation_preview;
+  if (!isPlainObject(preview)) return null;
+  const id = preview.accommodation_id;
+  return typeof id === 'string' && id.trim().length > 0 ? id.trim() : null;
 }
 
 function seasonNameFromMonth(month: number): 'Hiver' | 'Printemps' | 'Été' | 'Automne' {
@@ -1328,19 +1372,48 @@ async function syncSessions(
 
 async function syncStayMedia(
   supabase: SupabaseClient<Database>,
+  organizerId: string,
   stayId: string,
   images: string[]
 ): Promise<void> {
+  const { data: existingRows, error: existingRowsError } = await supabase
+    .from('stay_media')
+    .select('url')
+    .eq('stay_id', stayId);
+
+  if (existingRowsError) {
+    throw new PublishStayDraftError('read-stay-media', existingRowsError.message);
+  }
+
+  const nextUrls = await uploadImportedStayImages(supabase, {
+    organizerId,
+    stayId,
+    imageUrls: images
+  });
+  const previousUrls = (existingRows ?? []).map((row) => row.url).filter(Boolean);
+
   const { error: deleteError } = await supabase.from('stay_media').delete().eq('stay_id', stayId);
   if (deleteError) {
     throw new PublishStayDraftError('delete-stay-media', deleteError.message);
   }
 
-  if (images.length === 0) {
+  const urlsToRemove = previousUrls.filter((url) => !nextUrls.includes(url));
+  if (urlsToRemove.length > 0) {
+    try {
+      await removeStayMediaStorageFiles(supabase, urlsToRemove);
+    } catch (error) {
+      console.warn('[publish-stay-draft] stale stay media cleanup failed', {
+        stayId,
+        error: error instanceof Error ? error.message : 'unknown-error'
+      });
+    }
+  }
+
+  if (nextUrls.length === 0) {
     return;
   }
 
-  const rows: StayMediaInsert[] = images.map((url, index) => ({
+  const rows: StayMediaInsert[] = nextUrls.map((url, index) => ({
     stay_id: stayId,
     url,
     position: index + 1,
@@ -1533,7 +1606,7 @@ async function syncAccommodation(
       accommodation_type: parsedAccommodation.accommodationType,
       source_url: draft.source_url,
       ai_extracted_data: extractedData,
-      status: 'TO_VALIDATE',
+      status: 'DRAFT',
       validated_at: null,
       validated_by_user_id: null,
       updated_at: now
@@ -1568,7 +1641,7 @@ async function syncAccommodation(
       source_url: draft.source_url,
       accommodation_type: parsedAccommodation.accommodationType,
       ai_extracted_data: extractedData,
-      status: 'TO_VALIDATE',
+      status: 'DRAFT',
       validated_at: null,
       validated_by_user_id: null,
       created_at: now,
@@ -1601,6 +1674,129 @@ async function syncAccommodation(
   }
 
   return accommodationId;
+}
+
+/**
+ * Crée ou met à jour une fiche hébergement « brouillon » (statut DRAFT) à chaque sauvegarde du stay_draft,
+ * pour qu’elle apparaisse tout de suite dans la liste des hébergements organisateur.
+ */
+export async function syncStayDraftPreviewAccommodation(
+  supabase: SupabaseClient<Database>,
+  draft: StayDraftRow
+): Promise<StayDraftRow> {
+  const rawPayload = asObject(draft.raw_payload);
+  if (readImportedExistingAccommodationId(rawPayload)) {
+    return draft;
+  }
+
+  const rawAiExtracted = isPlainObject(rawPayload.ai_extracted) ? rawPayload.ai_extracted : null;
+  const accommodationSource =
+    draft.accommodations_json ?? (rawAiExtracted?.accommodations_json as Json | undefined) ?? null;
+
+  const parsed = parseAccommodation(accommodationSource, {
+    locationText: draft.location_text
+  });
+
+  if (!parsed) {
+    return draft;
+  }
+
+  const previewId = readDraftAccommodationPreviewId(rawPayload);
+  const now = new Date().toISOString();
+  const extractedData: Json = {
+    source: 'stay_draft_save_preview',
+    draft_id: draft.id,
+    source_url: draft.source_url ?? null,
+    extracted_accommodation: accommodationSource
+  };
+
+  let accommodationId: string | null = previewId;
+
+  if (accommodationId) {
+    const updatePayload: AccommodationUpdate = {
+      name: parsed.title,
+      description: parsed.description,
+      bed_info: parsed.bedInfo,
+      bathroom_info: parsed.bathroomInfo,
+      catering_info: parsed.cateringInfo,
+      accessibility_info: parsed.accessibilityInfo,
+      accommodation_type: parsed.accommodationType,
+      source_url: draft.source_url,
+      ai_extracted_data: extractedData,
+      status: 'DRAFT',
+      validated_at: null,
+      validated_by_user_id: null,
+      updated_at: now
+    };
+
+    const { data: updated, error } = await supabase
+      .from('accommodations')
+      .update(updatePayload)
+      .eq('id', accommodationId)
+      .eq('organizer_id', draft.organizer_id)
+      .select('id')
+      .maybeSingle();
+
+    if (error || !updated?.id) {
+      accommodationId = null;
+    }
+  }
+
+  if (!accommodationId) {
+    const insertPayload: AccommodationInsert = {
+      organizer_id: draft.organizer_id,
+      name: parsed.title,
+      description: parsed.description,
+      bed_info: parsed.bedInfo,
+      bathroom_info: parsed.bathroomInfo,
+      catering_info: parsed.cateringInfo,
+      accessibility_info: parsed.accessibilityInfo,
+      source_url: draft.source_url,
+      accommodation_type: parsed.accommodationType,
+      ai_extracted_data: extractedData,
+      status: 'DRAFT',
+      validated_at: null,
+      validated_by_user_id: null,
+      created_at: now,
+      updated_at: now
+    };
+
+    const { data: inserted, error: insertError } = await supabase
+      .from('accommodations')
+      .insert(insertPayload)
+      .select('id')
+      .single();
+
+    if (insertError || !inserted?.id) {
+      console.error('[stay-draft-preview-accommodation] insert failed', insertError?.message);
+      return draft;
+    }
+
+    accommodationId = inserted.id;
+  }
+
+  const nextRaw: Record<string, unknown> = {
+    ...rawPayload,
+    draft_accommodation_preview: {
+      accommodation_id: accommodationId,
+      updated_at: now
+    }
+  };
+
+  const { data: updatedDraft, error: draftError } = await supabase
+    .from('stay_drafts')
+    .update({ raw_payload: nextRaw as Json })
+    .eq('id', draft.id)
+    .eq('organizer_id', draft.organizer_id)
+    .select('*')
+    .maybeSingle();
+
+  if (draftError || !updatedDraft) {
+    console.error('[stay-draft-preview-accommodation] draft raw_payload update failed', draftError?.message);
+    return draft;
+  }
+
+  return updatedDraft as StayDraftRow;
 }
 
 async function resolveStayId(
@@ -1673,10 +1869,17 @@ export async function publishStayDraftToLive(
     .filter(Boolean)
     .join('\n');
   const inferredCategories = inferLiveCategoriesFromContent(categoryInferenceSource);
-  const categories =
-    categoryMapping.liveValues.length > 0
-      ? categoryMapping.liveValues
-      : inferredCategories;
+  const mergedCategories = Array.from(
+    new Set(
+      categoryMapping.liveValues.length > 0
+        ? [...categoryMapping.liveValues, ...inferredCategories]
+        : inferredCategories
+    )
+  );
+  const categories = ensurePrimaryStaySettingCategory(
+    mergedCategories,
+    [draft.location_text, draft.region_text, draft.summary, draft.description, draft.program_text].join(' ')
+  );
   const ages = normalizeAges(draft.ages, draft.age_min, draft.age_max);
   const rawAiExtracted = isPlainObject(rawPayload.ai_extracted) ? rawPayload.ai_extracted : null;
   const sessionsSource =
@@ -1763,7 +1966,7 @@ export async function publishStayDraftToLive(
   syncedTables.push('sessions', 'session_prices');
 
   console.info('[publish-stay-draft] sync médias', { stayId, images: images.length });
-  await syncStayMedia(supabase, stayId, images);
+  await syncStayMedia(supabase, draft.organizer_id, stayId, images);
   syncedTables.push('stay_media');
 
   console.info('[publish-stay-draft] sync options extras', { stayId, extraOptions: extraOptions.length });
@@ -1788,11 +1991,14 @@ export async function publishStayDraftToLive(
     stayId,
     hasAccommodation: Boolean(accommodation)
   });
+  const previewAccommodationId = readDraftAccommodationPreviewId(rawPayload);
   const accommodationId = await syncAccommodation(
     supabase,
     draft,
     stayId,
-    importedExistingAccommodationId ?? livePublication.accommodationId,
+    importedExistingAccommodationId ??
+      livePublication.accommodationId ??
+      previewAccommodationId,
     accommodationSource,
     accommodation
   );
@@ -1812,6 +2018,7 @@ export async function publishStayDraftToLive(
     published_at: publishedAt,
     publish_error: null
   };
+  delete nextRawPayload.draft_accommodation_preview;
 
   console.info('[publish-stay-draft] sortie succès', {
     draftId: draft.id,

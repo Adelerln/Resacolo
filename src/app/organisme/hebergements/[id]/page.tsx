@@ -5,6 +5,7 @@ import AccommodationFormFields from '@/components/organisme/AccommodationFormFie
 import { formatAccommodationType } from '@/lib/accommodation-types';
 import SavedToast from '@/components/common/SavedToast';
 import {
+  buildAccessibilityInfoFromForm,
   embedAccommodationLocationMeta,
   extractAccommodationLocationMeta,
   validateAccommodationLocation
@@ -32,6 +33,12 @@ export const revalidate = 0;
 
 function isUuid(value: string | null | undefined): value is string {
   return typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function isAccommodationImportedFromStayDraft(ai: unknown): boolean {
+  if (!ai || typeof ai !== 'object' || Array.isArray(ai)) return false;
+  const src = (ai as Record<string, unknown>).source;
+  return src === 'stay_draft_publication' || src === 'stay_draft_save_preview';
 }
 
 export default async function AccommodationDetailPage({ params: paramsPromise, searchParams }: PageProps) {
@@ -66,7 +73,7 @@ export default async function AccommodationDetailPage({ params: paramsPromise, s
   const { data: accommodation } = await supabase
     .from('accommodations')
     .select(
-      'id,name,accommodation_type,description,bed_info,bathroom_info,catering_info,accessibility_info,status,updated_at,validated_at,validated_by_user_id,organizer_id'
+      'id,name,accommodation_type,description,bed_info,bathroom_info,catering_info,accessibility_info,status,updated_at,validated_at,validated_by_user_id,organizer_id,ai_extracted_data'
     )
     .eq('id', params.id)
     .maybeSingle();
@@ -85,9 +92,25 @@ export default async function AccommodationDetailPage({ params: paramsPromise, s
     itinerant_zone: currentAccommodationLocation.itinerantZone
   };
 
+  const showImportRelectureBanner =
+    currentAccommodation.status === 'TO_VALIDATE' ||
+    (currentAccommodation.status === 'DRAFT' &&
+      isAccommodationImportedFromStayDraft(currentAccommodation.ai_extracted_data));
+
   async function updateAccommodation(formData: FormData) {
     'use server';
     const supabase = getServerSupabaseClient();
+    const { data: rowBeforeSave } = await supabase
+      .from('accommodations')
+      .select('status,ai_extracted_data,validated_at,validated_by_user_id')
+      .eq('id', params.id)
+      .eq('organizer_id', selectedOrganizerId)
+      .maybeSingle();
+
+    if (!rowBeforeSave) {
+      redirect(withOrganizerQuery('/organisme/hebergements', selectedOrganizerId));
+    }
+
     const name = String(formData.get('name') ?? '').trim();
     const accommodationType = String(formData.get('accommodation_type') ?? '').trim();
     const description = String(formData.get('description') ?? '').trim();
@@ -99,7 +122,11 @@ export default async function AccommodationDetailPage({ params: paramsPromise, s
       itinerantZone: String(formData.get('itinerant_zone') ?? '').trim()
     };
     const now = new Date().toISOString();
-    const nextStatus = currentAccommodation.status === 'TO_VALIDATE' ? 'VALIDATED' : currentAccommodation.status;
+    const importedFromDraft = isAccommodationImportedFromStayDraft(rowBeforeSave.ai_extracted_data);
+    const nextStatus =
+      rowBeforeSave.status === 'TO_VALIDATE' || (rowBeforeSave.status === 'DRAFT' && importedFromDraft)
+        ? 'VALIDATED'
+        : rowBeforeSave.status;
     const validatedByUserId = isUuid(session.userId) ? session.userId : null;
 
     if (!name || !accommodationType) {
@@ -130,12 +157,12 @@ export default async function AccommodationDetailPage({ params: paramsPromise, s
         bed_info: String(formData.get('bed_info') ?? '').trim() || null,
         bathroom_info: String(formData.get('bathroom_info') ?? '').trim() || null,
         catering_info: String(formData.get('catering_info') ?? '').trim() || null,
-        accessibility_info: String(formData.get('accessibility_info') ?? '').trim() || null,
+        accessibility_info: buildAccessibilityInfoFromForm(formData),
         slug: slugify(name),
         status: nextStatus,
-        validated_at: nextStatus === 'VALIDATED' ? now : currentAccommodation.validated_at,
+        validated_at: nextStatus === 'VALIDATED' ? now : rowBeforeSave.validated_at,
         validated_by_user_id:
-          nextStatus === 'VALIDATED' ? validatedByUserId : currentAccommodation.validated_by_user_id,
+          nextStatus === 'VALIDATED' ? validatedByUserId : rowBeforeSave.validated_by_user_id,
         updated_at: now
       })
       .eq('id', params.id)
@@ -253,7 +280,7 @@ export default async function AccommodationDetailPage({ params: paramsPromise, s
         </Link>
       </div>
 
-      {currentAccommodation.status === 'TO_VALIDATE' && (
+      {showImportRelectureBanner && (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           Cet hébergement a été créé automatiquement à partir d&apos;un séjour. Enregistre la fiche après relecture
           pour le marquer comme validé.

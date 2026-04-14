@@ -141,3 +141,23 @@ export function embedAccommodationLocationMeta(
 
   return cleanedDescription ? `${cleanedDescription}\n${meta}` : meta;
 }
+
+const ACCESSIBILITY_PMR_STOCK_PHRASE = 'Repéré comme accessible aux personnes à mobilité réduite (PMR).';
+
+export function stripStockPmrPhraseFromAccessibility(text: string | null | undefined) {
+  return (text ?? '')
+    .replace(
+      /\s*Repéré comme accessible aux personnes à mobilité réduite \(PMR\)\.?\s*/gi,
+      ' '
+    )
+    .trim();
+}
+
+export function buildAccessibilityInfoFromForm(formData: FormData): string | null {
+  const pmr = formData.get('pmr_accessible') === 'on';
+  const extra = String(formData.get('accessibility_extra') ?? '').trim();
+  if (pmr && extra) return `${extra} ${ACCESSIBILITY_PMR_STOCK_PHRASE}`;
+  if (pmr) return ACCESSIBILITY_PMR_STOCK_PHRASE;
+  if (extra) return extra;
+  return null;
+}

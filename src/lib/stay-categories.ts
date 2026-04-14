@@ -34,6 +34,8 @@ type NormalizeStayDraftCategoriesResult = {
   rejected: string[];
 };
 
+const PRIMARY_SETTING_VALUES: StayCategoryValue[] = ['mer', 'montagne', 'campagne', 'etranger'];
+
 const CATEGORY_SPLIT_REGEX = /[\n,;|/+]+/g;
 
 const DRAFT_CATEGORY_ALIASES: Record<string, StayCategoryValue> = {
@@ -179,4 +181,41 @@ export function normalizeStayDraftCategories(
     categories,
     rejected: dedupeByNormalizedKey(rejected)
   };
+}
+
+export function inferPrimaryStaySettingCategory(content: string | null | undefined): StayCategoryValue | null {
+  const key = normalizeCategoryKey(content);
+  if (!key) return null;
+
+  if (
+    /\b(etranger|international|royaume uni|angleterre|espagne|italie|allemagne|irlande|portugal|malte|canada|usa|etats unis|maroc|tunisie|grece)\b/i.test(
+      key
+    )
+  ) {
+    return 'etranger';
+  }
+
+  if (/\b(mer|plage|ocean|océan|littoral|cote|côte|nautique|surf|voile)\b/i.test(key)) {
+    return 'mer';
+  }
+
+  if (/\b(montagne|ski|alpes|pyrenees|pyrénées|haute montagne|station)\b/i.test(key)) {
+    return 'montagne';
+  }
+
+  return 'campagne';
+}
+
+export function ensurePrimaryStaySettingCategory(
+  values: StayCategoryValue[],
+  content: string | null | undefined
+): StayCategoryValue[] {
+  const output = [...values];
+  if (output.some((value) => PRIMARY_SETTING_VALUES.includes(value))) {
+    return output;
+  }
+
+  const inferred = inferPrimaryStaySettingCategory(content);
+  if (!inferred) return output;
+  return [inferred, ...output];
 }

@@ -5,15 +5,28 @@ import { mockOrganizerTenant } from '@/lib/mocks';
 import {
   extractStayData,
   extractTransportVariants,
+  extractVideoUrls,
   fetchHtml,
+  isTransportBaseReference,
   selectBestStayImages,
   type DraftTransportPriceDebug,
   type DraftTransportVariant
 } from '@/lib/stay-draft-import';
+import {
+  renderStayPageWithPlaywright,
+  shouldUsePlaywrightForDynamicImages
+} from '@/lib/stay-draft-playwright';
+import { normalizeStayAges } from '@/lib/stay-ages';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { normalizeStayTitle } from '@/lib/stay-title';
 
 export const runtime = 'nodejs';
+
+function envTruthy(value: string | undefined): boolean {
+  if (!value) return false;
+  const v = value.trim().toLowerCase();
+  return v === '1' || v === 'true' || v === 'yes';
+}
 
 function redirectToOrganizerStayCreation(
   req: Request,
@@ -82,6 +95,7 @@ function buildRawPayload(
   extracted: ReturnType<typeof extractStayData>,
   transportVariants: DraftTransportVariant[],
   transportPriceDebug: DraftTransportPriceDebug[],
+  videoUrls: string[],
   importOptions?: {
     existingAccommodationId?: string | null;
     existingAccommodationName?: string | null;
@@ -95,6 +109,7 @@ function buildRawPayload(
     content_type: contentType,
     status_code: status,
     extracted,
+    video_urls: videoUrls,
     transport_variants: transportVariants,
     transport_matrix: transportVariants,
     transport_price_debug: transportPriceDebug,
@@ -108,11 +123,15 @@ function buildRawPayload(
 function buildDraftTransportOptionsFromVariants(transportVariants: DraftTransportVariant[]) {
   return transportVariants
     .filter((variant) => typeof variant.amount_cents === 'number' && Number.isFinite(variant.amount_cents))
-    .map((variant) => ({
-      label:
-        variant.departure_city === variant.return_city
+    .map((variant) => {
+      const returnIsCentre =
+        isTransportBaseReference(variant.return_city) || isTransportBaseReference(variant.return_label_raw);
+      const label =
+        variant.departure_city === variant.return_city || returnIsCentre
           ? variant.departure_city
-          : `${variant.departure_city} / ${variant.return_city}`,
+          : `${variant.departure_city} / ${variant.return_city}`;
+      return {
+      label,
       departure_city: variant.departure_city,
       return_city: variant.return_city,
       amount_cents: variant.amount_cents,
@@ -124,7 +143,36 @@ function buildDraftTransportOptionsFromVariants(transportVariants: DraftTranspor
       source_url: variant.source_url,
       departure_label_raw: variant.departure_label_raw ?? null,
       return_label_raw: variant.return_label_raw ?? null
-    }));
+    };
+    });
+}
+
+function transportVariantScore(variant: DraftTransportVariant): number {
+  let score = 0;
+  if (typeof variant.amount_cents === 'number') score += 100;
+  if (variant.confidence === 'high') score += 30;
+  if (variant.confidence === 'medium') score += 20;
+  if (variant.confidence === 'low') score += 10;
+  return score;
+}
+
+function mergeTransportVariants(
+  primary: DraftTransportVariant[],
+  secondary: DraftTransportVariant[]
+): DraftTransportVariant[] {
+  const map = new Map<string, DraftTransportVariant>();
+
+  for (const variant of [...primary, ...secondary]) {
+    const key = `${variant.departure_city}|${variant.return_city}`.toLowerCase();
+    const existing = map.get(key);
+    if (!existing || transportVariantScore(variant) > transportVariantScore(existing)) {
+      map.set(key, variant);
+    }
+  }
+
+  return Array.from(map.values()).sort((a, b) =>
+    `${a.departure_city}|${a.return_city}`.localeCompare(`${b.departure_city}|${b.return_city}`, 'fr')
+  );
 }
 
 function buildDraftUpdatePayload(
@@ -140,6 +188,10 @@ function buildDraftUpdatePayload(
   if (columns.has('description')) payload.description = extracted.description;
   if (columns.has('age_min')) payload.age_min = extracted.ageMin;
   if (columns.has('age_max')) payload.age_max = extracted.ageMax;
+  if (columns.has('ages')) {
+    const ages = normalizeStayAges([], extracted.ageMin, extracted.ageMax);
+    payload.ages = ages.length > 0 ? ages : null;
+  }
   if (columns.has('images')) {
     payload.images = extracted.images.length > 0 ? extracted.images : null;
   }
@@ -341,38 +393,97 @@ export async function POST(req: Request) {
   }
 
   const extracted = extractStayData(fetchedHtml.html, fetchedHtml.finalUrl);
+  const forcePlaywright = envTruthy(process.env.IMPORT_STAY_FORCE_PLAYWRIGHT);
+  const shouldTryDynamicRender =
+    forcePlaywright ||
+    shouldUsePlaywrightForDynamicImages(fetchedHtml.html, extracted.images.length);
+  const dynamicSnapshot = shouldTryDynamicRender
+    ? await renderStayPageWithPlaywright(fetchedHtml.finalUrl).catch((error) => {
+        console.warn('[import-stay] Playwright snapshot failed', {
+          sourceUrl: fetchedHtml.finalUrl,
+          error: error instanceof Error ? error.message : 'unknown-error'
+        });
+        return null;
+      })
+    : null;
+  const effectiveHtml = dynamicSnapshot?.html || fetchedHtml.html;
+  const effectiveFinalUrl = dynamicSnapshot?.finalUrl || fetchedHtml.finalUrl;
+  const extractedWithDynamicDom =
+    dynamicSnapshot && dynamicSnapshot.html
+      ? extractStayData(dynamicSnapshot.html, dynamicSnapshot.finalUrl)
+      : extracted;
+  const mergedExtractedImages = Array.from(
+    new Set([
+      ...extracted.images,
+      ...extractedWithDynamicDom.images,
+      ...(dynamicSnapshot?.imageUrls ?? [])
+    ])
+  );
+  const mergedVideoUrls = Array.from(
+    new Set([
+      ...extractVideoUrls(fetchedHtml.html, fetchedHtml.finalUrl),
+      ...(dynamicSnapshot?.videoUrls ?? [])
+    ])
+  );
   const [selectedImages, transportExtraction] = await Promise.all([
-    selectBestStayImages(fetchedHtml.html, fetchedHtml.finalUrl, extracted.images, {
-      title: extracted.title,
-      description: extracted.description,
-      summary: extracted.summary,
-      locationText: extracted.locationText,
-      regionText: extracted.regionText,
-      activities: extracted.activities
+    selectBestStayImages(effectiveHtml, effectiveFinalUrl, mergedExtractedImages, {
+      title: extractedWithDynamicDom.title,
+      description: extractedWithDynamicDom.description,
+      summary: extractedWithDynamicDom.summary,
+      locationText: extractedWithDynamicDom.locationText,
+      regionText: extractedWithDynamicDom.regionText,
+      activities: extractedWithDynamicDom.activities
     }),
-    extractTransportVariants(fetchedHtml.html, fetchedHtml.finalUrl)
+    extractTransportVariants(effectiveHtml, effectiveFinalUrl)
   ]);
   const extractedWithSmartImages = {
-    ...extracted,
-    images: selectedImages.length > 0 ? selectedImages : extracted.images
+    ...extractedWithDynamicDom,
+    images:
+      selectedImages.length > 0
+        ? selectedImages
+        : mergedExtractedImages.length > 0
+          ? mergedExtractedImages
+          : extractedWithDynamicDom.images
   };
-  const transportVariants = transportExtraction.transportVariants;
-  const transportPriceDebug = transportExtraction.transportPriceDebug;
+  const transportVariants = mergeTransportVariants(
+    dynamicSnapshot?.transportVariants ?? [],
+    transportExtraction.transportVariants
+  );
+  const transportPriceDebug = [
+    ...(dynamicSnapshot?.transportPriceDebug ?? []),
+    ...transportExtraction.transportPriceDebug
+  ];
   const rawPayload = buildRawPayload(
-    fetchedHtml.html,
+    effectiveHtml,
     fetchedHtml.fetchedAt,
     sourceUrl,
-    fetchedHtml.finalUrl,
+    effectiveFinalUrl,
     fetchedHtml.contentType,
     fetchedHtml.status,
     extractedWithSmartImages,
     transportVariants,
     transportPriceDebug,
+    mergedVideoUrls,
     {
       existingAccommodationId: selectedAccommodation?.id ?? null,
       existingAccommodationName: selectedAccommodation?.name ?? null
     }
   );
+  if (dynamicSnapshot) {
+    Object.assign(rawPayload, {
+      playwright: {
+        browser_engine: dynamicSnapshot.browserEngine,
+        final_url: dynamicSnapshot.finalUrl,
+        image_count: dynamicSnapshot.imageUrls.length,
+        video_count: dynamicSnapshot.videoUrls.length,
+        used_for_dynamic_images: true,
+        used_for_dynamic_transport:
+          dynamicSnapshot.transportDetected || dynamicSnapshot.transportVariants.length > 0,
+        transport_variant_count: dynamicSnapshot.transportVariants.length,
+        force_playwright: forcePlaywright
+      }
+    });
+  }
   const updatePayload = buildDraftUpdatePayload(
     draftColumns,
     extractedWithSmartImages,

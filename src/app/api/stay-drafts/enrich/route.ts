@@ -1,7 +1,13 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth/session';
 import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers.server';
-import { normalizeStayDraftCategories } from '@/lib/stay-categories';
+import {
+  ensurePrimaryStaySettingCategory,
+  normalizeStayDraftCategories,
+  stayCategoryLabelToValue,
+  stayCategoryValueToLabel
+} from '@/lib/stay-categories';
+import { inferTransportLogisticsModeFromSignals } from '@/lib/stay-draft-content';
 import { enrichStayDraftWithAI, StayDraftAiEnrichmentError } from '@/lib/stay-draft-ai-enrichment';
 import { mockOrganizerTenant } from '@/lib/mocks';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
@@ -15,6 +21,7 @@ type StayDraftRowAfterUpdate = Pick<
   StayDraftRow,
   | 'id'
   | 'summary'
+  | 'description'
   | 'location_text'
   | 'region_text'
   | 'program_text'
@@ -90,6 +97,7 @@ function makeSuccessResponse(
     updatedDraft: {
       id: string;
       summary: string | null;
+      description: string | null;
       location_text: string | null;
       region_text: string | null;
       program_text: string | null;
@@ -185,6 +193,58 @@ function hasJsonValue(value: Json | null | undefined): boolean {
   return true;
 }
 
+function simplifyForMatch(value: string | null | undefined): string {
+  if (!value) return '';
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function isLikelySeoDescription(value: string | null | undefined): boolean {
+  if (!hasText(value)) return false;
+  const normalized = simplifyForMatch(value);
+  if (!normalized) return false;
+
+  const keywordSignals = [
+    'colonie',
+    'stage',
+    'sejour',
+    'pour enfant',
+    'pour adolescents',
+    'meilleures colonies',
+    'encadree par',
+    'artistiques'
+  ];
+
+  const keywordHits = keywordSignals.reduce((count, signal) => {
+    return count + (normalized.includes(signal) ? 1 : 0);
+  }, 0);
+
+  return keywordHits >= 3 || /(^| )colonie( |$).*(^| )colonie( |$)/.test(normalized);
+}
+
+function shouldReplaceDescription(
+  draft: StayDraftRow,
+  currentRawPayload: Record<string, unknown>,
+  force: boolean
+): boolean {
+  if (force || !hasText(draft.description)) return true;
+
+  const extractedValue = currentRawPayload.extracted;
+  const extracted =
+    extractedValue && typeof extractedValue === 'object' && !Array.isArray(extractedValue)
+      ? (extractedValue as Record<string, unknown>)
+      : null;
+  const importedDescription =
+    extracted && typeof extracted.description === 'string' ? extracted.description.trim() : null;
+
+  if (importedDescription && draft.description?.trim() === importedDescription) return true;
+  return isLikelySeoDescription(draft.description);
+}
+
 function asObject(value: Json | null): Record<string, unknown> {
   if (value && typeof value === 'object' && !Array.isArray(value)) {
     return { ...value };
@@ -222,11 +282,40 @@ function buildDraftUpdateFromAi(
 ): StayDraftUpdate {
   const patch: StayDraftUpdate = {};
   const extracted = ai.extracted;
+  const currentRawPayload = asObject(draft.raw_payload);
   const linkedAccommodationId = readImportedExistingAccommodationId(draft.raw_payload);
   const extractedAccommodation = linkedAccommodationId ? null : extracted.accommodations_json;
-  const normalizedCategories = normalizeStayDraftCategories(extracted.categories).categories;
+  const normalizedCategoryLabels = normalizeStayDraftCategories(extracted.categories).categories;
+  const categoryContext = [
+    extracted.location_text,
+    extracted.region_text,
+    extracted.summary,
+    extracted.program_text,
+    extracted.transport_text,
+    draft.location_text,
+    draft.region_text,
+    draft.summary,
+    draft.program_text,
+    draft.description
+  ]
+    .filter(Boolean)
+    .join(' ');
+  const normalizedCategoryValues = ensurePrimaryStaySettingCategory(
+    normalizedCategoryLabels
+      .map((label) => stayCategoryLabelToValue(label))
+      .filter((value): value is NonNullable<ReturnType<typeof stayCategoryLabelToValue>> => value !== null),
+    categoryContext
+  );
+  const normalizedCategories = normalizedCategoryValues.reduce<string[]>((acc, value) => {
+    const label = stayCategoryValueToLabel(value);
+    if (label) acc.push(label);
+    return acc;
+  }, []);
 
   if ((force || !hasText(draft.summary)) && hasText(extracted.summary)) patch.summary = extracted.summary;
+  if (shouldReplaceDescription(draft, currentRawPayload, force) && hasText(extracted.description)) {
+    patch.description = extracted.description;
+  }
   if ((force || !hasText(draft.location_text)) && hasText(extracted.location_text)) {
     patch.location_text = extracted.location_text;
   }
@@ -242,8 +331,23 @@ function buildDraftUpdateFromAi(
   if ((force || !hasText(draft.transport_text)) && hasText(extracted.transport_text)) {
     patch.transport_text = extracted.transport_text;
   }
-  if ((force || !hasText(draft.transport_mode)) && hasText(extracted.transport_mode)) {
-    patch.transport_mode = extracted.transport_mode;
+  const inferredTransportMode = inferTransportLogisticsModeFromSignals({
+    currentValue: extracted.transport_mode,
+    html: typeof currentRawPayload.html === 'string' ? currentRawPayload.html : null,
+    visibleText:
+      typeof currentRawPayload.main_text === 'string'
+        ? currentRawPayload.main_text
+        : typeof currentRawPayload.html_excerpt === 'string'
+          ? currentRawPayload.html_excerpt
+          : null,
+    transportOptions: Array.isArray(currentRawPayload.transport_variants)
+      ? currentRawPayload.transport_variants
+      : Array.isArray(currentRawPayload.transport_matrix)
+        ? currentRawPayload.transport_matrix
+        : null
+  });
+  if ((force || !hasText(draft.transport_mode)) && hasText(inferredTransportMode)) {
+    patch.transport_mode = inferredTransportMode;
   }
   if ((force || !draft.categories || draft.categories.length === 0) && normalizedCategories.length > 0) {
     patch.categories = normalizedCategories;
@@ -264,10 +368,9 @@ function buildDraftUpdateFromAi(
     patch.accommodations_json = extractedAccommodation;
   }
 
-  const existingRawPayload = asObject(draft.raw_payload);
   const aiEnrichedAt = new Date().toISOString();
   patch.raw_payload = {
-    ...existingRawPayload,
+    ...currentRawPayload,
     ai_raw: ai.rawResponse,
     ai_extracted: {
       ...extracted,
@@ -293,7 +396,7 @@ async function updateDraftWithFallbacks(
   error: { message: string } | null;
   attempt: 'json-object' | 'json-string';
 }> {
-  const selectColumns = 'id,summary,location_text,region_text,program_text,supervision_text,transport_text,transport_mode,categories,ages,sessions_json,extra_options_json,transport_options_json,accommodations_json,raw_payload,updated_at';
+  const selectColumns = 'id,summary,description,location_text,region_text,program_text,supervision_text,transport_text,transport_mode,categories,ages,sessions_json,extra_options_json,transport_options_json,accommodations_json,raw_payload,updated_at';
 
   const attempts: Array<{ label: 'json-object' | 'json-string'; payload: StayDraftUpdate }> = [
     { label: 'json-object', payload }
@@ -555,6 +658,7 @@ export async function POST(req: Request) {
     updatedDraft: {
       id: updateResult.data.id,
       summary: updateResult.data.summary,
+      description: updateResult.data.description,
       location_text: updateResult.data.location_text,
       region_text: updateResult.data.region_text,
       program_text: updateResult.data.program_text,

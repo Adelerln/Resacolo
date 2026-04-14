@@ -3,8 +3,17 @@ import { z } from 'zod';
 import { getSession } from '@/lib/auth/session';
 import { resolveOrganizerSelection } from '@/lib/organizers.server';
 import { mockOrganizerTenant } from '@/lib/mocks';
-import { publishStayDraftToLive, PublishStayDraftError } from '@/lib/publish-stay-draft';
+import {
+  publishStayDraftToLive,
+  PublishStayDraftError,
+  syncStayDraftPreviewAccommodation
+} from '@/lib/publish-stay-draft';
 import { normalizeStayDraftCategories } from '@/lib/stay-categories';
+import {
+  expandDraftAges,
+  normalizeStaySummary,
+  normalizeStayTransportLogisticsMode
+} from '@/lib/stay-draft-content';
 import { mapToCanonicalStayRegion } from '@/lib/stay-regions';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { normalizeStayTitle } from '@/lib/stay-title';
@@ -36,7 +45,8 @@ const bodySchema = z.object({
   extra_options_json: arrayOfObjectsSchema,
   transport_options_json: arrayOfObjectsSchema,
   accommodations_json: z.record(z.unknown()).nullable().optional().default(null),
-  images: z.array(z.string()).optional().default([])
+  images: z.array(z.string()).optional().default([]),
+  video_urls: z.array(z.string()).optional().default([])
 });
 
 type StayDraftRow = Database['public']['Tables']['stay_drafts']['Row'];
@@ -56,10 +66,6 @@ function normalizeString(value: string | null | undefined): string {
 function toNullableString(value: string | null | undefined): string | null {
   const normalized = normalizeString(value);
   return normalized.length > 0 ? normalized : null;
-}
-
-function normalizeAges(values: number[]): number[] {
-  return Array.from(new Set(values.filter((value) => Number.isFinite(value) && value >= 0))).sort((a, b) => a - b);
 }
 
 function asObject(value: Json | null): Record<string, unknown> {
@@ -162,24 +168,25 @@ async function parseBody(req: Request): Promise<{ payload: StayDraftReviewPayloa
 
   const data = parsed.data;
   const categories = normalizeStayDraftCategories(data.categories).categories;
-  const ages = normalizeAges(data.ages);
+  const ages = expandDraftAges(data.ages);
   const payload: StayDraftReviewPayload = {
     title: normalizeStayTitle(data.title),
-    summary: normalizeString(data.summary),
+    summary: normalizeStaySummary(data.summary),
     location_text: normalizeString(data.location_text),
     region_text: mapToCanonicalStayRegion(data.region_text) ?? '',
     description: normalizeString(data.description),
     program_text: normalizeString(data.program_text),
     supervision_text: normalizeString(data.supervision_text),
     transport_text: normalizeString(data.transport_text),
-    transport_mode: normalizeString(data.transport_mode),
+    transport_mode: normalizeStayTransportLogisticsMode(data.transport_mode),
     categories,
     ages,
     sessions_json: data.sessions_json,
     extra_options_json: data.extra_options_json,
     transport_options_json: data.transport_options_json,
     accommodations_json: data.accommodations_json,
-    images: data.images.map((image) => normalizeString(image)).filter(Boolean)
+    images: data.images.map((image) => normalizeString(image)).filter(Boolean),
+    video_urls: data.video_urls.map((url) => normalizeString(url)).filter(Boolean)
   };
 
   if (!payload.title) {
@@ -219,9 +226,16 @@ async function handleUpdate(req: Request, params: { id: string }, mode: 'save' |
 
   const supabase = getServerSupabaseClient();
   const now = new Date().toISOString();
-  const ages = normalizeAges(parsedBody.payload.ages);
+  const ages = expandDraftAges(parsedBody.payload.ages);
   const categories = normalizeStayDraftCategories(parsedBody.payload.categories).categories;
   const validatedByUserId = isUuid(session?.userId) ? session?.userId : null;
+  const { data: currentDraft } = await supabase
+    .from('stay_drafts')
+    .select('raw_payload')
+    .eq('id', params.id)
+    .eq('organizer_id', selectedOrganizerId)
+    .maybeSingle();
+  const currentRawPayload = asObject(currentDraft?.raw_payload ?? null);
 
   const updatePayload: Record<string, unknown> = {
     title: normalizeStayTitle(parsedBody.payload.title),
@@ -242,6 +256,11 @@ async function handleUpdate(req: Request, params: { id: string }, mode: 'save' |
     transport_options_json: parsedBody.payload.transport_options_json,
     accommodations_json: parsedBody.payload.accommodations_json,
     images: parsedBody.payload.images.length > 0 ? parsedBody.payload.images : null,
+    raw_payload: {
+      ...currentRawPayload,
+      video_urls:
+        parsedBody.payload.video_urls.length > 0 ? parsedBody.payload.video_urls : null
+    },
     updated_at: now
   };
 
@@ -288,7 +307,14 @@ async function handleUpdate(req: Request, params: { id: string }, mode: 'save' |
     );
   }
 
-  let responseDraft = freshDraft as StayDraftRow;
+  let workingDraft = freshDraft as StayDraftRow;
+  try {
+    workingDraft = await syncStayDraftPreviewAccommodation(supabase, workingDraft);
+  } catch (previewError) {
+    console.error('[stay-drafts/review] sync preview accommodation', previewError);
+  }
+
+  let responseDraft = workingDraft;
   let published = false;
   let liveStayId: string | null = null;
   let publicationMeta:
@@ -300,33 +326,33 @@ async function handleUpdate(req: Request, params: { id: string }, mode: 'save' |
     | null = null;
 
   const shouldAttemptPublish =
-    normalizeStatus(freshDraft.status) === 'validated' || Boolean(freshDraft.validated_at);
+    normalizeStatus(workingDraft.status) === 'validated' || Boolean(workingDraft.validated_at);
 
   console.info('[stay-drafts/review] décision publication', {
-    draftId: freshDraft.id,
+    draftId: workingDraft.id,
     mode,
-    status: freshDraft.status,
-    validatedAt: freshDraft.validated_at,
+    status: workingDraft.status,
+    validatedAt: workingDraft.validated_at,
     shouldAttemptPublish
   });
 
   if (shouldAttemptPublish) {
     console.info('[stay-drafts/review] publication live déclenchée', {
-      draftId: freshDraft.id,
+      draftId: workingDraft.id,
       organizerId: selectedOrganizerId
     });
 
     try {
       console.info('[stay-drafts/review] étape publication: appel service', {
-        draftId: freshDraft.id
+        draftId: workingDraft.id
       });
       const publishResult = await publishStayDraftToLive({
         supabase,
-        draft: freshDraft as StayDraftRow
+        draft: workingDraft
       });
 
       console.info('[stay-drafts/review] étape publication: persistance métadonnées', {
-        draftId: freshDraft.id,
+        draftId: workingDraft.id,
         stayId: publishResult.stayId,
         publishedAt: publishResult.publishedAt,
         syncedTables: publishResult.syncedTables
@@ -371,7 +397,7 @@ async function handleUpdate(req: Request, params: { id: string }, mode: 'save' |
         message
       });
 
-      const currentRawPayload = asObject(freshDraft.raw_payload);
+      const currentRawPayload = asObject(workingDraft.raw_payload);
       const failedRawPayload = {
         ...currentRawPayload,
         publish_error: `${step}: ${message}`,
@@ -403,7 +429,7 @@ async function handleUpdate(req: Request, params: { id: string }, mode: 'save' |
           mode,
           published: false,
           publication: null,
-          draft: failedPersistedDraft ?? freshDraft
+          draft: failedPersistedDraft ?? workingDraft
         },
         { status: 502 }
       );

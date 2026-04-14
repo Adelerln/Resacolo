@@ -34,6 +34,7 @@ export type StayDraftReviewPayload = {
   }>;
   seo_generated_at?: string | null;
   seo_generation_source?: string | null;
+  video_urls: string[];
 };
 
 export type StayDraftReviewFieldErrorKey =
@@ -66,6 +67,7 @@ export type StayDraftReviewFieldErrorKey =
   | 'seo_slug_candidate'
   | 'seo_score'
   | 'seo_checks'
+  | 'video_urls'
   | 'form';
 
 export type StayDraftReviewFieldErrors = Partial<Record<StayDraftReviewFieldErrorKey, string>>;

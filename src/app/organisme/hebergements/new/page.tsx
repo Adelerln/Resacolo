@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import AccommodationFormFields from '@/components/organisme/AccommodationFormFields';
 import {
+  buildAccessibilityInfoFromForm,
   embedAccommodationLocationMeta,
   validateAccommodationLocation
 } from '@/lib/accommodation-location';
@@ -73,7 +74,7 @@ export default async function NewAccommodationPage({ searchParams }: PageProps) 
       bed_info: String(formData.get('bed_info') ?? '').trim() || null,
       bathroom_info: String(formData.get('bathroom_info') ?? '').trim() || null,
       catering_info: String(formData.get('catering_info') ?? '').trim() || null,
-      accessibility_info: String(formData.get('accessibility_info') ?? '').trim() || null,
+      accessibility_info: buildAccessibilityInfoFromForm(formData),
       slug: slugify(name),
       ai_extracted_data: null,
       status: 'DRAFT',

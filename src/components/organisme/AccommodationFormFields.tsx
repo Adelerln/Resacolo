@@ -2,7 +2,10 @@
 
 import { useState } from 'react';
 import GoogleMapsCityInput from '@/components/common/GoogleMapsCityInput';
-import type { AccommodationLocationMode } from '@/lib/accommodation-location';
+import {
+  stripStockPmrPhraseFromAccessibility,
+  type AccommodationLocationMode
+} from '@/lib/accommodation-location';
 import { ACCOMMODATION_TYPE_OPTIONS, formatAccommodationType } from '@/lib/accommodation-types';
 
 export { ACCOMMODATION_TYPE_OPTIONS, formatAccommodationType };
@@ -192,18 +195,28 @@ export default function AccommodationFormFields({
 
       <div className="rounded-xl border border-slate-100 p-4">
         <h3 className="text-sm font-semibold text-slate-900">Accessibilité</h3>
-        <label className="mt-3 block text-sm font-medium text-slate-700">
-          Informations accessibilité
-          <textarea
-            name="accessibility_info"
-            rows={3}
-            defaultValue={values.accessibility_info ?? ''}
-            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+        <label className="mt-4 flex cursor-pointer items-start gap-3 text-sm font-medium text-slate-800">
+          <input
+            type="checkbox"
+            name="pmr_accessible"
+            defaultChecked={Boolean(
+              values.accessibility_info &&
+                /mobilité réduite|PMR/i.test(values.accessibility_info) &&
+                /Repéré comme accessible/i.test(values.accessibility_info)
+            )}
+            className="mt-1 h-4 w-4 rounded border-slate-300"
           />
-          <span className="mt-1 block text-xs font-normal text-slate-500">
-            Cette rubrique sert à mentionner si le lieu d&apos;hébergement est accessible aux
-            personnes à mobilité réduite (PMR)
-          </span>
+          <span>Établissement repéré comme accessible aux personnes à mobilité réduite (PMR)</span>
+        </label>
+        <label className="mt-4 block text-sm font-medium text-slate-700">
+          Précisions (optionnel)
+          <textarea
+            name="accessibility_extra"
+            rows={3}
+            defaultValue={stripStockPmrPhraseFromAccessibility(values.accessibility_info ?? '')}
+            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+            placeholder="Ascenseur, chambre adaptée, plain-pied, etc."
+          />
         </label>
       </div>
 

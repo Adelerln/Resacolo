@@ -4,6 +4,11 @@ import StayDraftReviewForm from '@/components/organisme/StayDraftReviewForm';
 import { requireRole } from '@/lib/auth/require';
 import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers.server';
 import { normalizeStayDraftCategories } from '@/lib/stay-categories';
+import { extractVideoUrls } from '@/lib/stay-draft-import';
+import {
+  normalizeImportedImageUrlList,
+  normalizeImportedVideoUrlList
+} from '@/lib/stay-draft-url-extract';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import type { Json } from '@/types/supabase';
 import type { StayDraftReviewPayload } from '@/types/stay-draft-review';
@@ -175,6 +180,12 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
             .maybeSingle()
         ).data ?? null
       : null;
+  const fallbackVideoUrls =
+    asStringArray((rawPayload.video_urls as Json | null) ?? null).length > 0
+      ? asStringArray((rawPayload.video_urls as Json | null) ?? null)
+      : typeof rawPayload.html === 'string' && typeof draft.source_url === 'string'
+        ? extractVideoUrls(rawPayload.html, draft.source_url)
+        : [];
 
   const initialPayload: StayDraftReviewPayload = {
     title: normalizeString(draft.title),
@@ -211,6 +222,8 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
     seo_checks: asSeoChecks(draft.seo_checks),
     seo_generated_at: draft.seo_generated_at,
     seo_generation_source: normalizeString(draft.seo_generation_source) || null
+    images: normalizeImportedImageUrlList(asStringArray(draft.images)),
+    video_urls: normalizeImportedVideoUrlList(fallbackVideoUrls)
   };
 
   const backHref = withOrganizerQuery('/organisme/sejours', selectedOrganizerId);

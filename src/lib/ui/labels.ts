@@ -13,6 +13,33 @@ export function stayStatusLabel(status?: string | null) {
   }
 }
 
+export function stayStatusBadgeClassName(status?: string | null) {
+  switch (status) {
+    case 'DRAFT':
+      return 'bg-slate-100 text-slate-800';
+    case 'PUBLISHED':
+      return 'bg-emerald-100 text-emerald-800';
+    case 'HIDDEN':
+      return 'bg-amber-100 text-amber-900';
+    case 'ARCHIVED':
+      return 'bg-rose-100 text-rose-800';
+    default:
+      return 'bg-slate-100 text-slate-700';
+  }
+}
+
+export function stayDraftStatusLabel(status?: string | null) {
+  const s = (status ?? '').toLowerCase();
+  switch (s) {
+    case 'validated':
+      return 'Validé (import)';
+    case 'draft':
+      return 'Brouillon import';
+    default:
+      return status ? `Import : ${status}` : 'Import';
+  }
+}
+
 export function sessionStatusLabel(status?: string | null) {
   switch (status) {
     case 'OPEN':

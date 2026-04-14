@@ -74,7 +74,8 @@ export default async function NewStayChoicePage({ searchParams }: PageProps) {
         <h2 className="text-lg font-semibold text-slate-900">Saisie manuelle</h2>
         <p className="mt-2 text-sm leading-6 text-slate-600">
           Crée un séjour à la main, champ par champ, si tu veux garder la main sur toute la fiche
-          dès le départ.
+          dès le départ. Par défaut, la fiche est créée en <span className="font-semibold">brouillon</span> jusqu’à
+          ce que tu la passes en publié.
         </p>
         <div className="mt-5">
           <Link

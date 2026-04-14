@@ -1,6 +1,17 @@
 import { load } from 'cheerio';
 import { z } from 'zod';
 import { normalizeStayDraftCategories, STAY_CATEGORY_LABELS } from '@/lib/stay-categories';
+import {
+  expandDraftAges,
+  inferTransportLogisticsModeFromSignals,
+  MAX_STAY_SUMMARY_LENGTH,
+  normalizeStaySummary,
+  normalizeStayTransportLogisticsMode
+} from '@/lib/stay-draft-content';
+import {
+  normalizeAccommodationTypeToken,
+  normalizeLocationMode
+} from '@/lib/stay-draft-accommodation-import';
 import { createOpenAIClient } from '@/lib/openai';
 import type { Database, Json } from '@/types/supabase';
 
@@ -15,7 +26,7 @@ const DEFAULT_OPENAI_MODEL = process.env.OPENAI_ENRICH_MODEL ?? 'gpt-4o-mini';
 const MAX_MAIN_TEXT_LENGTH = 12_000;
 const MAX_HTML_EXCERPT_LENGTH = 6_000;
 const MAX_AI_LOG_PREVIEW_LENGTH = 1_000;
-export const STAY_DRAFT_AI_PROMPT_VERSION = 'stay-draft-enrich-v2';
+export const STAY_DRAFT_AI_PROMPT_VERSION = 'stay-draft-enrich-v7';
 
 const nullableTextSchema = z.preprocess((value) => {
   if (value === null || value === undefined) return null;
@@ -51,6 +62,24 @@ const transportOptionSchema = z.object({
   description: nullableTextSchema
 }).strict();
 
+const accommodationsJsonInnerSchema = z
+  .object({
+    title: nullableTextSchema,
+    description: nullableTextSchema,
+    accommodation_types: z.array(z.string().trim()).max(5).optional(),
+    accommodation_type: nullableTextSchema,
+    location_mode: nullableTextSchema,
+    location_city: nullableTextSchema,
+    location_department_code: nullableTextSchema,
+    location_country: nullableTextSchema,
+    itinerant_zone: nullableTextSchema,
+    bed_info: nullableTextSchema,
+    bathroom_info: nullableTextSchema,
+    catering_info: nullableTextSchema,
+    pmr_accessible: z.boolean().nullable().optional()
+  })
+  .strip();
+
 const sessionSchema = z.object({
   label: nullableTextSchema,
   start_date: nullableTextSchema,
@@ -62,6 +91,7 @@ const sessionSchema = z.object({
 
 const aiExtractedSchema = z.object({
   summary: nullableTextSchema,
+  description: nullableTextSchema,
   location_text: nullableTextSchema,
   region_text: nullableTextSchema,
   program_text: nullableTextSchema,
@@ -73,14 +103,12 @@ const aiExtractedSchema = z.object({
   sessions_json: z.array(sessionSchema),
   extra_options_json: z.array(extraOptionSchema),
   transport_options_json: z.array(transportOptionSchema),
-  accommodations_json: z.object({
-    title: nullableTextSchema,
-    description: nullableTextSchema
-  }).strict().nullable()
+  accommodations_json: accommodationsJsonInnerSchema.nullable()
 }).strict();
 
 const AI_EXTRACTED_EXPECTED_ROOT_KEYS = new Set([
   'summary',
+  'description',
   'location_text',
   'region_text',
   'program_text',
@@ -146,8 +174,9 @@ Règles impératives :
 - Respecte strictement les clés attendues, sans en ajouter d'autres.
 - Les prix complexes doivent rester dans sessions_json / extra_options_json / transport_options_json.
 - Pour availability dans sessions_json, utilise seulement : "available", "full", "unknown" ou null.
-- "summary" doit être une phrase courte de 100 caractères maximum (environ 2 lignes dans une carte). Pas de ponctuation de liste, pas de saut de ligne.
+- "summary" doit être une phrase courte de ${MAX_STAY_SUMMARY_LENGTH} caractères maximum (environ 2 lignes dans une carte). Pas de ponctuation de liste, pas de saut de ligne.
 - "location_text" doit contenir uniquement la ville principale (et le pays si hors de France) : 50 caractères maximum. Exemples : "Avignon, France", "Saint-Jean-de-Luz", "Saulieu, Bourgogne", "Londres, Royaume-Uni".
+- Tous les textes doivent être rédigés dans un français naturel et relu, jamais comme une suite de mots-clés SEO.
 `.trim();
 
 const MAIN_TEXT_NOISE_KEYS = [
@@ -469,6 +498,7 @@ function normalizeAiExtracted(data: StayDraftAiExtracted): StayDraftAiExtracted 
   return {
     ...data,
     summary: truncateSummary(data.summary),
+    description: data.description,
     location_text: truncateLocation(data.location_text),
     categories: normalizedCategories.categories,
     ages: dedupeNumbers(data.ages)
@@ -565,24 +595,53 @@ function normalizeOptionList(
 function normalizeAccommodations(value: unknown): StayDraftAiExtracted['accommodations_json'] {
   const record = asObject(value);
   if (!record) return null;
+  const fromArray = toStringArray(record.accommodation_types)
+    .map((t) => normalizeAccommodationTypeToken(t))
+    .filter((t): t is string => Boolean(t));
+  const legacy = normalizeAccommodationTypeToken(String(record.accommodation_type ?? ''));
+  const merged = legacy && !fromArray.includes(legacy) ? [...fromArray, legacy] : fromArray;
+  const uniqueTypes = Array.from(new Set(merged)).slice(0, 5);
+
+  const pmrRaw = record.pmr_accessible;
+  const pmr =
+    pmrRaw === true
+      ? true
+      : pmrRaw === false
+        ? false
+        : typeof pmrRaw === 'string' && /^(1|true|oui|yes)$/i.test(pmrRaw.trim())
+          ? true
+          : null;
+
   return {
     title: toNullableString(record.title),
-    description: toNullableString(record.description)
+    description: toNullableString(record.description),
+    accommodation_types: uniqueTypes.length > 0 ? uniqueTypes : undefined,
+    accommodation_type: toNullableString(record.accommodation_type),
+    location_mode: normalizeLocationMode(record.location_mode) ?? null,
+    location_city: toNullableString(record.location_city),
+    location_department_code: toNullableString(record.location_department_code),
+    location_country: toNullableString(record.location_country),
+    itinerant_zone: toNullableString(record.itinerant_zone),
+    bed_info: toNullableString(record.bed_info),
+    bathroom_info: toNullableString(record.bathroom_info),
+    catering_info: toNullableString(record.catering_info),
+    pmr_accessible: pmr
   };
 }
 
 function normalizeAiExtractedCandidate(value: unknown): StayDraftAiExtracted {
   const record = asObject(value) ?? {};
   return {
-    summary: toNullableString(record.summary),
+    summary: normalizeStaySummary(toNullableString(record.summary)),
+    description: toNullableString(record.description),
     location_text: toNullableString(record.location_text),
     region_text: toNullableString(record.region_text),
     program_text: toNullableString(record.program_text),
     supervision_text: toNullableString(record.supervision_text),
     transport_text: toNullableString(record.transport_text),
-    transport_mode: toNullableString(record.transport_mode),
+    transport_mode: normalizeStayTransportLogisticsMode(toNullableString(record.transport_mode)),
     categories: toStringArray(record.categories),
-    ages: toNumberArray(record.ages),
+    ages: expandDraftAges(toNumberArray(record.ages)),
     sessions_json: normalizeSessionList(record.sessions_json),
     extra_options_json: normalizeOptionList(record.extra_options_json),
     transport_options_json: normalizeOptionList(record.transport_options_json),
@@ -629,6 +688,17 @@ function buildAiInput(draft: StayDraftRow) {
     technical && typeof technical.metaDescription === 'string'
       ? normalizeWhitespace(technical.metaDescription)
       : null;
+  const transportVariants = Array.isArray(rawPayload.transport_variants)
+    ? rawPayload.transport_variants
+    : Array.isArray(rawPayload.transport_matrix)
+      ? rawPayload.transport_matrix
+      : [];
+  const inferredTransportMode = inferTransportLogisticsModeFromSignals({
+    currentValue: draft.transport_mode,
+    html,
+    visibleText: mainText ?? cleanedHtmlExcerpt ?? null,
+    transportOptions: transportVariants as Array<{ departure_city?: string | null; return_city?: string | null }>
+  });
 
   return {
     source_url: draft.source_url,
@@ -640,6 +710,10 @@ function buildAiInput(draft: StayDraftRow) {
     meta: {
       title: metaTitle,
       description: metaDescription
+    },
+    transport_signals: {
+      inferred_logistics_mode: inferredTransportMode || null,
+      has_transport_variants: transportVariants.length > 0
     },
     extracted_v1_minimal: extracted
       ? {
@@ -671,6 +745,7 @@ La sortie doit être un seul objet JSON en racine, jamais un tableau.
 Schéma exact attendu :
 {
   "summary": string | null,
+  "description": string | null,
   "location_text": string | null,
   "region_text": string | null,
   "program_text": string | null,
@@ -707,19 +782,94 @@ Schéma exact attendu :
   ],
   "accommodations_json": {
     "title": string | null,
-    "description": string | null
+    "description": string | null,
+    "accommodation_types": string[],
+    "accommodation_type": string | null,
+    "location_mode": "france" | "abroad" | "itinerant" | null,
+    "location_city": string | null,
+    "location_department_code": string | null,
+    "location_country": string | null,
+    "itinerant_zone": string | null,
+    "bed_info": string | null,
+    "bathroom_info": string | null,
+    "catering_info": string | null,
+    "pmr_accessible": boolean | null
   } | null
 }
+
+Règles pour "accommodations_json" (objet complet si un nouvel hébergement est à créer, sinon null) :
+- "title" : nom institutionnel court (ex. « Centre Pierre Brossolette », « Centre à Quillan », « Circuit itinérant : A, B et C », « Camping à … »). N'y mettre ni couchage, ni sanitaires, ni repas.
+- "accommodation_types" : 1 à 3 valeurs parmi exactement : centre, auberge de jeunesse, camping, famille d'accueil, gite, mixte. Plusieurs structures sur un circuit ⇒ plusieurs entrées ou "mixte". "accommodation_type" peut répéter le principal si besoin de compatibilité.
+- "location_mode" : france | abroad | itinerant selon le cas ; null si inconnu.
+- Lieu — règles strictes :
+  - Si "location_mode" = "france" : "location_city" doit être un NOM DE COMMUNE ou de ville (jamais le nom d'un département seul, jamais « Vendée / Deux-Sèvres »). "location_department_code" doit être le NUMÉRO INSEE à 2 ou 3 caractères (ex. 85 pour la Vendée, 79 pour les Deux-Sèvres, 75 pour Paris). Si la source ne donne qu'une frontière entre deux départements sans commune précise, utilise "itinerant" + "itinerant_zone" décrivant la zone (tu peux citer les deux départements avec leurs numéros).
+  - Si "abroad" : ville réelle + pays en toutes lettres dans "location_country".
+  - Si "itinerant" : "itinerant_zone" en une ou deux phrases (itinéraire, étapes, zone géographique).
+- "description" : 2 à 5 phrases fluides en français, avec articles et verbes conjugués (ex. « Le centre est implanté … », « Les participants profitent de … »). Parle du site, de la région, des infrastructures et des salles. Exclure tout ce qui relève du couchage, des sanitaires, de la restauration ou du PMR. Évite le style liste de mots-clés.
+- "bed_info" : phrases complètes et naturelles (ex. « Les chambres disposent de deux à six lits chacune. » ou « Le couchage se fait en dortoirs de huit lits. »). Préciser le mode de couchage si connu.
+- "bathroom_info" : phrases complètes (ex. « Des sanitaires privatifs sont installés dans chaque chambre. » ou « Les sanitaires sont collectifs sur le palier. »).
+- "catering_info" : phrases complètes sur les repas, cantine, self, etc.
+- "pmr_accessible" : true uniquement si l'accessibilité PMR / handicap est clairement indiquée, sinon false ou null.
 
 Catégories autorisées pour "categories" (utiliser exactement ces libellés et rien d'autre) :
 ${STAY_CATEGORY_ALLOWED_LIST_FOR_PROMPT}
 
 Règles strictes pour "categories" :
-- Le champ "categories" est une liste de 0 à plusieurs catégories autorisées.
+- Le champ "categories" est une liste de 1 à plusieurs catégories autorisées si le cadre du séjour est identifiable.
 - Chaque valeur doit être exactement un des libellés autorisés ci-dessus.
+- Le séjour doit porter en priorité un cadre parmi : "Séjour à la mer", "Séjour à la montagne", "Séjour à la campagne" ou "Séjour à l'étranger", dès que ce cadre est identifiable dans la source.
+- Le séjour peut ensuite avoir en plus un thème secondaire comme artistique, équestre, scientifique, itinérant, linguistique ou sportif.
+- Certains séjours n'ont pas de thème secondaire, mais ils ont tout de même un cadre principal.
 - N'ajoute une catégorie que si elle est explicitement justifiée par le contenu source.
 - Si une catégorie est incertaine ou implicite, ne l'ajoute pas.
 - Si aucune catégorie n'est fiable, renvoie [].
+
+Règles strictes pour "summary" :
+- "summary" est une phrase d'accroche courte, naturelle et vendeuse.
+- Maximum ${MAX_STAY_SUMMARY_LENGTH} caractères.
+- Écrire un vrai français relu. Interdiction de recopier une suite de mots-clés SEO.
+- Ne garde que des formulations idiomatiques en français. Exemple incorrect : « Séjour danse modern-jazz en Vendée pour 9 à 14 ans ». Exemple correct : « Séjour danse modern-jazz en Vendée de 9 à 14 ans ».
+- Exemples corrects : « Séjour Manga en Vendée », « Séjour Manga pour enfants de 8 à 13 ans ».
+
+Règles strictes pour "description" :
+- "description" doit faire 2 à 5 phrases complètes, naturelles et informatives.
+- Réécris les formulations SEO, trop courtes ou mal rédigées si nécessaire.
+- Si le texte court ressemble à une méta-description SEO, à du référencement Google ou à une suite de mots-clés, ignore-le et appuie-toi d'abord sur "main_text" et "html_excerpt".
+- Exemple à éviter : « Séjour et colonie et stage danse Modern-jazz pour enfants de 9 à 14 ans, colonie danse pour enfant... ».
+- Décrire le séjour, son ambiance, le cadre, les temps forts et ce que vivent les jeunes.
+- Ne pas produire une simple liste de mots-clés.
+
+Règles strictes pour "program_text" :
+- Réutilise autant que possible les formulations riches réellement visibles sur le site source.
+- Si la source contient des paragraphes détaillés, conserve la substance et la précision dans une rédaction propre.
+- Si la source contient surtout des listes d'activités, tu peux les reprendre en phrases claires ou en liste lisible.
+- Le programme doit être plus détaillé que la description quand la source le permet.
+
+Règles strictes pour "supervision_text" :
+- Rédiger une ou plusieurs phrases naturelles.
+- Utiliser les chiffres en numérique : « 1 adulte pour 5 inscrits », pas « cinq ».
+- Conserver les fonctions exactes si elles sont connues.
+
+Règles strictes pour "transport_text" :
+- Rédiger 1 à 4 phrases naturelles.
+- Préciser si le trajet se fait en train, en train puis en car, en car, en avion, ou si l'arrivée se fait directement sur place.
+- Si plusieurs modes sont mentionnés, écris-les explicitement dans des phrases.
+
+Règles strictes pour "transport_mode" :
+- Ce champ ne sert PAS au véhicule (train/car/etc.).
+- Il doit contenir uniquement l'un des 3 libellés suivants : "Aller/Retour similaire", "Aller/Retour différencié", "Sans transport".
+- "Aller/Retour similaire" si les villes aller et retour sont identiques ou si rien ne montre qu'elles diffèrent.
+- "Aller/Retour différencié" si les villes ou modalités aller/retour diffèrent.
+- Si la source montre deux menus déroulants distincts pour l'aller et le retour, considère que c'est "Aller/Retour différencié".
+- "Sans transport" s'il n'y a pas d'acheminement organisé.
+
+Règles strictes pour "ages" :
+- Si la source indique une tranche comme « 8 à 13 ans », renvoie [8,9,10,11,12,13] et non [8,13].
+
+Règles strictes pour "sessions_json.availability" :
+- Si la page laisse clairement réserver / inscrire sans mention de complet, préfère "available".
+- Si la session est complète, renvoie "full".
+- Si la disponibilité n'est vraiment pas déterminable, renvoie "unknown" ou null.
 
 Contexte :
 ${JSON.stringify(inputPayload)}

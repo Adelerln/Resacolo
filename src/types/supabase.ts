@@ -1713,6 +1713,7 @@ export type Database = {
           season_id: string
           status: Database["public"]["Enums"]["stay_status"]
           summary: string | null
+          source_url: string | null
           supervision_text: string | null
           title: string
           transport_text: string | null
@@ -1753,6 +1754,7 @@ export type Database = {
           season_id: string
           status?: Database["public"]["Enums"]["stay_status"]
           summary?: string | null
+          source_url?: string | null
           supervision_text?: string | null
           title: string
           transport_text?: string | null
@@ -1793,6 +1795,7 @@ export type Database = {
           season_id?: string
           status?: Database["public"]["Enums"]["stay_status"]
           summary?: string | null
+          source_url?: string | null
           supervision_text?: string | null
           title?: string
           transport_text?: string | null

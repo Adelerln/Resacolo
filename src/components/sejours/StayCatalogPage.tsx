@@ -96,6 +96,7 @@ function StayCard({ stay }: { stay: Stay }) {
         organizerLogoUrl={stay.organizer.logoUrl ?? null}
         organizerName={stay.organizer.name}
         overlayAction={<FavoriteToggleButton stayId={stay.id} />}
+        disableBlueHoverEffect
       />
     </div>
   );

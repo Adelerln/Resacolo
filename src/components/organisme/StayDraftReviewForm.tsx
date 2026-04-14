@@ -46,6 +46,24 @@ function parseCommaSeparatedList(value: string): string[] {
     .filter(Boolean);
 }
 
+function prettyJson(value: unknown): string {
+  return JSON.stringify(value, null, 2);
+}
+
+function getAccommodationField(
+  source: Record<string, unknown> | null,
+  ...keys: string[]
+): string {
+  if (!source) return '';
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return value;
+    }
+  }
+  return '';
+}
+
 export default function StayDraftReviewForm({
   draftId,
   organizerId,
@@ -100,6 +118,26 @@ export default function StayDraftReviewForm({
   );
   const [videoUrls, setVideoUrls] = useState<string[]>(() =>
     normalizeImportedVideoUrlList(initialPayload.video_urls)
+  const [accommodationTitle, setAccommodationTitle] = useState(() =>
+    getAccommodationField(initialPayload.accommodations_json, 'title', 'name')
+  );
+  const [accommodationType, setAccommodationType] = useState(() =>
+    getAccommodationField(initialPayload.accommodations_json, 'accommodation_type')
+  );
+  const [accommodationDescription, setAccommodationDescription] = useState(() =>
+    getAccommodationField(initialPayload.accommodations_json, 'description')
+  );
+  const [accommodationBedInfo, setAccommodationBedInfo] = useState(() =>
+    getAccommodationField(initialPayload.accommodations_json, 'bed_info', 'sleeping_info')
+  );
+  const [accommodationBathroomInfo, setAccommodationBathroomInfo] = useState(() =>
+    getAccommodationField(initialPayload.accommodations_json, 'bathroom_info', 'sanitary_info')
+  );
+  const [accommodationCateringInfo, setAccommodationCateringInfo] = useState(() =>
+    getAccommodationField(initialPayload.accommodations_json, 'catering_info', 'food_info')
+  );
+  const [accommodationAccessibilityInfo, setAccommodationAccessibilityInfo] = useState(() =>
+    getAccommodationField(initialPayload.accommodations_json, 'accessibility_info', 'pmr_info')
   );
   const [status, setStatus] = useState(initialStatus);
   const [validatedAt, setValidatedAt] = useState(initialValidatedAt);
@@ -198,19 +236,28 @@ export default function StayDraftReviewForm({
     const transportOptionsPayload = transportOptionsList.filter(
       (row) => String(row.label ?? '').trim().length > 0
     );
-    const accommodationsParsed = linkedAccommodation
-      ? { value: null as Record<string, unknown> | null }
-      : { value: JSON.parse(JSON.stringify(accommodationImport)) as Record<string, unknown> };
-    const imagesPayload = normalizeImportedImageUrlList(
-      imageUrls.map((u) => u.trim()).filter(Boolean)
-    );
-    const videosPayload = normalizeImportedVideoUrlList(
-      videoUrls.map((u) => u.trim()).filter(Boolean)
-    );
+    const normalizedAccommodation = linkedAccommodation
+      ? null
+      : (() => {
+          const payload = {
+            title: accommodationTitle.trim(),
+            accommodation_type: accommodationType.trim(),
+            description: accommodationDescription.trim(),
+            bed_info: accommodationBedInfo.trim(),
+            bathroom_info: accommodationBathroomInfo.trim(),
+            catering_info: accommodationCateringInfo.trim(),
+            accessibility_info: accommodationAccessibilityInfo.trim()
+          };
 
-    if (!linkedAccommodation && !String(accommodationImport.title ?? '').trim()) {
-      nextErrors.accommodations_json = "Le nom de l'hébergement importé est requis.";
-    }
+          const hasContent = Object.values(payload).some((value) => value.length > 0);
+          return hasContent ? payload : null;
+        })();
+    const imagesParsed = parseJsonField<string[]>('images', imagesJsonText);
+
+    setFieldError(sessionsParsed.error, 'sessions_json', nextErrors);
+    setFieldError(extraOptionsParsed.error, 'extra_options_json', nextErrors);
+    setFieldError(transportOptionsParsed.error, 'transport_options_json', nextErrors);
+    setFieldError(imagesParsed.error, 'images', nextErrors);
 
     if (Object.keys(nextErrors).length > 0) {
       return { errors: nextErrors };
@@ -228,12 +275,11 @@ export default function StayDraftReviewForm({
       transport_mode: transportMode,
       categories,
       ages,
-      sessions_json: sessionsPayload,
-      extra_options_json: extraOptionsPayload,
-      transport_options_json: transportOptionsPayload,
-      accommodations_json: accommodationsParsed.value ?? null,
-      images: imagesPayload,
-      video_urls: videosPayload
+      sessions_json: sessionsParsed.value ?? [],
+      extra_options_json: extraOptionsParsed.value ?? [],
+      transport_options_json: transportOptionsParsed.value ?? [],
+      accommodations_json: normalizedAccommodation,
+      images: (imagesParsed.value ?? []).filter((image): image is string => typeof image === 'string')
     };
 
     return { payload };
@@ -421,7 +467,90 @@ export default function StayDraftReviewForm({
         </div>
       )}
 
-      {showStayStep && (
+      {!linkedAccommodation && (
+        <div className="space-y-4 rounded-2xl border border-amber-200 bg-amber-50 p-6">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Hébergement</p>
+            <h2 className="mt-1 text-lg font-semibold text-slate-900">Review de l&apos;hébergement importé</h2>
+            <p className="mt-1 text-sm text-slate-600">
+              Validez ou corrigez ici les informations récupérées pour l&apos;hébergement avant la publication live.
+            </p>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="block text-sm font-medium text-slate-700">
+              Nom de l&apos;hébergement
+              <input
+                value={accommodationTitle}
+                onChange={(event) => setAccommodationTitle(event.target.value)}
+                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+              />
+            </label>
+            <label className="block text-sm font-medium text-slate-700">
+              Type d&apos;hébergement
+              <input
+                value={accommodationType}
+                onChange={(event) => setAccommodationType(event.target.value)}
+                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+              />
+            </label>
+          </div>
+
+          <label className="block text-sm font-medium text-slate-700">
+            Description
+            <textarea
+              value={accommodationDescription}
+              onChange={(event) => setAccommodationDescription(event.target.value)}
+              rows={5}
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+            />
+          </label>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="block text-sm font-medium text-slate-700">
+              Couchage
+              <textarea
+                value={accommodationBedInfo}
+                onChange={(event) => setAccommodationBedInfo(event.target.value)}
+                rows={4}
+                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+              />
+            </label>
+            <label className="block text-sm font-medium text-slate-700">
+              Sanitaires
+              <textarea
+                value={accommodationBathroomInfo}
+                onChange={(event) => setAccommodationBathroomInfo(event.target.value)}
+                rows={4}
+                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+              />
+            </label>
+            <label className="block text-sm font-medium text-slate-700">
+              Restauration
+              <textarea
+                value={accommodationCateringInfo}
+                onChange={(event) => setAccommodationCateringInfo(event.target.value)}
+                rows={4}
+                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+              />
+            </label>
+            <label className="block text-sm font-medium text-slate-700">
+              Accessibilité / PMR
+              <textarea
+                value={accommodationAccessibilityInfo}
+                onChange={(event) => setAccommodationAccessibilityInfo(event.target.value)}
+                rows={4}
+                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+              />
+            </label>
+          </div>
+
+          {fieldErrors.accommodations_json && (
+            <p className="text-sm text-rose-600">{fieldErrors.accommodations_json}</p>
+          )}
+        </div>
+      )}
+
       <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
         {!linkedAccommodation && (
           <button
@@ -635,7 +764,18 @@ export default function StayDraftReviewForm({
               ))}
             </div>
           )}
-        </div>
+        </label>
+
+        <label className="block text-sm font-medium text-slate-700">
+          Images (JSON)
+          <textarea
+            value={imagesJsonText}
+            onChange={(event) => setImagesJsonText(event.target.value)}
+            rows={8}
+            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 font-mono text-xs"
+          />
+          {fieldErrors.images && <span className="mt-1 block text-xs text-rose-600">{fieldErrors.images}</span>}
+        </label>
 
         <div className="relative space-y-2 rounded-xl border border-slate-200 bg-slate-50/60 p-3 pr-14">
           <button

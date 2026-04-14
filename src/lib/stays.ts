@@ -232,6 +232,49 @@ function normalizeStaySlug(value: string | null | undefined) {
   return value?.trim().toLowerCase() ?? '';
 }
 
+function normalizeStaySeoText(value: string | null | undefined) {
+  const normalized = value?.trim() ?? '';
+  return normalized || undefined;
+}
+
+function normalizeStaySeoTags(values: string[] | null | undefined) {
+  const seen = new Set<string>();
+  const output: string[] = [];
+
+  for (const value of values ?? []) {
+    const normalized = value?.trim();
+    if (!normalized) continue;
+    const key = normalized.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    output.push(normalized);
+  }
+
+  return output;
+}
+
+function normalizeStaySeoScore(value: number | null | undefined) {
+  if (!Number.isFinite(value)) return undefined;
+  const clamped = Math.max(0, Math.min(100, Math.round(Number(value))));
+  return clamped;
+}
+
+function normalizeStaySeoChecks(value: Database['public']['Tables']['stays']['Row']['seo_checks']) {
+  if (!Array.isArray(value)) return undefined;
+  const checks = (value as unknown[])
+    .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+    .map((item) => {
+      const code = typeof item.code === 'string' ? item.code.trim() : '';
+      const level = item.level === 'ok' || item.level === 'warning' || item.level === 'info' ? item.level : null;
+      const message = typeof item.message === 'string' ? item.message.trim() : '';
+      if (!code || !level || !message) return null;
+      return { code, level, message } as const;
+    })
+    .filter((item): item is { code: string; level: 'ok' | 'warning' | 'info'; message: string } => Boolean(item));
+
+  return checks.length > 0 ? checks : undefined;
+}
+
 function buildStaySlugSuffix(stayId: string) {
   const normalized = stayId.toLowerCase().replace(/[^a-z0-9]/g, '');
   if (normalized.length >= STAY_SLUG_SUFFIX_LENGTH) {
@@ -667,6 +710,23 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
           : null;
       const displayTitle = normalizeStayTitle(stay.title) || stay.title.trim();
       const baseSlug = slugify(`${organizerName}-${displayTitle}`) || stay.id;
+      const seoPrimaryKeyword = normalizeStaySeoText(stay.seo_primary_keyword);
+      const seoTargetCity = normalizeStaySeoText(stay.seo_target_city);
+      const seoTargetRegion = normalizeStaySeoText(stay.seo_target_region);
+      const seoTitle = normalizeStaySeoText(stay.seo_title);
+      const seoMetaDescription = normalizeStaySeoText(stay.seo_meta_description);
+      const seoIntroText = normalizeStaySeoText(stay.seo_intro_text);
+      const seoH1Variant = normalizeStaySeoText(stay.seo_h1_variant);
+      const seoSecondaryKeywords = normalizeStaySeoTags(stay.seo_secondary_keywords);
+      const seoSearchIntents = normalizeStaySeoTags(stay.seo_search_intents);
+      const seoInternalLinkAnchorSuggestions = normalizeStaySeoTags(
+        stay.seo_internal_link_anchor_suggestions
+      );
+      const seoSlugCandidate = normalizeStaySeoText(stay.seo_slug_candidate);
+      const seoScore = normalizeStaySeoScore(stay.seo_score);
+      const seoChecks = normalizeStaySeoChecks(stay.seo_checks);
+      const seoGeneratedAt = normalizeStaySeoText(stay.seo_generated_at);
+      const seoGenerationSource = normalizeStaySeoText(stay.seo_generation_source);
 
       return {
         id: stay.id,
@@ -703,6 +763,23 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
           sessions: bookingSessions,
           insuranceOptions,
           extraOptions
+        },
+        seo: {
+          primaryKeyword: seoPrimaryKeyword,
+          secondaryKeywords: seoSecondaryKeywords,
+          targetCity: seoTargetCity,
+          targetRegion: seoTargetRegion,
+          searchIntents: seoSearchIntents,
+          title: seoTitle,
+          metaDescription: seoMetaDescription,
+          introText: seoIntroText,
+          h1Variant: seoH1Variant,
+          internalLinkAnchorSuggestions: seoInternalLinkAnchorSuggestions,
+          slugCandidate: seoSlugCandidate,
+          score: seoScore,
+          checks: seoChecks,
+          generatedAt: seoGeneratedAt,
+          generationSource: seoGenerationSource
         },
         rawContext: {
           presentation: stay.description ?? '',

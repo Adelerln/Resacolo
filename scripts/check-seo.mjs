@@ -44,7 +44,33 @@ const checks = [
   },
   {
     file: 'src/components/sejours/StayDetailView.tsx',
-    required: ['aria-label="Fil d’Ariane"', 'href={organizerHref}']
+    required: ['aria-label="Fil d’Ariane"', 'href={organizerHref}', 'relatedStayLinks']
+  },
+  {
+    file: 'src/components/organisme/StaySeoEditor.tsx',
+    required: [
+      'SEO du séjour',
+      'seo_primary_keyword',
+      'seo_secondary_keywords',
+      'seo_search_intents',
+      'Aperçu Google'
+    ]
+  },
+  {
+    file: 'src/lib/stay-seo.ts',
+    required: ['buildStaySeoSuggestions', 'buildStaySeoWarnings', 'buildRelatedStayLinks']
+  },
+  {
+    file: 'src/components/organisme/StayDraftReviewForm.tsx',
+    required: ['Générer le SEO', 'Regénérer le SEO', 'seo_intro_text', 'seo_internal_link_anchor_suggestions']
+  },
+  {
+    file: 'src/app/api/stay-drafts/[id]/seo/route.ts',
+    required: ['generateStayDraftSeo', 'alreadyGenerated', 'seo_generation_source']
+  },
+  {
+    file: 'src/lib/stay-draft-seo.ts',
+    required: ['generateStayDraftSeo', 'seo_score', 'seo_checks', 'seo_slug_candidate']
   }
 ];
 

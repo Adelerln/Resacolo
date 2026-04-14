@@ -3,6 +3,7 @@ import { notFound, permanentRedirect } from 'next/navigation';
 import type { Stay } from '@/types/stay';
 import { DEFAULT_STAY_OG_IMAGE_PATH, toAbsoluteUrl } from '@/lib/seo';
 import { getStays, getStayCanonicalPath, resolveStayBySlug } from '@/lib/stays';
+import { buildRelatedStayLinks, buildStaySeoKeywords, buildStaySeoMetaDescription, buildStaySeoTitle } from '@/lib/stay-seo';
 import { StayDetailView } from '@/components/sejours/StayDetailView';
 
 interface StayDetailPageProps {
@@ -11,8 +12,36 @@ interface StayDetailPageProps {
 
 export const revalidate = 60;
 
-function getStaySeoDescription(stay: Stay) {
-  return stay.summary?.trim() || stay.description?.trim() || stay.title;
+function toStaySeoInput(stay: Stay) {
+  return {
+    title: stay.title,
+    summary: stay.summary,
+    description: stay.description,
+    activitiesText: stay.activitiesText,
+    programText: stay.programText,
+    location: stay.location,
+    region: stay.region,
+    seasonName: stay.seasonName,
+    ageRange: stay.ageRange,
+    categories: stay.categories,
+    seo: {
+      primaryKeyword: stay.seo?.primaryKeyword,
+      secondaryKeywords: stay.seo?.secondaryKeywords ?? [],
+      targetCity: stay.seo?.targetCity,
+      targetRegion: stay.seo?.targetRegion,
+      searchIntents: stay.seo?.searchIntents ?? [],
+      title: stay.seo?.title,
+      metaDescription: stay.seo?.metaDescription,
+      introText: stay.seo?.introText,
+      h1Variant: stay.seo?.h1Variant,
+      internalLinkAnchorSuggestions: stay.seo?.internalLinkAnchorSuggestions ?? [],
+      slugCandidate: stay.seo?.slugCandidate,
+      score: stay.seo?.score,
+      checks: stay.seo?.checks,
+      generatedAt: stay.seo?.generatedAt,
+      generationSource: stay.seo?.generationSource
+    }
+  };
 }
 
 function getStayOpenGraphImage(stay: Stay) {
@@ -28,6 +57,8 @@ function buildStayProductJsonLd(stay: Stay) {
   const canonicalPath = getStayCanonicalPath(stay);
   const canonicalUrl = toAbsoluteUrl(canonicalPath);
   const organizerPath = stay.organizer.slug ? `/organisateurs/${stay.organizer.slug}` : '/organisateurs';
+  const seoInput = toStaySeoInput(stay);
+  const seoKeywords = buildStaySeoKeywords(seoInput);
   const offer: Record<string, unknown> = {
     '@type': 'Offer',
     url: canonicalUrl,
@@ -48,10 +79,11 @@ function buildStayProductJsonLd(stay: Stay) {
     '@context': 'https://schema.org',
     '@type': 'Product',
     name: stay.title,
-    description: getStaySeoDescription(stay),
+    description: buildStaySeoMetaDescription(seoInput),
     sku: stay.id,
     url: canonicalUrl,
     image: [toAbsoluteUrl(getStayOpenGraphImage(stay))],
+    keywords: seoKeywords.join(', '),
     brand: {
       '@type': 'Organization',
       name: stay.organizer.name
@@ -107,8 +139,9 @@ export async function generateMetadata({ params }: StayDetailPageProps): Promise
   }
 
   const stay = resolved.stay;
-  const title = `${stay.title} | Resacolo`;
-  const description = getStaySeoDescription(stay);
+  const seoInput = toStaySeoInput(stay);
+  const title = buildStaySeoTitle(seoInput);
+  const description = buildStaySeoMetaDescription(seoInput);
   const canonicalPath = getStayCanonicalPath(stay);
   const image = getStayOpenGraphImage(stay);
 
@@ -174,6 +207,9 @@ export default async function StayDetailPage({ params }: StayDetailPageProps) {
   }
 
   const stay = resolved.stay;
+  const relatedStayLinks = buildRelatedStayLinks(stay, await getStays(), (relatedStay) =>
+    getStayCanonicalPath(relatedStay)
+  );
   const productJsonLd = serializeJsonLd(buildStayProductJsonLd(stay));
   const breadcrumbJsonLd = serializeJsonLd(buildStayBreadcrumbJsonLd(stay));
 
@@ -181,7 +217,7 @@ export default async function StayDetailPage({ params }: StayDetailPageProps) {
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: productJsonLd }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: breadcrumbJsonLd }} />
-      <StayDetailView stay={stay} />
+      <StayDetailView stay={stay} relatedStayLinks={relatedStayLinks} />
     </>
   );
 }

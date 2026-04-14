@@ -30,6 +30,7 @@ import { FILTER_LABELS } from '@/lib/constants';
 import { getMockImageUrl, mockImages } from '@/lib/mockImages';
 import StayLocationMap from '@/components/sejours/StayLocationMap';
 import { FavoriteStayButton } from '@/components/sejours/FavoriteStayButton';
+import { buildStayH1Title, buildStayIntroText } from '@/lib/stay-seo';
 import { slugify } from '@/lib/utils';
 
 type TabId = 'sejour' | 'programme' | 'hebergement' | 'encadrement' | 'infos';
@@ -158,7 +159,20 @@ const DEFAULT_GALLERY = [
 ];
 const VISIT_TRACKING_DEDUP_MS = 60_000;
 
-export function StayDetailView({ stay }: { stay: Stay }) {
+type RelatedStayLink = {
+  stayId: string;
+  href: string;
+  anchorText: string;
+  title: string;
+};
+
+export function StayDetailView({
+  stay,
+  relatedStayLinks = []
+}: {
+  stay: Stay;
+  relatedStayLinks?: RelatedStayLink[];
+}) {
   const router = useRouter();
   const { addItem } = useCart();
   const [activeTab, setActiveTab] = useState<TabId>('sejour');
@@ -475,6 +489,26 @@ export function StayDetailView({ stay }: { stay: Stay }) {
   const themeLabel = firstCategory ? formatLabel('categories', firstCategory) : stay.title;
   const ThemeIcon = firstCategory ? getCategoryIcon(firstCategory) : Palette;
   const organizerHref = getOrganizerHref(stay);
+  const seoInput = {
+    title: stay.title,
+    summary: stay.summary,
+    description: stay.description,
+    activitiesText,
+    programText: programmeText,
+    location: stay.location,
+    region: stay.region,
+    seasonName: stay.seasonName,
+    ageRange: stay.ageRange,
+    categories: stay.categories,
+    seo: stay.seo
+  };
+  const h1Title = buildStayH1Title(seoInput);
+  const introText = buildStayIntroText(seoInput);
+  const seoPrimaryKeyword = stay.seo?.primaryKeyword?.trim();
+  const seoInternalAnchors = useMemo(
+    () => (stay.seo?.internalLinkAnchorSuggestions ?? []).filter((value) => value.trim().length > 0).slice(0, 6),
+    [stay.seo?.internalLinkAnchorSuggestions]
+  );
   const heroImageAlt = `Photo du séjour ${stay.title}${stay.location ? ` à ${stay.location}` : ''}`;
 
   return (
@@ -492,7 +526,7 @@ export function StayDetailView({ stay }: { stay: Stay }) {
         <div className="absolute inset-0 bg-slate-900/40" />
         <div className="absolute inset-0 flex items-center justify-center">
           <h1 className="px-4 text-center font-display text-3xl font-normal tracking-tight text-white sm:text-4xl md:text-5xl">
-            {stay.title}
+            {h1Title}
           </h1>
         </div>
       </section>
@@ -548,7 +582,7 @@ export function StayDetailView({ stay }: { stay: Stay }) {
               <FavoriteToggleButton stayId={stay.id} showLabel />
             </div>
 
-            <p className="mb-8 max-w-3xl text-base leading-relaxed text-slate-600">{stay.summary}</p>
+            <p className="mb-8 max-w-3xl text-base leading-relaxed text-slate-600">{introText}</p>
 
             {stay.filters.categories.length > 0 && (
               <div className="mb-8 flex flex-wrap gap-3">
@@ -613,7 +647,9 @@ export function StayDetailView({ stay }: { stay: Stay }) {
             <div className="prose prose-slate max-w-none">
               {activeTab === 'sejour' && (
                 <section className="space-y-4">
-                  <h2 className="font-display text-xl font-semibold text-slate-900">Séjour</h2>
+                  <h2 className="font-display text-xl font-semibold text-slate-900">
+                    {seoPrimaryKeyword ? `Séjour: ${seoPrimaryKeyword}` : 'Séjour'}
+                  </h2>
                   <p className="text-sm leading-relaxed text-slate-600 whitespace-pre-line">
                     {sejourText || 'Informations à venir.'}
                   </p>
@@ -710,6 +746,39 @@ export function StayDetailView({ stay }: { stay: Stay }) {
             <div className="mt-12 flex aspect-video items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
               <span className="text-sm font-medium">Ici, votre vidéo.</span>
             </div>
+
+            {relatedStayLinks.length > 0 ? (
+              <section className="mt-10 rounded-2xl border border-slate-200 bg-white p-5">
+                <h2 className="font-display text-lg font-semibold text-slate-900">À découvrir aussi</h2>
+                <ul className="mt-3 space-y-2 text-sm text-slate-700">
+                  {relatedStayLinks.map((link) => (
+                    <li key={link.stayId}>
+                      <Link href={link.href} className="hover:text-brand-700 hover:underline">
+                        {link.anchorText}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
+
+            {seoInternalAnchors.length > 0 ? (
+              <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-5">
+                <h2 className="font-display text-lg font-semibold text-slate-900">Explorer par thème</h2>
+                <ul className="mt-3 space-y-2 text-sm text-slate-700">
+                  {seoInternalAnchors.map((anchor) => (
+                    <li key={anchor}>
+                      <Link
+                        href={`/sejours?q=${encodeURIComponent(anchor)}`}
+                        className="hover:text-brand-700 hover:underline"
+                      >
+                        {anchor}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
           </article>
 
           {/* Sidebar */}

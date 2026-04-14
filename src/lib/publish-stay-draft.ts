@@ -392,6 +392,22 @@ function isMissingColumnError(message: string | undefined, columnName: string): 
   return normalized.includes('column') && normalized.includes(columnName.toLowerCase());
 }
 
+function isMissingSeoColumnError(message: string | undefined): boolean {
+  if (!message) return false;
+  const normalized = message.toLowerCase();
+  return normalized.includes('column') && normalized.includes('seo_') && normalized.includes('does not exist');
+}
+
+function removeSeoFieldsFromPayload<T extends Record<string, unknown>>(payload: T): T {
+  const nextPayload = { ...payload };
+  for (const key of Object.keys(nextPayload)) {
+    if (key.startsWith('seo_')) {
+      delete nextPayload[key];
+    }
+  }
+  return nextPayload as T;
+}
+
 function categoryValueToLogLabel(value: string): string {
   return stayCategoryValueToLabel(value) ?? value;
 }
@@ -1132,6 +1148,21 @@ async function updateOrInsertStay(
     categories: mappedCategories,
     transport_mode: transportMode,
     transport_text: toNullableText(draft.transport_text),
+    seo_primary_keyword: toNullableText(draft.seo_primary_keyword),
+    seo_secondary_keywords: draft.seo_secondary_keywords ?? [],
+    seo_target_city: toNullableText(draft.seo_target_city),
+    seo_target_region: toNullableText(draft.seo_target_region),
+    seo_search_intents: draft.seo_search_intents ?? [],
+    seo_title: toNullableText(draft.seo_title),
+    seo_meta_description: toNullableText(draft.seo_meta_description),
+    seo_intro_text: toNullableText(draft.seo_intro_text),
+    seo_h1_variant: toNullableText(draft.seo_h1_variant),
+    seo_internal_link_anchor_suggestions: draft.seo_internal_link_anchor_suggestions ?? [],
+    seo_slug_candidate: toNullableText(draft.seo_slug_candidate),
+    seo_generated_at: draft.seo_generated_at ?? null,
+    seo_generation_source: toNullableText(draft.seo_generation_source),
+    seo_score: Number.isFinite(draft.seo_score) ? draft.seo_score : null,
+    seo_checks: Array.isArray(draft.seo_checks) ? draft.seo_checks : [],
     status: 'PUBLISHED' as StayStatus,
     updated_at: now
   };
@@ -1159,16 +1190,33 @@ async function updateOrInsertStay(
       .eq('id', stayId)
       .eq('organizer_id', draft.organizer_id);
 
-    if (firstTry.error && !isMissingColumnError(firstTry.error.message, 'source_url')) {
+    const missingSourceUrl = isMissingColumnError(firstTry.error?.message, 'source_url');
+    const missingSeoColumns = isMissingSeoColumnError(firstTry.error?.message);
+
+    if (firstTry.error && !missingSourceUrl && !missingSeoColumns) {
       throw new PublishStayDraftError('update-stay', firstTry.error.message ?? 'Impossible de mettre à jour le séjour.');
     }
 
-    if (firstTry.error && isMissingColumnError(firstTry.error.message, 'source_url')) {
-      const { error: fallbackError } = await supabase
+    if (firstTry.error) {
+      const fallbackPayload = missingSeoColumns
+        ? removeSeoFieldsFromPayload(basePayload as Record<string, unknown>)
+        : (basePayload as Record<string, unknown>);
+
+      let { error: fallbackError } = await supabase
         .from('stays')
-        .update(basePayload)
+        .update(fallbackPayload)
         .eq('id', stayId)
         .eq('organizer_id', draft.organizer_id);
+
+      if (fallbackError && !missingSeoColumns && isMissingSeoColumnError(fallbackError.message)) {
+        const withoutSeoPayload = removeSeoFieldsFromPayload(basePayload as Record<string, unknown>);
+        const secondFallback = await supabase
+          .from('stays')
+          .update(withoutSeoPayload)
+          .eq('id', stayId)
+          .eq('organizer_id', draft.organizer_id);
+        fallbackError = secondFallback.error;
+      }
 
       if (fallbackError) {
         throw new PublishStayDraftError('update-stay', fallbackError.message);
@@ -1203,6 +1251,21 @@ async function updateOrInsertStay(
     categories: mappedCategories,
     transport_mode: transportMode,
     transport_text: basePayload.transport_text ?? null,
+    seo_primary_keyword: basePayload.seo_primary_keyword ?? null,
+    seo_secondary_keywords: basePayload.seo_secondary_keywords ?? [],
+    seo_target_city: basePayload.seo_target_city ?? null,
+    seo_target_region: basePayload.seo_target_region ?? null,
+    seo_search_intents: basePayload.seo_search_intents ?? [],
+    seo_title: basePayload.seo_title ?? null,
+    seo_meta_description: basePayload.seo_meta_description ?? null,
+    seo_intro_text: basePayload.seo_intro_text ?? null,
+    seo_h1_variant: basePayload.seo_h1_variant ?? null,
+    seo_internal_link_anchor_suggestions: basePayload.seo_internal_link_anchor_suggestions ?? [],
+    seo_slug_candidate: basePayload.seo_slug_candidate ?? null,
+    seo_generated_at: basePayload.seo_generated_at ?? null,
+    seo_generation_source: basePayload.seo_generation_source ?? null,
+    seo_score: basePayload.seo_score ?? null,
+    seo_checks: basePayload.seo_checks ?? [],
     status: 'PUBLISHED'
   };
 
@@ -1220,8 +1283,10 @@ async function updateOrInsertStay(
   };
 
   const firstTry = await dynamicInsert.insert(insertWithSourceUrl).select('id').single();
+  const missingSourceUrl = isMissingColumnError(firstTry.error?.message, 'source_url');
+  const missingSeoColumns = isMissingSeoColumnError(firstTry.error?.message);
 
-  if (firstTry.error && !isMissingColumnError(firstTry.error.message, 'source_url')) {
+  if (firstTry.error && !missingSourceUrl && !missingSeoColumns) {
     throw new PublishStayDraftError('insert-stay', firstTry.error.message ?? 'Impossible de créer le séjour.');
   }
 
@@ -1237,7 +1302,17 @@ async function updateOrInsertStay(
     return newId;
   }
 
-  const fallbackTry = await supabase.from('stays').insert(insertPayload).select('id').single();
+  let fallbackPayload = insertPayload as Record<string, unknown>;
+  if (missingSeoColumns) {
+    fallbackPayload = removeSeoFieldsFromPayload(fallbackPayload);
+  }
+
+  let fallbackTry = await supabase.from('stays').insert(fallbackPayload as StayInsert).select('id').single();
+  if ((fallbackTry.error || !fallbackTry.data?.id) && !missingSeoColumns && isMissingSeoColumnError(fallbackTry.error?.message)) {
+    const withoutSeoPayload = removeSeoFieldsFromPayload(insertPayload as Record<string, unknown>);
+    fallbackTry = await supabase.from('stays').insert(withoutSeoPayload as StayInsert).select('id').single();
+  }
+
   if (fallbackTry.error || !fallbackTry.data?.id) {
     throw new PublishStayDraftError('insert-stay', fallbackTry.error?.message ?? 'Impossible de créer le séjour.');
   }

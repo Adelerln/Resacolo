@@ -1478,6 +1478,21 @@ export type Database = {
           raw_payload: Json | null
           region_text: string | null
           required_documents_text: string | null
+          seo_checks: Json
+          seo_generated_at: string | null
+          seo_generation_source: string | null
+          seo_h1_variant: string | null
+          seo_internal_link_anchor_suggestions: string[]
+          seo_intro_text: string | null
+          seo_meta_description: string | null
+          seo_primary_keyword: string | null
+          seo_score: number | null
+          seo_search_intents: string[]
+          seo_secondary_keywords: string[]
+          seo_slug_candidate: string | null
+          seo_target_city: string | null
+          seo_target_region: string | null
+          seo_title: string | null
           sessions_json: Json | null
           source_url: string
           status: string
@@ -1509,6 +1524,21 @@ export type Database = {
           raw_payload?: Json | null
           region_text?: string | null
           required_documents_text?: string | null
+          seo_checks?: Json
+          seo_generated_at?: string | null
+          seo_generation_source?: string | null
+          seo_h1_variant?: string | null
+          seo_internal_link_anchor_suggestions?: string[]
+          seo_intro_text?: string | null
+          seo_meta_description?: string | null
+          seo_primary_keyword?: string | null
+          seo_score?: number | null
+          seo_search_intents?: string[]
+          seo_secondary_keywords?: string[]
+          seo_slug_candidate?: string | null
+          seo_target_city?: string | null
+          seo_target_region?: string | null
+          seo_title?: string | null
           sessions_json?: Json | null
           source_url: string
           status?: string
@@ -1540,6 +1570,21 @@ export type Database = {
           raw_payload?: Json | null
           region_text?: string | null
           required_documents_text?: string | null
+          seo_checks?: Json
+          seo_generated_at?: string | null
+          seo_generation_source?: string | null
+          seo_h1_variant?: string | null
+          seo_internal_link_anchor_suggestions?: string[]
+          seo_intro_text?: string | null
+          seo_meta_description?: string | null
+          seo_primary_keyword?: string | null
+          seo_score?: number | null
+          seo_search_intents?: string[]
+          seo_secondary_keywords?: string[]
+          seo_slug_candidate?: string | null
+          seo_target_city?: string | null
+          seo_target_region?: string | null
+          seo_title?: string | null
           sessions_json?: Json | null
           source_url?: string
           status?: string
@@ -1650,6 +1695,21 @@ export type Database = {
           partner_discount_percent: number | null
           program_text: string | null
           required_documents_text: string | null
+          seo_checks: Json
+          seo_generated_at: string | null
+          seo_generation_source: string | null
+          seo_h1_variant: string | null
+          seo_internal_link_anchor_suggestions: string[]
+          seo_intro_text: string | null
+          seo_meta_description: string | null
+          seo_primary_keyword: string | null
+          seo_score: number | null
+          seo_search_intents: string[]
+          seo_secondary_keywords: string[]
+          seo_slug_candidate: string | null
+          seo_target_city: string | null
+          seo_target_region: string | null
+          seo_title: string | null
           season_id: string
           status: Database["public"]["Enums"]["stay_status"]
           summary: string | null
@@ -1675,6 +1735,21 @@ export type Database = {
           partner_discount_percent?: number | null
           program_text?: string | null
           required_documents_text?: string | null
+          seo_checks?: Json
+          seo_generated_at?: string | null
+          seo_generation_source?: string | null
+          seo_h1_variant?: string | null
+          seo_internal_link_anchor_suggestions?: string[]
+          seo_intro_text?: string | null
+          seo_meta_description?: string | null
+          seo_primary_keyword?: string | null
+          seo_score?: number | null
+          seo_search_intents?: string[]
+          seo_secondary_keywords?: string[]
+          seo_slug_candidate?: string | null
+          seo_target_city?: string | null
+          seo_target_region?: string | null
+          seo_title?: string | null
           season_id: string
           status?: Database["public"]["Enums"]["stay_status"]
           summary?: string | null
@@ -1700,6 +1775,21 @@ export type Database = {
           partner_discount_percent?: number | null
           program_text?: string | null
           required_documents_text?: string | null
+          seo_checks?: Json
+          seo_generated_at?: string | null
+          seo_generation_source?: string | null
+          seo_h1_variant?: string | null
+          seo_internal_link_anchor_suggestions?: string[]
+          seo_intro_text?: string | null
+          seo_meta_description?: string | null
+          seo_primary_keyword?: string | null
+          seo_score?: number | null
+          seo_search_intents?: string[]
+          seo_secondary_keywords?: string[]
+          seo_slug_candidate?: string | null
+          seo_target_city?: string | null
+          seo_target_region?: string | null
+          seo_title?: string | null
           season_id?: string
           status?: Database["public"]["Enums"]["stay_status"]
           summary?: string | null

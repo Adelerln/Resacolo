@@ -15,6 +15,25 @@ export type StayDraftReviewPayload = {
   transport_options_json: Array<Record<string, unknown>>;
   accommodations_json: Record<string, unknown> | null;
   images: string[];
+  seo_primary_keyword: string;
+  seo_secondary_keywords: string[];
+  seo_target_city: string;
+  seo_target_region: string;
+  seo_search_intents: string[];
+  seo_title: string;
+  seo_meta_description: string;
+  seo_intro_text: string;
+  seo_h1_variant: string;
+  seo_internal_link_anchor_suggestions: string[];
+  seo_slug_candidate: string;
+  seo_score: number | null;
+  seo_checks: Array<{
+    code: string;
+    level: 'ok' | 'warning' | 'info';
+    message: string;
+  }>;
+  seo_generated_at?: string | null;
+  seo_generation_source?: string | null;
 };
 
 export type StayDraftReviewFieldErrorKey =
@@ -34,6 +53,19 @@ export type StayDraftReviewFieldErrorKey =
   | 'transport_options_json'
   | 'accommodations_json'
   | 'images'
+  | 'seo_primary_keyword'
+  | 'seo_secondary_keywords'
+  | 'seo_target_city'
+  | 'seo_target_region'
+  | 'seo_search_intents'
+  | 'seo_title'
+  | 'seo_meta_description'
+  | 'seo_intro_text'
+  | 'seo_h1_variant'
+  | 'seo_internal_link_anchor_suggestions'
+  | 'seo_slug_candidate'
+  | 'seo_score'
+  | 'seo_checks'
   | 'form';
 
 export type StayDraftReviewFieldErrors = Partial<Record<StayDraftReviewFieldErrorKey, string>>;

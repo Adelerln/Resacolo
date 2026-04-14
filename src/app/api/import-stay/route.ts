@@ -7,7 +7,9 @@ import {
   extractTransportVariants,
   extractVideoUrls,
   fetchHtml,
-  isTransportBaseReference,
+  buildDraftTransportOptionsFromVariants,
+  pickImportedCancellationInsuranceCents,
+  pickImportedSessionReferencePriceCents,
   selectBestStayImages,
   type DraftTransportPriceDebug,
   type DraftTransportVariant
@@ -118,33 +120,6 @@ function buildRawPayload(
       existing_accommodation_name: importOptions?.existingAccommodationName ?? null
     }
   };
-}
-
-function buildDraftTransportOptionsFromVariants(transportVariants: DraftTransportVariant[]) {
-  return transportVariants
-    .filter((variant) => typeof variant.amount_cents === 'number' && Number.isFinite(variant.amount_cents))
-    .map((variant) => {
-      const returnIsCentre =
-        isTransportBaseReference(variant.return_city) || isTransportBaseReference(variant.return_label_raw);
-      const label =
-        variant.departure_city === variant.return_city || returnIsCentre
-          ? variant.departure_city
-          : `${variant.departure_city} / ${variant.return_city}`;
-      return {
-      label,
-      departure_city: variant.departure_city,
-      return_city: variant.return_city,
-      amount_cents: variant.amount_cents,
-      price:
-        typeof variant.amount_cents === 'number'
-          ? Number((variant.amount_cents / 100).toFixed(2))
-          : null,
-      currency: variant.currency ?? 'EUR',
-      source_url: variant.source_url,
-      departure_label_raw: variant.departure_label_raw ?? null,
-      return_label_raw: variant.return_label_raw ?? null
-    };
-    });
 }
 
 function transportVariantScore(variant: DraftTransportVariant): number {
@@ -393,12 +368,22 @@ export async function POST(req: Request) {
   }
 
   const extracted = extractStayData(fetchedHtml.html, fetchedHtml.finalUrl);
+  const sessionReferencePriceCents = pickImportedSessionReferencePriceCents(extracted);
+  const htmlForInsurance =
+    fetchedHtml.html.length > 400_000 ? fetchedHtml.html.slice(0, 400_000) : fetchedHtml.html;
+  const insuranceDeductionCents = pickImportedCancellationInsuranceCents({
+    rawText: extracted.rawText,
+    htmlExcerpt: htmlForInsurance
+  });
   const forcePlaywright = envTruthy(process.env.IMPORT_STAY_FORCE_PLAYWRIGHT);
   const shouldTryDynamicRender =
     forcePlaywright ||
     shouldUsePlaywrightForDynamicImages(fetchedHtml.html, extracted.images.length);
   const dynamicSnapshot = shouldTryDynamicRender
-    ? await renderStayPageWithPlaywright(fetchedHtml.finalUrl).catch((error) => {
+    ? await renderStayPageWithPlaywright(fetchedHtml.finalUrl, {
+        sessionReferencePriceCents,
+        insuranceDeductionCents
+      }).catch((error) => {
         console.warn('[import-stay] Playwright snapshot failed', {
           sourceUrl: fetchedHtml.finalUrl,
           error: error instanceof Error ? error.message : 'unknown-error'

@@ -240,6 +240,7 @@ function makeTransportVariantKey(departureCity: string, returnCity: string): str
 function scoreTransportVariant(row: DraftTransportVariant): number {
   let score = 0;
   if (typeof row.amount_cents === 'number') score += 100;
+  if (row.pricing_method === 'session_delta') score += 25;
   if (row.confidence === 'high') score += 30;
   if (row.confidence === 'medium') score += 20;
   if (row.confidence === 'low') score += 10;
@@ -613,6 +614,27 @@ async function extractCurrentPriceCentsFromPage(page: Page): Promise<number | nu
     return transportCents;
   }
 
+  const offerBlock = await page.evaluate(() => {
+    const offers = document.querySelector('td[itemprop="offers"], [itemprop="offers"]');
+    if (!offers) return { metaContent: '', spanText: '' };
+    const meta = offers.querySelector('meta[itemprop="price"][content]');
+    const metaContent = (meta?.getAttribute('content') ?? '').trim();
+    const span = offers.querySelector('span.PBSalesPrice');
+    const spanText = (span?.textContent ?? '').trim();
+    return { metaContent, spanText };
+  });
+
+  if (offerBlock.metaContent) {
+    const n = Number(offerBlock.metaContent.replace(',', '.'));
+    if (Number.isFinite(n) && n >= 0 && n < 80_000) {
+      return Math.round(n * 100);
+    }
+  }
+  if (offerBlock.spanText) {
+    const amount = findPriceInText(offerBlock.spanText);
+    if (amount !== null) return Math.round(amount * 100);
+  }
+
   const priceCandidates = await page.evaluate(() => {
     const values: string[] = [];
     const selectors = [
@@ -818,7 +840,8 @@ async function observeTransportCombination(
   returnOption: TransportSelectOption | null,
   baseOutbound: TransportSelectOption | null,
   baseReturn: TransportSelectOption | null,
-  observationKind: ObservedTransportCombination['observationKind']
+  observationKind: ObservedTransportCombination['observationKind'],
+  waitForCatalogOfferPrice: boolean
 ): Promise<ObservedTransportCombination | null> {
   await applyTransportSelection(
     page,
@@ -841,6 +864,22 @@ async function observeTransportCombination(
   );
 
   await page.waitForTimeout(450);
+
+  if (waitForCatalogOfferPrice) {
+    await page
+      .waitForFunction(
+        () => {
+          const offers = document.querySelector('td[itemprop="offers"], [itemprop="offers"]');
+          if (!offers) return false;
+          const meta = offers.querySelector('meta[itemprop="price"][content]')?.getAttribute('content')?.trim();
+          if (meta && /^[0-9]/.test(meta)) return true;
+          const t = offers.querySelector('span.PBSalesPrice')?.textContent?.trim();
+          return Boolean(t && /\d/.test(t));
+        },
+        { timeout: 4_000 }
+      )
+      .catch(() => undefined);
+  }
 
   let departureCity =
     outboundOption?.label ?? returnOption?.label ?? baseOutbound?.label ?? baseReturn?.label ?? null;
@@ -870,38 +909,77 @@ function buildTransportRowsFromObserved(
   sourceUrl: string,
   observed: ObservedTransportCombination[],
   explicitBasePriceCents: number | null,
-  hasExplicitBaseReference: boolean
+  hasExplicitBaseReference: boolean,
+  sessionReferencePriceCents: number | null,
+  insuranceDeductionCents: number | null
 ): { transportVariants: DraftTransportVariant[]; transportPriceDebug: DraftTransportPriceDebug[] } {
   const observedPrices = observed
     .map((row) => row.pagePriceCents)
     .filter((value): value is number => typeof value === 'number');
-  const inferredBasePriceCents =
+  const legacyInferredBaseCents =
     typeof explicitBasePriceCents === 'number'
       ? explicitBasePriceCents
       : observedPrices.length > 0
         ? Math.min(...observedPrices)
         : null;
-  const baseReason = hasExplicitBaseReference
-    ? 'playwright-explicit-base'
-    : typeof inferredBasePriceCents === 'number'
-      ? 'playwright-min-observed-base'
-      : 'playwright-no-base';
+
+  const sessionRef =
+    typeof sessionReferencePriceCents === 'number' &&
+    sessionReferencePriceCents > 0 &&
+    sessionReferencePriceCents < 500_000
+      ? sessionReferencePriceCents
+      : null;
+
+  const insuranceCents =
+    typeof insuranceDeductionCents === 'number' &&
+    insuranceDeductionCents > 0 &&
+    insuranceDeductionCents < 100_000
+      ? Math.round(insuranceDeductionCents)
+      : 0;
 
   const debugRows: DraftTransportPriceDebug[] = observed.map((row) => {
     let amountCents: number | null = null;
     let pricingMethod: DraftTransportPriceDebug['pricing_method'] = 'unresolved';
     let confidence: DraftTransportPriceDebug['confidence'] = 'low';
+    let baseForRow: number | null = null;
+    let baseReason = 'playwright-no-base';
 
-    if (typeof row.pagePriceCents === 'number' && typeof inferredBasePriceCents === 'number') {
-      const delta = row.pagePriceCents - inferredBasePriceCents;
+    const pagePrice = row.pagePriceCents;
+    const fixedStackCents = sessionRef !== null ? sessionRef + insuranceCents : null;
+    const useSessionDelta =
+      sessionRef !== null &&
+      typeof pagePrice === 'number' &&
+      fixedStackCents !== null &&
+      pagePrice + 50 >= fixedStackCents;
+
+    if (useSessionDelta && sessionRef !== null && fixedStackCents !== null) {
+      const delta = pagePrice - fixedStackCents;
       if (delta >= 0) {
         amountCents = delta;
+        baseForRow = fixedStackCents;
+        pricingMethod = 'session_delta';
+        confidence = 'high';
+        baseReason =
+          insuranceCents > 0
+            ? `playwright-session-reference+insurance-${insuranceCents}c`
+            : 'playwright-session-reference';
+      }
+    }
+
+    if (amountCents === null && typeof pagePrice === 'number' && legacyInferredBaseCents !== null) {
+      const delta = pagePrice - legacyInferredBaseCents;
+      if (delta >= 0) {
+        amountCents = delta;
+        baseForRow = legacyInferredBaseCents;
         pricingMethod = 'delta_from_base';
         confidence = hasExplicitBaseReference
           ? 'high'
           : row.observationKind === 'same-city-pair' || row.observationKind === 'single-select'
             ? 'medium'
             : 'low';
+        baseReason = hasExplicitBaseReference
+          ? 'playwright-explicit-base'
+          : 'playwright-min-observed-base';
       }
     }
 
@@ -910,7 +988,7 @@ function buildTransportRowsFromObserved(
       departure_city: row.departureCity,
       return_city: row.returnCity,
       page_price_cents: row.pagePriceCents,
-      base_price_cents: inferredBasePriceCents,
+      base_price_cents: baseForRow,
       amount_cents: amountCents,
       pricing_method: pricingMethod,
       confidence,
@@ -969,11 +1047,28 @@ function mirroredCitySelectLists(
   return overlap / Math.min(a.size, b.size) >= 0.65;
 }
 
-async function collectTransportVariants(page: Page): Promise<{
+export type PlaywrightStayImportOptions = {
+  /** Prix séjour extrait (sessions / « à partir de ») : supplément transport = prix affiché sur la fiche − cette valeur (ex. Thalie). */
+  sessionReferencePriceCents?: number | null;
+  /** Assurance annulation (fixe) souvent incluse dans le total affiché : retranchée en plus du prix session. */
+  insuranceDeductionCents?: number | null;
+};
+
+async function collectTransportVariants(
+  page: Page,
+  importOptions?: PlaywrightStayImportOptions
+): Promise<{
   transportVariants: DraftTransportVariant[];
   transportPriceDebug: DraftTransportPriceDebug[];
   transportDetected: boolean;
 }> {
+  const sessionReferencePriceCents = importOptions?.sessionReferencePriceCents ?? null;
+  const insuranceDeductionCents = importOptions?.insuranceDeductionCents ?? null;
+  const waitForCatalogOfferPrice =
+    typeof sessionReferencePriceCents === 'number' &&
+    sessionReferencePriceCents > 0 &&
+    sessionReferencePriceCents < 500_000;
+
   const candidates = await readTransportSelects(page);
   const { outbound, returnSelect } = pickTransportSelects(candidates);
   if (!outbound && !returnSelect) {
@@ -1064,7 +1159,8 @@ async function collectTransportVariants(page: Page): Promise<{
               pair.returnOption,
               baseOutbound,
               baseReturn,
-              'same-city-pair'
+              'same-city-pair',
+              waitForCatalogOfferPrice
             )
           );
         }
@@ -1085,7 +1181,8 @@ async function collectTransportVariants(page: Page): Promise<{
                 defaultReturn,
                 baseOutbound,
                 baseReturn,
-                'outbound-with-default-return'
+                'outbound-with-default-return',
+                waitForCatalogOfferPrice
               )
             );
           }
@@ -1102,7 +1199,8 @@ async function collectTransportVariants(page: Page): Promise<{
             pair.returnOption,
             baseOutbound,
             baseReturn,
-            'same-city-pair'
+            'same-city-pair',
+            waitForCatalogOfferPrice
           )
         );
       }
@@ -1118,7 +1216,8 @@ async function collectTransportVariants(page: Page): Promise<{
               returnOption,
               baseOutbound,
               baseReturn,
-              'cartesian'
+              'cartesian',
+              waitForCatalogOfferPrice
             )
           );
         }
@@ -1134,7 +1233,8 @@ async function collectTransportVariants(page: Page): Promise<{
             baseReturn,
             baseOutbound,
             baseReturn,
-            'outbound-with-default-return'
+            'outbound-with-default-return',
+            waitForCatalogOfferPrice
           )
         );
       }
@@ -1148,7 +1248,8 @@ async function collectTransportVariants(page: Page): Promise<{
             returnOption,
             baseOutbound,
             baseReturn,
-            'return-with-default-outbound'
+            'return-with-default-outbound',
+            waitForCatalogOfferPrice
           )
         );
       }
@@ -1168,14 +1269,22 @@ async function collectTransportVariants(page: Page): Promise<{
           null,
           singleBase,
           null,
-          'single-select'
+          'single-select',
+          waitForCatalogOfferPrice
         )
       );
     }
   }
 
   return {
-    ...buildTransportRowsFromObserved(page.url(), Array.from(observed.values()), explicitBasePriceCents, hasExplicitBaseReference),
+    ...buildTransportRowsFromObserved(
+      page.url(),
+      Array.from(observed.values()),
+      explicitBasePriceCents,
+      hasExplicitBaseReference,
+      sessionReferencePriceCents,
+      insuranceDeductionCents
+    ),
     transportDetected: true
   };
 }
@@ -1183,7 +1292,8 @@ async function collectTransportVariants(page: Page): Promise<{
 async function snapshotWithEngine(
   playwright: Record<BrowserEngineName, BrowserType>,
   browserEngine: BrowserEngineName,
-  sourceUrl: string
+  sourceUrl: string,
+  importOptions?: PlaywrightStayImportOptions
 ): Promise<DynamicStayPageSnapshot | null> {
   const launcher = playwright[browserEngine];
   const browser = await launcher.launch({
@@ -1210,7 +1320,7 @@ async function snapshotWithEngine(
     await expandCarousels(page);
     await page.waitForTimeout(1_500);
 
-    const transportResult = await collectTransportVariants(page).catch((error) => {
+    const transportResult = await collectTransportVariants(page, importOptions).catch((error) => {
       console.warn('[playwright-import] dynamic transport failed', {
         sourceUrl,
         browserEngine,
@@ -1301,14 +1411,15 @@ async function snapshotWithEngine(
  * - `PLAYWRIGHT_VERBOSE_IMPORT=1` : logs résumés dans la console du serveur Next.
  */
 export async function renderStayPageWithPlaywright(
-  sourceUrl: string
+  sourceUrl: string,
+  importOptions?: PlaywrightStayImportOptions
 ): Promise<DynamicStayPageSnapshot | null> {
   const { chromium, firefox, webkit } = await import('playwright');
 
   const engines: BrowserEngineName[] = ['chromium', 'firefox', 'webkit'];
   for (const engine of engines) {
     try {
-      const snapshot = await snapshotWithEngine({ chromium, firefox, webkit }, engine, sourceUrl);
+      const snapshot = await snapshotWithEngine({ chromium, firefox, webkit }, engine, sourceUrl, importOptions);
       if (
         snapshot &&
         (snapshot.html.length > 0 ||

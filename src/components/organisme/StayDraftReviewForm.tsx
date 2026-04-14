@@ -8,8 +8,11 @@ import GoogleMapsCityInput from '@/components/common/GoogleMapsCityInput';
 import AccommodationImportReviewFields from '@/components/organisme/AccommodationImportReviewFields';
 import {
   DraftExtraOptionsEditor,
+  DraftInsuranceOptionsEditor,
   DraftSessionsEditor,
-  DraftTransportOptionsEditor
+  DraftTransportOptionsEditor,
+  emptyDraftExtraOptionRecord,
+  emptyDraftInsuranceOptionRecord
 } from '@/components/organisme/StayDraftStructuredLists';
 import { formatAccommodationType } from '@/lib/accommodation-types';
 import {
@@ -21,6 +24,11 @@ import {
   mergeAccommodationImportRecord
 } from '@/lib/stay-draft-accommodation-import';
 import { normalizeStayDraftCategories, STAY_CATEGORY_OPTIONS } from '@/lib/stay-categories';
+import {
+  mergeDraftExtraOptionsJson,
+  splitDraftExtraOptionsJson
+} from '@/lib/stay-draft-extra-options-split';
+import { collapseTransportDraftOptionsJson } from '@/lib/stay-draft-transport-display';
 import { normalizeImportedImageUrlList, normalizeImportedVideoUrlList } from '@/lib/stay-draft-url-extract';
 import type { StayDraftReviewFieldErrors, StayDraftReviewPayload } from '@/types/stay-draft-review';
 
@@ -79,16 +87,26 @@ export default function StayDraftReviewForm({
       ? initialPayload.sessions_json.map((row) => ({ ...row }))
       : []
   );
+  const initialExtraSplit = splitDraftExtraOptionsJson(
+    Array.isArray(initialPayload.extra_options_json) ? initialPayload.extra_options_json : []
+  );
   const [extraOptionsList, setExtraOptionsList] = useState<Array<Record<string, unknown>>>(() =>
-    Array.isArray(initialPayload.extra_options_json)
-      ? initialPayload.extra_options_json.map((row) => ({ ...row }))
-      : []
+    initialExtraSplit.extras.map((row) => ({ ...row }))
   );
-  const [transportOptionsList, setTransportOptionsList] = useState<Array<Record<string, unknown>>>(() =>
-    Array.isArray(initialPayload.transport_options_json)
-      ? initialPayload.transport_options_json.map((row) => ({ ...row }))
-      : []
+  const [insuranceOptionsList, setInsuranceOptionsList] = useState<Array<Record<string, unknown>>>(() =>
+    initialExtraSplit.insurance.map((row) => ({ ...row }))
   );
+  const [extrasSectionVisible, setExtrasSectionVisible] = useState(
+    () => initialExtraSplit.extras.length > 0
+  );
+  const [insuranceSectionVisible, setInsuranceSectionVisible] = useState(
+    () => initialExtraSplit.insurance.length > 0
+  );
+  const [transportOptionsList, setTransportOptionsList] = useState<Array<Record<string, unknown>>>(() => {
+    if (!Array.isArray(initialPayload.transport_options_json)) return [];
+    const raw = initialPayload.transport_options_json.map((row) => ({ ...row }));
+    return collapseTransportDraftOptionsJson(raw);
+  });
   const [accommodationImport, setAccommodationImport] = useState<Record<string, unknown>>(() =>
     mergeAccommodationImportRecord(
       defaultAccommodationImportRecord(),
@@ -98,9 +116,9 @@ export default function StayDraftReviewForm({
   const [imageUrls, setImageUrls] = useState<string[]>(() =>
     normalizeImportedImageUrlList(initialPayload.images)
   );
-  const [videoUrls, setVideoUrls] = useState<string[]>(() =>
-    normalizeImportedVideoUrlList(initialPayload.video_urls)
-  );
+  const [videoUrls, setVideoUrls] = useState<string[]>(() => {
+    return normalizeImportedVideoUrlList(initialPayload.video_urls);
+  });
   const [status, setStatus] = useState(initialStatus);
   const [validatedAt, setValidatedAt] = useState(initialValidatedAt);
   const [validatedByUserId, setValidatedByUserId] = useState(initialValidatedByUserId);
@@ -195,6 +213,10 @@ export default function StayDraftReviewForm({
     const extraOptionsPayload = extraOptionsList.filter(
       (row) => String(row.label ?? '').trim().length > 0
     );
+    const insuranceOptionsPayload = insuranceOptionsList.filter(
+      (row) => String(row.label ?? '').trim().length > 0
+    );
+    const mergedExtraOptions = mergeDraftExtraOptionsJson(extraOptionsPayload, insuranceOptionsPayload);
     const transportOptionsPayload = transportOptionsList.filter(
       (row) => String(row.label ?? '').trim().length > 0
     );
@@ -229,7 +251,7 @@ export default function StayDraftReviewForm({
       categories,
       ages,
       sessions_json: sessionsPayload,
-      extra_options_json: extraOptionsPayload,
+      extra_options_json: mergedExtraOptions,
       transport_options_json: transportOptionsPayload,
       accommodations_json: accommodationsParsed.value ?? null,
       images: imagesPayload,
@@ -587,11 +609,55 @@ export default function StayDraftReviewForm({
           error={fieldErrors.sessions_json}
         />
 
-        <DraftExtraOptionsEditor
-          value={extraOptionsList}
-          onChange={setExtraOptionsList}
-          error={fieldErrors.extra_options_json}
-        />
+        {extrasSectionVisible ? (
+          <DraftExtraOptionsEditor
+            value={extraOptionsList}
+            onChange={(next) => {
+              setExtraOptionsList(next);
+              if (next.length === 0) setExtrasSectionVisible(false);
+            }}
+            error={fieldErrors.extra_options_json}
+          />
+        ) : (
+          <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50/50 px-4 py-3">
+            <button
+              type="button"
+              onClick={() => {
+                setExtrasSectionVisible(true);
+                setExtraOptionsList([emptyDraftExtraOptionRecord()]);
+              }}
+              className="text-sm font-medium text-emerald-700 underline decoration-emerald-600/40 underline-offset-2 hover:text-emerald-800"
+            >
+              + Ajouter des options supplémentaires
+            </button>
+            <p className="mt-1 text-xs text-slate-500">Repas, matériel, activités payantes…</p>
+          </div>
+        )}
+
+        {insuranceSectionVisible ? (
+          <DraftInsuranceOptionsEditor
+            value={insuranceOptionsList}
+            onChange={(next) => {
+              setInsuranceOptionsList(next);
+              if (next.length === 0) setInsuranceSectionVisible(false);
+            }}
+            error={fieldErrors.extra_options_json}
+          />
+        ) : (
+          <div className="rounded-lg border border-dashed border-amber-200/80 bg-amber-50/30 px-4 py-3">
+            <button
+              type="button"
+              onClick={() => {
+                setInsuranceSectionVisible(true);
+                setInsuranceOptionsList([emptyDraftInsuranceOptionRecord()]);
+              }}
+              className="text-sm font-medium text-amber-900 underline decoration-amber-700/40 underline-offset-2 hover:text-amber-950"
+            >
+              + Ajouter une option d&apos;assurance
+            </button>
+            <p className="mt-1 text-xs text-slate-600">Montant fixe ou pourcentage (annulation, assistance…)</p>
+          </div>
+        )}
 
         <DraftTransportOptionsEditor
           value={transportOptionsList}

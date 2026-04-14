@@ -380,7 +380,7 @@ export type DraftTransportVariant = {
   return_label_raw?: string | null;
   page_price_cents?: number | null;
   base_price_cents?: number | null;
-  pricing_method?: 'delta_from_base' | 'absolute_price' | 'unresolved';
+  pricing_method?: 'delta_from_base' | 'session_delta' | 'absolute_price' | 'unresolved';
   confidence?: 'high' | 'medium' | 'low';
   reason?: string;
 };
@@ -392,7 +392,7 @@ export type DraftTransportPriceDebug = {
   page_price_cents: number | null;
   base_price_cents: number | null;
   amount_cents: number | null;
-  pricing_method: 'delta_from_base' | 'absolute_price' | 'unresolved';
+  pricing_method: 'delta_from_base' | 'session_delta' | 'absolute_price' | 'unresolved';
   confidence: 'high' | 'medium' | 'low';
   reason: string;
   departure_label_raw?: string | null;
@@ -2392,6 +2392,13 @@ export function isTransportBaseReference(value: string | null | undefined): bool
   );
 }
 
+export {
+  buildDraftTransportOptionsFromVariants,
+  collapseTransportDraftOptionsJson,
+  collapseTransportVariantsForDraft,
+  pickPrimaryTransportCityLabel
+} from './stay-draft-transport-display';
+
 function normalizeTransportPair(page: ParsedTransportPage): {
   departureCity: string | null;
   returnCity: string | null;
@@ -2477,11 +2484,74 @@ function toTransportConfidence(
   departureCity: string | null,
   returnCity: string | null
 ): DraftTransportPriceDebug['confidence'] {
-  if (pricingMethod === 'delta_from_base' && amountCents !== null) {
+  if (
+    (pricingMethod === 'delta_from_base' || pricingMethod === 'session_delta') &&
+    amountCents !== null
+  ) {
+    if (pricingMethod === 'session_delta') return 'high';
     if (departureCity && returnCity) return 'high';
     return 'medium';
   }
   return 'low';
+}
+
+/** Prix de référence du séjour (hors transport) pour dériver le supplément transport (ex. Thalie : total affiché − prix session). */
+export function pickImportedSessionReferencePriceCents(
+  data: Pick<ExtractedStayData, 'sessionsJson' | 'priceFrom'>
+): number | null {
+  const sessions = data.sessionsJson;
+  if (sessions) {
+    for (const session of sessions) {
+      if (session.price != null && Number.isFinite(session.price) && session.price >= 0) {
+        return Math.round(session.price * 100);
+      }
+    }
+  }
+  if (data.priceFrom != null && Number.isFinite(data.priceFrom) && data.priceFrom >= 0) {
+    return Math.round(data.priceFrom * 100);
+  }
+  return null;
+}
+
+const INSURANCE_ANNULATION_LINE_KEYS = ['annulation', 'annuler', 'remboursement'];
+
+/**
+ * Montant fixe d’assurance annulation souvent inclus dans le total affiché sur la fiche réservation
+ * (à retrancher du prix par ville pour obtenir le supplément transport seul).
+ */
+export function pickImportedCancellationInsuranceCents(
+  data: Pick<ExtractedStayData, 'rawText'> & { htmlExcerpt?: string | null }
+): number | null {
+  const chunks: string[] = [];
+  if (data.rawText) chunks.push(data.rawText);
+  if (data.htmlExcerpt) {
+    chunks.push(data.htmlExcerpt.replace(/<script[\s\S]*?<\/script>/gi, ' ').replace(/<[^>]+>/g, ' '));
+  }
+  const merged = normalizeWhitespace(chunks.join('\n'));
+  if (!merged) return null;
+
+  const foundEuros: number[] = [];
+  for (const fragment of merged.split(/[\n\r]+|<\/(?:p|div|li|tr)>/i)) {
+    const line = normalizeWhitespace(fragment);
+    if (!line) continue;
+    const key = simplifyForMatch(line);
+    if (!key) continue;
+    const hasAnnul = INSURANCE_ANNULATION_LINE_KEYS.some((w) => key.includes(simplifyForMatch(w)));
+    const hasAssur =
+      key.includes('assurance') ||
+      key.includes('insurance') ||
+      key.includes('garantie') ||
+      key.includes('mutuelle');
+    if (!hasAnnul || !hasAssur) continue;
+    const amount = findPriceInText(line);
+    if (amount === null) continue;
+    if (amount < 3 || amount > 400) continue;
+    foundEuros.push(amount);
+  }
+
+  if (foundEuros.length === 0) return null;
+  const maxEur = Math.max(...foundEuros);
+  return Math.round(maxEur * 100);
 }
 
 function buildTransportDebugRows(

@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   buildStaySeoGooglePreview,
-  buildStaySeoSuggestions,
   buildStaySeoWarnings,
   SEO_META_RECOMMENDED_MAX,
   SEO_META_RECOMMENDED_MIN,
@@ -103,13 +102,11 @@ export default function StaySeoEditor({
   const [secondaryKeywords, setSecondaryKeywords] = useState<string[]>(
     sanitizeSeoTags(initialSeo.secondaryKeywords)
   );
-  const [secondaryInput, setSecondaryInput] = useState('');
   const [targetCity, setTargetCity] = useState(initialSeo.targetCity ?? '');
   const [targetRegion, setTargetRegion] = useState(initialSeo.targetRegion ?? '');
   const [searchIntents, setSearchIntents] = useState<string[]>(
     sanitizeSeoTags(initialSeo.searchIntents)
   );
-  const [intentInput, setIntentInput] = useState('');
   const [seoTitle, setSeoTitle] = useState(initialSeo.title ?? '');
   const [seoMetaDescription, setSeoMetaDescription] = useState(initialSeo.metaDescription ?? '');
   const [isGeneratingSeo, setIsGeneratingSeo] = useState(false);
@@ -153,7 +150,6 @@ export default function StaySeoEditor({
     () => buildStaySeoGooglePreview(seoInput, canonicalPath),
     [seoInput, canonicalPath]
   );
-  const suggestions = useMemo(() => buildStaySeoSuggestions(seoInput), [seoInput]);
   const warnings = useMemo(() => buildStaySeoWarnings(seoInput), [seoInput]);
   const hasGeneratedSeo = useMemo(
     () =>
@@ -194,20 +190,6 @@ export default function StaySeoEditor({
       form.removeEventListener('change', sync);
     };
   }, [seasonNameById]);
-
-  function addSecondaryKeyword(rawValue: string) {
-    const [candidate] = sanitizeSeoTags([rawValue]);
-    if (!candidate) return;
-    setSecondaryKeywords((previous) => sanitizeSeoTags([...previous, candidate]));
-    setSecondaryInput('');
-  }
-
-  function addIntent(rawValue: string) {
-    const [candidate] = sanitizeSeoTags([rawValue]);
-    if (!candidate) return;
-    setSearchIntents((previous) => sanitizeSeoTags([...previous, candidate]));
-    setIntentInput('');
-  }
 
   function applyGeneratedSeo(seo: {
     seo_primary_keyword?: string | null;
@@ -373,156 +355,9 @@ export default function StaySeoEditor({
         />
       </label>
 
-      <div className="space-y-2">
-        <div className="text-sm font-medium text-slate-700">Mots-clés secondaires</div>
-        <div className="flex flex-wrap gap-2">
-          {secondaryKeywords.map((keyword) => (
-            <span
-              key={keyword}
-              className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700"
-            >
-              {keyword}
-              <button
-                type="button"
-                onClick={() =>
-                  setSecondaryKeywords((previous) => previous.filter((item) => item !== keyword))
-                }
-                className="text-slate-500 hover:text-slate-800"
-                aria-label={`Supprimer ${keyword}`}
-              >
-                ×
-              </button>
-              <input type="hidden" name="seo_secondary_keywords" value={keyword} />
-            </span>
-          ))}
-        </div>
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <input
-            value={secondaryInput}
-            onChange={(event) => setSecondaryInput(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                event.preventDefault();
-                addSecondaryKeyword(secondaryInput);
-              }
-            }}
-            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-            placeholder="Ajouter une expression secondaire"
-          />
-          <button
-            type="button"
-            onClick={() => addSecondaryKeyword(secondaryInput)}
-            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700"
-          >
-            Ajouter
-          </button>
-        </div>
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-2">
-        <label className="block text-sm font-medium text-slate-700">
-          Ville cible SEO
-          <input
-            name="seo_target_city"
-            value={targetCity}
-            onChange={(event) => setTargetCity(event.target.value)}
-            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-            placeholder="Ex. Biarritz"
-          />
-        </label>
-        <label className="block text-sm font-medium text-slate-700">
-          Région cible SEO
-          <input
-            name="seo_target_region"
-            value={targetRegion}
-            onChange={(event) => setTargetRegion(event.target.value)}
-            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-            placeholder="Ex. Nouvelle-Aquitaine"
-          />
-        </label>
-      </div>
-
-      <div className="space-y-2">
-        <div className="text-sm font-medium text-slate-700">Intentions de recherche associées (optionnel)</div>
-        <div className="flex flex-wrap gap-2">
-          {searchIntents.map((intent) => (
-            <span
-              key={intent}
-              className="inline-flex items-center gap-2 rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700"
-            >
-              {intent}
-              <button
-                type="button"
-                onClick={() => setSearchIntents((previous) => previous.filter((item) => item !== intent))}
-                className="text-amber-600 hover:text-amber-800"
-                aria-label={`Supprimer ${intent}`}
-              >
-                ×
-              </button>
-              <input type="hidden" name="seo_search_intents" value={intent} />
-            </span>
-          ))}
-        </div>
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <input
-            value={intentInput}
-            onChange={(event) => setIntentInput(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                event.preventDefault();
-                addIntent(intentInput);
-              }
-            }}
-            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-            placeholder="Ex. colonie de vacances été montagne"
-          />
-          <button
-            type="button"
-            onClick={() => addIntent(intentInput)}
-            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700"
-          >
-            Ajouter
-          </button>
-        </div>
-      </div>
-
-      <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-4">
-        <p className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
-          Suggestions intelligentes
-        </p>
-        <div className="flex flex-wrap gap-2">
-          {suggestions.map((suggestion) => (
-            <div
-              key={suggestion}
-              className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs text-slate-700"
-            >
-              <p className="font-medium">{suggestion}</p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => setPrimaryKeyword(suggestion)}
-                  className="rounded-md border border-slate-300 px-2 py-1 font-semibold text-slate-700"
-                >
-                  Principal
-                </button>
-                <button
-                  type="button"
-                  onClick={() => addSecondaryKeyword(suggestion)}
-                  className="rounded-md border border-slate-300 px-2 py-1 font-semibold text-slate-700"
-                >
-                  Secondaire
-                </button>
-                <button
-                  type="button"
-                  onClick={() => addIntent(suggestion)}
-                  className="rounded-md border border-slate-300 px-2 py-1 font-semibold text-slate-700"
-                >
-                  Intention
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
+      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+        Les champs avancés (mots-clés secondaires, intentions, ciblage ville/région) sont gérés automatiquement
+        par la génération SEO.
       </div>
 
       <div className="space-y-4 rounded-xl border border-slate-200 p-4">
@@ -573,6 +408,15 @@ export default function StaySeoEditor({
         <p className="text-sm text-emerald-700">{googlePreview.canonicalPath}</p>
         <p className="mt-2 text-sm text-slate-700">{googlePreview.description}</p>
       </div>
+
+      <input type="hidden" name="seo_target_city" value={targetCity} />
+      <input type="hidden" name="seo_target_region" value={targetRegion} />
+      {secondaryKeywords.map((keyword) => (
+        <input key={`secondary-hidden-${keyword}`} type="hidden" name="seo_secondary_keywords" value={keyword} />
+      ))}
+      {searchIntents.map((intent) => (
+        <input key={`intent-hidden-${intent}`} type="hidden" name="seo_search_intents" value={intent} />
+      ))}
 
       {warnings.length > 0 && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">

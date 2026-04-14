@@ -150,6 +150,7 @@ const DEFAULT_GALLERY = [
   getMockImageUrl(mockImages.sejours.gallery[1], 600, 80),
   getMockImageUrl(mockImages.sejours.gallery[2], 600, 80)
 ];
+const VISIT_TRACKING_DEDUP_MS = 60_000;
 
 export function StayDetailView({ stay }: { stay: Stay }) {
   const router = useRouter();
@@ -282,6 +283,15 @@ export function StayDetailView({ stay }: { stay: Stay }) {
   }, [stay.id]);
 
   useEffect(() => {
+    const storageKey = `stay-visit:${stay.id}`;
+    const now = Date.now();
+    const lastTrackedAtRaw = sessionStorage.getItem(storageKey);
+    const lastTrackedAt = lastTrackedAtRaw ? Number(lastTrackedAtRaw) : 0;
+    if (Number.isFinite(lastTrackedAt) && now - lastTrackedAt < VISIT_TRACKING_DEDUP_MS) {
+      return;
+    }
+    sessionStorage.setItem(storageKey, String(now));
+
     const controller = new AbortController();
     fetch(`/api/stays/${encodeURIComponent(stay.id)}/visit`, {
       method: 'POST',
@@ -473,7 +483,7 @@ export function StayDetailView({ stay }: { stay: Stay }) {
         />
         <div className="absolute inset-0 bg-slate-900/40" />
         <div className="absolute inset-0 flex items-center justify-center">
-          <h1 className="px-4 text-center font-display text-3xl font-bold tracking-tight text-white drop-shadow-lg sm:text-4xl md:text-5xl">
+          <h1 className="px-4 text-center font-display text-3xl font-normal tracking-tight text-white sm:text-4xl md:text-5xl">
             {stay.title}
           </h1>
         </div>
@@ -867,7 +877,7 @@ export function StayDetailView({ stay }: { stay: Stay }) {
                     type="button"
                     onClick={handleReserver}
                     disabled={!hasSessions || !hasOpenSessions || isCheckingAvailability}
-                    className="mt-4 flex w-full items-center justify-center rounded-xl bg-accent-500 px-6 py-3.5 text-base font-semibold text-white shadow-md transition-colors hover:bg-accent-600 disabled:cursor-not-allowed disabled:bg-slate-300"
+                    className="cta-orange-sweep mt-4 flex w-full items-center justify-center rounded-xl px-6 py-3.5 text-base font-semibold text-white shadow-md disabled:cursor-not-allowed disabled:bg-slate-300"
                   >
                     {isCheckingAvailability ? 'Vérification...' : 'Réserver maintenant'}
                   </button>
@@ -916,7 +926,7 @@ export function StayDetailView({ stay }: { stay: Stay }) {
               </div>
               <Link
                 href="/organisateurs"
-                className="mt-4 inline-block rounded-xl bg-accent-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-accent-600"
+                className="cta-orange-sweep mt-4 inline-block rounded-xl px-4 py-2 text-sm font-semibold text-white"
               >
                 En savoir plus
               </Link>

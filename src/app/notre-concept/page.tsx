@@ -50,15 +50,15 @@ export default function NotreConceptPage() {
     <div className="min-h-screen bg-white text-slate-900">
       <section className="bg-white py-16 md:py-20">
         <div className="section-container grid gap-12 md:grid-cols-2 md:items-center">
-          <div>
+          <div className="max-w-2xl text-left">
             <p className="text-xs font-extrabold uppercase tracking-widest text-slate-500">
               À propos
             </p>
-            <h1 className="mt-4 font-display text-3xl font-bold leading-[1.06] text-slate-900 sm:text-4xl lg:text-[3.25rem]">
+            <h1 className="mt-3 text-left font-display text-3xl font-bold leading-[1.06] text-slate-900 sm:text-4xl lg:text-[3.25rem]">
               <span style={{ color: ORIGIN_GRAY }}>Notre</span>{' '}
               <span style={{ color: ORANGE }}>concept</span>
             </h1>
-            <p className="mt-6 max-w-xl font-medium leading-relaxed text-slate-600">
+            <p className="mt-4 max-w-xl font-medium leading-relaxed text-slate-600">
               Né d’une réflexion collective sur la protection et la valorisation d’un savoir-faire,
               RESACOLO est devenu le projet mutualiste de membres de l’association ResoColo.
             </p>
@@ -108,7 +108,7 @@ export default function NotreConceptPage() {
           </div>
 
           <div className="flex h-full flex-col lg:min-h-[32rem]">
-            <div className="space-y-6 text-justify font-medium leading-relaxed text-slate-600">
+            <div className="space-y-6 text-left font-medium leading-relaxed text-slate-600">
               <p>
                 <strong className="font-semibold text-slate-800">RESACOLO</strong> est le fruit de
                 l’imagination de professionnels de l’Enfance-Jeunesse, spécialisés dans
@@ -132,7 +132,7 @@ export default function NotreConceptPage() {
                 href="https://resocolo.org"
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center rounded-[1.35rem] px-7 py-4 text-base font-bold uppercase tracking-[0.12em] text-white shadow-[0_16px_30px_-18px_rgba(250,133,0,0.9)] transition hover:opacity-95"
+                className="cta-orange-sweep inline-flex items-center rounded-[1.35rem] px-7 py-4 text-base font-bold uppercase tracking-[0.12em] text-white shadow-[0_16px_30px_-18px_rgba(250,133,0,0.9)] transition"
                 style={{ backgroundColor: ORANGE }}
               >
                 RESOCOLO.ORG
@@ -148,7 +148,7 @@ export default function NotreConceptPage() {
             {strengths.map((item) => (
               <article
                 key={item.title}
-                className="group flex min-h-[16.5rem] w-full max-w-none flex-col items-center rounded-[28px] border border-slate-200 bg-white px-5 py-6 shadow-[0_18px_40px_-28px_rgba(15,23,42,0.35)] transition-transform duration-300 hover:-translate-y-1 xl:max-w-[15.5rem]"
+                className="flex min-h-[16.5rem] w-full max-w-none flex-col items-center rounded-[28px] border border-slate-200 bg-white px-5 py-6 shadow-[0_18px_40px_-28px_rgba(15,23,42,0.35)] xl:max-w-[15.5rem]"
               >
                 <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-2xl">
                   <Image

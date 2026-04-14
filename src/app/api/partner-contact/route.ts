@@ -47,15 +47,17 @@ async function verifyTurnstileTokenWithSecret(secret: string, token: string, rem
 }
 
 async function verifyTurnstileToken(token: string, remoteIp: string | null) {
-  const secrets = new Set<string>();
-  if (process.env.TURNSTILE_SECRET_KEY?.trim()) {
-    secrets.add(process.env.TURNSTILE_SECRET_KEY.trim());
+  const secrets: string[] = [];
+  const envSecret = process.env.TURNSTILE_SECRET_KEY?.trim();
+
+  if (envSecret) {
+    secrets.push(envSecret);
   }
-  if (process.env.NODE_ENV !== 'production') {
-    secrets.add(TURNSTILE_TEST_SECRET_KEY);
+  if (process.env.NODE_ENV !== 'production' && !secrets.includes(TURNSTILE_TEST_SECRET_KEY)) {
+    secrets.push(TURNSTILE_TEST_SECRET_KEY);
   }
 
-  if (!secrets.size) {
+  if (!secrets.length) {
     throw new Error('TURNSTILE_SECRET_KEY is not configured');
   }
 

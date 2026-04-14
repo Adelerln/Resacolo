@@ -26,7 +26,7 @@ export default function NotFound() {
         <div className="mt-10 flex flex-col items-center gap-4">
           <Link
             href="/"
-            className="inline-flex w-full items-center justify-center gap-2 rounded-xl px-8 py-4 font-semibold text-white shadow-md transition hover:opacity-95 sm:w-auto"
+            className="cta-orange-sweep inline-flex w-full items-center justify-center gap-2 rounded-xl px-8 py-4 font-semibold text-white shadow-md transition sm:w-auto"
             style={{ backgroundColor: ORANGE }}
           >
             <Home className="h-5 w-5" />

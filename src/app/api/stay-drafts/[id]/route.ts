@@ -68,7 +68,7 @@ const bodySchema = z.object({
       })
     )
     .optional()
-    .default([])
+    .default([]),
   video_urls: z.array(z.string()).optional().default([])
 });
 
@@ -237,7 +237,7 @@ async function parseBody(req: Request): Promise<{ payload: StayDraftReviewPayloa
     seo_internal_link_anchor_suggestions: sanitizeSeoTags(data.seo_internal_link_anchor_suggestions),
     seo_slug_candidate: sanitizeSeoText(data.seo_slug_candidate),
     seo_score: data.seo_score,
-    seo_checks: data.seo_checks
+    seo_checks: data.seo_checks,
     video_urls: data.video_urls.map((url) => normalizeString(url)).filter(Boolean)
   };
 

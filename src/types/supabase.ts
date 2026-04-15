@@ -91,6 +91,118 @@ export type Database = {
         }
         Relationships: []
       }
+      chat_events: {
+        Row: {
+          created_at: string
+          event_type: string
+          id: string
+          payload: Json
+          session_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          event_type: string
+          id?: string
+          payload?: Json
+          session_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          event_type?: string
+          id?: string
+          payload?: Json
+          session_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_events_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "chat_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      chat_messages: {
+        Row: {
+          citations: Json
+          confidence: number | null
+          content: string
+          created_at: string
+          handoff_suggested: boolean
+          id: string
+          metadata: Json
+          role: string
+          session_id: string
+        }
+        Insert: {
+          citations?: Json
+          confidence?: number | null
+          content: string
+          created_at?: string
+          handoff_suggested?: boolean
+          id?: string
+          metadata?: Json
+          role: string
+          session_id: string
+        }
+        Update: {
+          citations?: Json
+          confidence?: number | null
+          content?: string
+          created_at?: string
+          handoff_suggested?: boolean
+          id?: string
+          metadata?: Json
+          role?: string
+          session_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_messages_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "chat_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      chat_sessions: {
+        Row: {
+          created_at: string
+          id: string
+          ip_hash: string | null
+          last_activity_at: string
+          locale: string
+          metadata: Json
+          started_at: string
+          updated_at: string
+          user_agent: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          ip_hash?: string | null
+          last_activity_at?: string
+          locale?: string
+          metadata?: Json
+          started_at?: string
+          updated_at?: string
+          user_agent?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          ip_hash?: string | null
+          last_activity_at?: string
+          locale?: string
+          metadata?: Json
+          started_at?: string
+          updated_at?: string
+          user_agent?: string | null
+        }
+        Relationships: []
+      }
       clients: {
         Row: {
           collectivity_id: string | null
@@ -887,6 +999,178 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      rag_chunks: {
+        Row: {
+          chunk_index: number
+          content: string
+          content_hash: string
+          created_at: string
+          document_id: string
+          id: string
+          metadata: Json
+          token_count: number
+          updated_at: string
+        }
+        Insert: {
+          chunk_index: number
+          content: string
+          content_hash: string
+          created_at?: string
+          document_id: string
+          id?: string
+          metadata?: Json
+          token_count?: number
+          updated_at?: string
+        }
+        Update: {
+          chunk_index?: number
+          content?: string
+          content_hash?: string
+          created_at?: string
+          document_id?: string
+          id?: string
+          metadata?: Json
+          token_count?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rag_chunks_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "rag_documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rag_documents: {
+        Row: {
+          content_hash: string
+          created_at: string
+          id: string
+          metadata: Json
+          pii_redacted: boolean
+          source_id: string
+          source_ref: string
+          source_type: string
+          source_url: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          content_hash: string
+          created_at?: string
+          id?: string
+          metadata?: Json
+          pii_redacted?: boolean
+          source_id: string
+          source_ref: string
+          source_type: string
+          source_url?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          content_hash?: string
+          created_at?: string
+          id?: string
+          metadata?: Json
+          pii_redacted?: boolean
+          source_id?: string
+          source_ref?: string
+          source_type?: string
+          source_url?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      rag_embeddings: {
+        Row: {
+          chunk_id: string
+          created_at: string
+          embedding: string
+          model: string
+          updated_at: string
+        }
+        Insert: {
+          chunk_id: string
+          created_at?: string
+          embedding: string
+          model: string
+          updated_at?: string
+        }
+        Update: {
+          chunk_id?: string
+          created_at?: string
+          embedding?: string
+          model?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rag_embeddings_chunk_id_fkey"
+            columns: ["chunk_id"]
+            isOneToOne: true
+            referencedRelation: "rag_chunks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rag_index_queue: {
+        Row: {
+          attempts: number
+          created_at: string
+          id: string
+          last_error: string | null
+          locked_at: string | null
+          next_attempt_at: string
+          payload: Json
+          priority: number
+          processed_at: string | null
+          reason: string
+          source_id: string
+          source_ref: string
+          source_type: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          locked_at?: string | null
+          next_attempt_at?: string
+          payload?: Json
+          priority?: number
+          processed_at?: string | null
+          reason?: string
+          source_id: string
+          source_ref: string
+          source_type: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          locked_at?: string | null
+          next_attempt_at?: string
+          payload?: Json
+          priority?: number
+          processed_at?: string | null
+          reason?: string
+          source_id?: string
+          source_ref?: string
+          source_type?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       resacolo_fee_ledger: {
         Row: {
@@ -1923,7 +2207,36 @@ export type Database = {
       cron_archive_finished_stays: { Args: never; Returns: undefined }
       cron_complete_sessions: { Args: never; Returns: undefined }
       cron_expire_holds: { Args: never; Returns: undefined }
+      match_rag_chunks: {
+        Args: { query_embedding: string; match_count?: number }
+        Returns: {
+          chunk_id: string
+          content: string
+          document_id: string
+          metadata: Json
+          similarity: number
+          source_ref: string
+          source_type: string
+          source_url: string | null
+          title: string
+        }[]
+      }
       next_invoice_number: { Args: { p_year: number }; Returns: number }
+      purge_old_chatbot_data: { Args: { retention_days?: number }; Returns: number }
+      search_rag_chunks: {
+        Args: { query_text: string; match_count?: number }
+        Returns: {
+          chunk_id: string
+          content: string
+          document_id: string
+          metadata: Json
+          rank: number
+          source_ref: string
+          source_type: string
+          source_url: string | null
+          title: string
+        }[]
+      }
     }
     Enums: {
       contribution_status: "PENDING" | "APPROVED" | "REJECTED"

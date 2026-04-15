@@ -28,6 +28,7 @@ import {
 } from '@/lib/stay-seo';
 import { normalizeStayDraftCategories, STAY_CATEGORY_OPTIONS, stayCategoryLabelToValue } from '@/lib/stay-categories';
 import { slugify } from '@/lib/utils';
+import {
   MAX_STAY_SUMMARY_LENGTH,
   STAY_TRANSPORT_LOGISTICS_MODES
 } from '@/lib/stay-draft-content';
@@ -35,7 +36,6 @@ import {
   defaultAccommodationImportRecord,
   mergeAccommodationImportRecord
 } from '@/lib/stay-draft-accommodation-import';
-import { normalizeStayDraftCategories, STAY_CATEGORY_OPTIONS } from '@/lib/stay-categories';
 import {
   mergeDraftExtraOptionsJson,
   splitDraftExtraOptionsJson
@@ -59,13 +59,6 @@ type StayDraftReviewFormProps = {
   } | null;
 };
 
-type JsonFieldName =
-  | 'sessions_json'
-  | 'extra_options_json'
-  | 'transport_options_json'
-  | 'accommodations_json'
-  | 'images';
-
 type SeoCheck = {
   code: string;
   level: 'ok' | 'warning' | 'info';
@@ -84,10 +77,6 @@ function parseCommaSeparatedList(value: string): string[] {
     .filter(Boolean);
 }
 
-function prettyJson(value: unknown): string {
-  return JSON.stringify(value, null, 2);
-}
-
 function formatAgeRangeFromAgesText(agesText: string) {
   const ages = parseCommaSeparatedList(agesText)
     .map((item) => Number(item))
@@ -103,20 +92,6 @@ function resolveDraftCanonicalPath(slugCandidate: string, title: string) {
   const fallback = slugify(sanitizeSeoText(title)) || 'slug-a-definir';
   const finalSlug = normalizedCandidate || fallback;
   return `/sejours/${finalSlug}`;
-}
-
-function getAccommodationField(
-  source: Record<string, unknown> | null,
-  ...keys: string[]
-): string {
-  if (!source) return '';
-  for (const key of keys) {
-    const value = source[key];
-    if (typeof value === 'string' && value.trim().length > 0) {
-      return value;
-    }
-  }
-  return '';
 }
 
 export default function StayDraftReviewForm({
@@ -326,10 +301,6 @@ export default function StayDraftReviewForm({
     ]
   );
 
-  function setFieldError(name: StayDraftReviewFieldErrors[keyof StayDraftReviewFieldErrors], key: keyof StayDraftReviewFieldErrors, next: StayDraftReviewFieldErrors) {
-    if (name) next[key] = name;
-  }
-
   function addImageFromPrompt() {
     const raw = window.prompt("Collez l'URL complète de l'image (https://…)");
     if (!raw) return;
@@ -370,10 +341,6 @@ export default function StayDraftReviewForm({
 
   function removeVideoAt(index: number) {
     setVideoUrls((current) => current.filter((_, i) => i !== index));
-  }
-
-  function setFieldError(name: StayDraftReviewFieldErrors[keyof StayDraftReviewFieldErrors], key: keyof StayDraftReviewFieldErrors, next: StayDraftReviewFieldErrors) {
-    if (name) next[key] = name;
   }
 
   function toggleCategory(categoryLabel: string, checked: boolean) {
@@ -578,11 +545,12 @@ export default function StayDraftReviewForm({
       transport_mode: transportMode,
       categories,
       ages,
-      sessions_json: sessionsParsed.value ?? [],
-      extra_options_json: extraOptionsParsed.value ?? [],
-      transport_options_json: transportOptionsParsed.value ?? [],
-      accommodations_json: normalizedAccommodation,
-      images: (imagesParsed.value ?? []).filter((image): image is string => typeof image === 'string'),
+      sessions_json: sessionsPayload,
+      extra_options_json: mergedExtraOptions,
+      transport_options_json: transportOptionsPayload,
+      accommodations_json: accommodationsParsed.value ?? null,
+      images: imagesPayload,
+      video_urls: videosPayload,
       seo_primary_keyword: sanitizeSeoText(seoPrimaryKeyword),
       seo_secondary_keywords: sanitizeSeoTags(seoSecondaryKeywords),
       seo_target_city: sanitizeSeoText(seoTargetCity),
@@ -596,12 +564,6 @@ export default function StayDraftReviewForm({
       seo_slug_candidate: sanitizeSeoText(seoSlugCandidate),
       seo_score: Number.isFinite(seoScore) ? seoScore : null,
       seo_checks: seoChecks
-      sessions_json: sessionsPayload,
-      extra_options_json: mergedExtraOptions,
-      transport_options_json: transportOptionsPayload,
-      accommodations_json: accommodationsParsed.value ?? null,
-      images: imagesPayload,
-      video_urls: videosPayload
     };
 
     return { payload };
@@ -1319,13 +1281,6 @@ export default function StayDraftReviewForm({
           )}
         </section>
 
-        <label className="block text-sm font-medium text-slate-700">
-          Sessions (JSON)
-          <textarea
-            value={sessionsJsonText}
-            onChange={(event) => setSessionsJsonText(event.target.value)}
-            rows={10}
-            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 font-mono text-xs"
         <DraftSessionsEditor
           value={sessionsList}
           onChange={setSessionsList}

@@ -1,5 +1,65 @@
-import type { Browser, BrowserContext, BrowserType, Page } from 'playwright';
 import type { DraftTransportPriceDebug, DraftTransportVariant } from '@/lib/stay-draft-import';
+
+type PageWaitUntil = 'load' | 'domcontentloaded';
+
+interface Page {
+  evaluate<TArgs extends unknown[], TResult>(
+    pageFunction: (...args: TArgs) => TResult,
+    ...args: TArgs
+  ): Promise<TResult>;
+  locator(selector: string): PlaywrightLocator;
+  waitForTimeout(timeoutMs: number): Promise<void>;
+  keyboard: {
+    press(key: string): Promise<unknown>;
+  };
+  url(): string;
+  goto(
+    url: string,
+    options: {
+      waitUntil: PageWaitUntil;
+      timeout: number;
+    }
+  ): Promise<unknown>;
+  goBack(options: { waitUntil: PageWaitUntil; timeout: number }): Promise<unknown>;
+  content(): Promise<string>;
+  waitForFunction<TResult>(
+    pageFunction: () => TResult,
+    options?: { timeout?: number }
+  ): Promise<unknown>;
+}
+
+interface PlaywrightLocator {
+  first(): PlaywrightLocator;
+  nth(index: number): PlaywrightLocator;
+  count(): Promise<number>;
+  isVisible(): Promise<boolean>;
+  click(options?: { timeout?: number }): Promise<void>;
+  page(): Page;
+  selectOption(option: { index: number }): Promise<void>;
+  evaluate<TElement extends Element, TArgs extends unknown[], TResult>(
+    pageFunction: (element: TElement, ...args: TArgs) => TResult,
+    ...args: TArgs
+  ): Promise<TResult>;
+  evaluateAll<TResult>(pageFunction: (elements: Element[]) => TResult): Promise<TResult>;
+}
+
+interface BrowserContext {
+  newPage(): Promise<Page>;
+  close(): Promise<void>;
+  tracing: {
+    start(options: { screenshots: boolean; snapshots: boolean }): Promise<void>;
+    stop(options: { path: string }): Promise<void>;
+  };
+}
+
+interface Browser {
+  newContext(options?: Record<string, unknown>): Promise<BrowserContext>;
+  close(): Promise<void>;
+}
+
+interface BrowserType {
+  launch(options: { headless: boolean; slowMo: number }): Promise<Browser>;
+}
 
 const PLAYWRIGHT_TIMEOUT_MS = 30_000;
 const PLAYWRIGHT_SCROLL_STEPS = 8;
@@ -342,7 +402,7 @@ async function collectPageImageUrls(page: Page): Promise<string[]> {
     return Array.from(values);
   });
 
-  return unique(urls.filter((url) => shouldKeepImage(url)));
+  return unique(urls.filter((url: string) => shouldKeepImage(url)));
 }
 
 async function collectPageVideoUrls(page: Page): Promise<string[]> {
@@ -406,7 +466,7 @@ async function collectPageVideoUrls(page: Page): Promise<string[]> {
     return Array.from(values);
   });
 
-  return unique(urls.filter((url) => shouldKeepVideo(url)));
+  return unique(urls.filter((url: string) => shouldKeepVideo(url)));
 }
 
 async function safeClick(locator: ReturnType<Page['locator']>) {
@@ -681,10 +741,10 @@ async function extractCurrentPriceCentsFromPage(page: Page): Promise<number | nu
 }
 
 async function readTransportSelects(page: Page): Promise<TransportSelectCandidate[]> {
-  const raw = await page.locator('select').evaluateAll((elements) => {
+  const raw = await page.locator('select').evaluateAll((elements: Element[]) => {
     const normalize = (value: string | null | undefined) => (value ?? '').replace(/\s+/g, ' ').trim();
 
-    return elements.map((element, selectIndex) => {
+    return elements.map((element: Element, selectIndex: number) => {
       const node = element as HTMLSelectElement;
       const id = normalize(node.id);
       const name = normalize(node.getAttribute('name'));
@@ -1399,6 +1459,30 @@ async function snapshotWithEngine(
   }
 }
 
+type PlaywrightRuntime = {
+  chromium: BrowserType;
+  firefox: BrowserType;
+  webkit: BrowserType;
+};
+
+async function loadPlaywrightRuntime(): Promise<PlaywrightRuntime | null> {
+  try {
+    const dynamicImport = new Function('moduleName', 'return import(moduleName);') as (
+      moduleName: string
+    ) => Promise<unknown>;
+    const runtime = (await dynamicImport('playwright')) as Partial<PlaywrightRuntime>;
+    if (!runtime.chromium || !runtime.firefox || !runtime.webkit) {
+      return null;
+    }
+    return runtime as PlaywrightRuntime;
+  } catch (error) {
+    console.warn('[playwright-import] package not available', {
+      error: error instanceof Error ? error.message : 'unknown-error'
+    });
+    return null;
+  }
+}
+
 /**
  * Rend la page séjour dans un navigateur réel pour images carrousel, vidéos et transport dynamique.
  *
@@ -1414,7 +1498,11 @@ export async function renderStayPageWithPlaywright(
   sourceUrl: string,
   importOptions?: PlaywrightStayImportOptions
 ): Promise<DynamicStayPageSnapshot | null> {
-  const { chromium, firefox, webkit } = await import('playwright');
+  const runtime = await loadPlaywrightRuntime();
+  if (!runtime) {
+    return null;
+  }
+  const { chromium, firefox, webkit } = runtime;
 
   const engines: BrowserEngineName[] = ['chromium', 'firefox', 'webkit'];
   for (const engine of engines) {

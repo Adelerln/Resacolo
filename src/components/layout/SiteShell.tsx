@@ -3,6 +3,7 @@
 import { usePathname } from 'next/navigation';
 import { Suspense } from 'react';
 import { FavoritesProvider } from '@/components/favorites/FavoritesProvider';
+import { PublicChatbotWidget } from '@/components/chatbot/PublicChatbotWidget';
 import { MainNavigation } from '@/components/layout/MainNavigation';
 import { Footer } from '@/components/layout/Footer';
 import { PageTransition } from '@/components/ui/PageTransition';
@@ -32,6 +33,7 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
           </Suspense>
         </main>
         <Footer hideHelpAndLegal={hideFooterHelpAndLegal} />
+        <PublicChatbotWidget />
       </div>
     </FavoritesProvider>
   );

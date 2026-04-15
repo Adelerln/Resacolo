@@ -206,7 +206,6 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
       !linkedAccommodation && Object.keys(accommodationsObject).length > 0
         ? accommodationsObject
         : null,
-    images: asStringArray(draft.images),
     seo_primary_keyword: normalizeString(draft.seo_primary_keyword),
     seo_secondary_keywords: draft.seo_secondary_keywords ?? [],
     seo_target_city: normalizeString(draft.seo_target_city),
@@ -221,7 +220,7 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
     seo_score: Number.isFinite(draft.seo_score) ? draft.seo_score : null,
     seo_checks: asSeoChecks(draft.seo_checks),
     seo_generated_at: draft.seo_generated_at,
-    seo_generation_source: normalizeString(draft.seo_generation_source) || null
+    seo_generation_source: normalizeString(draft.seo_generation_source) || null,
     images: normalizeImportedImageUrlList(asStringArray(draft.images)),
     video_urls: normalizeImportedVideoUrlList(fallbackVideoUrls)
   };

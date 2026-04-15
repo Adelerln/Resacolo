@@ -23,7 +23,7 @@ export function OrganisateursGridWithModal({ organizers }: OrganisateursGridWith
             key={org.slug}
             href={`/organisateurs/${org.slug}`}
             title={`Voir l’organisateur ${org.name}`}
-            className="card-blue-vertical-sweep group flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-md transition hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 focus-visible:ring-offset-2"
+            className="flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-md transition hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 focus-visible:ring-offset-2"
           >
             <div className="flex min-h-[170px] flex-1 flex-col items-center justify-center px-4 py-8">
               {org.logoUrl ? (
@@ -40,11 +40,11 @@ export function OrganisateursGridWithModal({ organizers }: OrganisateursGridWith
                 </div>
               )}
             </div>
-            <div className="flex min-h-[126px] flex-col border-t border-slate-100 px-4 py-4 transition-colors group-hover:border-white/35 group-focus-visible:border-white/35">
-              <h3 className="text-center text-[21px] font-bold leading-[1.4] text-[#6DC7FE] transition-colors group-hover:text-white group-focus-visible:text-white">
+            <div className="flex min-h-[126px] flex-col border-t border-slate-100 px-4 py-4 transition-colors">
+              <h3 className="text-center text-[21px] font-bold leading-[1.4] text-[#6DC7FE]">
                 {org.name}
               </h3>
-              <ul className="mt-3 space-y-1 text-center text-sm text-slate-500 transition-colors group-hover:text-white/95 group-focus-visible:text-white/95">
+              <ul className="mt-3 space-y-1 text-center text-sm text-slate-500">
                 <li>
                   <strong>Création :</strong> {org.creationYear ?? '-'}
                 </li>
@@ -56,7 +56,7 @@ export function OrganisateursGridWithModal({ organizers }: OrganisateursGridWith
                 </li>
               </ul>
             </div>
-            <div className="flex w-full items-center justify-center border-t border-slate-100 px-4 py-3 text-sm font-semibold tracking-wide text-brand-600 transition-colors group-hover:border-white/35 group-hover:text-white group-focus-visible:border-white/35 group-focus-visible:text-white">
+            <div className="flex w-full items-center justify-center border-t border-slate-100 px-4 py-3 text-sm font-semibold tracking-wide text-brand-600">
               PLUS DE DÉTAILS
             </div>
           </Link>

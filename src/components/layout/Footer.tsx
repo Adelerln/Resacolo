@@ -67,6 +67,7 @@ export function Footer({ hideHelpAndLegal = false }: { hideHelpAndLegal?: boolea
           height={240}
           sizes="(max-width: 640px) 7rem, (max-width: 1024px) 9rem, (max-width: 1280px) 13rem, 16rem"
           className="h-auto w-28 object-contain sm:w-36 lg:w-52 xl:w-64"
+          style={{ height: 'auto' }}
           loading="eager"
         />
       </div>

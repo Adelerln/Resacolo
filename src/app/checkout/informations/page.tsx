@@ -8,7 +8,7 @@ import { CheckoutCartSummary } from '@/components/checkout/CheckoutCartSummary';
 import { useCart } from '@/context/CartContext';
 import { useCheckout } from '@/context/CheckoutContext';
 import { repriceCheckout, registerCheckoutClientAccount } from '@/lib/checkout/client';
-import { isDevBypassCheckout } from '@/lib/checkout/dev-bypass';
+import { buildDevMockPricing, isDevBypassCheckout } from '@/lib/checkout/dev-bypass';
 import { createCheckoutId, type CheckoutContact, type CheckoutPricing } from '@/types/checkout';
 
 const INPUT_CLASS =
@@ -41,6 +41,7 @@ export default function CheckoutInformationsPage() {
   const [form, setForm] = useState<CheckoutContact>(contact);
   const [pricing, setPricing] = useState<CheckoutPricing | null>(null);
   const [isLoadingPricing, setIsLoadingPricing] = useState(true);
+  const [pricingErrorMessage, setPricingErrorMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [accountPassword, setAccountPassword] = useState('');
@@ -63,17 +64,38 @@ export default function CheckoutInformationsPage() {
     });
   }, [items, participants]);
 
+  const hasSelectedSessionForAllItems = useMemo(() => {
+    return items.every((item) => Boolean(item.selection.sessionId?.trim()));
+  }, [items]);
+
   const loadPricing = useCallback(async () => {
+    setPricingErrorMessage(null);
     setIsLoadingPricing(true);
     try {
+      if (isDevBypassCheckout()) {
+        setPricing(buildDevMockPricing(items));
+        return;
+      }
+
+      if (!hasSelectedSessionForAllItems) {
+        setPricing(null);
+        setPricingErrorMessage(
+          'Un séjour du panier n’a pas de session sélectionnée. Retournez au panier pour finaliser la sélection.'
+        );
+        return;
+      }
+
       const response = await repriceCheckout(checkoutId, items);
       setPricing(response.pricing);
-    } catch {
+    } catch (error) {
       setPricing(null);
+      setPricingErrorMessage(
+        error instanceof Error ? error.message : 'Impossible de recalculer le panier pour le moment.'
+      );
     } finally {
       setIsLoadingPricing(false);
     }
-  }, [checkoutId, items]);
+  }, [checkoutId, hasSelectedSessionForAllItems, items]);
 
   useEffect(() => {
     if (!hydrated || items.length === 0) {
@@ -424,119 +446,124 @@ export default function CheckoutInformationsPage() {
         ) : null}
 
         <div id="checkout-participants">
-        <CheckoutCartSummary
-          items={items}
-          pricing={pricing}
-          variant="detailed"
-          renderItemExtra={(item, index) => {
-            const participant = participants[item.id];
-            return (
-              <div className={PARTICIPANT_CARD_CLASS}>
-                <div className="flex items-center justify-between gap-3">
-                  <h3 className="font-display text-base font-bold text-slate-900">
-                    Participant {index + 1}
-                  </h3>
+          {pricingErrorMessage ? (
+            <p className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              {pricingErrorMessage}
+            </p>
+          ) : null}
+          <CheckoutCartSummary
+            items={items}
+            pricing={pricing}
+            variant="detailed"
+            renderItemExtra={(item, index) => {
+              const participant = participants[item.id];
+              return (
+                <div className={PARTICIPANT_CARD_CLASS}>
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="font-display text-base font-bold text-slate-900">
+                      Participant {index + 1}
+                    </h3>
+                  </div>
+                  <div className="mt-2.5 grid gap-2.5 md:grid-cols-2">
+                    <label className={COMPACT_LABEL_CLASS}>
+                      Prénom *
+                      <input
+                        form={FORM_ID}
+                        type="text"
+                        required
+                        value={participant?.childFirstName ?? ''}
+                        onChange={(event) =>
+                          updateParticipant(item.id, {
+                            childFirstName: event.target.value
+                          })
+                        }
+                        className={PARTICIPANT_INPUT_CLASS}
+                      />
+                    </label>
+                    <label className={COMPACT_LABEL_CLASS}>
+                      Nom *
+                      <input
+                        form={FORM_ID}
+                        type="text"
+                        required
+                        value={participant?.childLastName ?? ''}
+                        onChange={(event) =>
+                          updateParticipant(item.id, {
+                            childLastName: event.target.value
+                          })
+                        }
+                        className={PARTICIPANT_INPUT_CLASS}
+                      />
+                    </label>
+                    <label className={COMPACT_LABEL_CLASS}>
+                      Date de naissance *
+                      <input
+                        form={FORM_ID}
+                        type="date"
+                        required
+                        value={participant?.childBirthdate ?? ''}
+                        onChange={(event) =>
+                          updateParticipant(item.id, {
+                            childBirthdate: event.target.value
+                          })
+                        }
+                        className={PARTICIPANT_INPUT_CLASS}
+                      />
+                    </label>
+                    <fieldset className={COMPACT_LABEL_CLASS}>
+                      <legend>Genre</legend>
+                      <div className="mt-1 flex flex-wrap items-center gap-3 rounded-md border border-transparent bg-transparent px-0 py-1 text-xs font-semibold tracking-normal text-slate-600">
+                        <label className="flex items-center gap-2">
+                          <input
+                            form={FORM_ID}
+                            type="radio"
+                            name={`gender-${item.id}`}
+                            checked={(participant?.childGender ?? '') === 'MASCULIN'}
+                            onChange={() =>
+                              updateParticipant(item.id, {
+                                childGender: 'MASCULIN'
+                              })
+                            }
+                            className="h-4 w-4 border-slate-300"
+                          />
+                          Masculin
+                        </label>
+                        <label className="flex items-center gap-2">
+                          <input
+                            form={FORM_ID}
+                            type="radio"
+                            name={`gender-${item.id}`}
+                            checked={(participant?.childGender ?? '') === 'FEMININ'}
+                            onChange={() =>
+                              updateParticipant(item.id, {
+                                childGender: 'FEMININ'
+                              })
+                            }
+                            className="h-4 w-4 border-slate-300"
+                          />
+                          Féminin
+                        </label>
+                      </div>
+                    </fieldset>
+                    <label className={`${COMPACT_LABEL_CLASS} md:col-span-2`}>
+                      Infos complémentaires
+                      <textarea
+                        form={FORM_ID}
+                        value={participant?.additionalInfo ?? ''}
+                        onChange={(event) =>
+                          updateParticipant(item.id, {
+                            additionalInfo: event.target.value
+                          })
+                        }
+                        rows={2}
+                        className={`${PARTICIPANT_INPUT_CLASS} min-h-[40px] resize-y`}
+                      />
+                    </label>
+                  </div>
                 </div>
-                <div className="mt-2.5 grid gap-2.5 md:grid-cols-2">
-                  <label className={COMPACT_LABEL_CLASS}>
-                    Prénom *
-                    <input
-                      form={FORM_ID}
-                      type="text"
-                      required
-                      value={participant?.childFirstName ?? ''}
-                      onChange={(event) =>
-                        updateParticipant(item.id, {
-                          childFirstName: event.target.value
-                        })
-                      }
-                      className={PARTICIPANT_INPUT_CLASS}
-                    />
-                  </label>
-                  <label className={COMPACT_LABEL_CLASS}>
-                    Nom *
-                    <input
-                      form={FORM_ID}
-                      type="text"
-                      required
-                      value={participant?.childLastName ?? ''}
-                      onChange={(event) =>
-                        updateParticipant(item.id, {
-                          childLastName: event.target.value
-                        })
-                      }
-                      className={PARTICIPANT_INPUT_CLASS}
-                    />
-                  </label>
-                  <label className={COMPACT_LABEL_CLASS}>
-                    Date de naissance *
-                    <input
-                      form={FORM_ID}
-                      type="date"
-                      required
-                      value={participant?.childBirthdate ?? ''}
-                      onChange={(event) =>
-                        updateParticipant(item.id, {
-                          childBirthdate: event.target.value
-                        })
-                      }
-                      className={PARTICIPANT_INPUT_CLASS}
-                    />
-                  </label>
-                  <fieldset className={COMPACT_LABEL_CLASS}>
-                    <legend>Genre</legend>
-                    <div className="mt-1 flex flex-wrap items-center gap-3 rounded-md border border-transparent bg-transparent px-0 py-1 text-xs font-semibold tracking-normal text-slate-600">
-                      <label className="flex items-center gap-2">
-                        <input
-                          form={FORM_ID}
-                          type="radio"
-                          name={`gender-${item.id}`}
-                          checked={(participant?.childGender ?? '') === 'MASCULIN'}
-                          onChange={() =>
-                            updateParticipant(item.id, {
-                              childGender: 'MASCULIN'
-                            })
-                          }
-                          className="h-4 w-4 border-slate-300"
-                        />
-                        Masculin
-                      </label>
-                      <label className="flex items-center gap-2">
-                        <input
-                          form={FORM_ID}
-                          type="radio"
-                          name={`gender-${item.id}`}
-                          checked={(participant?.childGender ?? '') === 'FEMININ'}
-                          onChange={() =>
-                            updateParticipant(item.id, {
-                              childGender: 'FEMININ'
-                            })
-                          }
-                          className="h-4 w-4 border-slate-300"
-                        />
-                        Féminin
-                      </label>
-                    </div>
-                  </fieldset>
-                  <label className={`${COMPACT_LABEL_CLASS} md:col-span-2`}>
-                    Infos complémentaires
-                    <textarea
-                      form={FORM_ID}
-                      value={participant?.additionalInfo ?? ''}
-                      onChange={(event) =>
-                        updateParticipant(item.id, {
-                          additionalInfo: event.target.value
-                        })
-                      }
-                      rows={2}
-                      className={`${PARTICIPANT_INPUT_CLASS} min-h-[40px] resize-y`}
-                    />
-                  </label>
-                </div>
-              </div>
-            );
-          }}
-        />
+              );
+            }}
+          />
         </div>
 
         <section className={SECTION_CARD_CLASS}>
@@ -549,7 +576,13 @@ export default function CheckoutInformationsPage() {
             <button
               type="submit"
               className="cta-orange-sweep mx-auto flex min-h-[46px] w-full max-w-[280px] items-center justify-center rounded-xl px-5 py-2 text-center text-sm font-bold uppercase tracking-wide text-white shadow-md disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-[48px] sm:max-w-[320px] sm:text-base"
-              disabled={isSubmitting || isLoadingPricing || items.length === 0 || !isParticipantsComplete}
+              disabled={
+                isSubmitting ||
+                isLoadingPricing ||
+                items.length === 0 ||
+                !isParticipantsComplete ||
+                (!isDevBypassCheckout() && !hasSelectedSessionForAllItems)
+              }
             >
               {isSubmitting
                 ? 'Enregistrement...'

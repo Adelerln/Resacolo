@@ -183,6 +183,9 @@ export default function CheckoutPaiementPage() {
 
     try {
       if (isDevBypassCheckout()) {
+        if (typeof window !== 'undefined') {
+          sessionStorage.setItem(`resacolo-dev-bypass-paid:${paymentData.orderId}`, new Date().toISOString());
+        }
         sessionStorage.removeItem(cacheKey);
         clearCart();
         resetCheckout();

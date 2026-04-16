@@ -362,7 +362,7 @@ export default function StaySeoEditor({
 
       <div className="space-y-4 rounded-xl border border-slate-200 p-4">
         <label className="block text-sm font-medium text-slate-700">
-          Aperçu du title SEO
+          Aperçu du titre SEO
           <input
             name="seo_title"
             value={seoTitle}

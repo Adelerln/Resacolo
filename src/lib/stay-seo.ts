@@ -6,6 +6,7 @@ export const SEO_META_RECOMMENDED_MIN = 140;
 export const SEO_META_RECOMMENDED_MAX = 160;
 
 const MAX_SEO_TAGS = 12;
+const SEO_TITLE_BRAND_SUFFIX = ' | Resacolo';
 
 const ACTIVITY_KEYWORDS = [
   'surf',
@@ -143,12 +144,26 @@ function stripTrailingSeparator(value: string) {
     .trim();
 }
 
+function stripTrailingBrand(value: string) {
+  return value
+    .replace(/\s*(?:(?:\||\/|-)\s*)?resacolo\s*$/i, '')
+    .trim();
+}
+
 function truncateAtWord(value: string, maxLength: number) {
   if (value.length <= maxLength) return value;
   const truncated = value.slice(0, maxLength - 1).trimEnd();
   const lastSpace = truncated.lastIndexOf(' ');
   if (lastSpace < 30) return `${truncated}…`;
   return `${truncated.slice(0, lastSpace)}…`;
+}
+
+function withSeoTitleBrandSuffix(value: string) {
+  const normalized = stripTrailingSeparator(stripTrailingBrand(normalizeWhitespace(value)));
+  const base = normalized || 'Séjour enfants et adolescents';
+  const maxBaseLength = Math.max(1, SEO_TITLE_RECOMMENDED_MAX - SEO_TITLE_BRAND_SUFFIX.length);
+  const truncatedBase = stripTrailingSeparator(truncateAtWord(base, maxBaseLength));
+  return `${truncatedBase}${SEO_TITLE_BRAND_SUFFIX}`;
 }
 
 function includesPhrase(haystack: string, needle: string) {
@@ -218,12 +233,7 @@ function buildFallbackTitle(input: StaySeoInput) {
   if (!value) {
     value = 'Séjour enfants et adolescents';
   }
-
-  if (!includesPhrase(value, 'Resacolo')) {
-    value = `${value} | Resacolo`;
-  }
-
-  return truncateAtWord(value, SEO_TITLE_RECOMMENDED_MAX);
+  return value;
 }
 
 function buildFallbackMetaDescription(input: StaySeoInput) {
@@ -388,9 +398,9 @@ export function sanitizeSeoTags(values: Array<FormDataEntryValue | string | null
 export function buildStaySeoTitle(input: StaySeoInput) {
   const sanitized = sanitizeSeoContext(input);
   if (sanitized.seo?.title) {
-    return truncateAtWord(sanitized.seo.title, SEO_TITLE_RECOMMENDED_MAX);
+    return withSeoTitleBrandSuffix(sanitized.seo.title);
   }
-  return buildFallbackTitle(sanitized);
+  return withSeoTitleBrandSuffix(buildFallbackTitle(sanitized));
 }
 
 export function buildStaySeoMetaDescription(input: StaySeoInput) {

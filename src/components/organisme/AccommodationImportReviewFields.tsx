@@ -117,7 +117,8 @@ export default function AccommodationImportReviewFields({ value, onChange, field
                   className={INPUT_CLASS}
                   placeholder="Ex. 85"
                   value={String(draft.location_department_code ?? '')}
-                  onChange={(e) => patch({ location_department_code: e.target.value })}
+                  maxLength={2}
+                  onChange={(e) => patch({ location_department_code: e.target.value.slice(0, 2) })}
                 />
               </label>
             </div>

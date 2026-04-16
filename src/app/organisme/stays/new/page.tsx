@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import ErrorToast from '@/components/common/ErrorToast';
+import ImportStayPrefillForm from '@/components/organisme/ImportStayPrefillForm';
 import { formatAccommodationType } from '@/lib/accommodation-types';
 import { extractAccommodationLocationMeta } from '@/lib/accommodation-location';
 import { requireRole } from '@/lib/auth/require';
@@ -94,52 +95,10 @@ export default async function NewStayChoicePage({ searchParams }: PageProps) {
             Collez l&apos;URL d&apos;une fiche séjour existante pour préparer un brouillon automatiquement
             à l&apos;étape suivante.
           </p>
-          <form
-            action="/api/import-stay"
-            method="post"
-            className="mt-4 space-y-4"
-          >
-            <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_320px] sm:items-end">
-              <label className="block text-sm font-medium text-slate-700">
-                URL de la fiche séjour
-                <input
-                  name="sourceUrl"
-                  type="url"
-                  placeholder="https://exemple.com/fiche-sejour"
-                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-                  required
-                />
-              </label>
-              <label className="block text-sm font-medium text-slate-700">
-                Hébergement à rattacher
-                <select
-                  name="selectedAccommodationId"
-                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-                  defaultValue=""
-                >
-                  <option value="">Créer un nouvel hébergement depuis l&apos;import</option>
-                  {accommodationOptions.map((accommodation) => (
-                    <option key={accommodation.id} value={accommodation.id}>
-                      {accommodation.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            <p className="text-xs leading-5 text-slate-500">
-              Si tu choisis un hébergement existant, l&apos;IA n&apos;extrait pas de nouvel
-              hébergement et le séjour importé sera rattaché directement à celui-ci.
-            </p>
-            <input type="hidden" name="organizerId" value={organizerId ?? ''} />
-            <div>
-              <button
-                type="submit"
-                className="h-10 rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white"
-              >
-                Pré-remplir
-              </button>
-            </div>
-          </form>
+          <ImportStayPrefillForm
+            organizerId={organizerId ?? ''}
+            accommodationOptions={accommodationOptions}
+          />
           {prefillParam === 'created' && draftIdParam && (
             <p className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
               Brouillon créé et pré-rempli avec succès. ID du draft :{' '}

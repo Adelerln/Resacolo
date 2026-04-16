@@ -380,7 +380,13 @@ export type DraftTransportVariant = {
   return_label_raw?: string | null;
   page_price_cents?: number | null;
   base_price_cents?: number | null;
-  pricing_method?: 'delta_from_base' | 'session_delta' | 'absolute_price' | 'unresolved';
+  pricing_method?:
+    | 'delta_from_base'
+    | 'session_delta'
+    | 'absolute_price'
+    | 'unresolved'
+    | 'thalie_pbpdt_delta'
+    | 'thalie_option_url_delta';
   confidence?: 'high' | 'medium' | 'low';
   reason?: string;
 };
@@ -392,7 +398,13 @@ export type DraftTransportPriceDebug = {
   page_price_cents: number | null;
   base_price_cents: number | null;
   amount_cents: number | null;
-  pricing_method: 'delta_from_base' | 'session_delta' | 'absolute_price' | 'unresolved';
+  pricing_method:
+    | 'delta_from_base'
+    | 'session_delta'
+    | 'absolute_price'
+    | 'unresolved'
+    | 'thalie_pbpdt_delta'
+    | 'thalie_option_url_delta';
   confidence: 'high' | 'medium' | 'low';
   reason: string;
   departure_label_raw?: string | null;
@@ -588,28 +600,64 @@ function parseAgeRange(text: string): { ageMin: number; ageMax: number } | null 
     /\b(\d{1,2})\s*ans?\s*(?:-|–|—|à|a|\/)\s*(\d{1,2})\b/gi
   ];
   const candidates: { ageMin: number; ageMax: number; index: number }[] = [];
+  const extractRanges = (input: string) => {
+    const matches: { ageMin: number; ageMax: number; index: number }[] = [];
+    for (const pattern of patterns) {
+      pattern.lastIndex = 0;
+      let match: RegExpExecArray | null = null;
+      while ((match = pattern.exec(input)) !== null) {
+        const left = Number(match[1]);
+        const right = Number(match[2]);
+        if (!Number.isFinite(left) || !Number.isFinite(right)) continue;
+        const ageMin = Math.min(left, right);
+        const ageMax = Math.max(left, right);
+        if (ageMin < 3 || ageMax > 25) continue;
+        matches.push({ ageMin, ageMax, index: match.index });
+      }
+    }
+    return matches;
+  };
 
-  for (const pattern of patterns) {
-    pattern.lastIndex = 0;
-    let match: RegExpExecArray | null = null;
-    while ((match = pattern.exec(text)) !== null) {
-      const left = Number(match[1]);
-      const right = Number(match[2]);
-      if (!Number.isFinite(left) || !Number.isFinite(right)) continue;
-      const ageMin = Math.min(left, right);
-      const ageMax = Math.max(left, right);
-      if (ageMin < 3 || ageMax > 25) continue;
-      candidates.push({ ageMin, ageMax, index: match.index });
+  const ageSectionMatch = text.match(
+    /\b(?:ages?|âge|tranche d['’]âge)\b[\s:.-]*([^\n\r.;]{0,120})/i
+  );
+  if (ageSectionMatch?.[1]) {
+    const sectionCandidates = extractRanges(ageSectionMatch[1]);
+    if (sectionCandidates.length >= 2) {
+      return {
+        ageMin: Math.min(...sectionCandidates.map((candidate) => candidate.ageMin)),
+        ageMax: Math.max(...sectionCandidates.map((candidate) => candidate.ageMax))
+      };
+    }
+    if (sectionCandidates.length === 1) {
+      return {
+        ageMin: sectionCandidates[0].ageMin,
+        ageMax: sectionCandidates[0].ageMax
+      };
     }
   }
 
+  candidates.push(...extractRanges(text));
+
   if (candidates.length === 0) return null;
+
+  const sortByBestRange = (
+    left: { ageMin: number; ageMax: number; index: number },
+    right: { ageMin: number; ageMax: number; index: number }
+  ) => {
+    const leftSpan = left.ageMax - left.ageMin;
+    const rightSpan = right.ageMax - right.ageMin;
+    if (rightSpan !== leftSpan) return rightSpan - leftSpan;
+    if (left.ageMin !== right.ageMin) return left.ageMin - right.ageMin;
+    return left.index - right.index;
+  };
+
   const preferred = candidates
     .filter((candidate) => candidate.ageMax <= 18)
-    .sort((a, b) => a.index - b.index)[0];
+    .sort(sortByBestRange)[0];
   if (preferred) return { ageMin: preferred.ageMin, ageMax: preferred.ageMax };
 
-  const fallback = candidates.sort((a, b) => a.index - b.index)[0];
+  const fallback = candidates.sort(sortByBestRange)[0];
   return { ageMin: fallback.ageMin, ageMax: fallback.ageMax };
 }
 
@@ -661,7 +709,32 @@ function findPriceInText(text: string): number | null {
   return findPriceInTextWithMin(text, 30);
 }
 
-function findPriceInJsonLd(blocks: unknown[]): number | null {
+function findPublicPriceInText(text: string): number | null {
+  const normalized = normalizeWhitespace(text);
+  if (!normalized) return null;
+
+  const publicPatterns = [
+    /\btarif\s+public\b[^0-9]{0,40}([0-9][0-9\s.,]*)\s*(?:€|euros?)/i,
+    /\bpublic\b[^0-9]{0,40}([0-9][0-9\s.,]*)\s*(?:€|euros?)/i
+  ];
+
+  for (const pattern of publicPatterns) {
+    const match = normalized.match(pattern);
+    if (!match?.[1]) continue;
+    const amount = parseFrenchAmount(match[1], 30, 20_000);
+    if (amount !== null) return amount;
+  }
+
+  const strippedPartnerText = normalized
+    .replace(/\btarif\s+partenaire\b[^0-9]{0,40}[0-9][0-9\s.,]*\s*(?:€|euros?)/gi, ' ')
+    .replace(/\bpartenaire\b[^0-9]{0,40}[0-9][0-9\s.,]*\s*(?:€|euros?)/gi, ' ');
+
+  return findPriceInText(strippedPartnerText);
+}
+
+/** Tous les champs `price` numériques trouvés dans le graphe JSON-LD (Offer, etc.). */
+function collectJsonLdOfferPrices(blocks: unknown[]): number[] {
+  const candidates: number[] = [];
   const stack = [...blocks];
   while (stack.length > 0) {
     const node = stack.shift();
@@ -676,10 +749,10 @@ function findPriceInJsonLd(blocks: unknown[]): number | null {
     const priceRaw = record.price;
     if (typeof priceRaw === 'number') {
       const rounded = Math.round(priceRaw);
-      if (rounded >= 30 && rounded <= 20_000) return rounded;
+      if (rounded >= 30 && rounded <= 20_000) candidates.push(rounded);
     } else if (typeof priceRaw === 'string') {
       const parsed = parseFrenchAmount(priceRaw, 30, 20_000);
-      if (parsed !== null) return parsed;
+      if (parsed !== null) candidates.push(parsed);
     }
 
     for (const value of Object.values(record)) {
@@ -687,13 +760,33 @@ function findPriceInJsonLd(blocks: unknown[]): number | null {
     }
   }
 
-  return null;
+  return candidates;
+}
+
+/**
+ * Plusieurs offres peuvent coexister (sessions / formules). Le premier prix parcouru n’est pas fiable
+ * (ex. Thalie : 1265 € puis 1065 €). On prend le **minimum** parmi les montants « plausibles » séjour.
+ */
+function findPriceInJsonLd(blocks: unknown[]): number | null {
+  const all = collectJsonLdOfferPrices(blocks);
+  if (all.length === 0) return null;
+  const plausible = all.filter((p) => p >= 200 && p <= 25_000);
+  const pool = plausible.length > 0 ? plausible : all;
+  return Math.min(...pool);
+}
+
+/** Pour le débrief import : liste triée des prix vus dans le JSON-LD (sans appliquer le min). */
+export function extractJsonLdOfferPricesFromHtml(html: string): number[] {
+  const $ = load(html);
+  const prices = collectJsonLdOfferPrices(extractJsonLdBlocks($));
+  return Array.from(new Set(prices)).sort((a, b) => a - b);
 }
 
 function parsePrice(text: string, jsonLdBlocks: unknown[]): number | null {
-  const textPrice = findPriceInText(text);
-  if (textPrice !== null) return textPrice;
-  return findPriceInJsonLd(jsonLdBlocks);
+  /** Sur les fiches type catalogue (ex. Thalie), le gros prix à l’écran peut déjà inclure le transport ; le JSON-Ld Product/Offer porte souvent le prix séjour seul (ex. 1065 € vs 1147 € affichés). */
+  const jsonLdPrice = findPriceInJsonLd(jsonLdBlocks);
+  if (jsonLdPrice !== null) return jsonLdPrice;
+  return findPriceInText(text);
 }
 
 function parseDuration(text: string): number | null {
@@ -1984,6 +2077,67 @@ function detectSessionAvailability(snippet: string): DraftSessionItem['availabil
   return null;
 }
 
+function parseSessionLabelToItem(label: string): DraftSessionItem | null {
+  const normalized = normalizeWhitespace(label);
+  if (!normalized) return null;
+
+  const sameMonth = normalized.match(
+    /\bdu\s+(\d{1,2})\s+(?:au|a|à)\s+(\d{1,2})\s+([A-Za-zÀ-ÖØ-öø-ÿ]+)\s+(\d{4})\b/i
+  );
+  if (sameMonth) {
+    const dayStart = Number(sameMonth[1]);
+    const dayEnd = Number(sameMonth[2]);
+    const month = MONTHS[simplifyForMatch(sameMonth[3])];
+    const year = Number(sameMonth[4]);
+    return {
+      label: normalized,
+      start_date: month ? toIsoDate(dayStart, month, year) : null,
+      end_date: month ? toIsoDate(dayEnd, month, year) : null,
+      price: null,
+      availability: null
+    };
+  }
+
+  const numeric = normalized.match(
+    /\bdu\s*(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4})\s*(?:au|a|à)\s*(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4})\b/i
+  );
+  if (numeric) {
+    return {
+      label: normalized,
+      start_date: parseFrenchDate(numeric[1]),
+      end_date: parseFrenchDate(numeric[2]),
+      price: null,
+      availability: null
+    };
+  }
+
+  return null;
+}
+
+function buildSessionKey(session: DraftSessionItem): string {
+  return (session.start_date || session.end_date)
+    ? `${session.start_date ?? ''}|${session.end_date ?? ''}`
+    : simplifyForMatch(session.label);
+}
+
+function extractStructuredSessionOptions($: CheerioAPI): DraftSessionItem[] {
+  const sessions = new Map<string, DraftSessionItem>();
+
+  $('select option, .ui-selectmenu-text, [role="option"]').each((_, node) => {
+    const parsed = parseSessionLabelToItem($(node).text());
+    if (!parsed) return;
+    const key = buildSessionKey(parsed);
+    if (!key || sessions.has(key)) return;
+    sessions.set(key, parsed);
+  });
+
+  return Array.from(sessions.values()).sort((left, right) => {
+    const leftKey = left.start_date ?? left.end_date ?? left.label ?? '';
+    const rightKey = right.start_date ?? right.end_date ?? right.label ?? '';
+    return leftKey.localeCompare(rightKey, 'fr');
+  });
+}
+
 function extractReservationCallToAction(
   $: CheerioAPI,
   visibleText: string
@@ -2021,6 +2175,18 @@ function extractReservationCallToAction(
 function extractSessions($: CheerioAPI, visibleText: string): DraftSessionItem[] | null {
   const sessions: DraftSessionItem[] = [];
   const defaultAvailability = extractReservationCallToAction($, visibleText);
+  const structuredSessions = extractStructuredSessionOptions($);
+
+  const sessionScore = (session: DraftSessionItem): number => {
+    let score = 0;
+    if (session.start_date) score += 20;
+    if (session.end_date) score += 20;
+    if (typeof session.price === 'number' && Number.isFinite(session.price) && session.price > 0) score += 30;
+    if (session.availability === 'available') score += 15;
+    else if (session.availability) score += 10;
+    if (session.label) score += Math.min(session.label.length, 20);
+    return score;
+  };
 
   const patternMonthSame =
     /\bdu\s+(\d{1,2})\s+(?:au|a|à)\s+(\d{1,2})\s+([A-Za-zÀ-ÖØ-öø-ÿ]+)\s+(\d{4})\b/gi;
@@ -2041,7 +2207,7 @@ function extractSessions($: CheerioAPI, visibleText: string): DraftSessionItem[]
       label,
       start_date: startDate,
       end_date: endDate,
-      price: findPriceInText(snippet),
+      price: findPublicPriceInText(snippet),
       availability: detectSessionAvailability(snippet) ?? defaultAvailability
     });
   }
@@ -2061,14 +2227,39 @@ function extractSessions($: CheerioAPI, visibleText: string): DraftSessionItem[]
       label,
       start_date: startDate,
       end_date: endDate,
-      price: findPriceInText(snippet),
+      price: findPublicPriceInText(snippet),
       availability: detectSessionAvailability(snippet) ?? defaultAvailability
     });
   }
 
-  const deduped = unique(
-    sessions.map((session) => JSON.stringify(session))
-  ).map((serialized) => JSON.parse(serialized) as DraftSessionItem);
+  const dedupedByPeriod = new Map<string, DraftSessionItem>();
+  for (const session of sessions) {
+    const key = buildSessionKey(session);
+    if (!key) continue;
+
+    const existing = dedupedByPeriod.get(key);
+    if (!existing || sessionScore(session) > sessionScore(existing)) {
+      dedupedByPeriod.set(key, session);
+    }
+  }
+
+  const deduped = Array.from(dedupedByPeriod.values()).sort((left, right) => {
+    const leftKey = left.start_date ?? left.end_date ?? left.label ?? '';
+    const rightKey = right.start_date ?? right.end_date ?? right.label ?? '';
+    return leftKey.localeCompare(rightKey, 'fr');
+  });
+
+  if (structuredSessions.length > 1) {
+    const inferredByPeriod = new Map(deduped.map((session) => [buildSessionKey(session), session] as const));
+    return structuredSessions.map((session) => {
+      const inferred = inferredByPeriod.get(buildSessionKey(session));
+      return {
+        ...session,
+        price: inferred?.price ?? null,
+        availability: inferred?.availability ?? defaultAvailability
+      };
+    });
+  }
 
   return deduped.length > 0 ? deduped : null;
 }
@@ -2300,6 +2491,61 @@ function getTransportSelectCandidates(
 }
 
 function extractCurrentPriceEur($: CheerioAPI, visibleText: string): number | null {
+  const publicTariffBlocks = $('.tarif-1, [class*="tarif-1"], .tarif-public, [class*="tarif-public"]')
+    .toArray()
+    .map((node) => normalizeWhitespace($(node).text()))
+    .filter((text) => {
+      const key = simplifyForMatch(text);
+      return key.includes('tarif public') && !key.includes('tarif partenaire');
+    });
+
+  for (const content of publicTariffBlocks) {
+    const price = findPriceInTextWithMin(content, 0);
+    if (price !== null) return price;
+  }
+
+  const labeledPublicTariffs = $('.tarif-label')
+    .toArray()
+    .map((node) => $(node).parent())
+    .map((parent) => normalizeWhitespace(parent.text()))
+    .filter((text) => {
+      const key = simplifyForMatch(text);
+      return key.includes('tarif public') && !key.includes('tarif partenaire');
+    });
+
+  for (const content of labeledPublicTariffs) {
+    const price = findPriceInTextWithMin(content, 0);
+    if (price !== null) return price;
+  }
+
+  const directTransportSelectors = [
+    '.tarif-label + .badge .sejour-tarif.active',
+    '.tarif-label + .badge .sejour-tarif',
+    '.badge .sejour-tarif.active',
+    '.badge .sejour-tarif',
+    '.sejour-tarif.active',
+    '.sejour-tarif'
+  ];
+
+  for (const selector of directTransportSelectors) {
+    const nodes = $(selector).toArray().slice(0, 10);
+    for (const node of nodes) {
+      const content = normalizeWhitespace(
+        [
+          $(node).attr('content') ?? '',
+          $(node).attr('value') ?? '',
+          $(node).text()
+        ].join(' ')
+      );
+      if (!content) continue;
+      const containerText = normalizeWhitespace($(node).closest('div, td, li, article, section').text());
+      const contentKey = simplifyForMatch(`${content} ${containerText}`);
+      if (contentKey.includes('tarif partenaire')) continue;
+      const price = findPriceInTextWithMin(content, 0);
+      if (price !== null) return price;
+    }
+  }
+
   const selectors = [
     '[itemprop="price"]',
     '[class*="prix"]',
@@ -2326,6 +2572,9 @@ function extractCurrentPriceEur($: CheerioAPI, visibleText: string): number | nu
         ].join(' ')
       );
       if (!content) continue;
+      const containerText = normalizeWhitespace($(node).closest('div, td, li, article, section').text());
+      const contentKey = simplifyForMatch(`${content} ${containerText}`);
+      if (contentKey.includes('tarif partenaire')) continue;
       const price = findPriceInTextWithMin(content, 0);
       if (price !== null) return price;
     }
@@ -2500,6 +2749,22 @@ export function pickImportedSessionReferencePriceCents(
   data: Pick<ExtractedStayData, 'sessionsJson' | 'priceFrom'>
 ): number | null {
   const sessions = data.sessionsJson;
+  const sessionCents = (sessions ?? [])
+    .map((s) =>
+      s.price != null && Number.isFinite(s.price) && s.price >= 0 ? Math.round(s.price * 100) : null
+    )
+    .filter((v): v is number => v != null);
+  const distinctSessionCents = Array.from(new Set(sessionCents));
+  /** Plusieurs tarifs session différents : aucune référence unique (évite de prendre le min JSON-LD ou la 1re ligne). */
+  if (distinctSessionCents.length > 1) {
+    return null;
+  }
+  if (distinctSessionCents.length === 1) {
+    return distinctSessionCents[0];
+  }
+  if (data.priceFrom != null && Number.isFinite(data.priceFrom) && data.priceFrom >= 0) {
+    return Math.round(data.priceFrom * 100);
+  }
   if (sessions) {
     for (const session of sessions) {
       if (session.price != null && Number.isFinite(session.price) && session.price >= 0) {
@@ -2507,10 +2772,353 @@ export function pickImportedSessionReferencePriceCents(
       }
     }
   }
-  if (data.priceFrom != null && Number.isFinite(data.priceFrom) && data.priceFrom >= 0) {
-    return Math.round(data.priceFrom * 100);
-  }
   return null;
+}
+
+export type ThalieSessionBaseline = {
+  date_index: number;
+  date_label: string;
+  /** Total catalogue à l’option ville « référence » (index 0), ex. dépose centre — prix séjour pour cette date. */
+  baseline_total_cents: number | null;
+};
+
+type ThaliePbOption = {
+  value: string;
+  label: string;
+  url: string | null;
+  selected: boolean;
+};
+
+export type ThalieOptionUrlPricingResult = {
+  sessionBaselines: ThalieSessionBaseline[];
+  transportVariants: DraftTransportVariant[];
+  transportPriceDebug: DraftTransportPriceDebug[];
+  transportMode: 'Aller/Retour similaire' | 'Aller/Retour différencié' | '';
+};
+
+function parseThaliePbOptions(html: string, pageUrl: string, selectName: string): ThaliePbOption[] {
+  const $ = load(html);
+  const select = $(`select[name="${selectName}"]`).first();
+  if (!select.length) return [];
+
+  return select
+    .find('option')
+    .toArray()
+    .map((option) => {
+      const node = $(option);
+      const label = normalizeWhitespace(node.text());
+      const rawUrl = normalizeWhitespace(node.attr('url') ?? '');
+      return {
+        value: normalizeWhitespace(node.attr('value') ?? ''),
+        label,
+        url: rawUrl ? toAbsoluteUrl(rawUrl, pageUrl) : null,
+        selected: node.attr('selected') !== undefined
+      };
+    })
+    .filter((option) => option.label.length > 0);
+}
+
+function parseThalieOfferTotalCents(html: string): number | null {
+  const $ = load(html);
+  const offers = $('td[itemprop="offers"], [itemprop="offers"]').first();
+  if (!offers.length) return null;
+
+  const meta = normalizeWhitespace(offers.find('meta[itemprop="price"]').first().attr('content') ?? '');
+  if (meta) {
+    const value = Number(meta.replace(/\s/g, '').replace(',', '.'));
+    if (Number.isFinite(value) && value >= 0 && value < 80_000) {
+      return Math.round(value * 100);
+    }
+  }
+
+  const priceText = normalizeWhitespace(offers.find('span.PBSalesPrice').first().text());
+  if (!priceText) return null;
+  const amount = findPriceInText(priceText);
+  return amount !== null ? Math.round(amount * 100) : null;
+}
+
+function chooseAggregatedThalieAmount(samples: number[]): { amountCents: number | null; confidence: 'high' | 'medium' | 'low' } {
+  if (samples.length === 0) {
+    return { amountCents: null, confidence: 'low' };
+  }
+
+  const counts = new Map<number, number>();
+  for (const sample of samples) {
+    counts.set(sample, (counts.get(sample) ?? 0) + 1);
+  }
+
+  const ranked = Array.from(counts.entries()).sort((left, right) => {
+    if (right[1] !== left[1]) return right[1] - left[1];
+    return left[0] - right[0];
+  });
+
+  const [amountCents, hitCount] = ranked[0];
+  if (ranked.length === 1) {
+    return { amountCents, confidence: 'high' };
+  }
+  return { amountCents, confidence: hitCount >= 2 ? 'medium' : 'low' };
+}
+
+/**
+ * Logique dédiée Thalie / PB :
+ * - prix session = prix affiché sur l'URL de la date, avec les options par défaut
+ * - prix transport aller = total de la ville - prix session
+ * - prix transport global = aller * 2
+ */
+export async function extractThalieOptionUrlPricing(
+  sourceHtml: string,
+  sourceUrl: string
+): Promise<ThalieOptionUrlPricingResult> {
+  const dateOptions = parseThaliePbOptions(sourceHtml, sourceUrl, 'PDTOPTVALUEID0');
+  const transportMode =
+    parseThaliePbOptions(sourceHtml, sourceUrl, 'PDTOPTVALUEID1').length > 0 &&
+    parseThaliePbOptions(sourceHtml, sourceUrl, 'PDTOPTVALUEID2').length > 0
+      ? 'Aller/Retour différencié'
+      : parseThaliePbOptions(sourceHtml, sourceUrl, 'PDTOPTVALUEID1').length > 0
+        ? 'Aller/Retour similaire'
+        : '';
+
+  const sessionBaselines: ThalieSessionBaseline[] = [];
+  const transportPriceDebug: DraftTransportPriceDebug[] = [];
+  const samplesByCity = new Map<
+    string,
+    {
+      city: string;
+      amounts: number[];
+      sampleSourceUrls: string[];
+    }
+  >();
+
+  const effectiveDateOptions =
+    dateOptions.length > 0
+      ? dateOptions
+      : [
+          {
+            value: '',
+            label: normalizeWhitespace(sourceUrl.split('/').pop() ?? 'session'),
+            url: sourceUrl,
+            selected: true
+          }
+        ];
+
+  for (let dateIndex = 0; dateIndex < effectiveDateOptions.length; dateIndex += 1) {
+    const dateOption = effectiveDateOptions[dateIndex];
+    const dateUrl = dateOption.url ?? sourceUrl;
+    let datePage: FetchedHtml | null = null;
+
+    try {
+      datePage = await fetchHtml(dateUrl);
+    } catch {
+      sessionBaselines.push({
+        date_index: dateIndex,
+        date_label: dateOption.label,
+        baseline_total_cents: null
+      });
+      continue;
+    }
+
+    const baselineTotalCents = parseThalieOfferTotalCents(datePage.html);
+    sessionBaselines.push({
+      date_index: dateIndex,
+      date_label: dateOption.label,
+      baseline_total_cents: baselineTotalCents
+    });
+
+    const outboundOptions = parseThaliePbOptions(datePage.html, datePage.finalUrl, 'PDTOPTVALUEID1');
+    for (const outboundOption of outboundOptions) {
+      const city = normalizeTransportCityLabel(outboundOption.label);
+      if (!city || isTransportBaseReference(city)) continue;
+      if (!outboundOption.url) continue;
+
+      let cityPage: FetchedHtml | null = null;
+      try {
+        cityPage = await fetchHtml(outboundOption.url);
+      } catch {
+        transportPriceDebug.push({
+          variant_url: outboundOption.url,
+          departure_city: city,
+          return_city: null,
+          page_price_cents: null,
+          base_price_cents: baselineTotalCents,
+          amount_cents: null,
+          pricing_method: 'thalie_option_url_delta',
+          confidence: 'low',
+          reason: `thalie-option-url-fetch-failed:${dateIndex}`,
+          departure_label_raw: outboundOption.label,
+          return_label_raw: dateOption.label
+        });
+        continue;
+      }
+
+      const totalCents = parseThalieOfferTotalCents(cityPage.html);
+      const oneWayCents =
+        typeof baselineTotalCents === 'number' &&
+        typeof totalCents === 'number' &&
+        totalCents >= baselineTotalCents
+          ? totalCents - baselineTotalCents
+          : null;
+      const roundTripCents = oneWayCents !== null ? oneWayCents * 2 : null;
+
+      transportPriceDebug.push({
+        variant_url: cityPage.finalUrl,
+        departure_city: city,
+        return_city: null,
+        page_price_cents: totalCents,
+        base_price_cents: baselineTotalCents,
+        amount_cents: roundTripCents,
+        pricing_method: 'thalie_option_url_delta',
+        confidence: roundTripCents !== null ? 'high' : 'low',
+        reason: `thalie-option-url:date[${dateIndex}]`,
+        departure_label_raw: outboundOption.label,
+        return_label_raw: dateOption.label
+      });
+
+      if (roundTripCents === null) continue;
+
+      const key = simplifyForMatch(city);
+      const existing = samplesByCity.get(key) ?? {
+        city,
+        amounts: [],
+        sampleSourceUrls: []
+      };
+      existing.amounts.push(roundTripCents);
+      existing.sampleSourceUrls.push(cityPage.finalUrl);
+      samplesByCity.set(key, existing);
+    }
+  }
+
+  const transportVariants: DraftTransportVariant[] = [];
+  for (const entry of Array.from(samplesByCity.values())) {
+    const aggregate = chooseAggregatedThalieAmount(entry.amounts);
+    if (aggregate.amountCents === null) continue;
+    transportVariants.push({
+      departure_city: entry.city,
+      return_city: entry.city,
+      amount_cents: aggregate.amountCents,
+      currency: 'EUR',
+      source_url: entry.sampleSourceUrls[0] ?? sourceUrl,
+      departure_label_raw: entry.city,
+      return_label_raw: null,
+      pricing_method: 'thalie_option_url_delta',
+      confidence: aggregate.confidence,
+      reason: `thalie-option-url:aggregated:${entry.amounts.length}`
+    });
+  }
+  transportVariants.sort((left, right) => left.departure_city.localeCompare(right.departure_city, 'fr'));
+
+  return {
+    sessionBaselines,
+    transportVariants,
+    transportPriceDebug,
+    transportMode
+  };
+}
+
+/**
+ * Applique les totaux session lus sur la fiche dynamique (Thalie PBP) aux lignes `sessionsJson` quand c’est possible.
+ */
+export function mergeThalieSessionBaselinesIntoSessions(
+  sessions: DraftSessionItem[] | null,
+  baselines: ThalieSessionBaseline[]
+): DraftSessionItem[] | null {
+  if (baselines.length === 0) return sessions;
+
+  const priceEur = (cents: number | null): number | null => {
+    if (cents == null || !Number.isFinite(cents) || cents < 0) return null;
+    return Math.round(cents) / 100;
+  };
+
+  const parseBaselineDates = (label: string): { startDate: string | null; endDate: string | null } => {
+    const normalized = normalizeWhitespace(label);
+    const sameMonth = normalized.match(
+      /\bdu\s+(\d{1,2})\s+(?:au|a|à)\s+(\d{1,2})\s+([A-Za-zÀ-ÖØ-öø-ÿ]+)\s+(\d{4})\b/i
+    );
+    if (sameMonth) {
+      const dayStart = Number(sameMonth[1]);
+      const dayEnd = Number(sameMonth[2]);
+      const month = MONTHS[simplifyForMatch(sameMonth[3])];
+      const year = Number(sameMonth[4]);
+      return {
+        startDate: month ? toIsoDate(dayStart, month, year) : null,
+        endDate: month ? toIsoDate(dayEnd, month, year) : null
+      };
+    }
+
+    const crossMonth = normalized.match(
+      /\bdu\s+(\d{1,2})\s+([A-Za-zÀ-ÖØ-öø-ÿ]+)\s+(?:au|a|à)\s+(\d{1,2})\s+([A-Za-zÀ-ÖØ-öø-ÿ]+)\s+(\d{4})\b/i
+    );
+    if (crossMonth) {
+      const year = Number(crossMonth[5]);
+      return {
+        startDate: toIsoDate(Number(crossMonth[1]), MONTHS[simplifyForMatch(crossMonth[2])] ?? 0, year),
+        endDate: toIsoDate(Number(crossMonth[3]), MONTHS[simplifyForMatch(crossMonth[4])] ?? 0, year)
+      };
+    }
+
+    return { startDate: null, endDate: null };
+  };
+
+  const existingSessions = sessions ?? [];
+  const matchedSessionIndexes = new Set<number>();
+
+  const findMatchingSession = (baseline: ThalieSessionBaseline): DraftSessionItem | null => {
+    const baselineKey = simplifyForMatch(baseline.date_label);
+    const baselineDates = parseBaselineDates(baseline.date_label);
+
+    for (let index = 0; index < existingSessions.length; index += 1) {
+      if (matchedSessionIndexes.has(index)) continue;
+      const session = existingSessions[index];
+      const sessionKey = simplifyForMatch(session.label);
+      if (baselineKey && sessionKey && (baselineKey.includes(sessionKey) || sessionKey.includes(baselineKey))) {
+        matchedSessionIndexes.add(index);
+        return session;
+      }
+      if (
+        baselineDates.startDate &&
+        baselineDates.endDate &&
+        session.start_date === baselineDates.startDate &&
+        session.end_date === baselineDates.endDate
+      ) {
+        matchedSessionIndexes.add(index);
+        return session;
+      }
+    }
+
+    return null;
+  };
+
+  if (!sessions || sessions.length === 0) {
+    return baselines.map((b) => {
+      const dates = parseBaselineDates(b.date_label);
+      return {
+        label: b.date_label,
+        start_date: dates.startDate,
+        end_date: dates.endDate,
+        price: priceEur(b.baseline_total_cents),
+        availability: null
+      };
+    });
+  }
+
+  if (sessions.length === baselines.length) {
+    return sessions.map((session, i) => {
+      const p = priceEur(baselines[i]?.baseline_total_cents);
+      return p != null ? { ...session, price: p } : session;
+    });
+  }
+
+  return baselines.map((baseline) => {
+    const matched = findMatchingSession(baseline);
+    const baselineDates = parseBaselineDates(baseline.date_label);
+    const p = priceEur(baseline.baseline_total_cents);
+    return {
+      label: matched?.label ?? baseline.date_label,
+      start_date: matched?.start_date ?? baselineDates.startDate,
+      end_date: matched?.end_date ?? baselineDates.endDate,
+      price: p ?? matched?.price ?? null,
+      availability: matched?.availability ?? null
+    };
+  });
 }
 
 const INSURANCE_ANNULATION_LINE_KEYS = ['annulation', 'annuler', 'remboursement'];

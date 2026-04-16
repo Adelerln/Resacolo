@@ -117,7 +117,7 @@ export default async function AccommodationDetailPage({ params: paramsPromise, s
     const locationInput = {
       locationMode: String(formData.get('location_mode') ?? '').trim(),
       locationCity: String(formData.get('location_city') ?? '').trim(),
-      locationDepartmentCode: String(formData.get('location_department_code') ?? '').trim(),
+      locationDepartmentCode: String(formData.get('location_department_code') ?? '').trim().slice(0, 2),
       locationCountry: String(formData.get('location_country') ?? '').trim(),
       itinerantZone: String(formData.get('itinerant_zone') ?? '').trim()
     };

@@ -3,12 +3,14 @@ import { getSession } from '@/lib/auth/session';
 import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers.server';
 import { mockOrganizerTenant } from '@/lib/mocks';
 import {
+  extractJsonLdOfferPricesFromHtml,
   extractStayData,
+  extractThalieOptionUrlPricing,
   extractTransportVariants,
   extractVideoUrls,
   fetchHtml,
   buildDraftTransportOptionsFromVariants,
-  pickImportedCancellationInsuranceCents,
+  mergeThalieSessionBaselinesIntoSessions,
   pickImportedSessionReferencePriceCents,
   selectBestStayImages,
   type DraftTransportPriceDebug,
@@ -23,6 +25,8 @@ import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { normalizeStayTitle } from '@/lib/stay-title';
 
 export const runtime = 'nodejs';
+/** Vercel / hébergeurs serverless : laisser le temps au fetch + Playwright (sinon 504 silencieux). */
+export const maxDuration = 300;
 
 function envTruthy(value: string | undefined): boolean {
   if (!value) return false;
@@ -181,6 +185,14 @@ function buildDraftUpdatePayload(
   }
   if (columns.has('raw_payload')) {
     payload.raw_payload = rawPayload;
+  }
+  if (columns.has('sessions_json')) {
+    payload.sessions_json = extracted.sessionsJson && extracted.sessionsJson.length > 0
+      ? extracted.sessionsJson
+      : null;
+  }
+  if (columns.has('transport_mode')) {
+    payload.transport_mode = extracted.transportMode ?? null;
   }
   if (columns.has('transport_options_json')) {
     const transportOptions = buildDraftTransportOptionsFromVariants(transportVariants);
@@ -368,25 +380,24 @@ export async function POST(req: Request) {
   }
 
   const extracted = extractStayData(fetchedHtml.html, fetchedHtml.finalUrl);
-  const sessionReferencePriceCents = pickImportedSessionReferencePriceCents(extracted);
-  const htmlForInsurance =
-    fetchedHtml.html.length > 400_000 ? fetchedHtml.html.slice(0, 400_000) : fetchedHtml.html;
-  const insuranceDeductionCents = pickImportedCancellationInsuranceCents({
-    rawText: extracted.rawText,
-    htmlExcerpt: htmlForInsurance
-  });
+  let sourceHost: string | null = null;
+  try {
+    sourceHost = new URL(fetchedHtml.finalUrl || sourceUrl).hostname.toLowerCase();
+  } catch {
+    sourceHost = null;
+  }
+  const isThalieImport = Boolean(sourceHost?.includes('thalie.eu'));
   const forcePlaywright = envTruthy(process.env.IMPORT_STAY_FORCE_PLAYWRIGHT);
   const shouldTryDynamicRender =
     forcePlaywright ||
     shouldUsePlaywrightForDynamicImages(fetchedHtml.html, extracted.images.length);
+  let playwrightFailureMessage: string | null = null;
   const dynamicSnapshot = shouldTryDynamicRender
-    ? await renderStayPageWithPlaywright(fetchedHtml.finalUrl, {
-        sessionReferencePriceCents,
-        insuranceDeductionCents
-      }).catch((error) => {
+    ? await renderStayPageWithPlaywright(fetchedHtml.finalUrl).catch((error) => {
+        playwrightFailureMessage = error instanceof Error ? error.message : 'unknown-error';
         console.warn('[import-stay] Playwright snapshot failed', {
           sourceUrl: fetchedHtml.finalUrl,
-          error: error instanceof Error ? error.message : 'unknown-error'
+          error: playwrightFailureMessage
         });
         return null;
       })
@@ -397,6 +408,24 @@ export async function POST(req: Request) {
     dynamicSnapshot && dynamicSnapshot.html
       ? extractStayData(dynamicSnapshot.html, dynamicSnapshot.finalUrl)
       : extracted;
+  const thaliePricing = isThalieImport
+    ? await extractThalieOptionUrlPricing(fetchedHtml.html, fetchedHtml.finalUrl).catch((error) => {
+        console.warn('[import-stay] Thalie option-url pricing failed', {
+          sourceUrl: fetchedHtml.finalUrl,
+          error: error instanceof Error ? error.message : 'unknown-error'
+        });
+        return null;
+      })
+    : null;
+  const extractedAfterThalieSessions = {
+    ...extractedWithDynamicDom,
+    transportMode: thaliePricing?.transportMode || extractedWithDynamicDom.transportMode,
+    sessionsJson:
+      mergeThalieSessionBaselinesIntoSessions(
+        extractedWithDynamicDom.sessionsJson,
+        thaliePricing?.sessionBaselines ?? dynamicSnapshot?.thalieSessionBaselines ?? []
+      ) ?? extractedWithDynamicDom.sessionsJson
+  };
   const mergedExtractedImages = Array.from(
     new Set([
       ...extracted.images,
@@ -412,31 +441,34 @@ export async function POST(req: Request) {
   );
   const [selectedImages, transportExtraction] = await Promise.all([
     selectBestStayImages(effectiveHtml, effectiveFinalUrl, mergedExtractedImages, {
-      title: extractedWithDynamicDom.title,
-      description: extractedWithDynamicDom.description,
-      summary: extractedWithDynamicDom.summary,
-      locationText: extractedWithDynamicDom.locationText,
-      regionText: extractedWithDynamicDom.regionText,
-      activities: extractedWithDynamicDom.activities
+      title: extractedAfterThalieSessions.title,
+      description: extractedAfterThalieSessions.description,
+      summary: extractedAfterThalieSessions.summary,
+      locationText: extractedAfterThalieSessions.locationText,
+      regionText: extractedAfterThalieSessions.regionText,
+      activities: extractedAfterThalieSessions.activities
     }),
     extractTransportVariants(effectiveHtml, effectiveFinalUrl)
   ]);
   const extractedWithSmartImages = {
-    ...extractedWithDynamicDom,
+    ...extractedAfterThalieSessions,
     images:
       selectedImages.length > 0
         ? selectedImages
         : mergedExtractedImages.length > 0
           ? mergedExtractedImages
-          : extractedWithDynamicDom.images
+          : extractedAfterThalieSessions.images
   };
+  const thaliePricingFromOptionUrls = Boolean(thaliePricing);
+  const thaliePbpFromPlaywright =
+    !thaliePricingFromOptionUrls && (dynamicSnapshot?.thalieSessionBaselines?.length ?? 0) > 0;
   const transportVariants = mergeTransportVariants(
-    dynamicSnapshot?.transportVariants ?? [],
-    transportExtraction.transportVariants
+    thaliePricing?.transportVariants ?? dynamicSnapshot?.transportVariants ?? [],
+    thaliePricingFromOptionUrls || thaliePbpFromPlaywright ? [] : transportExtraction.transportVariants
   );
   const transportPriceDebug = [
-    ...(dynamicSnapshot?.transportPriceDebug ?? []),
-    ...transportExtraction.transportPriceDebug
+    ...(thaliePricing?.transportPriceDebug ?? dynamicSnapshot?.transportPriceDebug ?? []),
+    ...(thaliePricingFromOptionUrls || thaliePbpFromPlaywright ? [] : transportExtraction.transportPriceDebug)
   ];
   const rawPayload = buildRawPayload(
     effectiveHtml,
@@ -454,6 +486,102 @@ export async function POST(req: Request) {
       existingAccommodationName: selectedAccommodation?.name ?? null
     }
   );
+  const traceDirConfigured = Boolean(process.env.PLAYWRIGHT_TRACE_DIR?.trim());
+  const videoDirConfigured = Boolean(process.env.PLAYWRIGHT_IMPORT_VIDEO_DIR?.trim());
+
+  Object.assign(rawPayload, {
+    import_review_debrief: {
+      schema: 'import_review_debrief/v1',
+      built_at: new Date().toISOString(),
+      source_request_url: sourceUrl,
+      source_host: sourceHost,
+      session_price_extraction: {
+        price_from_eur_static: extracted.priceFrom,
+        price_from_eur_after_dynamic_dom: extractedWithDynamicDom.priceFrom,
+        pick_reference_cents_static: pickImportedSessionReferencePriceCents(extracted),
+        pick_reference_cents_after_dynamic_dom: pickImportedSessionReferencePriceCents(
+          extractedAfterThalieSessions
+        ),
+        thalie_session_baselines_from_option_urls_eur:
+          thaliePricing?.sessionBaselines?.map((b) => ({
+            date_label: b.date_label,
+            baseline_total_eur:
+              b.baseline_total_cents != null && Number.isFinite(b.baseline_total_cents)
+                ? Math.round(b.baseline_total_cents) / 100
+                : null
+          })) ?? null,
+        thalie_session_baselines_from_playwright_eur:
+          dynamicSnapshot?.thalieSessionBaselines?.map((b) => ({
+            date_label: b.date_label,
+            baseline_total_eur:
+              b.baseline_total_cents != null && Number.isFinite(b.baseline_total_cents)
+                ? Math.round(b.baseline_total_cents) / 100
+                : null
+          })) ?? null,
+        json_ld_offer_prices_eur_sorted_static: extractJsonLdOfferPricesFromHtml(fetchedHtml.html),
+        json_ld_offer_prices_eur_sorted_effective: extractJsonLdOfferPricesFromHtml(effectiveHtml),
+        note:
+          'Si plusieurs tarifs session dans sessionsJson : pas de référence unique (pick null). Sinon priorité aux prix session puis priceFrom (min JSON-LD). Pour Thalie, priorité au parcours statique par URLs d’options (dates puis villes aller), avec prix session = Dépose centre / Reprise centre et transport global = aller x 2.'
+      },
+      playwright_how_to_debug: {
+        trace_zip_ui:
+          traceDirConfigured
+            ? `Trace activée (PLAYWRIGHT_TRACE_DIR). Ouvrir le .zip avec : npx playwright show-trace <fichier.zip> — relecture action par action, captures, DOM.`
+            : 'Pour un « écran » rejeu : exporter PLAYWRIGHT_TRACE_DIR=/un/dossier avant import, puis npx playwright show-trace sur le .zip généré.',
+        headed_window:
+          'IMPORT_STAY_PLAYWRIGHT_HEADED=1 : navigateur réel visible pendant l’import.',
+        slow_mo: 'PLAYWRIGHT_SLOW_MO_MS=400 : ralentit les actions.',
+        video_mp4: videoDirConfigured
+          ? 'PLAYWRIGHT_IMPORT_VIDEO_DIR : vidéo MP4 enregistrée pour ce run.'
+          : 'PLAYWRIGHT_IMPORT_VIDEO_DIR=/un/dossier : enregistre une vidéo MP4 de la page (si supporté).',
+        server_logs: 'PLAYWRIGHT_VERBOSE_IMPORT=1 : détails dans les logs serveur Next.',
+        inspector:
+          'PWDEBUG=1 (avec next dev) : inspecteur Playwright, exécution pas à pas sur le premier await.'
+      },
+      static_fetch: {
+        final_url: fetchedHtml.finalUrl,
+        fetched_at: fetchedHtml.fetchedAt,
+        status_code: fetchedHtml.status,
+        content_type: fetchedHtml.contentType,
+        html_length_chars: fetchedHtml.html.length,
+        extracted_after_static_dom: {
+          title: extracted.title ?? null,
+          image_count: extracted.images.length
+        }
+      },
+      effective_after_processing: {
+        final_url: effectiveFinalUrl,
+        html_length_chars: effectiveHtml.length,
+        merged_candidate_image_count: mergedExtractedImages.length,
+        selected_images_after_scoring: selectedImages.length,
+        video_url_count: mergedVideoUrls.length,
+        transport_variant_count: transportVariants.length,
+        transport_price_debug_count: transportPriceDebug.length
+      },
+      playwright: !shouldTryDynamicRender
+        ? { attempted: false, reason: 'skipped_static_html_sufficient_or_heuristic' }
+        : dynamicSnapshot
+          ? {
+              attempted: true,
+              success: true,
+              browser_engine: dynamicSnapshot.browserEngine,
+              snapshot_final_url: dynamicSnapshot.finalUrl,
+              snapshot_html_length_chars: dynamicSnapshot.html.length,
+              dom_image_urls_found: dynamicSnapshot.imageUrls.length,
+              dom_video_urls_found: dynamicSnapshot.videoUrls.length,
+              transport_variants_from_playwright: dynamicSnapshot.transportVariants.length,
+              transport_detected_flag: dynamicSnapshot.transportDetected,
+              ignored_for_thalie_transport: thaliePricingFromOptionUrls,
+              force_playwright_flag: forcePlaywright
+            }
+          : {
+              attempted: true,
+              success: false,
+              error_message: playwrightFailureMessage,
+              force_playwright_flag: forcePlaywright
+            }
+    }
+  });
   if (dynamicSnapshot) {
     Object.assign(rawPayload, {
       playwright: {

@@ -101,6 +101,7 @@ export default function AccommodationFormFields({
                   name="location_department_code"
                   defaultValue={values.location_department_code ?? ''}
                   placeholder="Ex. 74"
+                  maxLength={2}
                   className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
                 />
               </label>

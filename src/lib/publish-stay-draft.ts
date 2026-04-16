@@ -13,6 +13,7 @@ import {
   normalizeLocationMode
 } from '@/lib/stay-draft-accommodation-import';
 import { expandDraftAges } from '@/lib/stay-draft-content';
+import { liveSessionStableKey } from '@/lib/draft-session-keys';
 import {
   removeStayMediaStorageFiles,
   uploadImportedStayImages
@@ -312,6 +313,14 @@ function asObject(value: Json | null): Record<string, unknown> {
   return {};
 }
 
+function readPartnerDiscountPercentFromRawPayload(rawPayload: Record<string, unknown>): number | null {
+  const v = rawPayload.partner_discount_percent;
+  if (v == null || v === '') return null;
+  const n = typeof v === 'number' ? v : Number(String(v).trim().replace(',', '.'));
+  if (!Number.isFinite(n) || n < 0 || n > 100) return null;
+  return n;
+}
+
 function coerceAccommodationJsonObject(value: Json | null): Record<string, unknown> {
   if (Array.isArray(value)) {
     for (const item of value) {
@@ -479,10 +488,17 @@ function normalizeAges(ages: number[] | null, ageMin: number | null, ageMax: num
   return expandDraftAges(ages, ageMin, ageMax);
 }
 
+type ParsedTransportOption = {
+  departureCity: string;
+  returnCity: string;
+  amountCents: number;
+  excludedSessionKeys: string[];
+};
+
 function normalizeTransportMode(
   draftMode: string | null,
   hasTransportText: boolean,
-  transportOptions: Array<{ departureCity: string; returnCity: string; amountCents: number }>
+  transportOptions: ParsedTransportOption[]
 ): string {
   const normalized = normalizeWhitespace(draftMode ?? '');
   if (normalized && LIVE_TRANSPORT_MODES.has(normalized)) {
@@ -655,12 +671,19 @@ function toBoolean(value: unknown): boolean {
   return ['1', 'true', 'yes', 'oui', 'on'].includes(value.trim().toLowerCase());
 }
 
-function parseTransportOptions(value: Json | null): Array<{ departureCity: string; returnCity: string; amountCents: number }> {
+function parseExcludedSessionKeysFromRow(row: Record<string, unknown>): string[] {
+  const raw = row.excluded_session_keys;
+  if (!Array.isArray(raw)) return [];
+  return raw.map((x) => String(x).trim()).filter(Boolean);
+}
+
+function parseTransportOptions(value: Json | null): ParsedTransportOption[] {
   const rows = asRecordArray(value);
   type TransportCandidate = {
     departureCity: string;
     returnCity: string;
     amountCents: number;
+    excludedSessionKeys: string[];
     score: number;
     sourceUrl: string | null;
     reason: string | null;
@@ -674,7 +697,8 @@ function parseTransportOptions(value: Json | null): Array<{ departureCity: strin
     amountCents: number | null,
     sourceUrl: string | null,
     reason: string | null,
-    confidenceRaw: string | null
+    confidenceRaw: string | null,
+    excludedSessionKeys: string[] = []
   ) => {
     const cleanDeparture = normalizeWhitespace(departureCity);
     const cleanReturn = normalizeWhitespace(returnCity);
@@ -704,11 +728,13 @@ function parseTransportOptions(value: Json | null): Array<{ departureCity: strin
     const confidenceScore =
       confidence === 'high' ? 30 : confidence === 'medium' ? 20 : confidence === 'low' ? 10 : 0;
     const score = 100 + confidenceScore + (normalizedAmount > 0 ? 10 : 0);
-    const key = `${simplifyForMatch(normalizedDeparture)}|${simplifyForMatch(normalizedReturn)}`;
+    const exKey = excludedSessionKeys.slice().sort().join('>');
+    const key = `${simplifyForMatch(normalizedDeparture)}|${simplifyForMatch(normalizedReturn)}|ex:${exKey}`;
     const candidate: TransportCandidate = {
       departureCity: normalizedDeparture,
       returnCity: normalizedReturn,
       amountCents: normalizedAmount,
+      excludedSessionKeys: excludedSessionKeys.slice(),
       score,
       sourceUrl,
       reason
@@ -720,6 +746,7 @@ function parseTransportOptions(value: Json | null): Array<{ departureCity: strin
   };
 
   for (const row of rows) {
+    const excludedSessionKeys = parseExcludedSessionKeysFromRow(row);
     const label = normalizeWhitespace(String(row.label ?? ''));
     const city = normalizeWhitespace(String(row.city ?? row.label ?? ''));
     const departureCity = normalizeWhitespace(String(row.departure_city ?? row.outbound_city ?? ''));
@@ -755,16 +782,16 @@ function parseTransportOptions(value: Json | null): Array<{ departureCity: strin
 
     if (city && (outboundAmountCents !== null || returnAmountCents !== null)) {
       if (outboundAmountCents !== null) {
-        pushOption(city, '', outboundAmountCents, sourceUrl, reason, confidenceRaw);
+        pushOption(city, '', outboundAmountCents, sourceUrl, reason, confidenceRaw, excludedSessionKeys);
       }
       if (returnAmountCents !== null) {
-        pushOption('', city, returnAmountCents, sourceUrl, reason, confidenceRaw);
+        pushOption('', city, returnAmountCents, sourceUrl, reason, confidenceRaw, excludedSessionKeys);
       }
       continue;
     }
 
     if (departureCity || returnCity) {
-      pushOption(departureCity, returnCity, amountCents, sourceUrl, reason, confidenceRaw);
+      pushOption(departureCity, returnCity, amountCents, sourceUrl, reason, confidenceRaw, excludedSessionKeys);
       continue;
     }
 
@@ -776,21 +803,22 @@ function parseTransportOptions(value: Json | null): Array<{ departureCity: strin
     const isReturn = hasReturnFlag || (returnByText && !outboundByText);
 
     if (isOutbound && !isReturn) {
-      pushOption(city, '', amountCents, sourceUrl, reason, confidenceRaw);
+      pushOption(city, '', amountCents, sourceUrl, reason, confidenceRaw, excludedSessionKeys);
       continue;
     }
     if (isReturn && !isOutbound) {
-      pushOption('', city, amountCents, sourceUrl, reason, confidenceRaw);
+      pushOption('', city, amountCents, sourceUrl, reason, confidenceRaw, excludedSessionKeys);
       continue;
     }
 
-    pushOption(city, city, amountCents, sourceUrl, reason, confidenceRaw);
+    pushOption(city, city, amountCents, sourceUrl, reason, confidenceRaw, excludedSessionKeys);
   }
 
   const accepted = Array.from(output.values()).map((option) => ({
     departureCity: option.departureCity,
     returnCity: option.returnCity,
-    amountCents: option.amountCents
+    amountCents: option.amountCents,
+    excludedSessionKeys: option.excludedSessionKeys
   }))
     .sort((left, right) =>
       `${left.departureCity}|${left.returnCity}`.localeCompare(
@@ -1163,6 +1191,8 @@ async function updateOrInsertStay(
   sessions: Array<{ startDate: string; endDate: string; status: SessionStatus; priceCents: number | null; currency: string }>
 ): Promise<string> {
   const now = new Date().toISOString();
+  const draftRawPayload = asObject(draft.raw_payload);
+  const partnerDiscountPercent = readPartnerDiscountPercentFromRawPayload(draftRawPayload);
   const ageMin = ages.length > 0 ? ages[0] : draft.age_min;
   const ageMax = ages.length > 0 ? ages[ages.length - 1] : draft.age_max;
   const normalizedTitle = normalizeStayTitle(draft.title);
@@ -1192,6 +1222,7 @@ async function updateOrInsertStay(
     categories: mappedCategories,
     transport_mode: transportMode,
     transport_text: toNullableText(draft.transport_text),
+    partner_discount_percent: partnerDiscountPercent,
     seo_primary_keyword: toNullableText(draft.seo_primary_keyword),
     seo_secondary_keywords: draft.seo_secondary_keywords ?? [],
     seo_target_city: toNullableText(draft.seo_target_city),
@@ -1295,6 +1326,7 @@ async function updateOrInsertStay(
     categories: mappedCategories,
     transport_mode: transportMode,
     transport_text: basePayload.transport_text ?? null,
+    partner_discount_percent: partnerDiscountPercent,
     seo_primary_keyword: basePayload.seo_primary_keyword ?? null,
     seo_secondary_keywords: basePayload.seo_secondary_keywords ?? [],
     seo_target_city: basePayload.seo_target_city ?? null,
@@ -1569,7 +1601,7 @@ async function syncInsuranceOptions(
 async function syncTransportOptions(
   supabase: SupabaseClient<Database>,
   stayId: string,
-  options: Array<{ departureCity: string; returnCity: string; amountCents: number }>
+  options: ParsedTransportOption[]
 ): Promise<void> {
   const { error: deleteError } = await supabase
     .from('transport_options')
@@ -1584,13 +1616,51 @@ async function syncTransportOptions(
     return;
   }
 
-  const rows: TransportOptionInsert[] = options.map((option) => ({
-    stay_id: stayId,
-    session_id: null,
-    departure_city: option.departureCity,
-    return_city: option.returnCity,
-    amount_cents: option.amountCents
-  }));
+  const { data: liveSessions, error: sessionsError } = await supabase
+    .from('sessions')
+    .select('id,start_date,end_date')
+    .eq('stay_id', stayId)
+    .order('start_date', { ascending: true });
+
+  if (sessionsError) {
+    throw new PublishStayDraftError('list-sessions-for-transport', sessionsError.message);
+  }
+
+  const sessions = liveSessions ?? [];
+  const rows: TransportOptionInsert[] = [];
+
+  for (const option of options) {
+    const excluded = new Set(option.excludedSessionKeys ?? []);
+    const includedSessions = sessions.filter((s, i) => !excluded.has(liveSessionStableKey(s, i)));
+
+    if (includedSessions.length === 0) {
+      continue;
+    }
+
+    const base = {
+      stay_id: stayId,
+      departure_city: option.departureCity,
+      return_city: option.returnCity,
+      amount_cents: option.amountCents
+    };
+
+    if (sessions.length === 0) {
+      rows.push({ ...base, session_id: null });
+      continue;
+    }
+
+    if (includedSessions.length === sessions.length) {
+      rows.push({ ...base, session_id: null });
+    } else {
+      for (const s of includedSessions) {
+        rows.push({ ...base, session_id: s.id });
+      }
+    }
+  }
+
+  if (rows.length === 0) {
+    return;
+  }
 
   const { error: insertError } = await supabase.from('transport_options').insert(rows);
   if (insertError) {

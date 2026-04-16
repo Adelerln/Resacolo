@@ -36,6 +36,8 @@ export interface StayTransportOption {
   departureCity: string;
   returnCity: string;
   amount: number;
+  /** Si défini, option limitée à cette session ; sinon valable pour toutes les sessions du séjour. */
+  sessionId?: string | null;
 }
 
 export interface StayInsuranceOption {

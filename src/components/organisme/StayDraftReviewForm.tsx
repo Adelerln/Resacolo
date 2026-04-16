@@ -3,7 +3,18 @@
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { X } from 'lucide-react';
+import {
+  Building2,
+  Bus,
+  CalendarDays,
+  FileText,
+  Images,
+  Package,
+  Percent,
+  Plus,
+  Search,
+  X
+} from 'lucide-react';
 import GoogleMapsCityInput from '@/components/common/GoogleMapsCityInput';
 import AccommodationImportReviewFields from '@/components/organisme/AccommodationImportReviewFields';
 import {
@@ -27,11 +38,8 @@ import {
   SEO_TITLE_RECOMMENDED_MIN
 } from '@/lib/stay-seo';
 import { normalizeStayDraftCategories, STAY_CATEGORY_OPTIONS, stayCategoryLabelToValue } from '@/lib/stay-categories';
-import { slugify } from '@/lib/utils';
-import {
-  MAX_STAY_SUMMARY_LENGTH,
-  STAY_TRANSPORT_LOGISTICS_MODES
-} from '@/lib/stay-draft-content';
+import { cn, slugify } from '@/lib/utils';
+import { MAX_STAY_SUMMARY_LENGTH } from '@/lib/stay-draft-content';
 import {
   defaultAccommodationImportRecord,
   mergeAccommodationImportRecord
@@ -94,6 +102,56 @@ function resolveDraftCanonicalPath(slugCandidate: string, title: string) {
   return `/sejours/${finalSlug}`;
 }
 
+type DraftReviewStepId =
+  | 'hebergement'
+  | 'sejour'
+  | 'photos'
+  | 'sessions'
+  | 'options'
+  | 'transports'
+  | 'partenaires'
+  | 'seo';
+
+const DRAFT_REVIEW_STEP_ORDER: DraftReviewStepId[] = [
+  'hebergement',
+  'sejour',
+  'photos',
+  'sessions',
+  'options',
+  'transports',
+  'partenaires',
+  'seo'
+];
+
+const DRAFT_REVIEW_STEPS: {
+  id: DraftReviewStepId;
+  label: string;
+  Icon: typeof Building2;
+}[] = [
+  { id: 'hebergement', label: 'Hébergement', Icon: Building2 },
+  { id: 'sejour', label: 'Séjour', Icon: FileText },
+  { id: 'photos', label: 'Photos + Liens', Icon: Images },
+  { id: 'sessions', label: 'Sessions', Icon: CalendarDays },
+  { id: 'options', label: 'Options', Icon: Package },
+  { id: 'transports', label: 'Transports', Icon: Bus },
+  { id: 'partenaires', label: 'Partenaires', Icon: Percent },
+  { id: 'seo', label: 'SEO', Icon: Search }
+];
+
+function draftReviewStepIndex(step: DraftReviewStepId): number {
+  return DRAFT_REVIEW_STEP_ORDER.indexOf(step);
+}
+
+function draftReviewPrevStep(step: DraftReviewStepId): DraftReviewStepId | null {
+  const i = draftReviewStepIndex(step);
+  return i > 0 ? DRAFT_REVIEW_STEP_ORDER[i - 1]! : null;
+}
+
+function draftReviewNextStep(step: DraftReviewStepId): DraftReviewStepId | null {
+  const i = draftReviewStepIndex(step);
+  return i >= 0 && i < DRAFT_REVIEW_STEP_ORDER.length - 1 ? DRAFT_REVIEW_STEP_ORDER[i + 1]! : null;
+}
+
 export default function StayDraftReviewForm({
   draftId,
   organizerId,
@@ -105,8 +163,11 @@ export default function StayDraftReviewForm({
   linkedAccommodation = null
 }: StayDraftReviewFormProps) {
   const router = useRouter();
-  const [reviewStep, setReviewStep] = useState<'hebergement' | 'sejour'>(() =>
+  const [activeStep, setActiveStep] = useState<DraftReviewStepId>(() =>
     linkedAccommodation ? 'sejour' : 'hebergement'
+  );
+  const [hasCompletedAccommodationGate, setHasCompletedAccommodationGate] = useState(
+    () => Boolean(linkedAccommodation)
   );
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [title, setTitle] = useState(initialPayload.title);
@@ -118,6 +179,11 @@ export default function StayDraftReviewForm({
   const [supervisionText, setSupervisionText] = useState(initialPayload.supervision_text);
   const [transportText, setTransportText] = useState(initialPayload.transport_text);
   const [transportMode, setTransportMode] = useState(initialPayload.transport_mode);
+  const [partnerDiscountPercent, setPartnerDiscountPercent] = useState(() =>
+    initialPayload.partner_discount_percent != null && Number.isFinite(initialPayload.partner_discount_percent)
+      ? String(initialPayload.partner_discount_percent)
+      : ''
+  );
   const [selectedCategories, setSelectedCategories] = useState(() =>
     normalizeStayDraftCategories(initialPayload.categories).categories
   );
@@ -529,6 +595,18 @@ export default function StayDraftReviewForm({
       nextErrors.accommodations_json = "Le nom de l'hébergement importé est requis.";
     }
 
+    let partnerDiscountParsed: number | null = null;
+    const partnerRaw = partnerDiscountPercent.trim().replace(',', '.');
+    if (partnerRaw.length > 0) {
+      const pd = Number(partnerRaw);
+      if (!Number.isFinite(pd) || pd < 0 || pd > 100) {
+        nextErrors.partner_discount_percent =
+          'Indiquez un pourcentage entre 0 et 100, ou laissez le champ vide.';
+      } else {
+        partnerDiscountParsed = pd;
+      }
+    }
+
     if (Object.keys(nextErrors).length > 0) {
       return { errors: nextErrors };
     }
@@ -563,7 +641,8 @@ export default function StayDraftReviewForm({
       seo_internal_link_anchor_suggestions: sanitizeSeoTags(seoInternalAnchors),
       seo_slug_candidate: sanitizeSeoText(seoSlugCandidate),
       seo_score: Number.isFinite(seoScore) ? seoScore : null,
-      seo_checks: seoChecks
+      seo_checks: seoChecks,
+      partner_discount_percent: partnerDiscountParsed
     };
 
     return { payload };
@@ -667,7 +746,30 @@ export default function StayDraftReviewForm({
     }
   }
 
-  const showStayStep = Boolean(linkedAccommodation) || reviewStep === 'sejour';
+  const accommodationGateClosed = !linkedAccommodation && !hasCompletedAccommodationGate;
+  const effectiveStep: DraftReviewStepId = accommodationGateClosed ? 'hebergement' : activeStep;
+  const effectiveStepIndex = draftReviewStepIndex(effectiveStep);
+
+  function goToDraftStep(step: DraftReviewStepId) {
+    if (accommodationGateClosed && step !== 'hebergement') return;
+    setActiveStep(step);
+  }
+
+  function goDraftPrev() {
+    if (accommodationGateClosed) return;
+    const prev = draftReviewPrevStep(activeStep);
+    if (prev) setActiveStep(prev);
+  }
+
+  function goDraftNext() {
+    if (accommodationGateClosed) {
+      setHasCompletedAccommodationGate(true);
+      setActiveStep('sejour');
+      return;
+    }
+    const next = draftReviewNextStep(activeStep);
+    if (next) setActiveStep(next);
+  }
 
   return (
     <div className="space-y-6">
@@ -699,74 +801,75 @@ export default function StayDraftReviewForm({
         </div>
       )}
 
-      {!linkedAccommodation && reviewStep === 'hebergement' && (
+      {!linkedAccommodation && accommodationGateClosed && (
         <div className="rounded-2xl border border-amber-200 bg-amber-50/60 px-4 py-3 text-sm text-amber-950">
-          <span className="font-semibold">Étape 1 sur 2</span> — contrôlez d&apos;abord l&apos;hébergement importé,
-          puis passez à la relecture du séjour. Rien n&apos;est envoyé au serveur tant que vous n&apos;avez pas
-          enregistré depuis l&apos;étape « séjour ».
+          <span className="font-semibold">Première étape</span> — contrôlez l&apos;hébergement importé, puis
+          « Continuer » pour débloquer les étapes suivantes. Aucune donnée n&apos;est envoyée tant que vous
+          n&apos;enregistrez pas le brouillon.
         </div>
       )}
 
-      {!linkedAccommodation && reviewStep === 'hebergement' && (
-        <div className="space-y-4">
-          <AccommodationImportReviewFields
-            value={accommodationImport}
-            onChange={setAccommodationImport}
-            fieldError={fieldErrors.accommodations_json}
-          />
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              onClick={() => {
-                setFieldErrors({});
-                setGlobalError(null);
-                setReviewStep('sejour');
-              }}
-              className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
-            >
-              Continuer vers la relecture du séjour
-            </button>
-            <Link
-              href={backHref}
-              className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700"
-            >
-              Annuler
-            </Link>
-          </div>
-        </div>
-      )}
+      <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
+        <nav aria-label="Étapes de relecture du brouillon">
+          <ul className="flex snap-x snap-mandatory gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:justify-between sm:gap-3 sm:overflow-visible">
+            {DRAFT_REVIEW_STEPS.map(({ id, label, Icon }) => {
+              const isActive = effectiveStep === id;
+              const stepDisabled = accommodationGateClosed && id !== 'hebergement';
+              return (
+                <li key={id} className="snap-start shrink-0 sm:flex-1 sm:min-w-0">
+                  <button
+                    type="button"
+                    disabled={stepDisabled}
+                    aria-current={isActive ? 'step' : undefined}
+                    onClick={() => goToDraftStep(id)}
+                    className={cn(
+                      'flex h-full min-h-[88px] w-[100px] flex-col items-center justify-center gap-1.5 rounded-xl border px-2 py-2.5 text-center transition sm:w-full',
+                      isActive
+                        ? 'border-orange-400 bg-orange-50/90 ring-2 ring-orange-200/80'
+                        : 'border-slate-200 bg-slate-50/80 hover:border-slate-300 hover:bg-white',
+                      stepDisabled && 'cursor-not-allowed opacity-40 hover:border-slate-200 hover:bg-slate-50/80'
+                    )}
+                  >
+                    <Icon
+                      className={cn('h-5 w-5 shrink-0', isActive ? 'text-orange-700' : 'text-slate-500')}
+                      aria-hidden
+                    />
+                    <span className="text-[10px] font-semibold leading-tight text-slate-800 sm:text-[11px]">
+                      {label}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </nav>
 
-      {linkedAccommodation && (
-        <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-4 text-sm text-sky-900">
-          <p className="font-semibold">Hébergement déjà sélectionné avant import</p>
-          <p className="mt-1">
-            Le séjour sera rattaché à <span className="font-semibold">{linkedAccommodation.name}</span>
-            {linkedAccommodation.accommodationType
-              ? ` (${formatAccommodationType(linkedAccommodation.accommodationType)})`
-              : ''}.
-          </p>
-          <p className="mt-1 text-sky-800">
-            L&apos;IA n&apos;extrait pas de nouvel hébergement pour ce brouillon.
-          </p>
-        </div>
-      )}
+        <div className="space-y-4 border-t border-slate-100 pt-5">
+          {effectiveStep === 'hebergement' && !linkedAccommodation && (
+            <AccommodationImportReviewFields
+              value={accommodationImport}
+              onChange={setAccommodationImport}
+              fieldError={fieldErrors.accommodations_json}
+            />
+          )}
 
-      {showStayStep && (
-      <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
-        {!linkedAccommodation && (
-          <button
-            type="button"
-            onClick={() => setReviewStep('hebergement')}
-            className="text-sm font-semibold text-orange-700 underline-offset-2 hover:underline"
-          >
-            ← Retour à la relecture de l&apos;hébergement
-          </button>
-        )}
+          {effectiveStep === 'hebergement' && linkedAccommodation && (
+            <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-4 text-sm text-sky-900">
+              <p className="font-semibold">Hébergement déjà sélectionné avant import</p>
+              <p className="mt-1">
+                Le séjour sera rattaché à <span className="font-semibold">{linkedAccommodation.name}</span>
+                {linkedAccommodation.accommodationType
+                  ? ` (${formatAccommodationType(linkedAccommodation.accommodationType)})`
+                  : ''}.
+              </p>
+              <p className="mt-1 text-sky-800">
+                L&apos;IA n&apos;extrait pas de nouvel hébergement pour ce brouillon.
+              </p>
+            </div>
+          )}
 
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-          {linkedAccommodation ? 'Relecture du séjour' : 'Étape 2 sur 2 — séjour'}
-        </p>
-
+          {effectiveStep === 'sejour' && (
+            <>
         <label className="block text-sm font-medium text-slate-700">
           Titre
           <input
@@ -795,22 +898,6 @@ export default function StayDraftReviewForm({
             />
           </label>
         </div>
-
-        <label className="block text-sm font-medium text-slate-700">
-          Acheminement aller / retour
-          <select
-            value={transportMode}
-            onChange={(event) => setTransportMode(event.target.value)}
-            className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2"
-          >
-            <option value="">À préciser</option>
-            {STAY_TRANSPORT_LOGISTICS_MODES.map((mode) => (
-              <option key={mode} value={mode}>
-                {mode}
-              </option>
-            ))}
-          </select>
-        </label>
 
         <label className="block text-sm font-medium text-slate-700">
           Résumé
@@ -911,6 +998,10 @@ export default function StayDraftReviewForm({
           </label>
         </div>
 
+            </>
+          )}
+
+        {effectiveStep === 'seo' && (
         <section className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -1280,38 +1371,18 @@ export default function StayDraftReviewForm({
             </div>
           )}
         </section>
+        )}
 
+        {effectiveStep === 'sessions' && (
         <DraftSessionsEditor
           value={sessionsList}
           onChange={setSessionsList}
           error={fieldErrors.sessions_json}
         />
-
-        {extrasSectionVisible ? (
-          <DraftExtraOptionsEditor
-            value={extraOptionsList}
-            onChange={(next) => {
-              setExtraOptionsList(next);
-              if (next.length === 0) setExtrasSectionVisible(false);
-            }}
-            error={fieldErrors.extra_options_json}
-          />
-        ) : (
-          <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50/50 px-4 py-3">
-            <button
-              type="button"
-              onClick={() => {
-                setExtrasSectionVisible(true);
-                setExtraOptionsList([emptyDraftExtraOptionRecord()]);
-              }}
-              className="text-sm font-medium text-emerald-700 underline decoration-emerald-600/40 underline-offset-2 hover:text-emerald-800"
-            >
-              + Ajouter des options supplémentaires
-            </button>
-            <p className="mt-1 text-xs text-slate-500">Repas, matériel, activités payantes…</p>
-          </div>
         )}
 
+        {effectiveStep === 'options' && (
+          <>
         {insuranceSectionVisible ? (
           <DraftInsuranceOptionsEditor
             value={insuranceOptionsList}
@@ -1337,25 +1408,96 @@ export default function StayDraftReviewForm({
           </div>
         )}
 
+        {extrasSectionVisible ? (
+          <DraftExtraOptionsEditor
+            value={extraOptionsList}
+            onChange={(next) => {
+              setExtraOptionsList(next);
+              if (next.length === 0) setExtrasSectionVisible(false);
+            }}
+            error={fieldErrors.extra_options_json}
+          />
+        ) : (
+          <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50/50 px-4 py-3">
+            <button
+              type="button"
+              onClick={() => {
+                setExtrasSectionVisible(true);
+                setExtraOptionsList([emptyDraftExtraOptionRecord()]);
+              }}
+              className="text-sm font-medium text-emerald-700 underline decoration-emerald-600/40 underline-offset-2 hover:text-emerald-800"
+            >
+              + Ajouter des options supplémentaires
+            </button>
+            <p className="mt-1 text-xs text-slate-500">Repas, matériel, activités payantes…</p>
+          </div>
+        )}
+          </>
+        )}
+
+        {effectiveStep === 'transports' && (
         <DraftTransportOptionsEditor
           value={transportOptionsList}
           onChange={setTransportOptionsList}
           error={fieldErrors.transport_options_json}
+          sessionsJson={sessionsList}
+          transportMode={transportMode}
+          onTransportModeChange={setTransportMode}
+          transportModeError={fieldErrors.transport_mode}
         />
+        )}
 
+        {effectiveStep === 'partenaires' && (
+          <section className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/50 p-4">
+            <div>
+              <h3 className="text-base font-semibold text-slate-900">Partenaires</h3>
+              <p className="mt-1 text-sm text-slate-600">
+                Réduction accordée aux collectivités partenaires pour ce séjour (facultatif).
+              </p>
+            </div>
+            <label className="block max-w-md">
+              <span className="mb-1.5 block text-sm font-medium text-slate-700">
+                Remise partenaire concédée (%)
+              </span>
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step="0.1"
+                inputMode="decimal"
+                value={partnerDiscountPercent}
+                onChange={(event) => setPartnerDiscountPercent(event.target.value)}
+                placeholder="Ex. 5"
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2"
+              />
+              {fieldErrors.partner_discount_percent ? (
+                <span className="mt-1 block text-xs text-rose-600">{fieldErrors.partner_discount_percent}</span>
+              ) : (
+                <span className="mt-2 block text-xs text-slate-500">
+                  Laissez vide si aucune réduction n&apos;est prévue pour les partenaires.
+                </span>
+              )}
+            </label>
+          </section>
+        )}
+
+        {effectiveStep === 'photos' && (
+          <>
         <div className="relative space-y-2 rounded-xl border border-slate-200 bg-slate-50/60 p-3 pr-14">
           <button
             type="button"
             onClick={addImageFromPrompt}
-            className="absolute right-2 top-2 z-10 inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-lg font-bold leading-none text-slate-800 shadow-sm hover:bg-slate-50"
+            className="absolute right-2 top-2 z-10 inline-flex h-10 w-10 items-center justify-center rounded-full border-2 border-orange-400/90 bg-white text-orange-600 shadow-sm transition hover:border-orange-500 hover:bg-orange-50 hover:text-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-400 focus:ring-offset-2"
             aria-label="Ajouter une image par URL"
           >
-            +
+            <Plus className="h-5 w-5" strokeWidth={2.25} aria-hidden />
           </button>
           <p className="text-sm font-medium text-slate-700">Images du séjour</p>
-          <p className="text-xs text-slate-500">Cliquez sur une vignette pour l&apos;agrandir. Ajoutez une URL avec le bouton +.</p>
+          <p className="text-xs text-slate-500">
+            Cliquez sur une vignette pour l&apos;agrandir. Ajoutez une URL avec le bouton d&apos;ajout.
+          </p>
           {imagePreviewUrls.length === 0 ? (
-            <p className="text-sm text-slate-500">Aucune image — utilisez le bouton + pour coller une URL https.</p>
+            <p className="text-sm text-slate-500">Aucune image — utilisez le bouton rond pour coller une URL https.</p>
           ) : (
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
               {imagePreviewUrls.map((url, index) => (
@@ -1385,10 +1527,10 @@ export default function StayDraftReviewForm({
           <button
             type="button"
             onClick={addVideoFromPrompt}
-            className="absolute right-2 top-2 z-10 inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-lg font-bold leading-none text-slate-800 shadow-sm hover:bg-slate-50"
+            className="absolute right-2 top-2 z-10 inline-flex h-10 w-10 items-center justify-center rounded-full border-2 border-orange-400/90 bg-white text-orange-600 shadow-sm transition hover:border-orange-500 hover:bg-orange-50 hover:text-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-400 focus:ring-offset-2"
             aria-label="Ajouter une vidéo par URL"
           >
-            +
+            <Plus className="h-5 w-5" strokeWidth={2.25} aria-hidden />
           </button>
           <p className="text-sm font-medium text-slate-700">Liens vidéo repérés</p>
           <p className="text-xs text-slate-500">
@@ -1396,7 +1538,7 @@ export default function StayDraftReviewForm({
             JavaScript).
           </p>
           {videoUrls.length === 0 ? (
-            <p className="text-sm text-slate-500">Aucune vidéo — ajoutez un lien avec le bouton +.</p>
+            <p className="text-sm text-slate-500">Aucune vidéo — ajoutez un lien avec le bouton d&apos;ajout.</p>
           ) : (
             <div className="space-y-2">
               {videoUrls.map((url, index) => (
@@ -1442,33 +1584,73 @@ export default function StayDraftReviewForm({
             </div>
           )}
         </div>
+          </>
+        )}
 
-        <div className="flex flex-wrap items-center gap-3 pt-2">
-          <button
-            type="button"
-            onClick={() => submit('save')}
-            disabled={isSubmitting}
-            className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-          >
-            Enregistrer le brouillon
-          </button>
-          <button
-            type="button"
-            onClick={() => submit('validate')}
-            disabled={isSubmitting}
-            className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-          >
-            Valider et publier le séjour
-          </button>
-          <Link
-            href={backHref}
-            className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700"
-          >
-            Annuler
-          </Link>
+        </div>
+
+        <div className="flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={goDraftPrev}
+              disabled={accommodationGateClosed || effectiveStepIndex === 0}
+              className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Précédent
+            </button>
+            {effectiveStep !== 'seo' && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (accommodationGateClosed) {
+                    setFieldErrors({});
+                    setGlobalError(null);
+                  }
+                  goDraftNext();
+                }}
+                className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
+              >
+                {accommodationGateClosed ? 'Continuer' : 'Suivant'}
+              </button>
+            )}
+          </div>
+
+          {effectiveStep === 'seo' ? (
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={() => submit('save')}
+                disabled={isSubmitting}
+                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+              >
+                Enregistrer le brouillon
+              </button>
+              <button
+                type="button"
+                onClick={() => submit('validate')}
+                disabled={isSubmitting}
+                className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+              >
+                Valider et publier le séjour
+              </button>
+              <Link
+                href={backHref}
+                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700"
+              >
+                Annuler
+              </Link>
+            </div>
+          ) : (
+            <Link
+              href={backHref}
+              className="self-start rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 sm:self-auto"
+            >
+              Annuler
+            </Link>
+          )}
         </div>
       </div>
-      )}
 
       {lightboxUrl ? (
         <button

@@ -34,7 +34,7 @@ type SessionPriceRow = Pick<
 >;
 type TransportOptionRow = Pick<
   Database['public']['Tables']['transport_options']['Row'],
-  'id' | 'departure_city' | 'return_city' | 'amount_cents' | 'stay_id'
+  'id' | 'departure_city' | 'return_city' | 'amount_cents' | 'stay_id' | 'session_id'
 >;
 type InsuranceOptionRow = Pick<
   Database['public']['Tables']['insurance_options']['Row'],
@@ -554,7 +554,7 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
     stayIds.length
       ? supabase
           .from('transport_options')
-          .select('id,departure_city,return_city,amount_cents,stay_id')
+          .select('id,departure_city,return_city,amount_cents,stay_id,session_id')
           .in('stay_id', stayIds)
       : Promise.resolve({ data: [] as TransportOptionRow[] | null })
   ]);
@@ -601,7 +601,8 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
       id: item.id,
       departureCity: item.departure_city,
       returnCity: item.return_city,
-      amount: item.amount_cents / 100
+      amount: item.amount_cents / 100,
+      sessionId: item.session_id
     });
     transportOptionsByStayId.set(item.stay_id, group);
   }
@@ -657,13 +658,17 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
             : sessionItem.session_prices;
           const effectiveStatus = getEffectiveSessionStatus(sessionItem);
 
+          const transportForSession = sharedTransportOptions.filter(
+            (opt) => opt.sessionId == null || opt.sessionId === sessionItem.id
+          );
+
           return {
             id: sessionItem.id,
             startDate: sessionItem.start_date,
             endDate: sessionItem.end_date,
             price: sessionPrice ? sessionPrice.amount_cents / 100 : null,
             status: effectiveStatus,
-            transportOptions: sharedTransportOptions
+            transportOptions: transportForSession
           };
         })
         .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());

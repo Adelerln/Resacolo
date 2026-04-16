@@ -117,6 +117,14 @@ function asSeoChecks(
     );
 }
 
+function readPartnerDiscountPercentFromRaw(rawPayload: Record<string, unknown>): number | null {
+  const v = rawPayload.partner_discount_percent;
+  if (v == null || v === '') return null;
+  const n = typeof v === 'number' ? v : Number(String(v).trim().replace(',', '.'));
+  if (!Number.isFinite(n) || n < 0 || n > 100) return null;
+  return n;
+}
+
 function readExistingAccommodationId(rawPayload: Record<string, unknown>): string | null {
   const importOptions = rawPayload.import_options;
   if (!isPlainRecord(importOptions)) return null;
@@ -161,7 +169,6 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
   }
 
   const rawPayload = asObject(draft.raw_payload);
-  const aiExtracted = rawPayload.ai_extracted ?? null;
   const aiModel = typeof rawPayload.ai_model === 'string' ? rawPayload.ai_model : null;
   const aiPromptVersion =
     typeof rawPayload.ai_prompt_version === 'string' ? rawPayload.ai_prompt_version : null;
@@ -222,7 +229,8 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
     seo_generated_at: draft.seo_generated_at,
     seo_generation_source: normalizeString(draft.seo_generation_source) || null,
     images: normalizeImportedImageUrlList(asStringArray(draft.images)),
-    video_urls: normalizeImportedVideoUrlList(fallbackVideoUrls)
+    video_urls: normalizeImportedVideoUrlList(fallbackVideoUrls),
+    partner_discount_percent: readPartnerDiscountPercentFromRaw(rawPayload)
   };
 
   const backHref = withOrganizerQuery('/organisme/sejours', selectedOrganizerId);
@@ -298,15 +306,6 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
           </p>
         </div>
       </div>
-
-      <details className="rounded-2xl border border-slate-200 bg-white p-4">
-        <summary className="cursor-pointer text-sm font-semibold text-slate-800">
-          Debug IA (`raw_payload.ai_extracted`)
-        </summary>
-        <pre className="mt-3 max-h-[420px] overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-100">
-          {JSON.stringify(aiExtracted, null, 2)}
-        </pre>
-      </details>
 
       <StayDraftReviewForm
         draftId={draft.id}

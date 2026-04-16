@@ -69,7 +69,8 @@ const bodySchema = z.object({
     )
     .optional()
     .default([]),
-  video_urls: z.array(z.string()).optional().default([])
+  video_urls: z.array(z.string()).optional().default([]),
+  partner_discount_percent: z.number().min(0).max(100).nullable().optional().default(null)
 });
 
 type StayDraftRow = Database['public']['Tables']['stay_drafts']['Row'];
@@ -238,7 +239,11 @@ async function parseBody(req: Request): Promise<{ payload: StayDraftReviewPayloa
     seo_slug_candidate: sanitizeSeoText(data.seo_slug_candidate),
     seo_score: data.seo_score,
     seo_checks: data.seo_checks,
-    video_urls: data.video_urls.map((url) => normalizeString(url)).filter(Boolean)
+    video_urls: data.video_urls.map((url) => normalizeString(url)).filter(Boolean),
+    partner_discount_percent:
+      data.partner_discount_percent != null && Number.isFinite(data.partner_discount_percent)
+        ? data.partner_discount_percent
+        : null
   };
 
   if (!payload.title) {
@@ -324,7 +329,8 @@ async function handleUpdate(req: Request, params: { id: string }, mode: 'save' |
     raw_payload: {
       ...currentRawPayload,
       video_urls:
-        parsedBody.payload.video_urls.length > 0 ? parsedBody.payload.video_urls : null
+        parsedBody.payload.video_urls.length > 0 ? parsedBody.payload.video_urls : null,
+      partner_discount_percent: parsedBody.payload.partner_discount_percent
     },
     updated_at: now
   };

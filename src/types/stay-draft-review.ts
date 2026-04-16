@@ -35,6 +35,8 @@ export type StayDraftReviewPayload = {
   seo_generated_at?: string | null;
   seo_generation_source?: string | null;
   video_urls: string[];
+  /** Pourcentage de remise partenaire (0–100), ou null si non renseigné. */
+  partner_discount_percent: number | null;
 };
 
 export type StayDraftReviewFieldErrorKey =
@@ -68,6 +70,7 @@ export type StayDraftReviewFieldErrorKey =
   | 'seo_score'
   | 'seo_checks'
   | 'video_urls'
+  | 'partner_discount_percent'
   | 'form';
 
 export type StayDraftReviewFieldErrors = Partial<Record<StayDraftReviewFieldErrorKey, string>>;

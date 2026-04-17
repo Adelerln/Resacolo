@@ -36,7 +36,7 @@ export default function ImportStayPrefillForm({
 
   return (
     <form action={actionPath} method="post" className="mt-4 space-y-4" onSubmit={handleSubmit}>
-      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_320px] sm:items-end">
+      <div className="grid gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] sm:items-end">
         <label className="block text-sm font-medium text-slate-700">
           URL de la fiche séjour
           <input
@@ -48,12 +48,7 @@ export default function ImportStayPrefillForm({
             className={`mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 ${pending ? 'cursor-wait bg-slate-50' : ''}`}
             required
             readOnly={pending}
-            aria-describedby="import-stay-url-hint"
           />
-          <span id="import-stay-url-hint" className="mt-1 block text-xs font-normal text-slate-500">
-            Collez l’URL complète (https…). La validation se fait côté serveur ; l’import peut prendre une à
-            plusieurs minutes (images et tarifs dynamiques).
-          </span>
         </label>
         <label className="block text-sm font-medium text-slate-700">
           Hébergement à rattacher

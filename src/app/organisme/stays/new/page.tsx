@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import ErrorToast from '@/components/common/ErrorToast';
 import ImportStayPrefillForm from '@/components/organisme/ImportStayPrefillForm';
 import { formatAccommodationType } from '@/lib/accommodation-types';
@@ -58,6 +59,48 @@ export default async function NewStayChoicePage({ searchParams }: PageProps) {
     };
   });
 
+  async function startManualDraft(formData: FormData) {
+    'use server';
+    const requestedOrganizerId = String(formData.get('organizerId') ?? '').trim();
+    const session = await requireRole('ORGANISATEUR');
+    const supabase = getServerSupabaseClient();
+    const { selectedOrganizerId: actionOrganizerId } = await resolveOrganizerSelection(
+      requestedOrganizerId || undefined,
+      session.tenantId ?? null
+    );
+
+    if (!actionOrganizerId) {
+      redirect('/organisme/sejours?error=Aucun%20organisateur%20disponible.');
+    }
+
+    const manualSourceUrl = `https://resacolo.com/creation-manuelle/${crypto.randomUUID()}`;
+    const { data: insertedDraft, error: insertError } = await supabase
+      .from('stay_drafts')
+      .insert({
+        organizer_id: actionOrganizerId,
+        source_url: manualSourceUrl,
+        status: 'pending',
+        raw_payload: {
+          manual_entry: true,
+          created_via: 'manual-flow',
+          created_at: new Date().toISOString()
+        }
+      })
+      .select('id')
+      .single();
+
+    if (insertError || !insertedDraft) {
+      redirect(
+        withOrganizerQuery(
+          `/organisme/sejours/new?error=${encodeURIComponent(insertError?.message ?? 'Impossible de créer le brouillon manuel.')}`,
+          actionOrganizerId
+        )
+      );
+    }
+
+    redirect(withOrganizerQuery(`/organisme/sejours/drafts/${insertedDraft.id}`, actionOrganizerId));
+  }
+
   return (
     <div className="space-y-6">
       {errorParam && <ErrorToast message={decodeURIComponent(errorParam)} />}
@@ -66,14 +109,19 @@ export default async function NewStayChoicePage({ searchParams }: PageProps) {
         <h1 className="text-2xl font-semibold text-slate-900">Nouveau séjour</h1>
       </div>
 
-      <Link
-        href={withOrganizerQuery('/organisme/sejours/new/manual', organizerId)}
-        className="inline-flex min-h-[44px] items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white"
-      >
-        Commencer la saisie manuelle
-      </Link>
-
       <section id="assistant-ia" className="space-y-4">
+        <div className="px-4 sm:px-6">
+          <form action={startManualDraft}>
+            <input type="hidden" name="organizerId" value={organizerId ?? ''} />
+            <button
+              type="submit"
+              className="inline-flex min-h-[44px] items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white"
+            >
+              Commencer la saisie manuelle
+            </button>
+          </form>
+        </div>
+
         <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
           <h2 className="text-lg font-semibold text-slate-900">1. Pré-remplissage depuis une URL</h2>
           <p className="mt-1 text-sm text-slate-600">

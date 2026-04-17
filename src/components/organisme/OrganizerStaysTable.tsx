@@ -127,10 +127,6 @@ export default function OrganizerStaysTable({
         <div className="overflow-hidden rounded-2xl border border-amber-200 bg-amber-50/40">
           <div className="border-b border-amber-200/80 bg-amber-100/50 px-4 py-3">
             <h2 className="text-sm font-semibold text-amber-950">Brouillons d&apos;import (IA)</h2>
-            <p className="mt-1 text-xs text-amber-900/90">
-              Ces fiches ne sont pas encore publiées sur le catalogue. Ouvrez la relecture pour finaliser ou
-              valider.
-            </p>
           </div>
           <ul className="divide-y divide-amber-200/60">
             {importDrafts.map((draft) => (

@@ -41,7 +41,7 @@ export default async function OrganizerStaysPage({ searchParams }: PageProps) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const session = await requireRole('ORGANISATEUR');
   const supabase = getServerSupabaseClient();
-  const { selectedOrganizer, selectedOrganizerId } = await resolveOrganizerSelection(
+  const { selectedOrganizerId } = await resolveOrganizerSelection(
     resolvedSearchParams?.organizerId,
     session.tenantId ?? null
   );
@@ -482,11 +482,6 @@ export default async function OrganizerStaysPage({ searchParams }: PageProps) {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Séjours</h1>
-          <p className="text-sm text-slate-600">
-            {selectedOrganizer
-              ? `Liste des séjours déclarés pour ${selectedOrganizer.name}.`
-              : 'Liste des séjours déclarés.'}
-          </p>
         </div>
         <Link
           href={withOrganizerQuery('/organisme/sejours/new', organizerId)}

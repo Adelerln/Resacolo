@@ -1,7 +1,8 @@
 'use client';
 
-import { FormEvent, useEffect, useState } from 'react';
-import { User, Headset, Home, Flag, Key, ChevronDown } from 'lucide-react';
+import Script from 'next/script';
+import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
+import { User, Headset, ChevronDown } from 'lucide-react';
 
 const BLUE = '#52B0EA';
 const ORANGE = '#FA8500';
@@ -11,23 +12,102 @@ type OrganizerRecipient = {
   name: string;
 };
 
-type CaptchaChoice = 'home' | 'flag' | 'key' | null;
+const TURNSTILE_TEST_SITE_KEY = '1x00000000000000000000AA';
+
+type TurnstileRenderOptions = {
+  sitekey: string;
+  theme?: 'light' | 'dark' | 'auto';
+  callback?: (token: string) => void;
+  'expired-callback'?: () => void;
+  'error-callback'?: (errorCode?: string) => void;
+};
+
+declare global {
+  interface Window {
+    turnstile?: {
+      render: (container: HTMLElement, options: TurnstileRenderOptions) => string;
+      reset: (widgetId?: string) => void;
+      remove?: (widgetId: string) => void;
+    };
+  }
+}
+
+function parseApiErrorMessage(payload: unknown): string | null {
+  if (payload && typeof payload === 'object' && 'error' in payload && typeof payload.error === 'string') {
+    return payload.error;
+  }
+  return null;
+}
 
 export default function ContactPage() {
+  const configuredSiteKey = (process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? '').trim();
+  const isNonProduction = process.env.NODE_ENV !== 'production';
+
   const [recipient, setRecipient] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [message, setMessage] = useState('');
-  const [captcha, setCaptcha] = useState<CaptchaChoice>(null);
+  const [siteKey, setSiteKey] = useState('');
+  const widgetContainerRef = useRef<HTMLDivElement | null>(null);
+  const widgetIdRef = useRef<string | null>(null);
+  const [turnstileToken, setTurnstileToken] = useState('');
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [organizers, setOrganizers] = useState<OrganizerRecipient[]>([]);
   const [isLoadingOrganizers, setIsLoadingOrganizers] = useState(true);
   const [organizersLoadError, setOrganizersLoadError] = useState<string | null>(null);
 
-  const captchaValid = captcha === 'flag';
+  useEffect(() => {
+    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    if (isNonProduction && isLocalhost) {
+      setSiteKey(TURNSTILE_TEST_SITE_KEY);
+      return;
+    }
+    setSiteKey(configuredSiteKey);
+  }, [configuredSiteKey, isNonProduction]);
+
+  const renderTurnstile = useCallback(() => {
+    if (!siteKey || !widgetContainerRef.current || !window.turnstile || widgetIdRef.current) {
+      return;
+    }
+
+    widgetIdRef.current = window.turnstile.render(widgetContainerRef.current, {
+      sitekey: siteKey,
+      theme: 'light',
+      callback: (token: string) => {
+        setTurnstileToken(token);
+        setErrorMessage(null);
+      },
+      'expired-callback': () => {
+        setTurnstileToken('');
+      },
+      'error-callback': (errorCode?: string) => {
+        setTurnstileToken('');
+        setErrorMessage(
+          `Captcha indisponible (${errorCode ?? 'erreur inconnue'}). Vérifiez votre réseau ou un bloqueur de contenu.`
+        );
+      }
+    });
+  }, [siteKey]);
+
+  useEffect(() => {
+    renderTurnstile();
+    return () => {
+      if (widgetIdRef.current && window.turnstile?.remove) {
+        window.turnstile.remove(widgetIdRef.current);
+      }
+      widgetIdRef.current = null;
+    };
+  }, [renderTurnstile]);
+
+  const resetTurnstile = useCallback(() => {
+    setTurnstileToken('');
+    if (widgetIdRef.current && window.turnstile?.reset) {
+      window.turnstile.reset(widgetIdRef.current);
+    }
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -78,15 +158,45 @@ export default function ContactPage() {
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!captchaValid) {
-      setErrorMessage('Veuillez sélectionner Le Drapeau pour prouver que vous n\'êtes pas un robot.');
+
+    if (!siteKey) {
+      setStatus('error');
+      setErrorMessage('Captcha indisponible : la clé publique Turnstile est manquante.');
       return;
     }
+
+    if (!turnstileToken) {
+      setStatus('error');
+      setErrorMessage('Merci de valider le captcha avant l’envoi.');
+      return;
+    }
+
     setStatus('loading');
     setErrorMessage(null);
+
     try {
-      // Placeholder: replace with your API or Supabase
-      await new Promise((r) => setTimeout(r, 800));
+      const response = await fetch('/api/contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          recipient,
+          firstName,
+          lastName,
+          email,
+          phone,
+          message,
+          turnstileToken
+        })
+      });
+
+      const payload: unknown = await response.json().catch(() => null);
+      if (!response.ok) {
+        setStatus('error');
+        setErrorMessage(parseApiErrorMessage(payload) ?? "L'envoi a échoué. Veuillez réessayer.");
+        resetTurnstile();
+        return;
+      }
+
       setStatus('success');
       setRecipient('');
       setFirstName('');
@@ -94,10 +204,11 @@ export default function ContactPage() {
       setEmail('');
       setPhone('');
       setMessage('');
-      setCaptcha(null);
+      resetTurnstile();
     } catch {
       setStatus('error');
       setErrorMessage('L\'envoi a échoué. Veuillez réessayer.');
+      resetTurnstile();
     }
   };
 
@@ -106,6 +217,17 @@ export default function ContactPage() {
 
   return (
     <div className="min-h-screen bg-white">
+      <Script
+        src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"
+        strategy="afterInteractive"
+        onLoad={renderTurnstile}
+        onError={() => {
+          setErrorMessage(
+            'Impossible de charger Cloudflare Turnstile. Vérifiez votre connexion réseau ou votre bloqueur de contenu.'
+          );
+        }}
+      />
+
       {/* Section 1: Header */}
       <section
         className="border-b border-slate-100 px-4 py-12 sm:px-6 md:py-20"
@@ -246,35 +368,22 @@ export default function ContactPage() {
                 />
               </div>
 
-              {/* Visual Captcha */}
+              {/* Captcha */}
               <div>
-                <p className="mb-3 text-sm text-slate-700">
-                  Veuillez prouver que vous n&apos;êtes pas un robot en sélectionnant{' '}
-                  <span className="font-semibold" style={{ color: BLUE }}>
-                    Le Drapeau
-                  </span>
-                  .
-                </p>
-                <div className="flex flex-wrap gap-4">
-                  {[
-                    { id: 'home' as const, Icon: Home, label: 'Maison' },
-                    { id: 'flag' as const, Icon: Flag, label: 'Drapeau' },
-                    { id: 'key' as const, Icon: Key, label: 'Clé' }
-                  ].map(({ id, Icon, label }) => (
-                    <button
-                      key={id}
-                      type="button"
-                      onClick={() => setCaptcha(id)}
-                      className={`flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-lg border-2 transition sm:h-16 sm:w-16 ${
-                        captcha === id
-                          ? 'border-brand-600 bg-brand-50'
-                          : 'border-slate-200 bg-white hover:border-slate-300'
-                      }`}
-                      aria-label={label}
-                    >
-                      <Icon className="h-6 w-6 sm:h-7 sm:w-7 text-slate-500" />
-                    </button>
-                  ))}
+                <div className="max-w-md rounded-xl border border-slate-200 bg-white p-4">
+                  {siteKey ? (
+                    <>
+                      <p className="mb-3 text-sm text-slate-600">
+                        Veuillez valider le captcha avant l&apos;envoi du formulaire.
+                      </p>
+                      <div ref={widgetContainerRef} />
+                    </>
+                  ) : (
+                    <p className="text-sm text-red-600">
+                      Captcha indisponible : ajoutez `NEXT_PUBLIC_TURNSTILE_SITE_KEY` dans vos variables
+                      d&apos;environnement.
+                    </p>
+                  )}
                 </div>
               </div>
 

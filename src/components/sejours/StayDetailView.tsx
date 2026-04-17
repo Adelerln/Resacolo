@@ -9,7 +9,6 @@ import {
   MapPin,
   Users,
   Clock,
-  MapPin as PinIcon,
   User,
   Waves,
   Mountain,
@@ -152,6 +151,24 @@ function getRawField(raw: Record<string, unknown> | undefined, keys: string[]) {
   return '';
 }
 
+function capitalizeFirstLetter(value: string) {
+  if (!value) return value;
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function capitalizeHeadingSegments(value: string) {
+  if (!value) return value;
+  return value
+    .split(/(\s*[-|/]\s*)/g)
+    .map((segment, index) => {
+      if (index % 2 === 1) return segment;
+      return segment.replace(/^(\s*)(\S)/, (_, prefix: string, firstChar: string) => {
+        return `${prefix}${firstChar.toUpperCase()}`;
+      });
+    })
+    .join('');
+}
+
 const DEFAULT_GALLERY = [
   getMockImageUrl(mockImages.sejours.gallery[0], 600, 80),
   getMockImageUrl(mockImages.sejours.gallery[1], 600, 80),
@@ -159,20 +176,7 @@ const DEFAULT_GALLERY = [
 ];
 const VISIT_TRACKING_DEDUP_MS = 60_000;
 
-type RelatedStayLink = {
-  stayId: string;
-  href: string;
-  anchorText: string;
-  title: string;
-};
-
-export function StayDetailView({
-  stay,
-  relatedStayLinks = []
-}: {
-  stay: Stay;
-  relatedStayLinks?: RelatedStayLink[];
-}) {
+export function StayDetailView({ stay }: { stay: Stay }) {
   const router = useRouter();
   const { addItem } = useCart();
   const [activeTab, setActiveTab] = useState<TabId>('sejour');
@@ -469,9 +473,25 @@ export function StayDetailView({
     );
     router.push('/panier');
   };
-  const galleryImages = stay.coverImage
-    ? [stay.coverImage, DEFAULT_GALLERY[1], DEFAULT_GALLERY[2]]
-    : DEFAULT_GALLERY;
+  const galleryImages = useMemo(() => {
+    const fromStay = (stay.galleryImages ?? []).filter((url) => typeof url === 'string' && url.trim().length > 0);
+    const prioritized = stay.coverImage ? [stay.coverImage, ...fromStay] : fromStay;
+    const unique = Array.from(new Set(prioritized));
+    if (unique.length >= 3) return unique.slice(0, 3);
+    const fallback = DEFAULT_GALLERY.filter((url) => !unique.includes(url));
+    return [...unique, ...fallback].slice(0, 3);
+  }, [stay.coverImage, stay.galleryImages]);
+  const videoUrls = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          (stay.videoUrls ?? [])
+            .map((url) => (typeof url === 'string' ? url.trim() : ''))
+            .filter((url) => url.length > 0)
+        )
+      ),
+    [stay.videoUrls]
+  );
   const sejourText = getRawField(stay.rawContext, ['sejour', 'presentation', 'description']) || stay.summary;
   const programmeText =
     getRawField(stay.rawContext, ['programme', 'program', 'programme_details']) || stay.description;
@@ -503,6 +523,7 @@ export function StayDetailView({
     seo: stay.seo
   };
   const h1Title = buildStayH1Title(seoInput);
+  const displayH1Title = capitalizeHeadingSegments(h1Title);
   const introText = buildStayIntroText(seoInput);
   const seoPrimaryKeyword = stay.seo?.primaryKeyword?.trim();
   const seoInternalAnchors = useMemo(
@@ -526,7 +547,7 @@ export function StayDetailView({
         <div className="absolute inset-0 bg-slate-900/40" />
         <div className="absolute inset-0 flex items-center justify-center">
           <h1 className="px-4 text-center font-display text-3xl font-normal tracking-tight text-white sm:text-4xl md:text-5xl">
-            {h1Title}
+            {displayH1Title}
           </h1>
         </div>
       </section>
@@ -742,25 +763,43 @@ export function StayDetailView({
               )}
             </div>
 
-            {/* Video placeholder */}
-            <div className="mt-12 flex aspect-video items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
-              <span className="text-sm font-medium">Ici, votre vidéo.</span>
-            </div>
-
-            {relatedStayLinks.length > 0 ? (
-              <section className="mt-10 rounded-2xl border border-slate-200 bg-white p-5">
-                <h2 className="font-display text-lg font-semibold text-slate-900">À découvrir aussi</h2>
+            {videoUrls.length > 0 ? (
+              <section className="mt-12 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                <h2 className="font-display text-lg font-semibold text-slate-900">Vidéo du séjour</h2>
                 <ul className="mt-3 space-y-2 text-sm text-slate-700">
-                  {relatedStayLinks.map((link) => (
-                    <li key={link.stayId}>
-                      <Link href={link.href} className="hover:text-brand-700 hover:underline">
-                        {link.anchorText}
-                      </Link>
+                  {videoUrls.map((url, index) => (
+                    <li key={`${url}-${index}`}>
+                      <a
+                        href={url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-brand-700 underline-offset-2 hover:underline"
+                      >
+                        Voir la vidéo {index + 1}
+                      </a>
                     </li>
                   ))}
                 </ul>
               </section>
             ) : null}
+
+            <section className="mt-10 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+              <h2 className="font-display text-lg font-semibold text-slate-900">Localisation du centre</h2>
+              <p className="mt-2 text-sm text-slate-600">
+                {stay.centerLocations?.length
+                  ? `Zones approximatives affichées sur ${stay.centerLocations.length > 1 ? 'les centres' : 'le centre'} du séjour.`
+                  : stay.location
+                    ? `Aucune coordonnée centre n’est disponible: affichage par ville (${stay.location}).`
+                    : 'Aucune donnée de localisation disponible pour ce séjour.'}
+              </p>
+              <div className="mt-4">
+                <StayLocationMap
+                  location={stay.location}
+                  centerLocations={stay.centerLocations}
+                  className="h-[380px] overflow-hidden rounded-xl border border-slate-200"
+                />
+              </div>
+            </section>
 
             {seoInternalAnchors.length > 0 ? (
               <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-5">
@@ -772,7 +811,7 @@ export function StayDetailView({
                         href={`/sejours?q=${encodeURIComponent(anchor)}`}
                         className="hover:text-brand-700 hover:underline"
                       >
-                        {anchor}
+                        {capitalizeFirstLetter(anchor)}
                       </Link>
                     </li>
                   ))}
@@ -981,18 +1020,6 @@ export function StayDetailView({
                 )}
               </form>
 
-            </div>
-
-            {/* Lieux de séjour */}
-            <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-              <h3 className="font-display flex items-center gap-2 text-base font-semibold text-slate-900">
-                <PinIcon className="h-4 w-4 text-accent-500" />
-                Ville du séjour
-              </h3>
-              <p className="mt-3 text-sm text-slate-600">{stay.location || 'Ville à préciser'}</p>
-              <div className="mt-4">
-                <StayLocationMap location={stay.location} />
-              </div>
             </div>
 
             {/* Organisateur */}

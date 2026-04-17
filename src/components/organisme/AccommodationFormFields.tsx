@@ -23,6 +23,8 @@ type AccommodationFormValues = {
   location_department_code?: string | null;
   location_country?: string | null;
   itinerant_zone?: string | null;
+  center_latitude?: number | string | null;
+  center_longitude?: number | string | null;
 };
 
 type AccommodationFormFieldsProps = {
@@ -142,6 +144,35 @@ export default function AccommodationFormFields({
               />
             </label>
           ) : null}
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-slate-100 p-4">
+        <h3 className="text-sm font-semibold text-slate-900">Coordonnées du centre (interne)</h3>
+        <p className="mt-2 text-sm text-slate-500">
+          Coordonnées exactes stockées en interne ; affichage public approximatif sur la carte.
+        </p>
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <label className="block text-sm font-medium text-slate-700">
+            Latitude
+            <input
+              name="center_latitude"
+              defaultValue={values.center_latitude ?? ''}
+              placeholder="Ex. 46.2276"
+              inputMode="decimal"
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+            />
+          </label>
+          <label className="block text-sm font-medium text-slate-700">
+            Longitude
+            <input
+              name="center_longitude"
+              defaultValue={values.center_longitude ?? ''}
+              placeholder="Ex. 2.2137"
+              inputMode="decimal"
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+            />
+          </label>
         </div>
       </div>
 

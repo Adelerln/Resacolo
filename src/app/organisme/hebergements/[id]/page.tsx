@@ -8,6 +8,7 @@ import {
   buildAccessibilityInfoFromForm,
   embedAccommodationLocationMeta,
   extractAccommodationLocationMeta,
+  validateAndParseAccommodationCenterCoordinates,
   validateAccommodationLocation
 } from '@/lib/accommodation-location';
 import { deleteAccommodationForOrganizer } from '@/lib/accommodations';
@@ -73,7 +74,7 @@ export default async function AccommodationDetailPage({ params: paramsPromise, s
   const { data: accommodation } = await supabase
     .from('accommodations')
     .select(
-      'id,name,accommodation_type,description,bed_info,bathroom_info,catering_info,accessibility_info,status,updated_at,validated_at,validated_by_user_id,organizer_id,ai_extracted_data'
+      'id,name,accommodation_type,description,bed_info,bathroom_info,catering_info,accessibility_info,status,updated_at,validated_at,validated_by_user_id,organizer_id,ai_extracted_data,center_latitude,center_longitude'
     )
     .eq('id', params.id)
     .maybeSingle();
@@ -89,7 +90,9 @@ export default async function AccommodationDetailPage({ params: paramsPromise, s
     location_city: currentAccommodationLocation.locationCity,
     location_department_code: currentAccommodationLocation.locationDepartmentCode,
     location_country: currentAccommodationLocation.locationCountry,
-    itinerant_zone: currentAccommodationLocation.itinerantZone
+    itinerant_zone: currentAccommodationLocation.itinerantZone,
+    center_latitude: accommodation.center_latitude,
+    center_longitude: accommodation.center_longitude
   };
 
   const showImportRelectureBanner =
@@ -148,6 +151,19 @@ export default async function AccommodationDetailPage({ params: paramsPromise, s
       );
     }
 
+    const centerCoordinatesResult = validateAndParseAccommodationCenterCoordinates({
+      centerLatitude: String(formData.get('center_latitude') ?? '').trim(),
+      centerLongitude: String(formData.get('center_longitude') ?? '').trim()
+    });
+    if (centerCoordinatesResult.error) {
+      redirect(
+        withOrganizerQuery(
+          `/organisme/hebergements/${params.id}?error=${encodeURIComponent(centerCoordinatesResult.error)}`,
+          selectedOrganizerId
+        )
+      );
+    }
+
     const { error } = await supabase
       .from('accommodations')
       .update({
@@ -163,6 +179,8 @@ export default async function AccommodationDetailPage({ params: paramsPromise, s
         validated_at: nextStatus === 'VALIDATED' ? now : rowBeforeSave.validated_at,
         validated_by_user_id:
           nextStatus === 'VALIDATED' ? validatedByUserId : rowBeforeSave.validated_by_user_id,
+        center_latitude: centerCoordinatesResult.value.centerLatitude,
+        center_longitude: centerCoordinatesResult.value.centerLongitude,
         updated_at: now
       })
       .eq('id', params.id)

@@ -92,6 +92,13 @@ export interface StaySeo {
   generationSource?: string;
 }
 
+export interface StayCenterLocation {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+}
+
 export interface Stay {
   id: string;
   title: string;
@@ -119,8 +126,11 @@ export interface Stay {
   programText?: string;
   transportText?: string;
   coverImage?: string;
+  galleryImages?: string[];
+  videoUrls?: string[];
   filters: StayFilters;
   bookingOptions?: StayBookingOptions;
+  centerLocations?: StayCenterLocation[];
   seo?: StaySeo;
   sourceUrl?: string;
   rawContext?: Record<string, unknown>;

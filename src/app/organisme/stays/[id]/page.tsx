@@ -1082,6 +1082,121 @@ export default async function OrganizerStayDetailPage({ params: paramsPromise, s
         </span>
       </div>
 
+      <div className="grid gap-6 lg:grid-cols-2">
+        <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6 lg:col-span-2">
+          <h2 className="text-lg font-semibold text-slate-900">Sessions</h2>
+          <ul className="space-y-2 text-sm text-slate-600">
+            {sessions.map((sessionItem) => {
+              const reservedCount = reservedSessionCounts.get(sessionItem.id) ?? 0;
+              const remainingPlaces = Math.max(
+                0,
+                sessionItem.capacity_total - reservedCount
+              );
+              const displayStatus =
+                sessionItem.status === 'COMPLETED' || sessionItem.status === 'ARCHIVED'
+                  ? sessionItem.status
+                  : remainingPlaces === 0
+                    ? 'FULL'
+                    : 'OPEN';
+
+              return (
+                <li
+                  key={sessionItem.id}
+                  className="flex flex-col gap-4 rounded-lg border border-slate-100 px-3 py-3 md:flex-row md:items-center md:justify-between"
+                >
+                  <div>
+                    <div>
+                      {new Date(sessionItem.start_date).toLocaleDateString('fr-FR')} -{' '}
+                      {new Date(sessionItem.end_date).toLocaleDateString('fr-FR')}
+                    </div>
+                    <div className="text-xs text-slate-500">
+                      {formatReservedPlacesLabel(
+                        reservedCount,
+                        sessionItem.capacity_total
+                      )}{' '}
+                      ({sessionStatusLabel(displayStatus)})
+                    </div>
+                    {getSessionPriceAmountCents(sessionItem) !== null && (
+                      <div className="text-xs text-slate-500">
+                        Prix: {(getSessionPriceAmountCents(sessionItem)! / 100).toLocaleString('fr-FR', {
+                          style: 'currency',
+                          currency: 'EUR'
+                        })}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex flex-col gap-3 md:items-end">
+                    <div className="text-sm font-medium text-slate-700">
+                      {formatRemainingPlacesLabel(remainingPlaces)}
+                    </div>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                      <RemainingPlacesEditor
+                        action={updateSessionRemainingPlaces}
+                        initialValue={remainingPlaces}
+                        hiddenFields={{ session_id: sessionItem.id }}
+                      />
+                      <form action={deleteSession}>
+                        <input type="hidden" name="session_id" value={sessionItem.id} />
+                        <button className="rounded-lg border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-700 transition hover:border-rose-300 hover:bg-rose-50 hover:text-rose-800">
+                          Supprimer
+                        </button>
+                      </form>
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
+            {sessions.length === 0 && <li>Aucune session.</li>}
+          </ul>
+          <form action={addSession} className="space-y-3 border-t border-slate-100 pt-4">
+            <div className="grid gap-3 md:grid-cols-4">
+              <label className="text-xs font-medium text-slate-600">
+                Début
+                <input
+                  name="startDate"
+                  type="date"
+                  className="mt-1 w-full rounded border border-slate-200 px-2 py-1"
+                  required
+                />
+              </label>
+              <label className="text-xs font-medium text-slate-600">
+                Fin
+                <input
+                  name="endDate"
+                  type="date"
+                  className="mt-1 w-full rounded border border-slate-200 px-2 py-1"
+                  required
+                />
+              </label>
+              <label className="text-xs font-medium text-slate-600">
+                Capacité
+                <input
+                  name="capacityTotal"
+                  type="number"
+                  min="0"
+                  className="mt-1 w-full rounded border border-slate-200 px-2 py-1"
+                  required
+                />
+              </label>
+              <label className="text-xs font-medium text-slate-600">
+                Prix en euro
+                <input
+                  name="amount_euros"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className="mt-1 w-full rounded border border-slate-200 px-2 py-1"
+                  placeholder="0,00"
+                />
+              </label>
+            </div>
+            <button className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white">
+              Ajouter session
+            </button>
+          </form>
+        </div>
+      </div>
+
       <form
         id="stay-form"
         action={updateStay}
@@ -1537,121 +1652,6 @@ export default async function OrganizerStayDetailPage({ params: paramsPromise, s
             </div>
           </form>
         </section>
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-2">
-        <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6 lg:col-span-2">
-          <h2 className="text-lg font-semibold text-slate-900">Sessions</h2>
-          <ul className="space-y-2 text-sm text-slate-600">
-            {sessions.map((sessionItem) => {
-              const reservedCount = reservedSessionCounts.get(sessionItem.id) ?? 0;
-              const remainingPlaces = Math.max(
-                0,
-                sessionItem.capacity_total - reservedCount
-              );
-              const displayStatus =
-                sessionItem.status === 'COMPLETED' || sessionItem.status === 'ARCHIVED'
-                  ? sessionItem.status
-                  : remainingPlaces === 0
-                    ? 'FULL'
-                    : 'OPEN';
-
-              return (
-                <li
-                  key={sessionItem.id}
-                  className="flex flex-col gap-4 rounded-lg border border-slate-100 px-3 py-3 md:flex-row md:items-center md:justify-between"
-                >
-                  <div>
-                    <div>
-                      {new Date(sessionItem.start_date).toLocaleDateString('fr-FR')} -{' '}
-                      {new Date(sessionItem.end_date).toLocaleDateString('fr-FR')}
-                    </div>
-                    <div className="text-xs text-slate-500">
-                      {formatReservedPlacesLabel(
-                        reservedCount,
-                        sessionItem.capacity_total
-                      )}{' '}
-                      ({sessionStatusLabel(displayStatus)})
-                    </div>
-                    {getSessionPriceAmountCents(sessionItem) !== null && (
-                      <div className="text-xs text-slate-500">
-                        Prix: {(getSessionPriceAmountCents(sessionItem)! / 100).toLocaleString('fr-FR', {
-                          style: 'currency',
-                          currency: 'EUR'
-                        })}
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex flex-col gap-3 md:items-end">
-                    <div className="text-sm font-medium text-slate-700">
-                      {formatRemainingPlacesLabel(remainingPlaces)}
-                    </div>
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                      <RemainingPlacesEditor
-                        action={updateSessionRemainingPlaces}
-                        initialValue={remainingPlaces}
-                        hiddenFields={{ session_id: sessionItem.id }}
-                      />
-                      <form action={deleteSession}>
-                        <input type="hidden" name="session_id" value={sessionItem.id} />
-                        <button className="rounded-lg border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-700 transition hover:border-rose-300 hover:bg-rose-50 hover:text-rose-800">
-                          Supprimer
-                        </button>
-                      </form>
-                    </div>
-                  </div>
-                </li>
-              );
-            })}
-            {sessions.length === 0 && <li>Aucune session.</li>}
-          </ul>
-          <form action={addSession} className="space-y-3 border-t border-slate-100 pt-4">
-            <div className="grid gap-3 md:grid-cols-4">
-              <label className="text-xs font-medium text-slate-600">
-                Début
-                <input
-                  name="startDate"
-                  type="date"
-                  className="mt-1 w-full rounded border border-slate-200 px-2 py-1"
-                  required
-                />
-              </label>
-              <label className="text-xs font-medium text-slate-600">
-                Fin
-                <input
-                  name="endDate"
-                  type="date"
-                  className="mt-1 w-full rounded border border-slate-200 px-2 py-1"
-                  required
-                />
-              </label>
-              <label className="text-xs font-medium text-slate-600">
-                Capacité
-                <input
-                  name="capacityTotal"
-                  type="number"
-                  min="0"
-                  className="mt-1 w-full rounded border border-slate-200 px-2 py-1"
-                  required
-                />
-              </label>
-              <label className="text-xs font-medium text-slate-600">
-                Prix en euro
-                <input
-                  name="amount_euros"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  className="mt-1 w-full rounded border border-slate-200 px-2 py-1"
-                  placeholder="0,00"
-                />
-              </label>
-            </div>
-            <button className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white">
-              Ajouter session
-            </button>
-          </form>
-        </div>
       </div>
 
       <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">

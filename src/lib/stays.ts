@@ -10,6 +10,7 @@ import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { slugify } from '@/lib/utils';
 import type {
   Stay,
+  StayCenterLocation,
   StayDuration,
   StaySearchParams,
   StaySessionOption,
@@ -60,6 +61,8 @@ type AccommodationRow = Pick<
   | 'bathroom_info'
   | 'catering_info'
   | 'accessibility_info'
+  | 'center_latitude'
+  | 'center_longitude'
 >;
 type StayAccommodationRow = Pick<
   Database['public']['Tables']['stay_accommodations']['Row'],
@@ -198,6 +201,16 @@ function buildSummary(title: string, description?: string | null) {
   if (!description) return title;
   const line = description.split('\n').find((item) => item.trim().length > 0);
   return line ? line.trim() : description.trim();
+}
+
+const VIDEO_URL_PATTERN =
+  /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|vimeo\.com\/|dailymotion\.com\/|loom\.com\/share\/|wistia\.|\.mp4(?:$|\?)|\.webm(?:$|\?)|\.mov(?:$|\?)|\.m4v(?:$|\?))/i;
+
+function isVideoMedia(item: StayMediaRow) {
+  const mediaType = item.media_type?.trim().toLowerCase() ?? '';
+  if (mediaType.includes('video')) return true;
+  const url = item.url?.trim() ?? '';
+  return url.length > 0 && VIDEO_URL_PATTERN.test(url);
 }
 
 function buildAccommodationText(accommodations: AccommodationRow[]) {
@@ -536,7 +549,9 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
     stayIds.length
       ? supabase
           .from('accommodations')
-          .select('id,name,accommodation_type,description,bed_info,bathroom_info,catering_info,accessibility_info')
+          .select(
+            'id,name,accommodation_type,description,bed_info,bathroom_info,catering_info,accessibility_info,center_latitude,center_longitude'
+          )
       : Promise.resolve({ data: [] as AccommodationRow[] | null }),
     stayIds.length
       ? supabase
@@ -633,13 +648,55 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
       const media = [...(mediaByStayId.get(stay.id) ?? [])].sort(
         (a, b) => (a.position ?? 0) - (b.position ?? 0)
       );
+      const videoUrls = Array.from(
+        new Set(
+          media
+            .filter((item) => isVideoMedia(item))
+            .map((item) => item.url?.trim())
+            .filter((url): url is string => Boolean(url))
+        )
+      );
+      const galleryImages = Array.from(
+        new Set(
+          media
+            .filter((item) => !isVideoMedia(item))
+            .map((item) => item.url?.trim())
+            .filter((url): url is string => Boolean(url))
+        )
+      );
       const coverImage =
-        media.find((item) => item.media_type === 'cover')?.url ?? media[0]?.url ?? undefined;
+        media.find((item) => item.media_type === 'cover' && !isVideoMedia(item))?.url ??
+        galleryImages[0] ??
+        undefined;
 
       const sessionItems = sessionsByStayId.get(stay.id) ?? [];
       const stayAccommodations = [...(accommodationIdsByStayId.get(stay.id) ?? [])]
         .map((accommodationId) => accommodationsById.get(accommodationId))
         .filter((item): item is AccommodationRow => Boolean(item));
+      const centerLocations = Array.from(
+        new Map(
+          stayAccommodations
+            .filter(
+              (accommodation): accommodation is AccommodationRow & {
+                center_latitude: number;
+                center_longitude: number;
+              } =>
+                accommodation.center_latitude != null &&
+                accommodation.center_longitude != null &&
+                Number.isFinite(accommodation.center_latitude) &&
+                Number.isFinite(accommodation.center_longitude)
+            )
+            .map((accommodation) => [
+              accommodation.id,
+              {
+                id: accommodation.id,
+                name: accommodation.name,
+                latitude: accommodation.center_latitude,
+                longitude: accommodation.center_longitude
+              } satisfies StayCenterLocation
+            ])
+        ).values()
+      );
       const accommodationText = buildAccommodationText(stayAccommodations);
       const durationDays = deriveSessionDurations(sessionItems);
       const { keys: periodKeys, labels: periodLabels } = derivePeriods(sessionItems);
@@ -763,12 +820,15 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
         programText: stay.program_text?.trim() ?? '',
         transportText: stay.transport_text?.trim() ?? '',
         coverImage,
+        galleryImages: galleryImages.length > 0 ? galleryImages : undefined,
+        videoUrls: videoUrls.length > 0 ? videoUrls : undefined,
         bookingOptions: {
           transportMode: stay.transport_mode ?? 'Sans transport',
           sessions: bookingSessions,
           insuranceOptions,
           extraOptions
         },
+        centerLocations: centerLocations.length > 0 ? centerLocations : undefined,
         seo: {
           primaryKeyword: seoPrimaryKeyword,
           secondaryKeywords: seoSecondaryKeywords,

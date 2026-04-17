@@ -26,7 +26,7 @@ const DEFAULT_OPENAI_MODEL = process.env.OPENAI_ENRICH_MODEL ?? 'gpt-4o-mini';
 const MAX_MAIN_TEXT_LENGTH = 12_000;
 const MAX_HTML_EXCERPT_LENGTH = 6_000;
 const MAX_AI_LOG_PREVIEW_LENGTH = 1_000;
-export const STAY_DRAFT_AI_PROMPT_VERSION = 'stay-draft-enrich-v7';
+export const STAY_DRAFT_AI_PROMPT_VERSION = 'stay-draft-enrich-v8';
 
 const nullableTextSchema = z.preprocess((value) => {
   if (value === null || value === undefined) return null;
@@ -73,6 +73,9 @@ const accommodationsJsonInnerSchema = z
     location_department_code: nullableTextSchema,
     location_country: nullableTextSchema,
     itinerant_zone: nullableTextSchema,
+    center_latitude: nullableNumberSchema,
+    center_longitude: nullableNumberSchema,
+    center_geocoding_query: nullableTextSchema,
     bed_info: nullableTextSchema,
     bathroom_info: nullableTextSchema,
     catering_info: nullableTextSchema,
@@ -611,6 +614,23 @@ function normalizeAccommodations(value: unknown): StayDraftAiExtracted['accommod
         : typeof pmrRaw === 'string' && /^(1|true|oui|yes)$/i.test(pmrRaw.trim())
           ? true
           : null;
+  const centerLatitude = toNullableNumber(
+    record.center_latitude ?? record.latitude ?? record.lat
+  );
+  const centerLongitude = toNullableNumber(
+    record.center_longitude ?? record.longitude ?? record.lng ?? record.lon
+  );
+  const hasCenterLatitude = centerLatitude !== null;
+  const hasCenterLongitude = centerLongitude !== null;
+  const isCenterCoordinatesPairValid =
+    hasCenterLatitude &&
+    hasCenterLongitude &&
+    centerLatitude >= -90 &&
+    centerLatitude <= 90 &&
+    centerLongitude >= -180 &&
+    centerLongitude <= 180;
+  const normalizedCenterLatitude = isCenterCoordinatesPairValid ? centerLatitude : null;
+  const normalizedCenterLongitude = isCenterCoordinatesPairValid ? centerLongitude : null;
 
   return {
     title: toNullableString(record.title),
@@ -622,6 +642,14 @@ function normalizeAccommodations(value: unknown): StayDraftAiExtracted['accommod
     location_department_code: toNullableString(record.location_department_code),
     location_country: toNullableString(record.location_country),
     itinerant_zone: toNullableString(record.itinerant_zone),
+    center_latitude: normalizedCenterLatitude,
+    center_longitude: normalizedCenterLongitude,
+    center_geocoding_query: toNullableString(
+      record.center_geocoding_query ??
+        record.geocoding_query ??
+        record.full_address ??
+        record.address
+    ),
     bed_info: toNullableString(record.bed_info),
     bathroom_info: toNullableString(record.bathroom_info),
     catering_info: toNullableString(record.catering_info),
@@ -790,6 +818,9 @@ Schéma exact attendu :
     "location_department_code": string | null,
     "location_country": string | null,
     "itinerant_zone": string | null,
+    "center_latitude": number | null,
+    "center_longitude": number | null,
+    "center_geocoding_query": string | null,
     "bed_info": string | null,
     "bathroom_info": string | null,
     "catering_info": string | null,
@@ -805,6 +836,10 @@ Règles pour "accommodations_json" (objet complet si un nouvel hébergement est 
   - Si "location_mode" = "france" : "location_city" doit être un NOM DE COMMUNE ou de ville (jamais le nom d'un département seul, jamais « Vendée / Deux-Sèvres »). "location_department_code" doit être le NUMÉRO INSEE à 2 ou 3 caractères (ex. 85 pour la Vendée, 79 pour les Deux-Sèvres, 75 pour Paris). Si la source ne donne qu'une frontière entre deux départements sans commune précise, utilise "itinerant" + "itinerant_zone" décrivant la zone (tu peux citer les deux départements avec leurs numéros).
   - Si "abroad" : ville réelle + pays en toutes lettres dans "location_country".
   - Si "itinerant" : "itinerant_zone" en une ou deux phrases (itinéraire, étapes, zone géographique).
+- Géolocalisation du centre :
+  - Si les coordonnées GPS exactes apparaissent clairement dans la source, renseigne "center_latitude" et "center_longitude".
+  - Sinon, laisse-les à null et propose "center_geocoding_query" (adresse ou requête de géocodage la plus précise possible).
+  - Ne renseigne jamais un seul des deux champs latitude/longitude : les deux ensemble ou null.
 - "description" : 2 à 5 phrases fluides en français, avec articles et verbes conjugués (ex. « Le centre est implanté … », « Les participants profitent de … »). Parle du site, de la région, des infrastructures et des salles. Exclure tout ce qui relève du couchage, des sanitaires, de la restauration ou du PMR. Évite le style liste de mots-clés.
 - "bed_info" : phrases complètes et naturelles (ex. « Les chambres disposent de deux à six lits chacune. » ou « Le couchage se fait en dortoirs de huit lits. »). Préciser le mode de couchage si connu.
 - "bathroom_info" : phrases complètes (ex. « Des sanitaires privatifs sont installés dans chaque chambre. » ou « Les sanitaires sont collectifs sur le palier. »).

@@ -1284,6 +1284,8 @@ export type Database = {
           bed_info: string | null
           capacity_total: number | null
           catering_info: string | null
+          center_latitude: number | null
+          center_longitude: number | null
           created_at: string
           description: string | null
           id: string
@@ -1308,6 +1310,8 @@ export type Database = {
           bed_info?: string | null
           capacity_total?: number | null
           catering_info?: string | null
+          center_latitude?: number | null
+          center_longitude?: number | null
           created_at?: string
           description?: string | null
           id?: string
@@ -1332,6 +1336,8 @@ export type Database = {
           bed_info?: string | null
           capacity_total?: number | null
           catering_info?: string | null
+          center_latitude?: number | null
+          center_longitude?: number | null
           created_at?: string
           description?: string | null
           id?: string

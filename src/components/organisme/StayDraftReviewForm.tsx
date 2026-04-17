@@ -1216,7 +1216,7 @@ export default function StayDraftReviewForm({
 
           <div className="grid gap-4 lg:grid-cols-2">
             <label className="block text-sm font-medium text-slate-700">
-              SEO title
+              Titre SEO
               <input
                 value={seoTitle}
                 onChange={(event) => setSeoTitle(event.target.value)}
@@ -1230,7 +1230,7 @@ export default function StayDraftReviewForm({
             </label>
 
             <label className="block text-sm font-medium text-slate-700">
-              Meta description
+              Méta description
               <textarea
                 value={seoMetaDescription}
                 onChange={(event) => setSeoMetaDescription(event.target.value)}
@@ -1246,7 +1246,7 @@ export default function StayDraftReviewForm({
           </div>
 
           <label className="block text-sm font-medium text-slate-700">
-            Intro SEO
+            Introduction SEO
             <textarea
               value={seoIntroText}
               onChange={(event) => setSeoIntroText(event.target.value)}

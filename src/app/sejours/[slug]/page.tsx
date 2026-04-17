@@ -3,7 +3,7 @@ import { notFound, permanentRedirect } from 'next/navigation';
 import type { Stay } from '@/types/stay';
 import { DEFAULT_STAY_OG_IMAGE_PATH, toAbsoluteUrl } from '@/lib/seo';
 import { getStays, getStayCanonicalPath, resolveStayBySlug } from '@/lib/stays';
-import { buildRelatedStayLinks, buildStaySeoKeywords, buildStaySeoMetaDescription, buildStaySeoTitle } from '@/lib/stay-seo';
+import { buildStaySeoKeywords, buildStaySeoMetaDescription, buildStaySeoTitle } from '@/lib/stay-seo';
 import { StayDetailView } from '@/components/sejours/StayDetailView';
 
 interface StayDetailPageProps {
@@ -207,9 +207,6 @@ export default async function StayDetailPage({ params }: StayDetailPageProps) {
   }
 
   const stay = resolved.stay;
-  const relatedStayLinks = buildRelatedStayLinks(stay, await getStays(), (relatedStay) =>
-    getStayCanonicalPath(relatedStay)
-  );
   const productJsonLd = serializeJsonLd(buildStayProductJsonLd(stay));
   const breadcrumbJsonLd = serializeJsonLd(buildStayBreadcrumbJsonLd(stay));
 
@@ -217,7 +214,7 @@ export default async function StayDetailPage({ params }: StayDetailPageProps) {
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: productJsonLd }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: breadcrumbJsonLd }} />
-      <StayDetailView stay={stay} relatedStayLinks={relatedStayLinks} />
+      <StayDetailView stay={stay} />
     </>
   );
 }

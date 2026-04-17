@@ -41,7 +41,10 @@ function parseApiErrorMessage(payload: unknown): string | null {
 
 export default function ContactPage() {
   const configuredSiteKey = (process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? '').trim();
-  const isNonProduction = process.env.NODE_ENV !== 'production';
+  const configuredDevSiteKey = (process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY_DEV ?? '').trim();
+  const vercelEnv = (process.env.NEXT_PUBLIC_VERCEL_ENV ?? '').trim().toLowerCase();
+  const isPreviewOrDev =
+    process.env.NODE_ENV !== 'production' || vercelEnv === 'preview' || vercelEnv === 'development';
 
   const [recipient, setRecipient] = useState('');
   const [firstName, setFirstName] = useState('');
@@ -61,12 +64,18 @@ export default function ContactPage() {
 
   useEffect(() => {
     const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-    if (isNonProduction && isLocalhost) {
+    const isVercelPreviewHost = window.location.hostname.endsWith('.vercel.app');
+    const usePreviewConfig = isPreviewOrDev || isVercelPreviewHost;
+    if (usePreviewConfig && isLocalhost) {
       setSiteKey(TURNSTILE_TEST_SITE_KEY);
       return;
     }
+    if (usePreviewConfig) {
+      setSiteKey(configuredDevSiteKey || configuredSiteKey);
+      return;
+    }
     setSiteKey(configuredSiteKey);
-  }, [configuredSiteKey, isNonProduction]);
+  }, [configuredDevSiteKey, configuredSiteKey, isPreviewOrDev]);
 
   const renderTurnstile = useCallback(() => {
     if (!siteKey || !widgetContainerRef.current || !window.turnstile || widgetIdRef.current) {
@@ -85,6 +94,12 @@ export default function ContactPage() {
       },
       'error-callback': (errorCode?: string) => {
         setTurnstileToken('');
+        if (errorCode === '110200') {
+          setErrorMessage(
+            'Captcha indisponible (110200) : domaine non autorisé pour cette clé Turnstile. Ajoutez ce domaine dans Cloudflare > Turnstile > Hostname Management.'
+          );
+          return;
+        }
         setErrorMessage(
           `Captcha indisponible (${errorCode ?? 'erreur inconnue'}). Vérifiez votre réseau ou un bloqueur de contenu.`
         );
@@ -380,7 +395,8 @@ export default function ContactPage() {
                     </>
                   ) : (
                     <p className="text-sm text-red-600">
-                      Captcha indisponible : ajoutez `NEXT_PUBLIC_TURNSTILE_SITE_KEY` dans vos variables
+                      Captcha indisponible : ajoutez `NEXT_PUBLIC_TURNSTILE_SITE_KEY` (ou
+                      `NEXT_PUBLIC_TURNSTILE_SITE_KEY_DEV` en preview/dev) dans vos variables
                       d&apos;environnement.
                     </p>
                   )}

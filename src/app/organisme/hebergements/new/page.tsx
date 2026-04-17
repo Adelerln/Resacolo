@@ -5,6 +5,7 @@ import AccommodationFormFields from '@/components/organisme/AccommodationFormFie
 import {
   buildAccessibilityInfoFromForm,
   embedAccommodationLocationMeta,
+  validateAndParseAccommodationCenterCoordinates,
   validateAccommodationLocation
 } from '@/lib/accommodation-location';
 import { requireRole } from '@/lib/auth/require';
@@ -65,6 +66,19 @@ export default async function NewAccommodationPage({ searchParams }: PageProps) 
       );
     }
 
+    const centerCoordinatesResult = validateAndParseAccommodationCenterCoordinates({
+      centerLatitude: String(formData.get('center_latitude') ?? '').trim(),
+      centerLongitude: String(formData.get('center_longitude') ?? '').trim()
+    });
+    if (centerCoordinatesResult.error) {
+      redirect(
+        withOrganizerQuery(
+          `/organisme/hebergements/new?error=${encodeURIComponent(centerCoordinatesResult.error)}`,
+          selectedOrganizerId
+        )
+      );
+    }
+
     const now = new Date().toISOString();
     const { error } = await supabase.from('accommodations').insert({
       organizer_id: selectedOrganizerId,
@@ -80,6 +94,8 @@ export default async function NewAccommodationPage({ searchParams }: PageProps) 
       status: 'DRAFT',
       validated_at: null,
       validated_by_user_id: null,
+      center_latitude: centerCoordinatesResult.value.centerLatitude,
+      center_longitude: centerCoordinatesResult.value.centerLongitude,
       created_at: now,
       updated_at: now
     });

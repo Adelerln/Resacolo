@@ -1,5 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { embedAccommodationLocationMeta } from '@/lib/accommodation-location';
+import {
+  embedAccommodationLocationMeta,
+  validateAndParseAccommodationCenterCoordinates
+} from '@/lib/accommodation-location';
 import { repairAccommodationImportLocation } from '@/lib/french-department-codes';
 import {
   ensurePrimaryStaySettingCategory,
@@ -288,6 +291,16 @@ function buildAccommodationName(input: {
 function toNullableText(value: string | null | undefined): string | null {
   const normalized = normalizeWhitespace(value);
   return normalized.length > 0 ? normalized : null;
+}
+
+function toNullableNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value === 'string') {
+    const parsed = Number(value.trim().replace(',', '.'));
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -981,6 +994,8 @@ function parseAccommodation(
   cateringInfo: string | null;
   accessibilityInfo: string | null;
   accommodationType: string;
+  centerLatitude: number | null;
+  centerLongitude: number | null;
 } | null {
   const object = coerceAccommodationJsonObject(value);
   if (Object.keys(object).length === 0) return null;
@@ -1052,6 +1067,14 @@ function parseAccommodation(
     locationHint,
     accommodationType
   });
+  const centerCoordinates = validateAndParseAccommodationCenterCoordinates({
+    centerLatitude: toNullableNumber(
+      object.center_latitude ?? object.latitude ?? object.lat
+    ),
+    centerLongitude: toNullableNumber(
+      object.center_longitude ?? object.longitude ?? object.lng ?? object.lon
+    )
+  });
 
   if (!resolvedName && !description && !bedInfo && !bathroomInfo && !cateringInfo && !accessibilityInfo) {
     return null;
@@ -1064,7 +1087,9 @@ function parseAccommodation(
     bathroomInfo,
     cateringInfo,
     accessibilityInfo,
-    accommodationType
+    accommodationType,
+    centerLatitude: centerCoordinates.error ? null : centerCoordinates.value.centerLatitude,
+    centerLongitude: centerCoordinates.error ? null : centerCoordinates.value.centerLongitude
   };
 }
 
@@ -1682,6 +1707,8 @@ async function syncAccommodation(
     cateringInfo: string | null;
     accessibilityInfo: string | null;
     accommodationType: string;
+    centerLatitude: number | null;
+    centerLongitude: number | null;
   } | null
 ): Promise<string | null> {
   const { error: deleteLinksError } = await supabase
@@ -1751,6 +1778,8 @@ async function syncAccommodation(
       catering_info: parsedAccommodation.cateringInfo,
       accessibility_info: parsedAccommodation.accessibilityInfo,
       accommodation_type: parsedAccommodation.accommodationType,
+      center_latitude: parsedAccommodation.centerLatitude,
+      center_longitude: parsedAccommodation.centerLongitude,
       source_url: draft.source_url,
       ai_extracted_data: extractedData,
       status: 'VALIDATED',
@@ -1787,6 +1816,8 @@ async function syncAccommodation(
       accessibility_info: parsedAccommodation.accessibilityInfo,
       source_url: draft.source_url,
       accommodation_type: parsedAccommodation.accommodationType,
+      center_latitude: parsedAccommodation.centerLatitude,
+      center_longitude: parsedAccommodation.centerLongitude,
       ai_extracted_data: extractedData,
       status: 'VALIDATED',
       validated_at: accommodationValidatedAt,
@@ -1868,6 +1899,8 @@ export async function syncStayDraftPreviewAccommodation(
       catering_info: parsed.cateringInfo,
       accessibility_info: parsed.accessibilityInfo,
       accommodation_type: parsed.accommodationType,
+      center_latitude: parsed.centerLatitude,
+      center_longitude: parsed.centerLongitude,
       source_url: draft.source_url,
       ai_extracted_data: extractedData,
       status: 'DRAFT',
@@ -1900,6 +1933,8 @@ export async function syncStayDraftPreviewAccommodation(
       accessibility_info: parsed.accessibilityInfo,
       source_url: draft.source_url,
       accommodation_type: parsed.accommodationType,
+      center_latitude: parsed.centerLatitude,
+      center_longitude: parsed.centerLongitude,
       ai_extracted_data: extractedData,
       status: 'DRAFT',
       validated_at: null,

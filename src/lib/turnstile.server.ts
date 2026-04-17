@@ -39,11 +39,18 @@ async function verifyTurnstileTokenWithSecret(secret: string, token: string, rem
 export async function verifyTurnstileToken(token: string, remoteIp: string | null) {
   const secrets: string[] = [];
   const envSecret = process.env.TURNSTILE_SECRET_KEY?.trim();
+  const devSecret = process.env.TURNSTILE_SECRET_KEY_DEV?.trim();
+  const vercelEnv = (process.env.VERCEL_ENV ?? '').trim().toLowerCase();
+  const isPreviewOrDev =
+    process.env.NODE_ENV !== 'production' || vercelEnv === 'preview' || vercelEnv === 'development';
 
   if (envSecret) {
     secrets.push(envSecret);
   }
-  if (process.env.NODE_ENV !== 'production' && !secrets.includes(TURNSTILE_TEST_SECRET_KEY)) {
+  if (isPreviewOrDev && devSecret && !secrets.includes(devSecret)) {
+    secrets.push(devSecret);
+  }
+  if (isPreviewOrDev && !secrets.includes(TURNSTILE_TEST_SECRET_KEY)) {
     secrets.push(TURNSTILE_TEST_SECRET_KEY);
   }
 

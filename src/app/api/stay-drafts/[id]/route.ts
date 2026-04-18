@@ -35,6 +35,8 @@ const bodySchema = z.object({
   location_text: textFieldSchema,
   region_text: textFieldSchema,
   description: textFieldSchema,
+  activities_text: textFieldSchema,
+  required_documents_text: textFieldSchema,
   program_text: textFieldSchema,
   supervision_text: textFieldSchema,
   transport_text: textFieldSchema,
@@ -353,6 +355,7 @@ async function parseBody(req: Request): Promise<{ payload: StayDraftReviewPayloa
   const data = parsed.data;
   const categories = normalizeStayDraftCategories(data.categories).categories;
   const ages = expandDraftAges(data.ages);
+
   const payload: StayDraftReviewPayload = {
     title: normalizeStayTitle(data.title),
     season_ids: data.season_ids.map((value) => normalizeString(value)).filter(Boolean),
@@ -362,6 +365,8 @@ async function parseBody(req: Request): Promise<{ payload: StayDraftReviewPayloa
     location_text: normalizeString(data.location_text),
     region_text: mapToCanonicalStayRegion(data.region_text) ?? '',
     description: normalizeString(data.description),
+    activities_text: normalizeString(data.activities_text),
+    required_documents_text: normalizeString(data.required_documents_text),
     program_text: normalizeString(data.program_text),
     supervision_text: normalizeString(data.supervision_text),
     transport_text: normalizeString(data.transport_text),
@@ -459,6 +464,8 @@ async function handleUpdate(req: Request, params: { id: string }, mode: 'save' |
     location_text: toNullableString(parsedBody.payload.location_text),
     region_text: toNullableString(parsedBody.payload.region_text),
     description: toNullableString(parsedBody.payload.description),
+    activities_text: toNullableString(parsedBody.payload.activities_text),
+    required_documents_text: toNullableString(parsedBody.payload.required_documents_text),
     program_text: toNullableString(parsedBody.payload.program_text),
     supervision_text: toNullableString(parsedBody.payload.supervision_text),
     transport_text: toNullableString(parsedBody.payload.transport_text),

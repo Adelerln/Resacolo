@@ -2747,6 +2747,12 @@ function sanitizeTransportLabel(value: string | null | undefined): string {
     .replace(/\u00A0/g, ' ')
     .replace(/\s*[\(\[]?\+?\s*[0-9][0-9\s.,]*\s*(?:€|euros?)[^\)\]]*[\)\]]?/gi, '')
     .replace(/\s*-\s*\+?\s*[0-9][0-9\s.,]*\s*(?:€|euros?)/gi, '')
+    .replace(
+      /^transport\s+accompagn[ée]\s+(?:aller|retour)\s+(?:depuis|de|vers|jusqu(?:e|['’])?a?)\s+/i,
+      ''
+    )
+    .replace(/^transport\s+accompagn[ée]\s+/i, '')
+    .replace(/^(?:aller|retour)\s+(?:depuis|de|vers|jusqu(?:e|['’])?a?)\s+/i, '')
     .replace(/^transport\s*(aller|retour)?\s*[:\-]\s*/i, '')
     .trim();
 }

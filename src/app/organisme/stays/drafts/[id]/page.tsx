@@ -549,7 +549,9 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
     seo_generation_source: normalizeString(draft.seo_generation_source) || null,
     images: normalizeImportedImageUrlList(asStringArray(draft.images)),
     video_urls: normalizeImportedVideoUrlList(fallbackVideoUrls),
-    partner_discount_percent: readPartnerDiscountPercentFromRaw(rawPayload)
+    partner_discount_percent: readPartnerDiscountPercentFromRaw(rawPayload),
+    activities_text: '',
+    required_documents_text: ''
   };
 
   const backHref = withOrganizerQuery('/organisme/sejours', selectedOrganizerId);

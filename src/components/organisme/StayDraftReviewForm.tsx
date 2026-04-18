@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Building2,
@@ -16,6 +16,7 @@ import {
   X
 } from 'lucide-react';
 import GoogleMapsCityInput from '@/components/common/GoogleMapsCityInput';
+import UnsavedChangesWhen from '@/components/common/UnsavedChangesWhen';
 import AccommodationImportReviewFields from '@/components/organisme/AccommodationImportReviewFields';
 import {
   DraftExtraOptionsEditor,
@@ -40,7 +41,6 @@ import {
 import { normalizeStayDraftCategories, STAY_CATEGORY_OPTIONS, stayCategoryLabelToValue } from '@/lib/stay-categories';
 import { cn, slugify } from '@/lib/utils';
 import { MAX_STAY_SUMMARY_LENGTH } from '@/lib/stay-draft-content';
-import UnsavedChangesGuard from '@/components/common/UnsavedChangesGuard';
 import {
   defaultAccommodationImportRecord,
   mergeAccommodationImportRecord
@@ -74,6 +74,10 @@ type StayDraftReviewFormProps = {
     name: string;
     accommodationType: string | null;
   } | null;
+  /** Séjour déjà publié : sauvegarde via `/api/organizer/stays/[id]/review-bundle`. */
+  variant?: 'draft' | 'published';
+  /** Contenu de l’étape « Sessions » pour le séjour publié (formulaires serveur). */
+  publishedSessionsStep?: ReactNode;
 };
 
 type SeoCheck = {
@@ -177,6 +181,12 @@ function resolveDraftCanonicalPath(slugCandidate: string, title: string) {
   return `/sejours/${finalSlug}`;
 }
 
+function buildDraftImagePreviewUrl(url: string): string {
+  const trimmed = url.trim();
+  if (!/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `/api/draft-image-proxy?url=${encodeURIComponent(trimmed)}`;
+}
+
 type DraftReviewStepId =
   | 'hebergement'
   | 'sejour'
@@ -237,7 +247,9 @@ export default function StayDraftReviewForm({
   initialValidatedAt,
   initialValidatedByUserId,
   hideTopStatusCard = false,
-  linkedAccommodation = null
+  linkedAccommodation = null,
+  variant = 'draft',
+  publishedSessionsStep = null
 }: StayDraftReviewFormProps) {
   const router = useRouter();
   const [activeStep, setActiveStep] = useState<DraftReviewStepId>(() =>
@@ -258,6 +270,10 @@ export default function StayDraftReviewForm({
   const [locationText, setLocationText] = useState(initialPayload.location_text);
   const [regionText, setRegionText] = useState(initialPayload.region_text);
   const [description, setDescription] = useState(initialPayload.description);
+  const [activitiesText, setActivitiesText] = useState(initialPayload.activities_text ?? '');
+  const [requiredDocumentsText, setRequiredDocumentsText] = useState(
+    initialPayload.required_documents_text ?? ''
+  );
   const [programText, setProgramText] = useState(initialPayload.program_text);
   const [supervisionText, setSupervisionText] = useState(initialPayload.supervision_text);
   const [transportText, setTransportText] = useState(initialPayload.transport_text);
@@ -316,7 +332,6 @@ export default function StayDraftReviewForm({
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGeneratingSeo, setIsGeneratingSeo] = useState(false);
-  const initialSnapshotRef = useRef<string | null>(null);
 
   const [seoPrimaryKeyword, setSeoPrimaryKeyword] = useState(initialPayload.seo_primary_keyword);
   const [seoSecondaryKeywords, setSeoSecondaryKeywords] = useState<string[]>(
@@ -346,20 +361,22 @@ export default function StayDraftReviewForm({
   );
   const [seoActionState, setSeoActionState] = useState<SeoActionState | null>(null);
 
-  const serializeDraftState = useMemo(
-    () => () =>
+  const buildDraftSnapshot = useCallback(
+    () =>
       JSON.stringify({
         title,
         summary,
         locationText,
         regionText,
         description,
+        activitiesText,
+        requiredDocumentsText,
         programText,
         supervisionText,
-        transportMode,
         transportText,
+        transportMode,
         partnerDiscountPercent,
-        categories: selectedCategories,
+        selectedCategories,
         agesText,
         sessionsList,
         extraOptionsList,
@@ -378,7 +395,10 @@ export default function StayDraftReviewForm({
         seoIntroText,
         seoH1Variant,
         seoInternalAnchors,
-        seoSlugCandidate
+        seoSlugCandidate,
+        seoScore,
+        seoChecks,
+        hasCompletedAccommodationGate
       }),
     [
       title,
@@ -386,10 +406,12 @@ export default function StayDraftReviewForm({
       locationText,
       regionText,
       description,
+      activitiesText,
+      requiredDocumentsText,
       programText,
       supervisionText,
-      transportMode,
       transportText,
+      transportMode,
       partnerDiscountPercent,
       selectedCategories,
       agesText,
@@ -410,21 +432,21 @@ export default function StayDraftReviewForm({
       seoIntroText,
       seoH1Variant,
       seoInternalAnchors,
-      seoSlugCandidate
+      seoSlugCandidate,
+      seoScore,
+      seoChecks,
+      hasCompletedAccommodationGate
     ]
   );
 
-  const isDirty = useMemo(() => {
-    const baseline = initialSnapshotRef.current;
-    if (!baseline) return false;
-    return serializeDraftState() !== baseline;
-  }, [serializeDraftState]);
+  const draftSnapshot = useMemo(() => buildDraftSnapshot(), [buildDraftSnapshot]);
+  const [draftDirtyBaseline, setDraftDirtyBaseline] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (initialSnapshotRef.current == null) {
-      initialSnapshotRef.current = serializeDraftState();
-    }
-  }, [serializeDraftState]);
+  useLayoutEffect(() => {
+    setDraftDirtyBaseline((previous) => previous ?? draftSnapshot);
+  }, [draftSnapshot]);
+
+  const isDraftDirty = draftDirtyBaseline !== null && draftSnapshot !== draftDirtyBaseline;
 
   const seoCategoryValues = useMemo(
     () =>
@@ -471,7 +493,7 @@ export default function StayDraftReviewForm({
       title,
       summary,
       description,
-      activitiesText: description,
+      activitiesText,
       programText,
       location: locationText,
       region: regionText,
@@ -498,6 +520,7 @@ export default function StayDraftReviewForm({
       title,
       summary,
       description,
+      activitiesText,
       programText,
       locationText,
       regionText,
@@ -678,7 +701,11 @@ export default function StayDraftReviewForm({
       message: force ? 'Regénération SEO en cours…' : 'Génération SEO en cours…'
     });
     try {
-      const response = await fetch(`/api/stay-drafts/${draftId}/seo`, {
+      const seoEndpoint =
+        variant === 'published'
+          ? `/api/organizer/stays/${draftId}/seo`
+          : `/api/stay-drafts/${draftId}/seo`;
+      const response = await fetch(seoEndpoint, {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
@@ -802,7 +829,11 @@ export default function StayDraftReviewForm({
       videoUrls.map((u) => u.trim()).filter(Boolean)
     );
 
-    if (!linkedAccommodation && !String(accommodationImport.title ?? '').trim()) {
+    if (
+      variant === 'draft' &&
+      !linkedAccommodation &&
+      !String(accommodationImport.title ?? '').trim()
+    ) {
       nextErrors.accommodations_json = "Le nom de l'hébergement importé est requis.";
     }
 
@@ -839,6 +870,8 @@ export default function StayDraftReviewForm({
       location_text: locationText,
       region_text: regionText,
       description,
+      activities_text: activitiesText,
+      required_documents_text: requiredDocumentsText,
       program_text: programText,
       supervision_text: supervisionText,
       transport_text: transportText,
@@ -885,6 +918,29 @@ export default function StayDraftReviewForm({
     setSuccessMessage(null);
 
     try {
+      if (variant === 'published') {
+        const response = await fetch(`/api/organizer/stays/${draftId}/review-bundle`, {
+          method: 'PATCH',
+          headers: {
+            'content-type': 'application/json',
+            accept: 'application/json'
+          },
+          body: JSON.stringify({
+            organizerId,
+            payload: result.payload
+          })
+        });
+        const data = (await response.json().catch(() => null)) as { error?: string } | null;
+        if (!response.ok) {
+          setGlobalError(data?.error ?? "Impossible d'enregistrer le séjour.");
+          return;
+        }
+        setSuccessMessage('Séjour enregistré avec succès.');
+        setDraftDirtyBaseline(buildDraftSnapshot());
+        router.refresh();
+        return;
+      }
+
       const response = await fetch(`/api/stay-drafts/${draftId}`, {
         method: mode === 'validate' ? 'POST' : 'PATCH',
         headers: {
@@ -921,6 +977,7 @@ export default function StayDraftReviewForm({
           setStatus(data?.draft?.status ?? status);
           setValidatedAt(data?.draft?.validated_at ?? validatedAt);
           setValidatedByUserId(data?.draft?.validated_by_user_id ?? validatedByUserId);
+          setDraftDirtyBaseline(buildDraftSnapshot());
           router.refresh();
         }
         return;
@@ -936,7 +993,7 @@ export default function StayDraftReviewForm({
       setStatus(data?.draft?.status ?? status);
       setValidatedAt(data?.draft?.validated_at ?? validatedAt);
       setValidatedByUserId(data?.draft?.validated_by_user_id ?? validatedByUserId);
-      initialSnapshotRef.current = serializeDraftState();
+      setDraftDirtyBaseline(buildDraftSnapshot());
 
       if (mode === 'validate') {
         const organizerIdFromResponse =
@@ -996,14 +1053,8 @@ export default function StayDraftReviewForm({
 
   return (
     <div className="space-y-6">
-      {isDirty ? (
-        <UnsavedChangesGuard
-          formId="draft-review-guard-anchor"
-          message="Vous avez des modifications non enregistrées. Voulez-vous quitter sans enregistrer ?"
-        />
-      ) : null}
+      <UnsavedChangesWhen when={isDraftDirty} />
 
-      <div id="draft-review-guard-anchor" />
       {!hideTopStatusCard ? (
         <div className="rounded-2xl border border-slate-200 bg-white p-6">
           <div className="flex flex-wrap items-center gap-3">
@@ -1043,7 +1094,11 @@ export default function StayDraftReviewForm({
       )}
 
       <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
-        <nav aria-label="Étapes de relecture du brouillon">
+        <nav
+          aria-label={
+            variant === 'published' ? 'Étapes de modification du séjour' : 'Étapes de relecture du brouillon'
+          }
+        >
           <ul className="flex snap-x snap-mandatory gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:justify-between sm:gap-3 sm:overflow-visible">
             {DRAFT_REVIEW_STEPS.map(({ id, label, Icon }) => {
               const isActive = effectiveStep === id;
@@ -1221,6 +1276,19 @@ export default function StayDraftReviewForm({
         </label>
 
         <label className="block text-sm font-medium text-slate-700">
+          Activités / pédagogie
+          <textarea
+            value={activitiesText}
+            onChange={(event) => setActivitiesText(event.target.value)}
+            rows={5}
+            className={draftReviewControlClass({
+              required: false,
+              filled: Boolean(activitiesText.trim())
+            })}
+          />
+        </label>
+
+        <label className="block text-sm font-medium text-slate-700">
           Programme
           <textarea
             value={programText}
@@ -1229,6 +1297,19 @@ export default function StayDraftReviewForm({
             className={draftReviewControlClass({
               required: false,
               filled: Boolean(programText.trim())
+            })}
+          />
+        </label>
+
+        <label className="block text-sm font-medium text-slate-700">
+          Documents requis
+          <textarea
+            value={requiredDocumentsText}
+            onChange={(event) => setRequiredDocumentsText(event.target.value)}
+            rows={3}
+            className={draftReviewControlClass({
+              required: false,
+              filled: Boolean(requiredDocumentsText.trim())
             })}
           />
         </label>
@@ -1738,18 +1819,21 @@ export default function StayDraftReviewForm({
         </section>
         )}
 
-        {effectiveStep === 'sessions' && (
-        <DraftSessionsEditor
-          value={sessionsList}
-          onChange={setSessionsList}
-          error={fieldErrors.sessions_json}
-          containerClassName={draftReviewSectionClass({
-            required: false,
-            satisfied: sessionsList.length > 0,
-            hasError: Boolean(fieldErrors.sessions_json)
-          })}
-        />
-        )}
+        {effectiveStep === 'sessions' &&
+          (publishedSessionsStep ? (
+            <div className="space-y-4">{publishedSessionsStep}</div>
+          ) : (
+            <DraftSessionsEditor
+              value={sessionsList}
+              onChange={setSessionsList}
+              error={fieldErrors.sessions_json}
+              containerClassName={draftReviewSectionClass({
+                required: false,
+                satisfied: sessionsList.length > 0,
+                hasError: Boolean(fieldErrors.sessions_json)
+              })}
+            />
+          ))}
 
         {effectiveStep === 'options' && (
           <>
@@ -1917,7 +2001,7 @@ export default function StayDraftReviewForm({
                     onClick={() => setLightboxUrl(url)}
                     className="block w-full overflow-hidden rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-orange-400"
                   >
-                    <img src={url} alt="" className="h-28 w-full object-cover" />
+                    <img src={buildDraftImagePreviewUrl(url)} alt="" className="h-28 w-full object-cover" />
                   </button>
                   <button
                     type="button"
@@ -2014,7 +2098,7 @@ export default function StayDraftReviewForm({
 
         </div>
 
-        <div className="flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+        <div className="sticky bottom-0 z-20 -mx-4 flex flex-col gap-3 border-t border-slate-100 bg-white/95 px-4 pb-4 pt-4 backdrop-blur-sm sm:-mx-6 sm:px-6 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
@@ -2041,16 +2125,16 @@ export default function StayDraftReviewForm({
             )}
           </div>
 
-          {effectiveStep === 'seo' ? (
-            <div className="flex flex-wrap items-center gap-3">
-              <button
-                type="button"
-                onClick={() => submit('save')}
-                disabled={isSubmitting}
-                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-              >
-                Enregistrer le brouillon
-              </button>
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={() => submit('save')}
+              disabled={isSubmitting}
+              className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+            >
+              {variant === 'published' ? 'Enregistrer le séjour' : 'Enregistrer le brouillon'}
+            </button>
+            {effectiveStep === 'seo' && variant === 'draft' ? (
               <button
                 type="button"
                 onClick={() => submit('validate')}
@@ -2059,31 +2143,14 @@ export default function StayDraftReviewForm({
               >
                 Valider et publier le séjour
               </button>
-              <Link
-                href={backHref}
-                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700"
-              >
-                Annuler
-              </Link>
-            </div>
-          ) : (
-            <div className="flex flex-wrap items-center gap-3">
-              <button
-                type="button"
-                onClick={() => submit('save')}
-                disabled={isSubmitting}
-                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-              >
-                Enregistrer le brouillon
-              </button>
-              <Link
-                href={backHref}
-                className="self-start rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 sm:self-auto"
-              >
-                Annuler
-              </Link>
-            </div>
-          )}
+            ) : null}
+            <Link
+              href={backHref}
+              className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700"
+            >
+              Annuler
+            </Link>
+          </div>
         </div>
       </div>
 
@@ -2095,7 +2162,7 @@ export default function StayDraftReviewForm({
           aria-label="Fermer l’aperçu"
         >
           <img
-            src={lightboxUrl}
+            src={buildDraftImagePreviewUrl(lightboxUrl)}
             alt=""
             className="max-h-[90vh] max-w-full rounded-lg object-contain shadow-2xl"
             onClick={(event) => event.stopPropagation()}

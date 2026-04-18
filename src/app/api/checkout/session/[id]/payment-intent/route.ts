@@ -22,6 +22,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
     return NextResponse.json(result);
   } catch (error) {
-    return NextResponse.json({ error: getApiErrorMessage(error) }, { status: 400 });
+    const message = getApiErrorMessage(error);
+    if (message.toLowerCase().includes('connexion famille requise')) {
+      return NextResponse.json({ error: message }, { status: 401 });
+    }
+    return NextResponse.json({ error: message }, { status: 400 });
   }
 }

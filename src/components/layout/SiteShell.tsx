@@ -14,11 +14,12 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
     pathname.startsWith('/back-office') ||
     pathname.startsWith('/organisme') ||
     pathname.startsWith('/partenaire');
+  const disablePageTransition = pathname.startsWith('/login/familles');
   const hideFooterHelpAndLegal = pathname.startsWith('/contact');
   if (hidePublicShell) {
     /* Pas d’animation entre pages dans les espaces admin / organisateur / partenaire */
     return (
-      <Suspense fallback={<div className="min-h-screen">{children}</div>}>{children}</Suspense>
+      <Suspense fallback={<div className="min-h-screen" />}>{children}</Suspense>
     );
   }
 
@@ -27,8 +28,8 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
       <div className="flex min-h-screen flex-col">
         <MainNavigation />
         <main className="flex-1 min-h-0">
-          <Suspense fallback={<div className="min-h-screen">{children}</div>}>
-            <PageTransition>{children}</PageTransition>
+          <Suspense fallback={<div className="min-h-screen" />}>
+            {disablePageTransition ? children : <PageTransition>{children}</PageTransition>}
           </Suspense>
         </main>
         <Footer hideHelpAndLegal={hideFooterHelpAndLegal} />

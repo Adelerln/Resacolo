@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireApiAdmin } from '@/lib/auth/api';
+import { isPasswordPolicyValid, PASSWORD_POLICY_MESSAGE } from '@/lib/auth/password-policy';
 import { isOrganizerAccessRole } from '@/lib/organizer-access';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 
@@ -67,6 +68,15 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
       return NextResponse.redirect(
         new URL(
           `/admin/organizers/${idOrSlug}/members/new?error=Mot%20de%20passe%20temporaire%20requis`,
+          req.url
+        ),
+        303
+      );
+    }
+    if (!isPasswordPolicyValid(tempPassword)) {
+      return NextResponse.redirect(
+        new URL(
+          `/admin/organizers/${idOrSlug}/members/new?error=${encodeURIComponent(PASSWORD_POLICY_MESSAGE)}`,
           req.url
         ),
         303

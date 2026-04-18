@@ -81,13 +81,45 @@ export async function registerCheckoutClientAccount(input: {
   email: string;
   password: string;
 }) {
-  return fetchJson<{ ok: true; user: { id: string; email: string; name: string | null } }>(
-    '/api/auth/register-client',
-    {
-      method: 'POST',
-      body: JSON.stringify(input)
+  const response = await fetch('/api/auth/register-client', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input)
+  });
+
+  const raw = await response.text();
+  let data: Record<string, unknown> = {};
+  if (raw) {
+    try {
+      data = JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      if (!response.ok) {
+        throw new Error(`La requête n’a pas pu aboutir (${response.status}).`);
+      }
+      throw new Error('Réponse serveur invalide.');
     }
-  );
+  }
+
+  if (response.status === 409) {
+    throw new CheckoutAccountExistsError(
+      typeof data.error === 'string' && data.error.trim()
+        ? data.error.trim()
+        : 'Un compte existe déjà avec cette adresse email.'
+    );
+  }
+
+  if (!response.ok) {
+    throw new Error(readApiFailureMessage(response.status, data));
+  }
+
+  return data as { ok: true; user: { id: string; email: string; name: string | null } };
+}
+
+export class CheckoutAccountExistsError extends Error {
+  constructor(message = 'Un compte existe déjà avec cette adresse email.') {
+    super(message);
+    this.name = 'CheckoutAccountExistsError';
+  }
 }
 
 export async function createPaymentIntent(input: {

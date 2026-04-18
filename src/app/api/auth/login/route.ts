@@ -6,7 +6,8 @@ export const runtime = 'nodejs';
 
 const loginSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(6)
+  password: z.string().min(6),
+  redirectTo: z.string().optional()
 });
 
 function mapRole(memberships: { role: string; tenantId: string | null }[]): {
@@ -23,6 +24,13 @@ function mapRole(memberships: { role: string; tenantId: string | null }[]): {
   if (partner) return { role: 'PARTENAIRE', tenantId: partner.tenantId };
 
   return { role: 'CLIENT', tenantId: null };
+}
+
+function sanitizeRelativePath(value: string | undefined) {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed.startsWith('/') || trimmed.startsWith('//')) return null;
+  return trimmed;
 }
 
 export async function POST(req: Request) {
@@ -62,16 +70,19 @@ export async function POST(req: Request) {
     tenantId
   });
 
+  const defaultRedirect =
+    role === 'ADMIN'
+      ? '/admin'
+      : role === 'ORGANISATEUR'
+        ? '/organisme'
+        : role === 'PARTENAIRE'
+          ? '/partenaire'
+          : '/';
+  const requestedRedirect = sanitizeRelativePath(input.redirectTo);
+  const redirectPath = role === 'CLIENT' && requestedRedirect ? requestedRedirect : defaultRedirect;
+
   return NextResponse.redirect(
-    new URL(
-      role === 'ADMIN'
-        ? '/admin'
-        : role === 'ORGANISATEUR'
-          ? '/organisme'
-          : role === 'PARTENAIRE'
-            ? '/partenaire'
-            : '/',
-      req.url
-    )
+    new URL(redirectPath, req.url),
+    { status: 303 }
   );
 }

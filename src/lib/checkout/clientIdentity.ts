@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
 import { cookies } from 'next/headers';
+import { getSession } from '@/lib/auth/session';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 
 const CLIENT_COOKIE_NAME = 'resacolo_client_id';
@@ -41,7 +42,22 @@ async function ensureCheckoutUserId(candidate: string) {
   return data.user.id;
 }
 
+function canUseGuestFallback() {
+  if (process.env.MOCK_UI === '1') return true;
+  if (process.env.NODE_ENV !== 'production') return true;
+  return process.env.NEXT_PUBLIC_DEV_BYPASS_CHECKOUT === '1';
+}
+
 export async function getOrCreateClientUserId() {
+  const session = await getSession();
+  if (session?.role === 'CLIENT' && session.userId) {
+    return session.userId;
+  }
+
+  if (!canUseGuestFallback()) {
+    throw new Error('Connexion famille requise pour finaliser le paiement.');
+  }
+
   const store = await cookies();
   const existing = store.get(CLIENT_COOKIE_NAME)?.value;
 

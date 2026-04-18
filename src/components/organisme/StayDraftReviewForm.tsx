@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Building2,
@@ -16,7 +16,6 @@ import {
   X
 } from 'lucide-react';
 import GoogleMapsCityInput from '@/components/common/GoogleMapsCityInput';
-import UnsavedChangesWhen from '@/components/common/UnsavedChangesWhen';
 import AccommodationImportReviewFields from '@/components/organisme/AccommodationImportReviewFields';
 import {
   DraftExtraOptionsEditor,
@@ -63,7 +62,6 @@ type StayDraftReviewFormProps = {
   organizerId: string | null;
   backHref: string;
   initialPayload: StayDraftReviewPayload;
-  seasonOptions: Array<{ id: string; name: string }>;
   initialStatus: string;
   initialValidatedAt: string | null;
   initialValidatedByUserId: string | null;
@@ -74,10 +72,6 @@ type StayDraftReviewFormProps = {
     name: string;
     accommodationType: string | null;
   } | null;
-  /** Séjour déjà publié : sauvegarde via `/api/organizer/stays/[id]/review-bundle`. */
-  variant?: 'draft' | 'published';
-  /** Contenu de l’étape « Sessions » pour le séjour publié (formulaires serveur). */
-  publishedSessionsStep?: ReactNode;
 };
 
 type SeoCheck = {
@@ -90,72 +84,6 @@ type SeoActionState = {
   level: 'info' | 'success' | 'error';
   message: string;
 };
-
-function parseIsoDateAtUtcMidnight(value: unknown): Date | null {
-  if (typeof value !== 'string') return null;
-  const trimmed = value.trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return null;
-  const parsed = new Date(`${trimmed}T00:00:00Z`);
-  return Number.isFinite(parsed.getTime()) ? parsed : null;
-}
-
-function seasonNameFromUtcDate(date: Date): string | null {
-  const month = date.getUTCMonth() + 1;
-  const day = date.getUTCDate();
-
-  if ((month === 12 && day >= 15) || (month === 1 && day <= 15)) return "Fin d'année";
-  if ((month === 1 && day >= 20) || month === 2 || (month === 3 && day <= 15)) return 'Hiver';
-  if ((month === 3 && day >= 20) || month === 4 || (month === 5 && day <= 10)) return 'Printemps';
-  if ((month === 6 && day >= 20) || month === 7 || month === 8 || (month === 9 && day <= 10)) return 'Été';
-  if (month === 10 || (month === 11 && day <= 10)) return 'Toussaint';
-
-  return null;
-}
-
-function normalizeSeasonKey(value: string | null | undefined): string {
-  const normalized = (value ?? '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim();
-
-  if (!normalized) return '';
-  if (normalized.includes('fin') && normalized.includes('annee')) return 'fin_annee';
-  if (
-    normalized.includes('toussaint') ||
-    normalized.includes('octobre') ||
-    normalized.includes('automne')
-  ) {
-    return 'toussaint';
-  }
-  if (normalized.includes('hiver')) return 'hiver';
-  if (normalized.includes('printemps')) return 'printemps';
-  if (normalized.includes('ete')) return 'ete';
-  return normalized;
-}
-
-function inferProtectedSeasonNamesFromSessions(
-  sessions: Array<Record<string, unknown>>
-): string[] {
-  const required = new Set<string>();
-
-  for (const session of sessions) {
-    const start = parseIsoDateAtUtcMidnight(session.start_date);
-    const end = parseIsoDateAtUtcMidnight(session.end_date);
-    if (!start || !end) continue;
-
-    const cursor = new Date(start.getTime());
-    const limit = end.getTime();
-    while (cursor.getTime() <= limit) {
-      const seasonName = seasonNameFromUtcDate(cursor);
-      if (seasonName) required.add(seasonName);
-      cursor.setUTCDate(cursor.getUTCDate() + 1);
-    }
-  }
-
-  return Array.from(required);
-}
 
 function parseCommaSeparatedList(value: string): string[] {
   return value
@@ -179,12 +107,6 @@ function resolveDraftCanonicalPath(slugCandidate: string, title: string) {
   const fallback = slugify(sanitizeSeoText(title)) || 'slug-a-definir';
   const finalSlug = normalizedCandidate || fallback;
   return `/sejours/${finalSlug}`;
-}
-
-function buildDraftImagePreviewUrl(url: string): string {
-  const trimmed = url.trim();
-  if (!/^https?:\/\//i.test(trimmed)) return trimmed;
-  return `/api/draft-image-proxy?url=${encodeURIComponent(trimmed)}`;
 }
 
 type DraftReviewStepId =
@@ -242,14 +164,11 @@ export default function StayDraftReviewForm({
   organizerId,
   backHref,
   initialPayload,
-  seasonOptions,
   initialStatus,
   initialValidatedAt,
   initialValidatedByUserId,
   hideTopStatusCard = false,
-  linkedAccommodation = null,
-  variant = 'draft',
-  publishedSessionsStep = null
+  linkedAccommodation = null
 }: StayDraftReviewFormProps) {
   const router = useRouter();
   const [activeStep, setActiveStep] = useState<DraftReviewStepId>(() =>
@@ -260,20 +179,10 @@ export default function StayDraftReviewForm({
   );
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [title, setTitle] = useState(initialPayload.title);
-  const initialSeasonName = (initialPayload.season_name ?? '').trim();
-  const [selectedSeasonIds, setSelectedSeasonIds] = useState<string[]>(() =>
-    Array.isArray(initialPayload.season_ids)
-      ? initialPayload.season_ids.map((value) => String(value).trim()).filter(Boolean)
-      : []
-  );
   const [summary, setSummary] = useState(initialPayload.summary);
   const [locationText, setLocationText] = useState(initialPayload.location_text);
   const [regionText, setRegionText] = useState(initialPayload.region_text);
   const [description, setDescription] = useState(initialPayload.description);
-  const [activitiesText, setActivitiesText] = useState(initialPayload.activities_text ?? '');
-  const [requiredDocumentsText, setRequiredDocumentsText] = useState(
-    initialPayload.required_documents_text ?? ''
-  );
   const [programText, setProgramText] = useState(initialPayload.program_text);
   const [supervisionText, setSupervisionText] = useState(initialPayload.supervision_text);
   const [transportText, setTransportText] = useState(initialPayload.transport_text);
@@ -360,93 +269,7 @@ export default function StayDraftReviewForm({
     initialPayload.seo_generation_source ?? null
   );
   const [seoActionState, setSeoActionState] = useState<SeoActionState | null>(null);
-
-  const buildDraftSnapshot = useCallback(
-    () =>
-      JSON.stringify({
-        title,
-        summary,
-        locationText,
-        regionText,
-        description,
-        activitiesText,
-        requiredDocumentsText,
-        programText,
-        supervisionText,
-        transportText,
-        transportMode,
-        partnerDiscountPercent,
-        selectedCategories,
-        agesText,
-        sessionsList,
-        extraOptionsList,
-        insuranceOptionsList,
-        transportOptionsList,
-        accommodationImport,
-        imageUrls,
-        videoUrls,
-        seoPrimaryKeyword,
-        seoSecondaryKeywords,
-        seoTargetCity,
-        seoTargetRegion,
-        seoSearchIntents,
-        seoTitle,
-        seoMetaDescription,
-        seoIntroText,
-        seoH1Variant,
-        seoInternalAnchors,
-        seoSlugCandidate,
-        seoScore,
-        seoChecks,
-        hasCompletedAccommodationGate
-      }),
-    [
-      title,
-      summary,
-      locationText,
-      regionText,
-      description,
-      activitiesText,
-      requiredDocumentsText,
-      programText,
-      supervisionText,
-      transportText,
-      transportMode,
-      partnerDiscountPercent,
-      selectedCategories,
-      agesText,
-      sessionsList,
-      extraOptionsList,
-      insuranceOptionsList,
-      transportOptionsList,
-      accommodationImport,
-      imageUrls,
-      videoUrls,
-      seoPrimaryKeyword,
-      seoSecondaryKeywords,
-      seoTargetCity,
-      seoTargetRegion,
-      seoSearchIntents,
-      seoTitle,
-      seoMetaDescription,
-      seoIntroText,
-      seoH1Variant,
-      seoInternalAnchors,
-      seoSlugCandidate,
-      seoScore,
-      seoChecks,
-      hasCompletedAccommodationGate
-    ]
-  );
-
-  const draftSnapshot = useMemo(() => buildDraftSnapshot(), [buildDraftSnapshot]);
-  const [draftDirtyBaseline, setDraftDirtyBaseline] = useState<string | null>(null);
-
-  useLayoutEffect(() => {
-    setDraftDirtyBaseline((previous) => previous ?? draftSnapshot);
-  }, [draftSnapshot]);
-
-  const isDraftDirty = draftDirtyBaseline !== null && draftSnapshot !== draftDirtyBaseline;
+  const [seoAdvancedVisible, setSeoAdvancedVisible] = useState(false);
 
   const seoCategoryValues = useMemo(
     () =>
@@ -458,46 +281,16 @@ export default function StayDraftReviewForm({
     [selectedCategories]
   );
 
-  const selectedSeasonNames = useMemo(
-    () =>
-      seasonOptions
-        .filter((season) => selectedSeasonIds.includes(season.id))
-        .map((season) => season.name),
-    [seasonOptions, selectedSeasonIds]
-  );
-
-  const resolvedSeasonName = selectedSeasonNames.join(', ') || initialSeasonName;
-  const protectedSeasonNames = useMemo(
-    () => inferProtectedSeasonNamesFromSessions(sessionsList),
-    [sessionsList]
-  );
-  const protectedSeasonIds = useMemo(
-    () =>
-      seasonOptions
-        .filter((season) =>
-          protectedSeasonNames.some(
-            (protectedName) => normalizeSeasonKey(protectedName) === normalizeSeasonKey(season.name)
-          )
-        )
-        .map((season) => season.id),
-    [seasonOptions, protectedSeasonNames]
-  );
-
-  useEffect(() => {
-    if (protectedSeasonIds.length === 0) return;
-    setSelectedSeasonIds((current) => Array.from(new Set([...current, ...protectedSeasonIds])));
-  }, [protectedSeasonIds]);
-
   const seoInput = useMemo(
     () => ({
       title,
       summary,
       description,
-      activitiesText,
+      activitiesText: description,
       programText,
       location: locationText,
       region: regionText,
-      seasonName: resolvedSeasonName,
+      seasonName: '',
       ageRange: formatAgeRangeFromAgesText(agesText),
       categories: seoCategoryValues,
       seo: {
@@ -520,11 +313,9 @@ export default function StayDraftReviewForm({
       title,
       summary,
       description,
-      activitiesText,
       programText,
       locationText,
       regionText,
-      resolvedSeasonName,
       agesText,
       seoCategoryValues,
       seoPrimaryKeyword,
@@ -636,18 +427,6 @@ export default function StayDraftReviewForm({
     });
   }
 
-  function toggleSeason(seasonId: string, checked: boolean) {
-    setSelectedSeasonIds((current) => {
-      if (!checked && protectedSeasonIds.includes(seasonId)) {
-        return current;
-      }
-      if (checked) {
-        return Array.from(new Set([...current, seasonId]));
-      }
-      return current.filter((value) => value !== seasonId);
-    });
-  }
-
   function pushSeoTag(rawValue: string, setter: (updater: (current: string[]) => string[]) => void) {
     const [candidate] = sanitizeSeoTags([rawValue]);
     if (!candidate) return;
@@ -701,11 +480,7 @@ export default function StayDraftReviewForm({
       message: force ? 'Regénération SEO en cours…' : 'Génération SEO en cours…'
     });
     try {
-      const seoEndpoint =
-        variant === 'published'
-          ? `/api/organizer/stays/${draftId}/seo`
-          : `/api/stay-drafts/${draftId}/seo`;
-      const response = await fetch(seoEndpoint, {
+      const response = await fetch(`/api/stay-drafts/${draftId}/seo`, {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
@@ -829,11 +604,7 @@ export default function StayDraftReviewForm({
       videoUrls.map((u) => u.trim()).filter(Boolean)
     );
 
-    if (
-      variant === 'draft' &&
-      !linkedAccommodation &&
-      !String(accommodationImport.title ?? '').trim()
-    ) {
+    if (!linkedAccommodation && !String(accommodationImport.title ?? '').trim()) {
       nextErrors.accommodations_json = "Le nom de l'hébergement importé est requis.";
     }
 
@@ -849,29 +620,16 @@ export default function StayDraftReviewForm({
       }
     }
 
-    const missingProtectedSeasonIds = protectedSeasonIds.filter(
-      (seasonId) => !selectedSeasonIds.includes(seasonId)
-    );
-    if (missingProtectedSeasonIds.length > 0) {
-      nextErrors.season_ids =
-        'Impossible de retirer une saison couverte par au moins une date de session.';
-    }
-
     if (Object.keys(nextErrors).length > 0) {
       return { errors: nextErrors };
     }
 
     const payload: StayDraftReviewPayload = {
       title: normalizedTitle,
-      season_ids: selectedSeasonIds,
-      season_names: selectedSeasonNames,
-      season_name: resolvedSeasonName,
       summary,
       location_text: locationText,
       region_text: regionText,
       description,
-      activities_text: activitiesText,
-      required_documents_text: requiredDocumentsText,
       program_text: programText,
       supervision_text: supervisionText,
       transport_text: transportText,
@@ -918,29 +676,6 @@ export default function StayDraftReviewForm({
     setSuccessMessage(null);
 
     try {
-      if (variant === 'published') {
-        const response = await fetch(`/api/organizer/stays/${draftId}/review-bundle`, {
-          method: 'PATCH',
-          headers: {
-            'content-type': 'application/json',
-            accept: 'application/json'
-          },
-          body: JSON.stringify({
-            organizerId,
-            payload: result.payload
-          })
-        });
-        const data = (await response.json().catch(() => null)) as { error?: string } | null;
-        if (!response.ok) {
-          setGlobalError(data?.error ?? "Impossible d'enregistrer le séjour.");
-          return;
-        }
-        setSuccessMessage('Séjour enregistré avec succès.');
-        setDraftDirtyBaseline(buildDraftSnapshot());
-        router.refresh();
-        return;
-      }
-
       const response = await fetch(`/api/stay-drafts/${draftId}`, {
         method: mode === 'validate' ? 'POST' : 'PATCH',
         headers: {
@@ -977,7 +712,6 @@ export default function StayDraftReviewForm({
           setStatus(data?.draft?.status ?? status);
           setValidatedAt(data?.draft?.validated_at ?? validatedAt);
           setValidatedByUserId(data?.draft?.validated_by_user_id ?? validatedByUserId);
-          setDraftDirtyBaseline(buildDraftSnapshot());
           router.refresh();
         }
         return;
@@ -993,7 +727,6 @@ export default function StayDraftReviewForm({
       setStatus(data?.draft?.status ?? status);
       setValidatedAt(data?.draft?.validated_at ?? validatedAt);
       setValidatedByUserId(data?.draft?.validated_by_user_id ?? validatedByUserId);
-      setDraftDirtyBaseline(buildDraftSnapshot());
 
       if (mode === 'validate') {
         const organizerIdFromResponse =
@@ -1053,8 +786,6 @@ export default function StayDraftReviewForm({
 
   return (
     <div className="space-y-6">
-      <UnsavedChangesWhen when={isDraftDirty} />
-
       {!hideTopStatusCard ? (
         <div className="rounded-2xl border border-slate-200 bg-white p-6">
           <div className="flex flex-wrap items-center gap-3">
@@ -1094,11 +825,7 @@ export default function StayDraftReviewForm({
       )}
 
       <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
-        <nav
-          aria-label={
-            variant === 'published' ? 'Étapes de modification du séjour' : 'Étapes de relecture du brouillon'
-          }
-        >
+        <nav aria-label="Étapes de relecture du brouillon">
           <ul className="flex snap-x snap-mandatory gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:justify-between sm:gap-3 sm:overflow-visible">
             {DRAFT_REVIEW_STEPS.map(({ id, label, Icon }) => {
               const isActive = effectiveStep === id;
@@ -1202,46 +929,6 @@ export default function StayDraftReviewForm({
               })}
             />
           </label>
-          <div className="block text-sm font-medium text-slate-700 md:col-span-2">
-            <span>Saisons</span>
-            <div
-              className={cn(
-                'mt-2 grid grid-cols-2 gap-2 md:grid-cols-5',
-                draftReviewFieldGroupClass({
-                  required: false,
-                  filled: selectedSeasonIds.length > 0 || Boolean(resolvedSeasonName),
-                  hasError: Boolean(fieldErrors.season_ids)
-                })
-              )}
-            >
-              {seasonOptions.map((season) => {
-                const checked = selectedSeasonIds.includes(season.id);
-                const locked = protectedSeasonIds.includes(season.id) && checked;
-                return (
-                  <label
-                    key={season.id}
-                    className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${
-                      checked
-                        ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
-                        : 'border-slate-200 bg-white text-slate-700'
-                    } ${locked ? 'cursor-not-allowed opacity-80' : ''}`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      disabled={locked}
-                      onChange={(event) => toggleSeason(season.id, event.target.checked)}
-                      className="h-4 w-4 rounded border-slate-300"
-                    />
-                    <span>{season.name}</span>
-                  </label>
-                );
-              })}
-            </div>
-            {fieldErrors.season_ids ? (
-              <span className="mt-1 block text-xs text-rose-600">{fieldErrors.season_ids}</span>
-            ) : null}
-          </div>
         </div>
 
         <label className="block text-sm font-medium text-slate-700">
@@ -1276,19 +963,6 @@ export default function StayDraftReviewForm({
         </label>
 
         <label className="block text-sm font-medium text-slate-700">
-          Activités / pédagogie
-          <textarea
-            value={activitiesText}
-            onChange={(event) => setActivitiesText(event.target.value)}
-            rows={5}
-            className={draftReviewControlClass({
-              required: false,
-              filled: Boolean(activitiesText.trim())
-            })}
-          />
-        </label>
-
-        <label className="block text-sm font-medium text-slate-700">
           Programme
           <textarea
             value={programText}
@@ -1297,19 +971,6 @@ export default function StayDraftReviewForm({
             className={draftReviewControlClass({
               required: false,
               filled: Boolean(programText.trim())
-            })}
-          />
-        </label>
-
-        <label className="block text-sm font-medium text-slate-700">
-          Documents requis
-          <textarea
-            value={requiredDocumentsText}
-            onChange={(event) => setRequiredDocumentsText(event.target.value)}
-            rows={3}
-            className={draftReviewControlClass({
-              required: false,
-              filled: Boolean(requiredDocumentsText.trim())
             })}
           />
         </label>
@@ -1476,6 +1137,7 @@ export default function StayDraftReviewForm({
             />
           </label>
 
+<<<<<<< HEAD
           <div className="space-y-2">
             <p className="text-sm font-medium text-slate-700">Mots-clés secondaires</p>
             <div className="flex flex-wrap gap-2">
@@ -1639,6 +1301,10 @@ export default function StayDraftReviewForm({
                 </div>
               ))}
             </div>
+=======
+          <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600">
+            Les options avancées SEO sont masquées par défaut pour alléger la relecture.
+>>>>>>> e5fd835 (changement SEO)
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
@@ -1678,6 +1344,7 @@ export default function StayDraftReviewForm({
             </label>
           </div>
 
+<<<<<<< HEAD
           <label className="block text-sm font-medium text-slate-700">
             Introduction SEO
             <textarea
@@ -1769,41 +1436,13 @@ export default function StayDraftReviewForm({
             </div>
           </div>
 
+=======
+>>>>>>> e5fd835 (changement SEO)
           <div className="rounded-xl border border-slate-200 bg-white p-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Aperçu Google</p>
             <p className="mt-2 text-lg font-medium text-blue-700">{seoGooglePreview.title}</p>
             <p className="text-sm text-emerald-700">{seoGooglePreview.canonicalPath}</p>
             <p className="mt-2 text-sm text-slate-700">{seoGooglePreview.description}</p>
-          </div>
-
-          <div className="grid gap-3 lg:grid-cols-2">
-            <div className="rounded-xl border border-slate-200 bg-white p-4">
-              <p className="text-sm font-semibold text-slate-800">Score SEO</p>
-              <p className="mt-1 text-2xl font-bold text-slate-900">{seoScore ?? '—'}</p>
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-white p-4">
-              <p className="text-sm font-semibold text-slate-800">Checklist SEO</p>
-              <ul className="mt-2 space-y-1 text-sm">
-                {seoChecks.length > 0 ? (
-                  seoChecks.map((check) => (
-                    <li
-                      key={`${check.code}-${check.message}`}
-                      className={
-                        check.level === 'ok'
-                          ? 'text-emerald-700'
-                          : check.level === 'warning'
-                            ? 'text-amber-700'
-                            : 'text-slate-600'
-                      }
-                    >
-                      {check.message}
-                    </li>
-                  ))
-                ) : (
-                  <li className="text-slate-500">Aucune checklist disponible pour le moment.</li>
-                )}
-              </ul>
-            </div>
           </div>
 
           {seoWarnings.length > 0 && (
@@ -1816,24 +1455,302 @@ export default function StayDraftReviewForm({
               </ul>
             </div>
           )}
+
+          <button
+            type="button"
+            onClick={() => setSeoAdvancedVisible((current) => !current)}
+            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
+          >
+            {seoAdvancedVisible ? 'Masquer les options SEO avancées' : 'Afficher les options SEO avancées'}
+          </button>
+
+          {seoAdvancedVisible ? (
+            <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-4">
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-slate-700">Mots-clés secondaires</p>
+                <div className="flex flex-wrap gap-2">
+                  {seoSecondaryKeywords.map((keyword) => (
+                    <span
+                      key={keyword}
+                      className="inline-flex items-center gap-2 rounded-full bg-slate-50 px-3 py-1 text-xs font-medium text-slate-700"
+                    >
+                      {keyword}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setSeoSecondaryKeywords((current) => current.filter((item) => item !== keyword))
+                        }
+                        className="text-slate-500 hover:text-slate-800"
+                        aria-label={`Supprimer ${keyword}`}
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <input
+                    value={seoSecondaryInput}
+                    onChange={(event) => setSeoSecondaryInput(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        pushSeoTag(seoSecondaryInput, setSeoSecondaryKeywords);
+                        setSeoSecondaryInput('');
+                      }
+                    }}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                    placeholder="Ajouter un mot-clé secondaire"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      pushSeoTag(seoSecondaryInput, setSeoSecondaryKeywords);
+                      setSeoSecondaryInput('');
+                    }}
+                    className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700"
+                  >
+                    Ajouter
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="block text-sm font-medium text-slate-700">
+                  Ville cible SEO
+                  <input
+                    value={seoTargetCity}
+                    onChange={(event) => setSeoTargetCity(event.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2"
+                    placeholder="Ex. Biarritz"
+                  />
+                </label>
+                <label className="block text-sm font-medium text-slate-700">
+                  Région cible SEO
+                  <input
+                    value={seoTargetRegion}
+                    onChange={(event) => setSeoTargetRegion(event.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2"
+                    placeholder="Ex. Nouvelle-Aquitaine"
+                  />
+                </label>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-slate-700">Intentions de recherche associées</p>
+                <div className="flex flex-wrap gap-2">
+                  {seoSearchIntents.map((intent) => (
+                    <span
+                      key={intent}
+                      className="inline-flex items-center gap-2 rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700"
+                    >
+                      {intent}
+                      <button
+                        type="button"
+                        onClick={() => setSeoSearchIntents((current) => current.filter((item) => item !== intent))}
+                        className="text-amber-600 hover:text-amber-800"
+                        aria-label={`Supprimer ${intent}`}
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <input
+                    value={seoIntentInput}
+                    onChange={(event) => setSeoIntentInput(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        pushSeoTag(seoIntentInput, setSeoSearchIntents);
+                        setSeoIntentInput('');
+                      }
+                    }}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                    placeholder="Ex. séjour sportif adolescents"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      pushSeoTag(seoIntentInput, setSeoSearchIntents);
+                      setSeoIntentInput('');
+                    }}
+                    className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700"
+                  >
+                    Ajouter
+                  </button>
+                </div>
+              </div>
+
+              {seoSuggestions.length > 0 ? (
+                <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Suggestions intelligentes
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {seoSuggestions.map((suggestion) => (
+                      <div
+                        key={suggestion}
+                        className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs"
+                      >
+                        <p className="font-medium text-slate-800">{suggestion}</p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setSeoPrimaryKeyword(suggestion)}
+                            className="rounded-md border border-slate-300 px-2 py-1 font-semibold text-slate-700"
+                          >
+                            Principal
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => pushSeoTag(suggestion, setSeoSecondaryKeywords)}
+                            className="rounded-md border border-slate-300 px-2 py-1 font-semibold text-slate-700"
+                          >
+                            Secondaire
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => pushSeoTag(suggestion, setSeoSearchIntents)}
+                            className="rounded-md border border-slate-300 px-2 py-1 font-semibold text-slate-700"
+                          >
+                            Intention
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              <label className="block text-sm font-medium text-slate-700">
+                Intro SEO
+                <textarea
+                  value={seoIntroText}
+                  onChange={(event) => setSeoIntroText(event.target.value)}
+                  rows={3}
+                  className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2"
+                  placeholder="Paragraphe d'introduction SEO"
+                />
+              </label>
+
+              <div className="grid gap-4 lg:grid-cols-2">
+                <label className="block text-sm font-medium text-slate-700">
+                  Variante H1 (optionnel)
+                  <input
+                    value={seoH1Variant}
+                    onChange={(event) => setSeoH1Variant(event.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2"
+                  />
+                </label>
+
+                <label className="block text-sm font-medium text-slate-700">
+                  Slug candidat (sans impact canonique)
+                  <input
+                    value={seoSlugCandidate}
+                    onChange={(event) => setSeoSlugCandidate(event.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2"
+                  />
+                </label>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-slate-700">Suggestions d’ancres de maillage interne</p>
+                <div className="flex flex-wrap gap-2">
+                  {seoInternalAnchors.map((anchor) => (
+                    <span
+                      key={anchor}
+                      className="inline-flex items-center gap-2 rounded-full bg-slate-50 px-3 py-1 text-xs font-medium text-slate-700"
+                    >
+                      {anchor}
+                      <button
+                        type="button"
+                        onClick={() => setSeoInternalAnchors((current) => current.filter((item) => item !== anchor))}
+                        className="text-slate-500 hover:text-slate-800"
+                        aria-label={`Supprimer ${anchor}`}
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <input
+                    value={seoAnchorInput}
+                    onChange={(event) => setSeoAnchorInput(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        pushSeoTag(seoAnchorInput, setSeoInternalAnchors);
+                        setSeoAnchorInput('');
+                      }
+                    }}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                    placeholder="Ajouter une ancre interne"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      pushSeoTag(seoAnchorInput, setSeoInternalAnchors);
+                      setSeoAnchorInput('');
+                    }}
+                    className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700"
+                  >
+                    Ajouter
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid gap-3 lg:grid-cols-2">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-sm font-semibold text-slate-800">Score SEO</p>
+                  <p className="mt-1 text-2xl font-bold text-slate-900">{seoScore ?? '—'}</p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-sm font-semibold text-slate-800">Checklist SEO</p>
+                  <ul className="mt-2 space-y-1 text-sm">
+                    {seoChecks.length > 0 ? (
+                      seoChecks.map((check) => (
+                        <li
+                          key={`${check.code}-${check.message}`}
+                          className={
+                            check.level === 'ok'
+                              ? 'text-emerald-700'
+                              : check.level === 'warning'
+                                ? 'text-amber-700'
+                                : 'text-slate-600'
+                          }
+                        >
+                          {check.message}
+                        </li>
+                      ))
+                    ) : (
+                      <li className="text-slate-500">Aucune checklist disponible pour le moment.</li>
+                    )}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          ) : null}
         </section>
         )}
 
-        {effectiveStep === 'sessions' &&
-          (publishedSessionsStep ? (
-            <div className="space-y-4">{publishedSessionsStep}</div>
-          ) : (
-            <DraftSessionsEditor
-              value={sessionsList}
-              onChange={setSessionsList}
-              error={fieldErrors.sessions_json}
-              containerClassName={draftReviewSectionClass({
-                required: false,
-                satisfied: sessionsList.length > 0,
-                hasError: Boolean(fieldErrors.sessions_json)
-              })}
-            />
-          ))}
+<<<<<<< HEAD
+        {effectiveStep === 'sessions' && (
+=======
+>>>>>>> e5fd835 (changement SEO)
+        <DraftSessionsEditor
+          value={sessionsList}
+          onChange={setSessionsList}
+          error={fieldErrors.sessions_json}
+          containerClassName={draftReviewSectionClass({
+            required: false,
+            satisfied: sessionsList.length > 0,
+            hasError: Boolean(fieldErrors.sessions_json)
+          })}
+        />
+        )}
 
         {effectiveStep === 'options' && (
           <>
@@ -2001,7 +1918,7 @@ export default function StayDraftReviewForm({
                     onClick={() => setLightboxUrl(url)}
                     className="block w-full overflow-hidden rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-orange-400"
                   >
-                    <img src={buildDraftImagePreviewUrl(url)} alt="" className="h-28 w-full object-cover" />
+                    <img src={url} alt="" className="h-28 w-full object-cover" />
                   </button>
                   <button
                     type="button"
@@ -2098,7 +2015,7 @@ export default function StayDraftReviewForm({
 
         </div>
 
-        <div className="sticky bottom-0 z-20 -mx-4 flex flex-col gap-3 border-t border-slate-100 bg-white/95 px-4 pb-4 pt-4 backdrop-blur-sm sm:-mx-6 sm:px-6 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
@@ -2125,16 +2042,16 @@ export default function StayDraftReviewForm({
             )}
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              onClick={() => submit('save')}
-              disabled={isSubmitting}
-              className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-            >
-              {variant === 'published' ? 'Enregistrer le séjour' : 'Enregistrer le brouillon'}
-            </button>
-            {effectiveStep === 'seo' && variant === 'draft' ? (
+          {effectiveStep === 'seo' ? (
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={() => submit('save')}
+                disabled={isSubmitting}
+                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+              >
+                Enregistrer le brouillon
+              </button>
               <button
                 type="button"
                 onClick={() => submit('validate')}
@@ -2143,14 +2060,21 @@ export default function StayDraftReviewForm({
               >
                 Valider et publier le séjour
               </button>
-            ) : null}
+              <Link
+                href={backHref}
+                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700"
+              >
+                Annuler
+              </Link>
+            </div>
+          ) : (
             <Link
               href={backHref}
-              className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700"
+              className="self-start rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 sm:self-auto"
             >
               Annuler
             </Link>
-          </div>
+          )}
         </div>
       </div>
 
@@ -2162,7 +2086,7 @@ export default function StayDraftReviewForm({
           aria-label="Fermer l’aperçu"
         >
           <img
-            src={buildDraftImagePreviewUrl(lightboxUrl)}
+            src={lightboxUrl}
             alt=""
             className="max-h-[90vh] max-w-full rounded-lg object-contain shadow-2xl"
             onClick={(event) => event.stopPropagation()}

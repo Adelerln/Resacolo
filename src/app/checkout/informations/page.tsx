@@ -7,6 +7,29 @@ import { CheckoutFrame } from '@/components/checkout/CheckoutFrame';
 import { CheckoutCartSummary } from '@/components/checkout/CheckoutCartSummary';
 import { useCart } from '@/context/CartContext';
 import { useCheckout } from '@/context/CheckoutContext';
+import {
+  CheckoutAccountExistsError,
+  repriceCheckout,
+  registerCheckoutClientAccount
+} from '@/lib/checkout/client';
+import { isDevBypassCheckout } from '@/lib/checkout/dev-bypass';
+import {
+  fetchFamilyProfileSnapshot,
+  syncFamilyProfileFromCheckout
+} from '@/lib/account-profile/client';
+import {
+  isPasswordPolicyValid,
+  PASSWORD_POLICY_HTML_PATTERN,
+  PASSWORD_POLICY_MESSAGE,
+  PASSWORD_POLICY_MIN_LENGTH
+} from '@/lib/auth/password-policy';
+import {
+  createCheckoutId,
+  type CheckoutContact,
+  type CheckoutParticipant,
+  type CheckoutPricing
+} from '@/types/checkout';
+import type { FamilyProfile, FamilyProfileChild } from '@/types/family-profile';
 import { repriceCheckout, registerCheckoutClientAccount } from '@/lib/checkout/client';
 import { buildDevMockPricing, isDevBypassCheckout } from '@/lib/checkout/dev-bypass';
 import { createCheckoutId, type CheckoutContact, type CheckoutPricing } from '@/types/checkout';
@@ -24,7 +47,47 @@ const LABEL_CLASS = 'text-[11px] font-semibold uppercase tracking-[0.12em] text-
 /** Libellés type « fashion » : interlettrage plus serré (carte participant, avantages complémentaires). */
 const COMPACT_LABEL_CLASS = 'text-[11px] font-semibold uppercase tracking-wide text-slate-400';
 const FORM_ID = 'checkout-informations-form';
-const ACCOUNT_STORAGE_KEY = 'resacolo-checkout-account-email';
+
+function mapFamilyProfileToCheckoutContact(profile: FamilyProfile): CheckoutContact {
+  return {
+    billingFirstName: profile.billingFirstName,
+    billingLastName: profile.billingLastName,
+    email: profile.email,
+    phone: profile.phone,
+    addressLine1: profile.addressLine1,
+    addressLine2: profile.addressLine2,
+    postalCode: profile.postalCode,
+    city: profile.city,
+    country: profile.country || 'France',
+    hasSeparateBillingAddress: profile.hasSeparateBillingAddress,
+    billingAddressLine1: profile.billingAddressLine1,
+    billingAddressLine2: profile.billingAddressLine2,
+    billingPostalCode: profile.billingPostalCode,
+    billingCity: profile.billingCity,
+    billingCountry: profile.billingCountry || 'France',
+    cseOrganization: profile.cseOrganization,
+    vacafNumber: profile.vacafNumber,
+    paymentMode: profile.paymentMode,
+    acceptsTerms: false,
+    acceptsPrivacy: true
+  };
+}
+
+function isParticipantEmpty(participant: CheckoutParticipant | undefined) {
+  if (!participant) return true;
+  return !participant.childFirstName && !participant.childLastName && !participant.childBirthdate;
+}
+
+function mapChildToParticipant(child: FamilyProfileChild, cartItemId: string): CheckoutParticipant {
+  return {
+    cartItemId,
+    childFirstName: child.firstName,
+    childLastName: child.lastName,
+    childBirthdate: child.birthdate,
+    childGender: child.gender,
+    additionalInfo: child.additionalInfo
+  };
+}
 
 export default function CheckoutInformationsPage() {
   const router = useRouter();
@@ -46,16 +109,12 @@ export default function CheckoutInformationsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [accountPassword, setAccountPassword] = useState('');
   const [accountPasswordConfirm, setAccountPasswordConfirm] = useState('');
-  const [registeredAccountEmail, setRegisteredAccountEmail] = useState('');
+  const [isFamilyAuthenticated, setIsFamilyAuthenticated] = useState(false);
+  const [hasPrefilledFromProfile, setHasPrefilledFromProfile] = useState(false);
 
   useEffect(() => {
     setForm(contact);
   }, [contact]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    setRegisteredAccountEmail(sessionStorage.getItem(ACCOUNT_STORAGE_KEY) ?? '');
-  }, []);
 
   const isParticipantsComplete = useMemo(() => {
     return items.every((item) => {
@@ -64,6 +123,53 @@ export default function CheckoutInformationsPage() {
     });
   }, [items, participants]);
 
+  useEffect(() => {
+    if (!hydrated || isDevBypassCheckout() || hasPrefilledFromProfile) return;
+
+    let cancelled = false;
+
+    async function prefillFromAccountProfile() {
+      try {
+        const snapshot = await fetchFamilyProfileSnapshot();
+        if (cancelled) return;
+
+        setIsFamilyAuthenticated(true);
+        const nextContact = mapFamilyProfileToCheckoutContact(snapshot.profile);
+        setContact(nextContact);
+        setForm(nextContact);
+
+        const canPrefillParticipants = items.every((item) => isParticipantEmpty(participants[item.id]));
+        if (canPrefillParticipants && snapshot.profile.children.length > 0) {
+          items.forEach((item, index) => {
+            const child = snapshot.profile.children[index];
+            if (!child) return;
+            updateParticipant(item.id, mapChildToParticipant(child, item.id));
+          });
+        }
+      } catch {
+        if (!cancelled) {
+          setIsFamilyAuthenticated(false);
+        }
+      } finally {
+        if (!cancelled) {
+          setHasPrefilledFromProfile(true);
+        }
+      }
+    }
+
+    prefillFromAccountProfile();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    hasPrefilledFromProfile,
+    hydrated,
+    items,
+    participants,
+    setContact,
+    updateParticipant
+  ]);
   const hasSelectedSessionForAllItems = useMemo(() => {
     return items.every((item) => Boolean(item.selection.sessionId?.trim()));
   }, [items]);
@@ -181,9 +287,16 @@ export default function CheckoutInformationsPage() {
         return;
       }
 
-      if (registeredAccountEmail !== normalizedEmail) {
-        if (accountPassword.length < 8) {
-          throw new Error('Le mot de passe du compte doit contenir au moins 8 caractères.');
+      const normalizedContact: CheckoutContact = {
+        ...form,
+        email: normalizedEmail,
+        vacafNumber: (form.vacafNumber ?? '').toUpperCase()
+      };
+      setContact(normalizedContact);
+
+      if (!isFamilyAuthenticated) {
+        if (!isPasswordPolicyValid(accountPassword)) {
+          throw new Error(PASSWORD_POLICY_MESSAGE);
         }
 
         if (accountPassword !== accountPasswordConfirm) {
@@ -196,22 +309,36 @@ export default function CheckoutInformationsPage() {
           email: normalizedEmail,
           password: accountPassword
         });
-
-        if (typeof window !== 'undefined') {
-          sessionStorage.setItem(ACCOUNT_STORAGE_KEY, normalizedEmail);
-        }
-        setRegisteredAccountEmail(normalizedEmail);
+        setIsFamilyAuthenticated(true);
       }
 
-      const normalizedContact: CheckoutContact = {
-        ...form,
-        email: normalizedEmail,
-        vacafNumber: (form.vacafNumber ?? '').toUpperCase()
-      };
+      const participantsPayload: CheckoutParticipant[] = items.map((item) => {
+        const participant = participants[item.id];
+        return {
+          cartItemId: item.id,
+          childFirstName: participant?.childFirstName ?? '',
+          childLastName: participant?.childLastName ?? '',
+          childBirthdate: participant?.childBirthdate ?? '',
+          childGender: participant?.childGender ?? '',
+          additionalInfo: participant?.additionalInfo ?? ''
+        };
+      });
 
-      setContact(normalizedContact);
+      await syncFamilyProfileFromCheckout({
+        contact: normalizedContact,
+        participants: participantsPayload
+      });
+
       router.push('/checkout/recapitulatif');
     } catch (error) {
+      if (error instanceof CheckoutAccountExistsError) {
+        router.push('/login/familles?redirectTo=/checkout/informations');
+        return;
+      }
+      if (error instanceof Error && error.message.toLowerCase().includes('connexion famille requise')) {
+        router.push('/login/familles?redirectTo=/checkout/informations');
+        return;
+      }
       setErrorMessage(
         error instanceof Error ? error.message : 'Impossible de continuer vers le récapitulatif.'
       );
@@ -248,13 +375,13 @@ export default function CheckoutInformationsPage() {
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h2 className="font-display text-xl font-bold text-slate-900 sm:text-2xl">
-                Créez votre compte
+                {isFamilyAuthenticated ? 'Votre compte famille' : 'Créez votre compte'}
               </h2>
               <p className="mt-1 text-sm text-slate-500">
                 Utilisez vos coordonnées principales, puis indiquez si l’adresse de facturation doit être différente.
               </p>
             </div>
-            {registeredAccountEmail === form.email.trim().toLowerCase() && form.email.trim() ? (
+            {isFamilyAuthenticated ? (
               <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-emerald-700">
                 Compte prêt
               </span>
@@ -345,26 +472,43 @@ export default function CheckoutInformationsPage() {
                 className={INPUT_CLASS}
               />
             </label>
-            <label className={COMPACT_LABEL_CLASS}>
-              Mot de passe *
-              <input
-                type="password"
-                required={registeredAccountEmail !== form.email.trim().toLowerCase()}
-                value={accountPassword}
-                onChange={(event) => setAccountPassword(event.target.value)}
-                className={INPUT_CLASS}
-              />
-            </label>
-            <label className={COMPACT_LABEL_CLASS}>
-              Confirmer le mot de passe *
-              <input
-                type="password"
-                required={registeredAccountEmail !== form.email.trim().toLowerCase()}
-                value={accountPasswordConfirm}
-                onChange={(event) => setAccountPasswordConfirm(event.target.value)}
-                className={INPUT_CLASS}
-              />
-            </label>
+            {isFamilyAuthenticated ? (
+              <p className="md:col-span-2 rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
+                Vous êtes connecté(e) en famille. Vos informations seront mises à jour sur ce compte.
+              </p>
+            ) : (
+              <>
+                <label className={COMPACT_LABEL_CLASS}>
+                  Mot de passe *
+                  <input
+                    type="password"
+                    required
+                    minLength={PASSWORD_POLICY_MIN_LENGTH}
+                    pattern={PASSWORD_POLICY_HTML_PATTERN}
+                    title={PASSWORD_POLICY_MESSAGE}
+                    autoComplete="new-password"
+                    value={accountPassword}
+                    onChange={(event) => setAccountPassword(event.target.value)}
+                    className={INPUT_CLASS}
+                  />
+                </label>
+                <label className={COMPACT_LABEL_CLASS}>
+                  Confirmer le mot de passe *
+                  <input
+                    type="password"
+                    required
+                    minLength={PASSWORD_POLICY_MIN_LENGTH}
+                    pattern={PASSWORD_POLICY_HTML_PATTERN}
+                    title={PASSWORD_POLICY_MESSAGE}
+                    autoComplete="new-password"
+                    value={accountPasswordConfirm}
+                    onChange={(event) => setAccountPasswordConfirm(event.target.value)}
+                    className={INPUT_CLASS}
+                  />
+                </label>
+                <p className="md:col-span-2 text-xs text-slate-500">{PASSWORD_POLICY_MESSAGE}</p>
+              </>
+            )}
           </div>
         </section>
 

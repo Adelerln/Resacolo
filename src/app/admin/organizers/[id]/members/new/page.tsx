@@ -1,4 +1,9 @@
 import { requireRole } from '@/lib/auth/require';
+import {
+  PASSWORD_POLICY_HTML_PATTERN,
+  PASSWORD_POLICY_MESSAGE,
+  PASSWORD_POLICY_MIN_LENGTH
+} from '@/lib/auth/password-policy';
 import { ORGANIZER_ACCESS_ROLE_VALUES } from '@/lib/organizer-access';
 
 type PageProps = { params: Promise<{ id: string }>; searchParams?: { error?: string } };
@@ -57,8 +62,13 @@ export default async function AdminOrganizerMemberNewPage({ params: paramsPromis
           <input
             name="temp_password"
             type="password"
+            minLength={PASSWORD_POLICY_MIN_LENGTH}
+            pattern={PASSWORD_POLICY_HTML_PATTERN}
+            title={PASSWORD_POLICY_MESSAGE}
+            autoComplete="new-password"
             className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
           />
+          <span className="mt-1 block text-xs font-normal text-slate-500">{PASSWORD_POLICY_MESSAGE}</span>
         </label>
         <label className="block text-sm font-medium text-slate-700">
           Rôle

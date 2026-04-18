@@ -235,6 +235,111 @@ export type Database = {
           },
         ]
       }
+      client_profiles: {
+        Row: {
+          address_line1: string
+          address_line2: string
+          billing_address_line1: string
+          billing_address_line2: string
+          billing_city: string
+          billing_country: string
+          billing_postal_code: string
+          children_json: Json
+          city: string
+          country: string
+          created_at: string
+          cse_organization: string
+          has_separate_billing_address: boolean
+          parent1_email: string
+          parent1_first_name: string
+          parent1_last_name: string
+          parent1_phone: string
+          parent2_address_line1: string
+          parent2_address_line2: string
+          parent2_city: string
+          parent2_email: string
+          parent2_has_different_address: boolean
+          parent2_name: string
+          parent2_phone: string
+          parent2_postal_code: string
+          parent2_status: string
+          parent2_status_other: string
+          payment_mode: string
+          postal_code: string
+          updated_at: string
+          user_id: string
+          vacaf_number: string
+        }
+        Insert: {
+          address_line1?: string
+          address_line2?: string
+          billing_address_line1?: string
+          billing_address_line2?: string
+          billing_city?: string
+          billing_country?: string
+          billing_postal_code?: string
+          children_json?: Json
+          city?: string
+          country?: string
+          created_at?: string
+          cse_organization?: string
+          has_separate_billing_address?: boolean
+          parent1_email?: string
+          parent1_first_name?: string
+          parent1_last_name?: string
+          parent1_phone?: string
+          parent2_address_line1?: string
+          parent2_address_line2?: string
+          parent2_city?: string
+          parent2_email?: string
+          parent2_has_different_address?: boolean
+          parent2_name?: string
+          parent2_phone?: string
+          parent2_postal_code?: string
+          parent2_status?: string
+          parent2_status_other?: string
+          payment_mode?: string
+          postal_code?: string
+          updated_at?: string
+          user_id: string
+          vacaf_number?: string
+        }
+        Update: {
+          address_line1?: string
+          address_line2?: string
+          billing_address_line1?: string
+          billing_address_line2?: string
+          billing_city?: string
+          billing_country?: string
+          billing_postal_code?: string
+          children_json?: Json
+          city?: string
+          country?: string
+          created_at?: string
+          cse_organization?: string
+          has_separate_billing_address?: boolean
+          parent1_email?: string
+          parent1_first_name?: string
+          parent1_last_name?: string
+          parent1_phone?: string
+          parent2_address_line1?: string
+          parent2_address_line2?: string
+          parent2_city?: string
+          parent2_email?: string
+          parent2_has_different_address?: boolean
+          parent2_name?: string
+          parent2_phone?: string
+          parent2_postal_code?: string
+          parent2_status?: string
+          parent2_status_other?: string
+          payment_mode?: string
+          postal_code?: string
+          updated_at?: string
+          user_id?: string
+          vacaf_number?: string
+        }
+        Relationships: []
+      }
       collectivities: {
         Row: {
           code: string

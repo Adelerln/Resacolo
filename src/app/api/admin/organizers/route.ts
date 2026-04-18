@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireApiAdmin } from '@/lib/auth/api';
+import { isPasswordPolicyValid, PASSWORD_POLICY_MESSAGE } from '@/lib/auth/password-policy';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { slugify } from '@/lib/utils';
 
@@ -27,6 +28,12 @@ export async function POST(req: Request) {
   if (!name || !contactEmail || !userEmail || !tempPassword || !firstName || !lastName) {
     return NextResponse.redirect(
       new URL('/admin/organizers/new?error=Tous%20les%20champs%20sont%20requis', req.url),
+      303
+    );
+  }
+  if (!isPasswordPolicyValid(tempPassword)) {
+    return NextResponse.redirect(
+      new URL(`/admin/organizers/new?error=${encodeURIComponent(PASSWORD_POLICY_MESSAGE)}`, req.url),
       303
     );
   }

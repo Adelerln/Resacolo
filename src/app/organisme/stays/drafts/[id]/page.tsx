@@ -268,13 +268,9 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Relecture du brouillon séjour</h1>
           <p className="text-sm text-slate-600">
-            {manualDraft
-              ? selectedOrganizer
-                ? `Saisie manuelle — même parcours qu’après un import (étapes et champs) pour ${selectedOrganizer.name}.`
-                : 'Saisie manuelle — même parcours qu’après un import (étapes et champs).'
-              : selectedOrganizer
-                ? `Relecture et validation manuelle pour ${selectedOrganizer.name}.`
-                : 'Relecture et validation manuelle du brouillon.'}
+            {selectedOrganizer
+              ? `Relecture et validation manuelle pour ${selectedOrganizer.name}.`
+              : 'Relecture et validation manuelle du brouillon.'}
           </p>
         </div>
         <Link
@@ -287,17 +283,15 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
 
       <DraftImportStatusBanner pollWhilePending={pollWhilePending} importErrorMessage={importErrorMessage} />
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-6">
-        <div className="grid gap-3 text-sm md:grid-cols-2">
-          <p>
-            <span className="font-medium text-slate-700">ID :</span>{' '}
-            <span className="font-mono text-slate-900">{draft.id}</span>
-          </p>
-          <p>
-            <span className="font-medium text-slate-700">Source :</span>{' '}
-            {manualDraft ? (
-              <span className="text-slate-900">Saisie manuelle (pas d&apos;import depuis une URL)</span>
-            ) : (
+      {!manualDraft ? (
+        <div className="rounded-2xl border border-slate-200 bg-white p-6">
+          <div className="grid gap-3 text-sm md:grid-cols-2">
+            <p>
+              <span className="font-medium text-slate-700">ID :</span>{' '}
+              <span className="font-mono text-slate-900">{draft.id}</span>
+            </p>
+            <p>
+              <span className="font-medium text-slate-700">Source :</span>{' '}
               <a
                 href={draft.source_url}
                 target="_blank"
@@ -306,43 +300,45 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
               >
                 {draft.source_url}
               </a>
-            )}
-          </p>
-          <p>
-            <span className="font-medium text-slate-700">Statut :</span>{' '}
-            <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold uppercase ${draftStatusBadgeClass(draft.status)}`}>
-              {draft.status}
-            </span>
-          </p>
-          <p>
-            <span className="font-medium text-slate-700">Créé le :</span>{' '}
-            {new Date(draft.created_at).toLocaleString('fr-FR')}
-          </p>
-          <p>
-            <span className="font-medium text-slate-700">Mis à jour le :</span>{' '}
-            {new Date(draft.updated_at).toLocaleString('fr-FR')}
-          </p>
-          <p>
-            <span className="font-medium text-slate-700">Validé le :</span>{' '}
-            {draft.validated_at ? new Date(draft.validated_at).toLocaleString('fr-FR') : '—'}
-          </p>
-          <p>
-            <span className="font-medium text-slate-700">Validé par :</span>{' '}
-            {draft.validated_by_user_id ?? '—'}
-          </p>
-          <p>
-            <span className="font-medium text-slate-700">Modèle IA :</span> {aiModel ?? '—'}
-          </p>
-          <p>
-            <span className="font-medium text-slate-700">Version du prompt IA :</span>{' '}
-            {aiPromptVersion ?? '—'}
-          </p>
-          <p>
-            <span className="font-medium text-slate-700">Enrichi par IA le :</span>{' '}
-            {aiEnrichedAt ? new Date(aiEnrichedAt).toLocaleString('fr-FR') : '—'}
-          </p>
+            </p>
+            <p>
+              <span className="font-medium text-slate-700">Statut :</span>{' '}
+              <span
+                className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold uppercase ${draftStatusBadgeClass(draft.status)}`}
+              >
+                {draft.status}
+              </span>
+            </p>
+            <p>
+              <span className="font-medium text-slate-700">Créé le :</span>{' '}
+              {new Date(draft.created_at).toLocaleString('fr-FR')}
+            </p>
+            <p>
+              <span className="font-medium text-slate-700">Mis à jour le :</span>{' '}
+              {new Date(draft.updated_at).toLocaleString('fr-FR')}
+            </p>
+            <p>
+              <span className="font-medium text-slate-700">Validé le :</span>{' '}
+              {draft.validated_at ? new Date(draft.validated_at).toLocaleString('fr-FR') : '—'}
+            </p>
+            <p>
+              <span className="font-medium text-slate-700">Validé par :</span>{' '}
+              {draft.validated_by_user_id ?? '—'}
+            </p>
+            <p>
+              <span className="font-medium text-slate-700">Modèle IA :</span> {aiModel ?? '—'}
+            </p>
+            <p>
+              <span className="font-medium text-slate-700">Version du prompt IA :</span>{' '}
+              {aiPromptVersion ?? '—'}
+            </p>
+            <p>
+              <span className="font-medium text-slate-700">Enrichi par IA le :</span>{' '}
+              {aiEnrichedAt ? new Date(aiEnrichedAt).toLocaleString('fr-FR') : '—'}
+            </p>
+          </div>
         </div>
-      </div>
+      ) : null}
 
       <StayDraftReviewForm
         draftId={draft.id}
@@ -352,6 +348,7 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
         initialStatus={draft.status}
         initialValidatedAt={draft.validated_at}
         initialValidatedByUserId={draft.validated_by_user_id}
+        hideTopStatusCard={manualDraft}
         linkedAccommodation={
           linkedAccommodation
             ? ({

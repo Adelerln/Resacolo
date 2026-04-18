@@ -382,7 +382,11 @@ async function waitForDynamicTransportAmountCents(
   return lastSeen;
 }
 
-/** Lit le tarif public séjour (colonne `.tarif-1`) pour chaque période du select CESL. Logique de sélection de période dupliquée ici pour ne pas partager de code avec `collectCeslDynamicTransportVariants`. */
+/**
+ * Tarif séjour CESL uniquement : on lit le montant sous le libellé « Tarif public »
+ * (colonne `.tarif-1`), pas la colonne « Tarif partenaire » (`.tarif-2`).
+ * Ne pas confondre avec le tarif transport (libellé séparé).
+ */
 async function collectCeslDynamicSessions(page: Page): Promise<DraftSessionItem[]> {
   const periodSelect = page.locator('select[name="sejour_periode"], #sejour-periode').first();
   if ((await periodSelect.count().catch(() => 0)) === 0) return [];
@@ -441,24 +445,68 @@ async function collectCeslDynamicSessions(page: Page): Promise<DraftSessionItem[
       }, periodOption.index);
 
       await page.waitForTimeout(700);
+      await page
+        .waitForFunction(
+          () => {
+            const labels = Array.from(document.querySelectorAll('.tarif-label'));
+            for (const lab of labels) {
+              const lt = (lab.textContent ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+              if (!lt.includes('public') || lt.includes('partenaire') || lt.includes('transport')) continue;
+              if (lab.closest('.tarif-2')) continue;
+              const v = lab.closest('.tarif-1')?.querySelector('.tarif-value');
+              const raw = (v?.textContent ?? '').replace(/\s/g, '');
+              const n = Number(raw.replace(',', '.'));
+              if (Number.isFinite(n) && n >= 500 && n < 50000) return true;
+            }
+            return false;
+          },
+          { timeout: 4500 }
+        )
+        .catch(() => undefined);
 
       const priceEur = await page.evaluate(() => {
-        const root = document.querySelector('.tarif-1');
-        if (!root) return null;
-        const el = root.querySelector('.tarif-value');
-        const raw = (el?.textContent ?? '').replace(/\s/g, '').replace(/\u00A0/g, '');
-        if (!raw) return null;
-        const n = Number(raw.replace(',', '.'));
-        if (!Number.isFinite(n) || n < 30 || n > 20000) return null;
-        return n;
+        const parseEur = (raw: string): number | null => {
+          const t = raw.replace(/\s/g, '').replace(/\u00A0/g, '');
+          if (!t) return null;
+          const n = Number(t.replace(',', '.'));
+          if (!Number.isFinite(n) || n < 30 || n > 20000) return null;
+          return n;
+        };
+
+        const labels = Array.from(document.querySelectorAll('.tarif-label'));
+        for (const lab of labels) {
+          const lt = (lab.textContent ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+          if (!lt.includes('public')) continue;
+          if (lt.includes('partenaire')) continue;
+          if (lt.includes('transport')) continue;
+          if (lab.closest('.tarif-2')) continue;
+          (lab as HTMLElement).scrollIntoView({ block: 'center', behavior: 'instant' });
+          const block = lab.closest('.tarif-1');
+          if (!block) continue;
+          const el = block.querySelector('.tarif-value');
+          const p = parseEur(el?.textContent ?? '');
+          if (p != null) return p;
+        }
+
+        return null;
       });
 
+      const labelNorm = normalizeWhitespace(periodOption.label);
       const parsed = parseSessionLabelToItem(periodOption.label);
-      if (!parsed) continue;
+      if (!parsed) {
+        sessions.push({
+          label: labelNorm,
+          start_date: null,
+          end_date: null,
+          price: priceEur,
+          availability: detectSessionAvailability(periodOption.label)
+        });
+        continue;
+      }
 
       sessions.push({
         ...parsed,
-        label: normalizeWhitespace(periodOption.label),
+        label: labelNorm,
         price: priceEur,
         availability: detectSessionAvailability(periodOption.label) ?? parsed.availability ?? null
       });

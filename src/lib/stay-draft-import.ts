@@ -2077,8 +2077,18 @@ export function detectSessionAvailability(snippet: string): DraftSessionItem['av
   return null;
 }
 
+/** Normalise les libellés d’options CESL (tirets unicode, espaces). */
+function normalizeCeslPeriodOptionLabel(raw: string): string {
+  return normalizeWhitespace(
+    raw
+      .replace(/\u2013/g, '-')
+      .replace(/\u2014/g, '-')
+      .replace(/\u00A0/g, ' ')
+  );
+}
+
 export function parseSessionLabelToItem(label: string): DraftSessionItem | null {
-  const normalized = normalizeWhitespace(label);
+  const normalized = normalizeCeslPeriodOptionLabel(label);
   if (!normalized) return null;
 
   const sameMonth = normalized.match(
@@ -2114,10 +2124,15 @@ export function parseSessionLabelToItem(label: string): DraftSessionItem | null 
   return null;
 }
 
-function buildSessionKey(session: DraftSessionItem): string {
+/** Même logique pour Map CESL et fusion import statique + Playwright (`mergeExtractedSessions`). */
+export function buildStaySessionMergeKey(session: DraftSessionItem): string {
   return (session.start_date || session.end_date)
     ? `${session.start_date ?? ''}|${session.end_date ?? ''}`
     : simplifyForMatch(session.label);
+}
+
+function buildSessionKey(session: DraftSessionItem): string {
+  return buildStaySessionMergeKey(session);
 }
 
 function extractStructuredSessionOptions($: CheerioAPI): DraftSessionItem[] {
@@ -2177,14 +2192,47 @@ function parseCeslAvailability(entry: {
 }
 
 /**
- * Prix séjour « Tarif public » CESL : 1re colonne (`.tarif-1`), pas le tarif partenaire (`.tarif-2`).
- * Évite de prendre le « à partir de 3100 € » affiché côté partenaire / texte libre.
+ * CEI : bloc typique
+ * `<small>A partir de</small><strong>1830€</strong><small>(Prix sans transport)</small>`
+ */
+function extractCeiApartirStrongPriceDom(html: string): number | null {
+  const $ = load(html);
+  let found: number | null = null;
+  $('small').each((_, sm) => {
+    if (found != null) return;
+    const t = normalizeWhitespace($(sm).text()).toLowerCase();
+    if (!t.includes('partir')) return;
+    const strong = $(sm).nextAll('strong').first();
+    if (strong.length === 0) return;
+    const p = parseFrenchAmount(normalizeWhitespace(strong.text()), 30, 20_000);
+    if (p != null) found = p;
+  });
+  if (found != null) return found;
+  const m = html.match(/<small>[^<]*partir\s+de[^<]*<\/small>\s*<strong>([^<]+)<\/strong>/i);
+  if (m?.[1]) {
+    return parseFrenchAmount(normalizeWhitespace(m[1]), 30, 20_000);
+  }
+  return null;
+}
+
+/**
+ * Prix séjour CESL : bloc « Tarif public » (`.tarif-1`), pas partenaire (`.tarif-2`) ni transport.
  */
 function extractCeslStayPublicPriceFromTarif1Dom(html: string): number | null {
   const $ = load(html);
-  const raw = normalizeWhitespace($('.tarif-1').first().find('.tarif-value').first().text());
-  if (!raw) return null;
-  return parseFrenchAmount(raw, 30, 20_000);
+  const labelNodes = $('.tarif-label').toArray();
+  for (const node of labelNodes) {
+    const text = normalizeWhitespace($(node).text()).toLowerCase();
+    if (!text.includes('public')) continue;
+    if (text.includes('partenaire')) continue;
+    if (text.includes('transport')) continue;
+    const block = $(node).closest('.tarif-1');
+    if (block.length === 0) continue;
+    const raw = normalizeWhitespace(block.find('.tarif-value').first().text());
+    const p = parseFrenchAmount(raw, 30, 20_000);
+    if (p != null) return p;
+  }
+  return null;
 }
 
 /** Ajoute les périodes présentes dans le &lt;select&gt; (ex. « Complet ») absentes du JSON `sDureesJson`. */
@@ -2195,12 +2243,19 @@ function mergeCeslSelectPeriodOptionsIntoSessions(html: string, sessions: Map<st
   $(selector).each((_, el) => {
     const value = ($(el).attr('value') ?? '').trim();
     if (!value) return;
-    const label = normalizeWhitespace($(el).text());
+    const label = normalizeCeslPeriodOptionLabel($(el).text());
     if (!label) return;
     const parsed = parseSessionLabelToItem(label);
-    if (!parsed) return;
-    const key = buildSessionKey(parsed);
-    if (!key) return;
+    if (!parsed) {
+      mergeCeslSessionIntoMap(sessions, {
+        label,
+        start_date: null,
+        end_date: null,
+        price: null,
+        availability: detectSessionAvailability(label)
+      });
+      return;
+    }
 
     const fromSelect: DraftSessionItem = {
       ...parsed,
@@ -2209,68 +2264,136 @@ function mergeCeslSelectPeriodOptionsIntoSessions(html: string, sessions: Map<st
       availability: detectSessionAvailability(label) ?? parsed.availability ?? null
     };
 
-    const existing = sessions.get(key);
-    if (!existing) {
-      sessions.set(key, fromSelect);
-      return;
-    }
-    sessions.set(key, {
-      ...existing,
-      label: label.length >= (existing.label?.length ?? 0) ? label : existing.label,
-      availability: fromSelect.availability ?? existing.availability
-    });
+    mergeCeslSessionIntoMap(sessions, fromSelect);
   });
+}
+
+/** Uniquement le champ JSON « public » — jamais le tarif partenaire. */
+function ceslSessionPriceFromTarifEntry(entry: {
+  tarifs?: { public?: { value?: string }; partner?: { value?: string } };
+}): number | null {
+  return parseFrenchAmount(String(entry?.tarifs?.public?.value ?? ''), 30, 20_000);
+}
+
+/**
+ * Fusionne deux lignes pour la même période. La 2e passe d’import (souvent Playwright,
+ * prix lu sous le libellé « Tarif public » CESL) remplace le prix si elle en a un.
+ */
+export function mergeDraftSessionItems(a: DraftSessionItem, b: DraftSessionItem): DraftSessionItem {
+  const pa = typeof a.price === 'number' && Number.isFinite(a.price) && a.price > 0 ? a.price : null;
+  const pb = typeof b.price === 'number' && Number.isFinite(b.price) && b.price > 0 ? b.price : null;
+  const price = pb ?? pa ?? null;
+  const label = (a.label?.length ?? 0) >= (b.label?.length ?? 0) ? a.label : b.label;
+  return {
+    ...a,
+    ...b,
+    price,
+    label,
+    availability: b.availability ?? a.availability
+  };
+}
+
+function mergeCeslSessionIntoMap(map: Map<string, DraftSessionItem>, session: DraftSessionItem): void {
+  const key = buildSessionKey(session);
+  if (!key) return;
+  const existing = map.get(key);
+  map.set(key, existing ? mergeDraftSessionItems(existing, session) : session);
 }
 
 function extractCeslSessionsFromHtml(html: string): DraftSessionItem[] | null {
   const durationJson = extractCeslDurationJson(html);
-  if (!durationJson) return null;
 
   const sessions = new Map<string, DraftSessionItem>();
-  for (const durationEntries of Object.values(durationJson)) {
-    if (!durationEntries || typeof durationEntries !== 'object') continue;
-    for (const entry of Object.values(durationEntries)) {
-      const dates = normalizeWhitespace(entry?.dates ?? '');
-      if (!dates) continue;
-      const parsed = parseSessionLabelToItem(dates);
-      if (!parsed) continue;
-      const publicRaw = String(entry?.tarifs?.public?.value ?? '').trim();
-      const price = parseFrenchAmount(publicRaw, 30, 20_000);
-      const session: DraftSessionItem = {
-        ...parsed,
-        label: dates,
-        price,
-        availability: parseCeslAvailability(entry)
-      };
-      sessions.set(buildSessionKey(session), session);
+  if (durationJson) {
+    for (const durationEntries of Object.values(durationJson)) {
+      if (!durationEntries || typeof durationEntries !== 'object') continue;
+      for (const entry of Object.values(durationEntries)) {
+        const dates = normalizeWhitespace(entry?.dates ?? '');
+        if (!dates) continue;
+        const parsed = parseSessionLabelToItem(dates);
+        if (!parsed) continue;
+        const price = ceslSessionPriceFromTarifEntry(
+          entry as { tarifs?: { public?: { value?: string }; partner?: { value?: string } } }
+        );
+        const session: DraftSessionItem = {
+          ...parsed,
+          label: dates,
+          price,
+          availability: parseCeslAvailability(entry)
+        };
+        mergeCeslSessionIntoMap(sessions, session);
+      }
     }
   }
 
   mergeCeslSelectPeriodOptionsIntoSessions(html, sessions);
 
   if (sessions.size === 0) return null;
-  return Array.from(sessions.values()).sort((left, right) => {
+
+  const list = Array.from(sessions.values());
+  patchCeslSessionsWhenDomPublicReplacesPartnerLikeJson(list, html);
+
+  return list.sort((left, right) => {
     const leftKey = left.start_date ?? left.end_date ?? left.label ?? '';
     const rightKey = right.start_date ?? right.end_date ?? right.label ?? '';
     return leftKey.localeCompare(rightKey, 'fr');
   });
 }
 
-function extractCeslPublicPriceFromHtml(html: string): number | null {
-  const durationJson = extractCeslDurationJson(html);
-  if (!durationJson) return null;
+/**
+ * Si le JSON met le même montant « bas » sur toutes les lignes (ex. 3100 € partenaire mal mappé)
+ * et que le DOM affiche un tarif public plus élevé (ex. 3410 € dans `.tarif-1`), on aligne les sessions.
+ */
+function patchCeslSessionsWhenDomPublicReplacesPartnerLikeJson(
+  sessions: DraftSessionItem[],
+  html: string
+): void {
+  const dom = extractCeslStayPublicPriceFromTarif1Dom(html);
+  if (dom == null || sessions.length === 0) return;
 
-  const prices: number[] = [];
-  for (const durationEntries of Object.values(durationJson)) {
-    if (!durationEntries || typeof durationEntries !== 'object') continue;
-    for (const entry of Object.values(durationEntries)) {
-      const price = parseFrenchAmount(String(entry?.tarifs?.public?.value ?? ''), 30, 20_000);
-      if (price !== null) prices.push(price);
+  const nums = sessions
+    .map((s) => s.price)
+    .filter((p): p is number => typeof p === 'number' && Number.isFinite(p) && p > 0);
+  if (nums.length === 0) {
+    for (const s of sessions) {
+      s.price = dom;
+    }
+    return;
+  }
+  const min = Math.min(...nums);
+  const max = Math.max(...nums);
+  if (min === max && dom > min && dom - min <= 1200) {
+    for (const s of sessions) {
+      s.price = dom;
     }
   }
+}
 
-  if (prices.length === 0) return null;
-  return Math.min(...prices);
+/**
+ * Prix public de la période **sélectionnée** dans `#sejour-periode` (pas le min sur toutes les périodes).
+ */
+function extractCeslSelectedPeriodPublicFromJson(html: string): number | null {
+  const durationJson = extractCeslDurationJson(html);
+  if (!durationJson) return null;
+  const $ = load(html);
+  const selected = $(
+    'select#sejour-periode option[selected], select[name="sejour_periode"] option[selected]'
+  ).first();
+  const periodValue = selected.attr('value')?.trim();
+  if (!periodValue) return null;
+
+  for (const durationEntries of Object.values(durationJson)) {
+    if (!durationEntries || typeof durationEntries !== 'object') continue;
+    const record = durationEntries as Record<
+      string,
+      { tarifs?: { public?: { value?: string }; partner?: { value?: string } } }
+    >;
+    const entry = record[periodValue];
+    if (entry && typeof entry === 'object') {
+      return ceslSessionPriceFromTarifEntry(entry);
+    }
+  }
+  return null;
 }
 
 function extractReservationCallToAction(
@@ -3715,9 +3838,10 @@ export function extractStayData(html: string, sourceUrl: string): ExtractedStayD
 
   const ageRange = parseAgeRange(scanText);
   const priceFrom =
+    extractCeiApartirStrongPriceDom(html) ??
     extractCeslStayPublicPriceFromTarif1Dom(html) ??
-    extractCeslPublicPriceFromHtml(html) ??
-    parsePrice(scanText, jsonLdBlocks);
+    extractCeslSelectedPeriodPublicFromJson(html) ??
+    (extractCeslDurationJson(html) ? null : parsePrice(scanText, jsonLdBlocks));
   const durationDays = parseDuration(scanText);
   const images = extractImages($, sourceUrl);
   const cityFromTitleOrDescription = extractCityFromTitleOrDescription(title, description);

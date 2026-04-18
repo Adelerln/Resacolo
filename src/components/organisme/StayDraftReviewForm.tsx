@@ -65,6 +65,8 @@ type StayDraftReviewFormProps = {
   initialStatus: string;
   initialValidatedAt: string | null;
   initialValidatedByUserId: string | null;
+  /** Saisie manuelle : masque la carte Statut / validé en tête du tunnel. */
+  hideTopStatusCard?: boolean;
   linkedAccommodation?: {
     id: string;
     name: string;
@@ -165,6 +167,7 @@ export default function StayDraftReviewForm({
   initialStatus,
   initialValidatedAt,
   initialValidatedByUserId,
+  hideTopStatusCard = false,
   linkedAccommodation = null
 }: StayDraftReviewFormProps) {
   const router = useRouter();
@@ -782,22 +785,24 @@ export default function StayDraftReviewForm({
 
   return (
     <div className="space-y-6">
-      <div className="rounded-2xl border border-slate-200 bg-white p-6">
-        <div className="flex flex-wrap items-center gap-3">
-          <span className="text-sm font-medium text-slate-500">Statut :</span>
-          <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700">
-            {status}
-          </span>
-          {validatedAt && (
-            <span className="text-xs text-slate-500">
-              Validé le {new Date(validatedAt).toLocaleString('fr-FR')}
+      {!hideTopStatusCard ? (
+        <div className="rounded-2xl border border-slate-200 bg-white p-6">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-sm font-medium text-slate-500">Statut :</span>
+            <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700">
+              {status}
             </span>
-          )}
-          {validatedByUserId && (
-            <span className="text-xs text-slate-500">par {validatedByUserId}</span>
-          )}
+            {validatedAt && (
+              <span className="text-xs text-slate-500">
+                Validé le {new Date(validatedAt).toLocaleString('fr-FR')}
+              </span>
+            )}
+            {validatedByUserId && (
+              <span className="text-xs text-slate-500">par {validatedByUserId}</span>
+            )}
+          </div>
         </div>
-      </div>
+      ) : null}
 
       {globalError && (
         <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">

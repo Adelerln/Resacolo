@@ -1,4 +1,5 @@
 import {
+  buildStaySessionMergeKey,
   extractJsonLdOfferPricesFromHtml,
   extractStayData,
   extractThalieOptionUrlPricing,
@@ -6,6 +7,7 @@ import {
   extractVideoUrls,
   fetchHtml,
   buildDraftTransportOptionsFromVariants,
+  mergeDraftSessionItems,
   mergeThalieSessionBaselinesIntoSessions,
   pickImportedSessionReferencePriceCents,
   selectBestStayImages,
@@ -200,19 +202,6 @@ function stripPricingFromExtracted(extracted: ReturnType<typeof extractStayData>
   };
 }
 
-function sessionMergeScore(
-  session: NonNullable<ReturnType<typeof extractStayData>['sessionsJson']>[number]
-): number {
-  let score = 0;
-  if (session.start_date) score += 20;
-  if (session.end_date) score += 20;
-  if (typeof session.price === 'number' && Number.isFinite(session.price) && session.price > 0) score += 30;
-  if (session.availability === 'available') score += 15;
-  else if (session.availability) score += 10;
-  if (session.label) score += Math.min(session.label.length, 20);
-  return score;
-}
-
 function mergeExtractedSessions(
   primary: ReturnType<typeof extractStayData>['sessionsJson'],
   secondary: ReturnType<typeof extractStayData>['sessionsJson']
@@ -220,60 +209,13 @@ function mergeExtractedSessions(
   const rows = [...(primary ?? []), ...(secondary ?? [])];
   if (rows.length === 0) return null;
 
-  const preferSessionOnTie = (
-    a: (typeof rows)[number],
-    b: (typeof rows)[number]
-  ): (typeof rows)[number] => {
-    const pa = typeof a.price === 'number' && Number.isFinite(a.price) && a.price > 0 ? a.price : null;
-    const pb = typeof b.price === 'number' && Number.isFinite(b.price) && b.price > 0 ? b.price : null;
-    if (pa != null && pb != null && pa !== pb) {
-      return pa > pb ? a : b;
-    }
-    if (pa != null && pb == null) return a;
-    if (pb != null && pa == null) return b;
-    return a;
-  };
-
   const map = new Map<string, (typeof rows)[number]>();
   for (const session of rows) {
-    const key =
-      session.start_date || session.end_date
-        ? `${session.start_date ?? ''}|${session.end_date ?? ''}`
-        : (session.label ?? '').trim().toLowerCase();
+    const key = buildStaySessionMergeKey(session);
     if (!key) continue;
 
     const existing = map.get(key);
-    if (!existing) {
-      map.set(key, session);
-      continue;
-    }
-
-    const scoreNew = sessionMergeScore(session);
-    const scoreOld = sessionMergeScore(existing);
-    if (scoreNew > scoreOld) {
-      map.set(key, {
-        ...session,
-        price: session.price ?? existing.price ?? null,
-        availability: session.availability ?? existing.availability ?? null
-      });
-      continue;
-    }
-    if (scoreNew === scoreOld) {
-      const winner = preferSessionOnTie(session, existing);
-      const loser = winner === session ? existing : session;
-      map.set(key, {
-        ...winner,
-        price: winner.price ?? loser.price ?? null,
-        availability: winner.availability ?? loser.availability ?? null
-      });
-      continue;
-    }
-
-    map.set(key, {
-      ...existing,
-      price: existing.price ?? session.price ?? null,
-      availability: existing.availability ?? session.availability ?? null
-    });
+    map.set(key, existing ? mergeDraftSessionItems(existing, session) : session);
   }
 
   return Array.from(map.values()).sort((left, right) => {

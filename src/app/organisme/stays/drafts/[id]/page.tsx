@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
+import DraftImportStatusBanner from '@/components/organisme/DraftImportStatusBanner';
 import StayDraftReviewForm from '@/components/organisme/StayDraftReviewForm';
 import { requireRole } from '@/lib/auth/require';
 import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers.server';
@@ -15,9 +16,10 @@ import type { StayDraftReviewPayload } from '@/types/stay-draft-review';
 
 type PageProps = {
   params: Promise<{ id: string }>;
-  searchParams?: {
+  searchParams?: Promise<{
     organizerId?: string | string[];
-  };
+    importPending?: string | string[];
+  }>;
 };
 
 export const dynamic = 'force-dynamic';
@@ -117,11 +119,26 @@ function asSeoChecks(
     );
 }
 
+function readPartnerDiscountPercentFromRaw(rawPayload: Record<string, unknown>): number | null {
+  const v = rawPayload.partner_discount_percent;
+  if (v == null || v === '') return null;
+  const n = typeof v === 'number' ? v : Number(String(v).trim().replace(',', '.'));
+  if (!Number.isFinite(n) || n < 0 || n > 100) return null;
+  return n;
+}
+
 function readExistingAccommodationId(rawPayload: Record<string, unknown>): string | null {
   const importOptions = rawPayload.import_options;
   if (!isPlainRecord(importOptions)) return null;
   const selectedId = importOptions.existing_accommodation_id;
   return typeof selectedId === 'string' && selectedId.trim().length > 0 ? selectedId.trim() : null;
+}
+
+/** Brouillon créé depuis « Saisie manuelle » — pas d’import URL, pas de polling « import en cours ». */
+function isManualCreationDraft(rawPayload: Record<string, unknown>): boolean {
+  if (rawPayload.manual_entry === true) return true;
+  if (rawPayload.created_via === 'manual-flow') return true;
+  return false;
 }
 
 function draftStatusBadgeClass(status: string | null): string {
@@ -161,7 +178,24 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
   }
 
   const rawPayload = asObject(draft.raw_payload);
-  const aiExtracted = rawPayload.ai_extracted ?? null;
+
+  const importErrorMessage =
+    typeof rawPayload.fetch_error === 'string' && rawPayload.fetch_error.trim()
+      ? rawPayload.fetch_error.trim()
+      : typeof rawPayload.import_fatal_error === 'string' && rawPayload.import_fatal_error.trim()
+        ? rawPayload.import_fatal_error.trim()
+        : typeof rawPayload.import_update_error === 'string' && rawPayload.import_update_error.trim()
+          ? rawPayload.import_update_error.trim()
+          : null;
+
+  const hasImportedTitle = Boolean(normalizeString(draft.title));
+  const manualDraft = isManualCreationDraft(rawPayload);
+  const pollWhilePending =
+    !manualDraft &&
+    (draft.status ?? '').toLowerCase() === 'pending' &&
+    !importErrorMessage &&
+    !hasImportedTitle;
+
   const aiModel = typeof rawPayload.ai_model === 'string' ? rawPayload.ai_model : null;
   const aiPromptVersion =
     typeof rawPayload.ai_prompt_version === 'string' ? rawPayload.ai_prompt_version : null;
@@ -206,7 +240,6 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
       !linkedAccommodation && Object.keys(accommodationsObject).length > 0
         ? accommodationsObject
         : null,
-    images: asStringArray(draft.images),
     seo_primary_keyword: normalizeString(draft.seo_primary_keyword),
     seo_secondary_keywords: draft.seo_secondary_keywords ?? [],
     seo_target_city: normalizeString(draft.seo_target_city),
@@ -221,9 +254,10 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
     seo_score: Number.isFinite(draft.seo_score) ? draft.seo_score : null,
     seo_checks: asSeoChecks(draft.seo_checks),
     seo_generated_at: draft.seo_generated_at,
-    seo_generation_source: normalizeString(draft.seo_generation_source) || null
+    seo_generation_source: normalizeString(draft.seo_generation_source) || null,
     images: normalizeImportedImageUrlList(asStringArray(draft.images)),
-    video_urls: normalizeImportedVideoUrlList(fallbackVideoUrls)
+    video_urls: normalizeImportedVideoUrlList(fallbackVideoUrls),
+    partner_discount_percent: readPartnerDiscountPercentFromRaw(rawPayload)
   };
 
   const backHref = withOrganizerQuery('/organisme/sejours', selectedOrganizerId);
@@ -247,67 +281,64 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
         </Link>
       </div>
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-6">
-        <div className="grid gap-3 text-sm md:grid-cols-2">
-          <p>
-            <span className="font-medium text-slate-700">ID :</span>{' '}
-            <span className="font-mono text-slate-900">{draft.id}</span>
-          </p>
-          <p>
-            <span className="font-medium text-slate-700">Source URL :</span>{' '}
-            <a
-              href={draft.source_url}
-              target="_blank"
-              rel="noreferrer"
-              className="break-all text-emerald-700 underline"
-            >
-              {draft.source_url}
-            </a>
-          </p>
-          <p>
-            <span className="font-medium text-slate-700">Statut :</span>{' '}
-            <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold uppercase ${draftStatusBadgeClass(draft.status)}`}>
-              {draft.status}
-            </span>
-          </p>
-          <p>
-            <span className="font-medium text-slate-700">Créé le :</span>{' '}
-            {new Date(draft.created_at).toLocaleString('fr-FR')}
-          </p>
-          <p>
-            <span className="font-medium text-slate-700">Mis à jour le :</span>{' '}
-            {new Date(draft.updated_at).toLocaleString('fr-FR')}
-          </p>
-          <p>
-            <span className="font-medium text-slate-700">Validé le :</span>{' '}
-            {draft.validated_at ? new Date(draft.validated_at).toLocaleString('fr-FR') : '—'}
-          </p>
-          <p>
-            <span className="font-medium text-slate-700">Validé par :</span>{' '}
-            {draft.validated_by_user_id ?? '—'}
-          </p>
-          <p>
-            <span className="font-medium text-slate-700">Modèle IA :</span> {aiModel ?? '—'}
-          </p>
-          <p>
-            <span className="font-medium text-slate-700">Version du prompt IA :</span>{' '}
-            {aiPromptVersion ?? '—'}
-          </p>
-          <p>
-            <span className="font-medium text-slate-700">Enrichi par IA le :</span>{' '}
-            {aiEnrichedAt ? new Date(aiEnrichedAt).toLocaleString('fr-FR') : '—'}
-          </p>
-        </div>
-      </div>
+      <DraftImportStatusBanner pollWhilePending={pollWhilePending} importErrorMessage={importErrorMessage} />
 
-      <details className="rounded-2xl border border-slate-200 bg-white p-4">
-        <summary className="cursor-pointer text-sm font-semibold text-slate-800">
-          Debug IA (`raw_payload.ai_extracted`)
-        </summary>
-        <pre className="mt-3 max-h-[420px] overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-100">
-          {JSON.stringify(aiExtracted, null, 2)}
-        </pre>
-      </details>
+      {!manualDraft ? (
+        <div className="rounded-2xl border border-slate-200 bg-white p-6">
+          <div className="grid gap-3 text-sm md:grid-cols-2">
+            <p>
+              <span className="font-medium text-slate-700">ID :</span>{' '}
+              <span className="font-mono text-slate-900">{draft.id}</span>
+            </p>
+            <p>
+              <span className="font-medium text-slate-700">Source :</span>{' '}
+              <a
+                href={draft.source_url}
+                target="_blank"
+                rel="noreferrer"
+                className="break-all text-emerald-700 underline"
+              >
+                {draft.source_url}
+              </a>
+            </p>
+            <p>
+              <span className="font-medium text-slate-700">Statut :</span>{' '}
+              <span
+                className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold uppercase ${draftStatusBadgeClass(draft.status)}`}
+              >
+                {draft.status}
+              </span>
+            </p>
+            <p>
+              <span className="font-medium text-slate-700">Créé le :</span>{' '}
+              {new Date(draft.created_at).toLocaleString('fr-FR')}
+            </p>
+            <p>
+              <span className="font-medium text-slate-700">Mis à jour le :</span>{' '}
+              {new Date(draft.updated_at).toLocaleString('fr-FR')}
+            </p>
+            <p>
+              <span className="font-medium text-slate-700">Validé le :</span>{' '}
+              {draft.validated_at ? new Date(draft.validated_at).toLocaleString('fr-FR') : '—'}
+            </p>
+            <p>
+              <span className="font-medium text-slate-700">Validé par :</span>{' '}
+              {draft.validated_by_user_id ?? '—'}
+            </p>
+            <p>
+              <span className="font-medium text-slate-700">Modèle IA :</span> {aiModel ?? '—'}
+            </p>
+            <p>
+              <span className="font-medium text-slate-700">Version du prompt IA :</span>{' '}
+              {aiPromptVersion ?? '—'}
+            </p>
+            <p>
+              <span className="font-medium text-slate-700">Enrichi par IA le :</span>{' '}
+              {aiEnrichedAt ? new Date(aiEnrichedAt).toLocaleString('fr-FR') : '—'}
+            </p>
+          </div>
+        </div>
+      ) : null}
 
       <StayDraftReviewForm
         draftId={draft.id}
@@ -317,6 +348,7 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
         initialStatus={draft.status}
         initialValidatedAt={draft.validated_at}
         initialValidatedByUserId={draft.validated_by_user_id}
+        hideTopStatusCard={manualDraft}
         linkedAccommodation={
           linkedAccommodation
             ? ({

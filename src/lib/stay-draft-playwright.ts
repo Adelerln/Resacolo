@@ -1,12 +1,92 @@
-import type { Browser, BrowserContext, BrowserType, Page } from 'playwright';
-import type { DraftTransportPriceDebug, DraftTransportVariant } from '@/lib/stay-draft-import';
+import {
+  type DraftSessionItem,
+  type DraftTransportPriceDebug,
+  type DraftTransportVariant,
+  detectSessionAvailability,
+  parseSessionLabelToItem,
+  type ThalieSessionBaseline
+} from '@/lib/stay-draft-import';
 
-const PLAYWRIGHT_TIMEOUT_MS = 30_000;
-const PLAYWRIGHT_SCROLL_STEPS = 8;
-const PLAYWRIGHT_MAX_CAROUSEL_CLICKS = 10;
-const PLAYWRIGHT_MAX_IMAGE_CANDIDATE_CLICKS = 24;
-const PLAYWRIGHT_SELECT_WAIT_MS = 2_200;
-const PLAYWRIGHT_MAX_TRANSPORT_COMBINATIONS = 36;
+type PageWaitUntil = 'load' | 'domcontentloaded';
+
+interface Page {
+  evaluate<TArgs extends unknown[], TResult>(
+    pageFunction: (...args: TArgs) => TResult,
+    ...args: TArgs
+  ): Promise<TResult>;
+  locator(selector: string): PlaywrightLocator;
+  waitForTimeout(timeoutMs: number): Promise<void>;
+  waitForLoadState(state: 'load' | 'domcontentloaded'): Promise<void>;
+  waitForNavigation(options?: { waitUntil?: PageWaitUntil; timeout?: number }): Promise<unknown>;
+  keyboard: {
+    press(key: string): Promise<unknown>;
+  };
+  url(): string;
+  goto(
+    url: string,
+    options: {
+      waitUntil: PageWaitUntil;
+      timeout: number;
+    }
+  ): Promise<unknown>;
+  goBack(options: { waitUntil: PageWaitUntil; timeout: number }): Promise<unknown>;
+  content(): Promise<string>;
+  waitForFunction<TResult, TArg>(
+    pageFunction: (arg: TArg) => TResult,
+    arg: TArg,
+    options?: { timeout?: number }
+  ): Promise<unknown>;
+  waitForFunction<TResult>(
+    pageFunction: () => TResult,
+    options?: { timeout?: number }
+  ): Promise<unknown>;
+}
+
+interface PlaywrightLocator {
+  first(): PlaywrightLocator;
+  nth(index: number): PlaywrightLocator;
+  locator(selector: string): PlaywrightLocator;
+  count(): Promise<number>;
+  isVisible(): Promise<boolean>;
+  click(options?: { timeout?: number }): Promise<void>;
+  page(): Page;
+  selectOption(
+    option:
+      | { index: number }
+      | { value: string }
+      | { label: string },
+    options?: { timeout?: number }
+  ): Promise<void>;
+  textContent(): Promise<string | null>;
+  evaluate<TElement extends Element, TArgs extends unknown[], TResult>(
+    pageFunction: (element: TElement, ...args: TArgs) => TResult,
+    ...args: TArgs
+  ): Promise<TResult>;
+  evaluateAll<TResult>(pageFunction: (elements: Element[]) => TResult): Promise<TResult>;
+}
+
+interface BrowserContext {
+  newPage(): Promise<Page>;
+  close(): Promise<void>;
+  tracing: {
+    start(options: { screenshots: boolean; snapshots: boolean }): Promise<void>;
+    stop(options: { path: string }): Promise<void>;
+  };
+}
+
+interface Browser {
+  newContext(options?: Record<string, unknown>): Promise<BrowserContext>;
+  close(): Promise<void>;
+}
+
+interface BrowserType {
+  launch(options: { headless: boolean; slowMo: number }): Promise<Browser>;
+}
+
+const PLAYWRIGHT_TIMEOUT_MS = 15_000;
+const PLAYWRIGHT_SCROLL_STEPS = 5;
+const PLAYWRIGHT_MAX_CAROUSEL_CLICKS = 5;
+const PLAYWRIGHT_MAX_IMAGE_CANDIDATE_CLICKS = 10;
 const CAROUSEL_HINT_PATTERN =
   /\b(carrousel|carousel|slider|swiper|slick|splide|embla|flickity|glide|diaporama|galerie|mosaic|mosaique|lightgallery|fancybox|photos)\b/i;
 
@@ -28,42 +108,6 @@ function playwrightImportSlowMo(): number {
 }
 
 type BrowserEngineName = 'chromium' | 'firefox' | 'webkit';
-type TransportDirection = 'outbound' | 'return' | 'generic';
-
-type RawTransportSelectOption = {
-  index: number;
-  value: string;
-  rawLabel: string;
-  selected: boolean;
-};
-
-type RawTransportSelectCandidate = {
-  selectIndex: number;
-  context: string;
-  options: RawTransportSelectOption[];
-};
-
-type TransportSelectOption = RawTransportSelectOption & {
-  label: string | null;
-  isBaseReference: boolean;
-};
-
-type TransportSelectCandidate = {
-  selectIndex: number;
-  direction: TransportDirection;
-  context: string;
-  options: TransportSelectOption[];
-  selectedOption: TransportSelectOption | null;
-};
-
-type ObservedTransportCombination = {
-  departureCity: string;
-  returnCity: string;
-  departureLabelRaw: string | null;
-  returnLabelRaw: string | null;
-  pagePriceCents: number | null;
-  observationKind: 'same-city-pair' | 'cartesian' | 'outbound-with-default-return' | 'return-with-default-outbound' | 'single-select';
-};
 
 export type DynamicStayPageSnapshot = {
   html: string;
@@ -74,42 +118,43 @@ export type DynamicStayPageSnapshot = {
   transportVariants: DraftTransportVariant[];
   transportPriceDebug: DraftTransportPriceDebug[];
   transportDetected: boolean;
+  /** Sessions CESL : une ligne par option « Période de séjour », prix lu sur `.tarif-1` (tarif public) après changement de période. */
+  ceslSessionsFromPlaywright: DraftSessionItem[];
+  /** Totaux « référence » (option ville index 0) par date — aligner les prix session sur le catalogue dynamique. */
+  thalieSessionBaselines: ThalieSessionBaseline[];
 };
 
-const TRANSPORT_BASE_REFERENCE_KEYS = [
-  'depose centre',
-  'depose sur le centre',
-  'depose au centre',
-  'reprise centre',
-  'reprise sur le centre',
-  'reprise au centre',
-  'sans transport',
-  'sans acheminement',
-  'sans convoyage',
-  'rendez vous sur place',
-  'rdv sur place',
-  'sur place',
-  'depart centre',
-  'retour centre'
-];
+type DynamicTransportDirection = 'outbound' | 'return' | 'generic';
 
-const TRANSPORT_PLACEHOLDER_KEYS = [
-  'choisir',
-  'selectionner',
-  'selectionnez',
-  'sélectionner',
-  'sélectionnez',
-  'ville de depart',
-  'ville depart',
-  'villes de depart',
-  'ville de retour',
-  'transport aller',
-  'transport retour',
-  'aucun transport',
-  'sans transport',
-  'none',
-  'tous'
-];
+type DynamicTransportOption = {
+  index: number;
+  value: string;
+  label: string;
+  selected: boolean;
+};
+
+type DynamicTransportSelect = {
+  index: number;
+  context: string;
+  direction: DynamicTransportDirection;
+  options: DynamicTransportOption[];
+};
+
+type DynamicTransportCollectionResult = {
+  transportVariants: DraftTransportVariant[];
+  transportPriceDebug: DraftTransportPriceDebug[];
+  transportDetected: boolean;
+};
+
+type PlaywrightSnapshotOptions = {
+  collectImages?: boolean;
+  collectTransport?: boolean;
+  collectVideos?: boolean;
+};
+
+function unique(values: string[]): string[] {
+  return Array.from(new Set(values));
+}
 
 function normalizeWhitespace(value: string | null | undefined): string {
   return (value ?? '').replace(/\s+/g, ' ').trim();
@@ -126,10 +171,6 @@ function simplifyForMatch(value: string | null | undefined): string {
     .trim();
 }
 
-function unique(values: string[]): string[] {
-  return Array.from(new Set(values));
-}
-
 function shouldKeepImage(url: string): boolean {
   return /^https?:\/\//i.test(url) && !/(\.svg($|\?)|logo|icon|avatar|placeholder)/i.test(url);
 }
@@ -138,145 +179,614 @@ function shouldKeepVideo(url: string): boolean {
   return /^https?:\/\//i.test(url) && /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|vimeo\.com\/|dailymotion\.com\/|loom\.com\/share\/|wistia\.|\.mp4(?:$|\?)|\.webm(?:$|\?)|\.mov(?:$|\?))/i.test(url);
 }
 
-function sanitizeTransportLabel(value: string | null | undefined): string {
-  if (!value) return '';
-  return normalizeWhitespace(value)
+function detectDynamicTransportDirection(context: string): DynamicTransportDirection | null {
+  const key = simplifyForMatch(context);
+  if (!key) return null;
+  const hasTransport = /\btransport|acheminement|depart|retour|reprise\b/.test(key);
+  const hasOutbound = /\baller|depart\b/.test(key);
+  const hasReturn = /\bretour|reprise\b/.test(key);
+
+  if (hasOutbound && !hasReturn) return 'outbound';
+  if (hasReturn && !hasOutbound) return 'return';
+  if (hasTransport) return 'generic';
+  return null;
+}
+
+function normalizeDynamicTransportLabel(value: string | null | undefined): string | null {
+  const normalized = normalizeWhitespace(value)
     .replace(/\u00A0/g, ' ')
     .replace(/\s*[\(\[]?\+?\s*[0-9][0-9\s.,]*\s*(?:€|euros?)[^\)\]]*[\)\]]?/gi, '')
     .replace(/\s*-\s*\+?\s*[0-9][0-9\s.,]*\s*(?:€|euros?)/gi, '')
     .replace(/^transport\s*(aller|retour)?\s*[:\-]\s*/i, '')
     .trim();
-}
-
-function normalizeTransportCityLabel(value: string | null | undefined): string | null {
-  const normalized = sanitizeTransportLabel(value);
   if (!normalized) return null;
   const key = simplifyForMatch(normalized);
   if (!key) return null;
-  if (TRANSPORT_PLACEHOLDER_KEYS.some((item) => key.includes(simplifyForMatch(item)))) {
+  if (
+    ['choisir', 'selectionner', 'selectionnez', 'ville de depart', 'ville de retour', 'aucun transport', 'sans transport', 'tous'].some(
+      (item) => key.includes(simplifyForMatch(item))
+    )
+  ) {
     return null;
   }
-  return normalized.length > 80 ? normalized.slice(0, 80).trim() : normalized;
+  return normalized;
 }
 
-function isBaseTransportReference(value: string | null | undefined): boolean {
-  const key = simplifyForMatch(value);
-  if (!key) return false;
-  return TRANSPORT_BASE_REFERENCE_KEYS.some((candidate) => key.includes(simplifyForMatch(candidate)));
+async function readDynamicTransportSelects(page: Page): Promise<DynamicTransportSelect[]> {
+  const raw = await page.locator('select').evaluateAll((elements: Element[]) => {
+    const normalize = (value: string | null | undefined) => (value ?? '').replace(/\s+/g, ' ').trim();
+
+    return elements.map((element, index) => {
+      const node = element as HTMLSelectElement;
+      const id = normalize(node.id);
+      const name = normalize(node.getAttribute('name'));
+      const ariaLabel = normalize(node.getAttribute('aria-label'));
+      const title = normalize(node.getAttribute('title'));
+      const className = normalize(node.className);
+      const linkedLabel = id
+        ? normalize(document.querySelector(`label[for="${CSS.escape(id)}"]`)?.textContent)
+        : '';
+      const parentText = normalize(
+        node.closest('td,th,tr,div,fieldset,section,form')?.textContent?.slice(0, 1000) ?? ''
+      );
+
+      return {
+        index,
+        context: normalize([id, name, ariaLabel, title, className, linkedLabel, parentText].join(' ')),
+        options: Array.from(node.options).map((option, optionIndex) => ({
+          index: optionIndex,
+          value: (option.value ?? '').trim(),
+          label: normalize(option.textContent),
+          selected: option.selected
+        }))
+      };
+    });
+  });
+
+  return (raw as Array<{ index: number; context: string; options: DynamicTransportOption[] }>)
+    .map((candidate) => ({
+      ...candidate,
+      direction: detectDynamicTransportDirection(candidate.context)
+    }))
+    .filter(
+      (candidate): candidate is DynamicTransportSelect =>
+        Boolean(candidate.direction) && candidate.options.length > 1
+    );
 }
 
-function detectTransportDirection(context: string): TransportDirection | null {
-  const key = simplifyForMatch(context);
-  if (!key) return null;
-
-  const hasTransport = /\btransport|acheminement|depart|départ|retour|reprise\b/i.test(key);
-  const hasOutbound = /\baller|depart|départ|outbound\b/i.test(key);
-  const hasReturn = /\bretour|arrivee|arrivée|reprise|inbound\b/i.test(key);
-
-  if (hasOutbound && !hasReturn) return 'outbound';
-  if (hasReturn && !hasOutbound) return 'return';
-  if (hasTransport) return 'generic';
-
-  // Menus type colonies / réservation (ex. name="PDTOPTVALUEID1") sans libellé « transport » à proximité
-  if (/pdtopt|optvalueid|optvalue|hubville|villedepart|ville_depart|choixville/i.test(key)) {
-    return 'generic';
-  }
-
-  return null;
-}
-
-function parseFrenchAmount(
-  rawValue: string | null | undefined,
-  minEur: number = 30,
-  maxEur: number = 20_000
-): number | null {
-  if (!rawValue) return null;
-  let normalized = normalizeWhitespace(rawValue).replace(/[^\d.,]/g, '');
-  if (!normalized) return null;
-
-  if (normalized.includes('.') && normalized.includes(',')) {
-    if (normalized.lastIndexOf(',') > normalized.lastIndexOf('.')) {
-      normalized = normalized.replace(/\./g, '').replace(',', '.');
-    } else {
-      normalized = normalized.replace(/,/g, '');
-    }
-  } else if (normalized.includes(',')) {
-    normalized = /,\d{1,2}$/.test(normalized)
-      ? normalized.replace(',', '.')
-      : normalized.replace(/,/g, '');
+async function setDynamicSelectOption(
+  page: Page,
+  selectIndex: number,
+  option: DynamicTransportOption
+): Promise<void> {
+  const locator = page.locator('select').nth(selectIndex);
+  if (option.value) {
+    await locator.selectOption({ value: option.value }).catch(async () => {
+      await locator.selectOption({ index: option.index });
+    });
   } else {
-    normalized = normalized.replace(/\.(?=\d{3}(?:\.|$))/g, '');
+    await locator.selectOption({ index: option.index });
   }
 
-  const amount = Number(normalized);
-  if (!Number.isFinite(amount)) return null;
-  const rounded = Math.round(amount);
-  if (rounded < minEur || rounded > maxEur) return null;
-  return rounded;
+  await locator.evaluate((element: HTMLSelectElement, optionIndex: number) => {
+    if (Number.isInteger(optionIndex) && optionIndex >= 0 && optionIndex < element.options.length) {
+      element.selectedIndex = optionIndex;
+      element.value = element.options[optionIndex]?.value ?? element.value;
+    }
+    element.dispatchEvent(new Event('input', { bubbles: true }));
+    element.dispatchEvent(new Event('change', { bubbles: true }));
+    const w = window as unknown as {
+      jQuery?: (el: Element) => {
+        val?: (v: string) => void;
+        trigger?: (ev: string) => void;
+        selectmenu?: (cmd: string) => void;
+      };
+    };
+    const $el = w.jQuery?.(element);
+    if ($el?.val && $el.trigger) {
+      try {
+        $el.val(element.value);
+        $el.trigger('change');
+        $el.trigger('selectmenuchange');
+        $el.selectmenu?.('refresh');
+      } catch {
+        /* ignore */
+      }
+    }
+  }, option.index);
+
+  await page.waitForTimeout(450);
 }
 
-/** Montants visibles sur la fiche (dont supplément transport, base 0 €). */
-function findPriceInText(text: string): number | null {
-  const fromMatch = text.match(/\b(?:à\s+partir\s+de|dès)\s*([0-9][0-9\s.,]*)\s*(?:€|euros?)/i);
-  if (fromMatch?.[1]) {
-    const amount = parseFrenchAmount(fromMatch[1], 0, 20_000);
-    if (amount !== null) return amount;
-  }
-
-  const genericPattern = /\b([0-9][0-9\s.,]{1,})\s*(?:€|euros?)/gi;
-  let match: RegExpExecArray | null = null;
-  while ((match = genericPattern.exec(text)) !== null) {
-    const amount = parseFrenchAmount(match[1], 0, 20_000);
-    if (amount !== null) return amount;
-  }
-
-  return null;
-}
-
-function makeTransportVariantKey(departureCity: string, returnCity: string): string {
-  return `${simplifyForMatch(departureCity)}|${simplifyForMatch(returnCity)}`;
-}
-
-function scoreTransportVariant(row: DraftTransportVariant): number {
-  let score = 0;
-  if (typeof row.amount_cents === 'number') score += 100;
-  if (row.pricing_method === 'session_delta') score += 25;
-  if (row.confidence === 'high') score += 30;
-  if (row.confidence === 'medium') score += 20;
-  if (row.confidence === 'low') score += 10;
-  return score;
-}
-
-function dedupeTransportVariants(rows: DraftTransportVariant[]): DraftTransportVariant[] {
-  const map = new Map<string, DraftTransportVariant>();
-
-  for (const row of rows) {
-    const departureCity = normalizeTransportCityLabel(row.departure_city) ?? row.departure_city;
-    const returnCity = normalizeTransportCityLabel(row.return_city) ?? row.return_city;
-    if (!departureCity && !returnCity) continue;
-    const safeDeparture = departureCity || returnCity;
-    const safeReturn = returnCity || departureCity;
-    const key = makeTransportVariantKey(safeDeparture, safeReturn);
-    const existing = map.get(key);
-    const candidate = {
-      ...row,
-      departure_city: safeDeparture,
-      return_city: safeReturn
+async function readDynamicTransportAmountCents(page: Page): Promise<number | null> {
+  return page.evaluate(() => {
+    const findTransportScopedAmount = () => {
+      const labels = Array.from(document.querySelectorAll('.tarif-label'));
+      for (const label of labels) {
+        const text = (label.textContent ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+        if (!text.includes('tarif transport')) continue;
+        const container =
+          label.closest('div, li, article, section, td') ?? label.parentElement ?? label;
+        const amountNode = container.querySelector('.sejour-tarif.active, .sejour-tarif');
+        const amountText = (amountNode?.textContent ?? '').trim();
+        if (amountText) return amountText;
+      }
+      return null;
     };
 
-    if (!existing || scoreTransportVariant(candidate) > scoreTransportVariant(existing)) {
-      map.set(key, candidate);
+    const selectors = [
+      '.tarif-label + .badge .sejour-tarif.active',
+      '.tarif-label + .badge .sejour-tarif',
+      '.badge .sejour-tarif.active',
+      '.badge .sejour-tarif',
+      '.sejour-tarif.active',
+      '.sejour-tarif'
+    ];
+
+    const parseNumber = (raw: string) => {
+      let value = raw.replace(/\s/g, '').replace(/\+/g, '');
+      if (value.includes(',') && value.includes('.')) {
+        value =
+          value.lastIndexOf(',') > value.lastIndexOf('.')
+            ? value.replace(/\./g, '').replace(',', '.')
+            : value.replace(/,/g, '');
+      } else if (value.includes(',')) {
+        value = /,\d{1,2}$/.test(value) ? value.replace(',', '.') : value.replace(/,/g, '');
+      } else {
+        value = value.replace(/\.(?=\d{3}(?:\D|$))/g, '');
+      }
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? Math.round(parsed * 100) : null;
+    };
+
+    const scopedTransportText = findTransportScopedAmount();
+    if (scopedTransportText) {
+      const scopedMatch = scopedTransportText.match(/([+-]?\s*\d[\d\s\.,]*)/);
+      if (scopedMatch?.[1]) {
+        const scopedCents = parseNumber(scopedMatch[1]);
+        if (scopedCents !== null && scopedCents >= 0 && scopedCents < 8_000_000) return scopedCents;
+      }
+    }
+
+    for (const selector of selectors) {
+      const element = document.querySelector(selector);
+      if (!element) continue;
+      const text = (element.textContent ?? '').trim();
+      if (!text) continue;
+      const match = text.match(/([+-]?\s*\d[\d\s\.,]*)/);
+      if (!match?.[1]) continue;
+      const cents = parseNumber(match[1]);
+      if (cents !== null && cents >= 0 && cents < 8_000_000) return cents;
+    }
+    return null;
+  });
+}
+
+async function waitForDynamicTransportAmountCents(
+  page: Page,
+  previousAmountCents: number | null
+): Promise<number | null> {
+  let lastSeen = previousAmountCents;
+
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const current = await readDynamicTransportAmountCents(page);
+    if (current !== null) {
+      lastSeen = current;
+      if (previousAmountCents === null || current !== previousAmountCents || attempt >= 2) {
+        return current;
+      }
+    }
+    await page.waitForTimeout(250);
+  }
+
+  return lastSeen;
+}
+
+/**
+ * Tarif séjour CESL uniquement : on lit le montant sous le libellé « Tarif public »
+ * (colonne `.tarif-1`), pas la colonne « Tarif partenaire » (`.tarif-2`).
+ * Ne pas confondre avec le tarif transport (libellé séparé).
+ */
+async function collectCeslDynamicSessions(page: Page): Promise<DraftSessionItem[]> {
+  const periodSelect = page.locator('select[name="sejour_periode"], #sejour-periode').first();
+  if ((await periodSelect.count().catch(() => 0)) === 0) return [];
+
+  const readSelectOptions = async (locator: PlaywrightLocator) =>
+    locator.evaluate((element: HTMLSelectElement) => {
+      const normalize = (value: string | null | undefined) => (value ?? '').replace(/\s+/g, ' ').trim();
+      return Array.from(element.options).map((option, index) => ({
+        index,
+        value: normalize(option.value),
+        label: normalize(option.textContent),
+        selected: option.selected
+      }));
+    });
+
+  const periodOptions = (await readSelectOptions(periodSelect)).filter((option) => option.value !== '');
+  if (periodOptions.length === 0) return [];
+
+  const sessions: DraftSessionItem[] = [];
+
+  for (const periodOption of periodOptions) {
+    try {
+      if (periodOption.value) {
+        await periodSelect.selectOption({ value: periodOption.value }).catch(async () => {
+          await periodSelect.selectOption({ index: periodOption.index });
+        });
+      } else {
+        await periodSelect.selectOption({ index: periodOption.index });
+      }
+
+      await periodSelect.evaluate((element: HTMLSelectElement, optionIndex: number) => {
+        if (Number.isInteger(optionIndex) && optionIndex >= 0 && optionIndex < element.options.length) {
+          element.selectedIndex = optionIndex;
+          element.value = element.options[optionIndex]?.value ?? element.value;
+        }
+        element.dispatchEvent(new Event('input', { bubbles: true }));
+        element.dispatchEvent(new Event('change', { bubbles: true }));
+        const w = window as unknown as {
+          jQuery?: (el: Element) => {
+            val?: (v: string) => void;
+            trigger?: (ev: string) => void;
+            selectmenu?: (cmd: string) => void;
+          };
+        };
+        const $el = w.jQuery?.(element);
+        if ($el?.val && $el.trigger) {
+          try {
+            $el.val(element.value);
+            $el.trigger('change');
+            $el.trigger('selectmenuchange');
+            $el.selectmenu?.('refresh');
+          } catch {
+            /* ignore */
+          }
+        }
+      }, periodOption.index);
+
+      await page.waitForTimeout(700);
+      await page
+        .waitForFunction(
+          () => {
+            const labels = Array.from(document.querySelectorAll('.tarif-label'));
+            for (const lab of labels) {
+              const lt = (lab.textContent ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+              if (!lt.includes('public') || lt.includes('partenaire') || lt.includes('transport')) continue;
+              if (lab.closest('.tarif-2')) continue;
+              const v = lab.closest('.tarif-1')?.querySelector('.tarif-value');
+              const raw = (v?.textContent ?? '').replace(/\s/g, '');
+              const n = Number(raw.replace(',', '.'));
+              if (Number.isFinite(n) && n >= 500 && n < 50000) return true;
+            }
+            return false;
+          },
+          { timeout: 4500 }
+        )
+        .catch(() => undefined);
+
+      const priceEur = await page.evaluate(() => {
+        const parseEur = (raw: string): number | null => {
+          const t = raw.replace(/\s/g, '').replace(/\u00A0/g, '');
+          if (!t) return null;
+          const n = Number(t.replace(',', '.'));
+          if (!Number.isFinite(n) || n < 30 || n > 20000) return null;
+          return n;
+        };
+
+        const labels = Array.from(document.querySelectorAll('.tarif-label'));
+        for (const lab of labels) {
+          const lt = (lab.textContent ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+          if (!lt.includes('public')) continue;
+          if (lt.includes('partenaire')) continue;
+          if (lt.includes('transport')) continue;
+          if (lab.closest('.tarif-2')) continue;
+          (lab as HTMLElement).scrollIntoView({ block: 'center', behavior: 'instant' });
+          const block = lab.closest('.tarif-1');
+          if (!block) continue;
+          const el = block.querySelector('.tarif-value');
+          const p = parseEur(el?.textContent ?? '');
+          if (p != null) return p;
+        }
+
+        return null;
+      });
+
+      const labelNorm = normalizeWhitespace(periodOption.label);
+      const parsed = parseSessionLabelToItem(periodOption.label);
+      if (!parsed) {
+        sessions.push({
+          label: labelNorm,
+          start_date: null,
+          end_date: null,
+          price: priceEur,
+          availability: detectSessionAvailability(periodOption.label)
+        });
+        continue;
+      }
+
+      sessions.push({
+        ...parsed,
+        label: labelNorm,
+        price: priceEur,
+        availability: detectSessionAvailability(periodOption.label) ?? parsed.availability ?? null
+      });
+    } catch {
+      // Période suivante
     }
   }
 
-  return Array.from(map.values()).sort((a, b) =>
-    `${a.departure_city}|${a.return_city}`.localeCompare(`${b.departure_city}|${b.return_city}`, 'fr')
-  );
+  return sessions;
+}
+
+/** Transport CESL : inchangé dans sa structure (sélection période + villes + lecture tarif transport). */
+async function collectCeslDynamicTransportVariants(
+  page: Page
+): Promise<DynamicTransportCollectionResult | null> {
+  const ceslSelect = page.locator('select[name="sejour_villedepart"], #sejour-villedepart').first();
+  const hasCeslSelect = (await ceslSelect.count().catch(() => 0)) > 0;
+  if (!hasCeslSelect) return null;
+
+  const periodSelect = page.locator('select[name="sejour_periode"], #sejour-periode').first();
+  const hasPeriodSelect = (await periodSelect.count().catch(() => 0)) > 0;
+
+  const readSelectOptions = async (locator: PlaywrightLocator) =>
+    locator.evaluate((element: HTMLSelectElement) => {
+      const normalize = (value: string | null | undefined) => (value ?? '').replace(/\s+/g, ' ').trim();
+      return Array.from(element.options).map((option, index) => ({
+        index,
+        value: normalize(option.value),
+        label: normalize(option.textContent),
+        selected: option.selected
+      }));
+    });
+
+  const periodOptions = hasPeriodSelect
+    ? (await readSelectOptions(periodSelect)).filter((option) => option.value !== '')
+    : [{ index: 0, value: '', label: '', selected: true }];
+
+  const debugRows: DraftTransportPriceDebug[] = [];
+  const samplesByCity = new Map<string, DraftTransportVariant>();
+  let previousAmountCents = await readDynamicTransportAmountCents(page);
+
+  for (const periodOption of periodOptions) {
+    if (hasPeriodSelect) {
+      try {
+        if (periodOption.value) {
+          await periodSelect.selectOption({ value: periodOption.value }).catch(async () => {
+            await periodSelect.selectOption({ index: periodOption.index });
+          });
+        } else {
+          await periodSelect.selectOption({ index: periodOption.index });
+        }
+
+        await periodSelect.evaluate((element: HTMLSelectElement, optionIndex: number) => {
+          if (Number.isInteger(optionIndex) && optionIndex >= 0 && optionIndex < element.options.length) {
+            element.selectedIndex = optionIndex;
+            element.value = element.options[optionIndex]?.value ?? element.value;
+          }
+          element.dispatchEvent(new Event('input', { bubbles: true }));
+          element.dispatchEvent(new Event('change', { bubbles: true }));
+          const w = window as unknown as {
+            jQuery?: (el: Element) => {
+              val?: (v: string) => void;
+              trigger?: (ev: string) => void;
+              selectmenu?: (cmd: string) => void;
+            };
+          };
+          const $el = w.jQuery?.(element);
+          if ($el?.val && $el.trigger) {
+            try {
+              $el.val(element.value);
+              $el.trigger('change');
+              $el.trigger('selectmenuchange');
+              $el.selectmenu?.('refresh');
+            } catch {
+              /* ignore */
+            }
+          }
+        }, periodOption.index);
+
+        await page.waitForTimeout(700);
+      } catch {
+        continue;
+      }
+    }
+
+    const cityOptions = (await readSelectOptions(ceslSelect))
+      .map((option) => ({ ...option, normalizedLabel: normalizeDynamicTransportLabel(option.label) }))
+      .filter(
+        (option) =>
+          Boolean(option.normalizedLabel) &&
+          option.value !== '' &&
+          !/^ville de depart$/i.test(option.label)
+      );
+
+    if (cityOptions.length === 0) continue;
+
+    for (const option of cityOptions) {
+      try {
+        if (option.value) {
+          await ceslSelect.selectOption({ value: option.value }).catch(async () => {
+            await ceslSelect.selectOption({ index: option.index });
+          });
+        } else {
+          await ceslSelect.selectOption({ index: option.index });
+        }
+
+        await ceslSelect.evaluate((element: HTMLSelectElement, optionIndex: number) => {
+          if (Number.isInteger(optionIndex) && optionIndex >= 0 && optionIndex < element.options.length) {
+            element.selectedIndex = optionIndex;
+            element.value = element.options[optionIndex]?.value ?? element.value;
+          }
+          element.dispatchEvent(new Event('input', { bubbles: true }));
+          element.dispatchEvent(new Event('change', { bubbles: true }));
+          const w = window as unknown as {
+            jQuery?: (el: Element) => {
+              val?: (v: string) => void;
+              trigger?: (ev: string) => void;
+              selectmenu?: (cmd: string) => void;
+            };
+          };
+          const $el = w.jQuery?.(element);
+          if ($el?.val && $el.trigger) {
+            try {
+              $el.val(element.value);
+              $el.trigger('change');
+              $el.trigger('selectmenuchange');
+              $el.selectmenu?.('refresh');
+            } catch {
+              /* ignore */
+            }
+          }
+        }, option.index);
+
+        await page.waitForTimeout(450);
+        const amountCents = await waitForDynamicTransportAmountCents(page, previousAmountCents);
+        previousAmountCents = amountCents;
+        const city = option.normalizedLabel ?? option.label;
+        const reasonSuffix = periodOption.label || periodOption.value || 'single-period';
+
+        debugRows.push({
+          variant_url: page.url(),
+          departure_city: city,
+          return_city: city,
+          page_price_cents: amountCents,
+          base_price_cents: null,
+          amount_cents: amountCents,
+          pricing_method: amountCents !== null ? 'absolute_price' : 'unresolved',
+          confidence: amountCents !== null ? 'high' : 'low',
+          reason: `playwright-dynamic-transport-cesl:${reasonSuffix}`,
+          departure_label_raw: option.label,
+          return_label_raw: option.label
+        });
+
+        if (amountCents === null) continue;
+
+        const key = simplifyForMatch(city);
+        if (!key) continue;
+
+        const nextVariant: DraftTransportVariant = {
+          departure_city: city,
+          return_city: city,
+          amount_cents: amountCents,
+          currency: 'EUR',
+          source_url: page.url(),
+          departure_label_raw: option.label,
+          return_label_raw: option.label,
+          page_price_cents: amountCents,
+          base_price_cents: null,
+          pricing_method: 'absolute_price',
+          confidence: 'high',
+          reason: `playwright-dynamic-transport-cesl:${reasonSuffix}`
+        };
+
+        const existing = samplesByCity.get(key);
+        if (!existing || amountCents > (existing.amount_cents ?? -1)) {
+          samplesByCity.set(key, nextVariant);
+        }
+      } catch {
+        // Ignore one city and continue.
+      }
+    }
+  }
+
+  return {
+    transportVariants: Array.from(samplesByCity.values()),
+    transportPriceDebug: debugRows,
+    transportDetected: true
+  };
+}
+
+async function collectDynamicTransportVariants(page: Page): Promise<DynamicTransportCollectionResult> {
+  const ceslSpecific = await collectCeslDynamicTransportVariants(page);
+  if (ceslSpecific) return ceslSpecific;
+
+  const selects = await readDynamicTransportSelects(page);
+  if (selects.length === 0) {
+    return { transportVariants: [], transportPriceDebug: [], transportDetected: false };
+  }
+
+  const primary =
+    selects.find((select) => select.direction === 'outbound') ??
+    selects.find((select) => select.direction === 'generic') ??
+    selects[0];
+
+  const options = primary.options
+    .map((option) => ({ ...option, normalizedLabel: normalizeDynamicTransportLabel(option.label) }))
+    .filter((option) => Boolean(option.normalizedLabel));
+
+  const debugRows: DraftTransportPriceDebug[] = [];
+  const variants: DraftTransportVariant[] = [];
+  let previousAmountCents = await readDynamicTransportAmountCents(page);
+
+  for (const option of options) {
+    try {
+      await setDynamicSelectOption(page, primary.index, option);
+      const amountCents = await waitForDynamicTransportAmountCents(page, previousAmountCents);
+      previousAmountCents = amountCents;
+      const city = option.normalizedLabel ?? option.label;
+      const row: DraftTransportPriceDebug = {
+        variant_url: page.url(),
+        departure_city: city,
+        return_city: city,
+        page_price_cents: amountCents,
+        base_price_cents: null,
+        amount_cents: amountCents,
+        pricing_method: amountCents !== null ? 'absolute_price' : 'unresolved',
+        confidence: amountCents !== null ? 'high' : 'low',
+        reason: 'playwright-dynamic-transport',
+        departure_label_raw: option.label,
+        return_label_raw: option.label
+      };
+      debugRows.push(row);
+
+      if (amountCents !== null) {
+        variants.push({
+          departure_city: city,
+          return_city: city,
+          amount_cents: amountCents,
+          currency: 'EUR',
+          source_url: page.url(),
+          departure_label_raw: option.label,
+          return_label_raw: option.label,
+          page_price_cents: amountCents,
+          base_price_cents: null,
+          pricing_method: 'absolute_price',
+          confidence: 'high',
+          reason: 'playwright-dynamic-transport'
+        });
+      }
+    } catch {
+      // Ignore one option and continue.
+    }
+  }
+
+  const deduped = new Map<string, DraftTransportVariant>();
+  for (const variant of variants) {
+    const key = simplifyForMatch(variant.departure_city);
+    if (!key || deduped.has(key)) continue;
+    deduped.set(key, variant);
+  }
+
+  return {
+    transportVariants: Array.from(deduped.values()),
+    transportPriceDebug: debugRows,
+    transportDetected: true
+  };
 }
 
 export function shouldUsePlaywrightForDynamicImages(html: string, extractedImageCount: number): boolean {
   if (extractedImageCount < 4) return true;
   return CAROUSEL_HINT_PATTERN.test(html);
+}
+
+export function shouldUsePlaywrightForDynamicTransport(html: string): boolean {
+  return (
+    /sejour[_-]?villedepart/i.test(html) ||
+    /ui-selectmenu/i.test(html) ||
+    /sejour-tarif/i.test(html) ||
+    /tarif transport a\/r/i.test(html)
+  );
 }
 
 async function collectPageImageUrls(page: Page): Promise<string[]> {
@@ -342,7 +852,7 @@ async function collectPageImageUrls(page: Page): Promise<string[]> {
     return Array.from(values);
   });
 
-  return unique(urls.filter((url) => shouldKeepImage(url)));
+  return unique(urls.filter((url: string) => shouldKeepImage(url)));
 }
 
 async function collectPageVideoUrls(page: Page): Promise<string[]> {
@@ -406,7 +916,7 @@ async function collectPageVideoUrls(page: Page): Promise<string[]> {
     return Array.from(values);
   });
 
-  return unique(urls.filter((url) => shouldKeepVideo(url)));
+  return unique(urls.filter((url: string) => shouldKeepVideo(url)));
 }
 
 async function safeClick(locator: ReturnType<Page['locator']>) {
@@ -439,7 +949,7 @@ async function acceptCookieBanners(page: Page) {
       const locator = page.locator(selector).first();
       if (await locator.isVisible()) {
         await locator.click({ timeout: 1_500 });
-        await page.waitForTimeout(300);
+        await page.waitForTimeout(150);
         return;
       }
     } catch {
@@ -458,7 +968,7 @@ async function scrollPage(page: Page) {
       },
       { step: index, totalSteps: PLAYWRIGHT_SCROLL_STEPS }
     );
-    await page.waitForTimeout(350);
+    await page.waitForTimeout(180);
   }
 
   await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
@@ -507,7 +1017,7 @@ async function closeOpenImageOverlays(page: Page) {
   }
 
   await page.keyboard.press('Escape').catch(() => undefined);
-  await page.waitForTimeout(150);
+  await page.waitForTimeout(100);
 }
 
 async function clickLocatorAndRecover(page: Page, locator: ReturnType<Page['locator']>) {
@@ -518,11 +1028,11 @@ async function clickLocatorAndRecover(page: Page, locator: ReturnType<Page['loca
     return;
   }
 
-  await page.waitForTimeout(400);
+  await page.waitForTimeout(250);
 
   if (page.url() !== beforeUrl) {
     await page.goBack({ waitUntil: 'domcontentloaded', timeout: 5_000 }).catch(() => undefined);
-    await page.waitForTimeout(400);
+    await page.waitForTimeout(250);
     await acceptCookieBanners(page);
     await scrollPage(page);
   }
@@ -569,731 +1079,27 @@ async function exploreClickableGalleryImages(page: Page): Promise<string[]> {
 }
 
 async function createContext(browser: Browser): Promise<BrowserContext> {
+  const videoDir = process.env.PLAYWRIGHT_IMPORT_VIDEO_DIR?.trim();
   return browser.newContext({
     viewport: { width: 1440, height: 1800 },
     userAgent:
-      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0 Safari/537.36'
-  });
-}
-
-async function extractCurrentPriceCentsFromPage(page: Page): Promise<number | null> {
-  const transportCents = await page.evaluate(() => {
-    const selectors = [
-      'span.sejour-tarif.active',
-      'span.sejour-tarif',
-      '.tarif-transport .badge',
-      '.tarif-transport'
-    ];
-    for (const selector of selectors) {
-      const element = document.querySelector(selector);
-      if (!element) continue;
-      const raw = (element.textContent ?? '').trim();
-      if (!raw) continue;
-      const match = raw.match(/([+-]?\s*\d[\d\s\.,]*)\s*(?:€|eur(?:os)?)?/i);
-      if (!match) continue;
-      let num = match[1].replace(/\s/g, '').replace(/\+/g, '');
-      if (num.includes(',') && num.includes('.')) {
-        num =
-          num.lastIndexOf(',') > num.lastIndexOf('.')
-            ? num.replace(/\./g, '').replace(',', '.')
-            : num.replace(/,/g, '');
-      } else if (num.includes(',')) {
-        num = /,\d{1,2}$/.test(num) ? num.replace(',', '.') : num.replace(/,/g, '');
-      } else {
-        num = num.replace(/\.(?=\d{3}(?:\D|$))/g, '');
-      }
-      const value = Number(num);
-      if (Number.isFinite(value) && value >= 0 && value < 80_000) {
-        return Math.round(value * 100);
-      }
-    }
-    return null;
-  });
-
-  if (transportCents !== null) {
-    return transportCents;
-  }
-
-  const offerBlock = await page.evaluate(() => {
-    const offers = document.querySelector('td[itemprop="offers"], [itemprop="offers"]');
-    if (!offers) return { metaContent: '', spanText: '' };
-    const meta = offers.querySelector('meta[itemprop="price"][content]');
-    const metaContent = (meta?.getAttribute('content') ?? '').trim();
-    const span = offers.querySelector('span.PBSalesPrice');
-    const spanText = (span?.textContent ?? '').trim();
-    return { metaContent, spanText };
-  });
-
-  if (offerBlock.metaContent) {
-    const n = Number(offerBlock.metaContent.replace(',', '.'));
-    if (Number.isFinite(n) && n >= 0 && n < 80_000) {
-      return Math.round(n * 100);
-    }
-  }
-  if (offerBlock.spanText) {
-    const amount = findPriceInText(offerBlock.spanText);
-    if (amount !== null) return Math.round(amount * 100);
-  }
-
-  const priceCandidates = await page.evaluate(() => {
-    const values: string[] = [];
-    const selectors = [
-      '[itemprop="price"]',
-      '[class*="prix"]',
-      '[id*="prix"]',
-      '[class*="price"]',
-      '[id*="price"]',
-      '[class*="tarif"]',
-      '[id*="tarif"]',
-      '[class*="montant"]',
-      '[data-price]',
-      '[data-testid*="price" i]',
-      '[class*="supplement"]',
-      '[id*="supplement"]',
-      '.prix',
-      '.price'
-    ];
-
-    for (const selector of selectors) {
-      document.querySelectorAll(selector).forEach((node) => {
-        const element = node as HTMLElement;
-        const parts = [
-          element.getAttribute('content') ?? '',
-          element.getAttribute('value') ?? '',
-          element.innerText ?? element.textContent ?? ''
-        ]
-          .join(' ')
-          .trim();
-        if (parts) values.push(parts);
-      });
-    }
-
-    values.push(document.body.innerText ?? '');
-    return values.slice(0, 50);
-  });
-
-  for (const candidate of priceCandidates) {
-    const amount = findPriceInText(candidate);
-    if (amount !== null) return Math.round(amount * 100);
-  }
-
-  return null;
-}
-
-async function readTransportSelects(page: Page): Promise<TransportSelectCandidate[]> {
-  const raw = await page.locator('select').evaluateAll((elements) => {
-    const normalize = (value: string | null | undefined) => (value ?? '').replace(/\s+/g, ' ').trim();
-
-    return elements.map((element, selectIndex) => {
-      const node = element as HTMLSelectElement;
-      const id = normalize(node.id);
-      const name = normalize(node.getAttribute('name'));
-      const ariaLabel = normalize(node.getAttribute('aria-label'));
-      const title = normalize(node.getAttribute('title'));
-      const className = normalize(node.className);
-      const linkedLabel = id
-        ? normalize(document.querySelector(`label[for="${CSS.escape(id)}"]`)?.textContent)
-        : '';
-      const parentText = normalize(
-        node.closest('td,th,tr,div,fieldset,section,form')?.textContent?.slice(0, 1400) ?? ''
-      );
-
-      return {
-        selectIndex,
-        context: normalize([id, name, ariaLabel, title, className, linkedLabel, parentText].join(' ')),
-        options: Array.from(node.options).map((option, index) => ({
-          index,
-          value: option.value ?? '',
-          rawLabel: normalize(option.textContent),
-          selected: option.selected
-        }))
-      };
-    });
-  });
-
-  const candidates: TransportSelectCandidate[] = [];
-  for (const candidate of raw as RawTransportSelectCandidate[]) {
-    const direction = detectTransportDirection(candidate.context);
-    if (!direction) continue;
-
-    const options = candidate.options
-      .map<TransportSelectOption>((option) => ({
-        ...option,
-        label: normalizeTransportCityLabel(option.rawLabel),
-        isBaseReference: isBaseTransportReference(option.rawLabel)
-      }))
-      .filter((option) => Boolean(option.label) || option.isBaseReference || option.selected);
-
-    if (options.length === 0) continue;
-
-    candidates.push({
-      selectIndex: candidate.selectIndex,
-      direction,
-      context: candidate.context,
-      options,
-      selectedOption: options.find((option) => option.selected) ?? options[0] ?? null
-    });
-  }
-
-  return candidates;
-}
-
-function pickTransportSelects(candidates: TransportSelectCandidate[]): {
-  outbound: TransportSelectCandidate | null;
-  returnSelect: TransportSelectCandidate | null;
-} {
-  const scoreCandidate = (candidate: TransportSelectCandidate) =>
-    candidate.options.filter((option) => option.label).length * 10 +
-    candidate.options.filter((option) => option.isBaseReference).length * 3;
-
-  const outboundDirect =
-    candidates
-      .filter((candidate) => candidate.direction === 'outbound')
-      .sort((a, b) => scoreCandidate(b) - scoreCandidate(a))[0] ?? null;
-  const returnDirect =
-    candidates
-      .filter((candidate) => candidate.direction === 'return')
-      .sort((a, b) => scoreCandidate(b) - scoreCandidate(a))[0] ?? null;
-  const generic = candidates
-    .filter((candidate) => candidate.direction === 'generic')
-    .sort((a, b) => scoreCandidate(b) - scoreCandidate(a));
-
-  const outbound = outboundDirect ?? generic[0] ?? null;
-  const returnSelect = returnDirect ?? (generic.length > 1 ? generic[1] : null);
-
-  return {
-    outbound,
-    returnSelect:
-      outbound && returnSelect && outbound.selectIndex === returnSelect.selectIndex ? null : returnSelect
-  };
-}
-
-function chooseBaseOption(candidate: TransportSelectCandidate | null): TransportSelectOption | null {
-  if (!candidate) return null;
-  return (
-    candidate.options.find((option) => option.isBaseReference) ??
-    candidate.selectedOption ??
-    candidate.options.find((option) => option.label) ??
-    candidate.options[0] ??
-    null
-  );
-}
-
-async function setSelectOptionByIndex(
-  page: Page,
-  selectIndex: number,
-  optionIndex: number
-): Promise<void> {
-  const locator = page.locator('select').nth(selectIndex);
-  await locator.selectOption({ index: optionIndex });
-  await locator.evaluate((element: HTMLSelectElement, idx: number) => {
-    if (Number.isInteger(idx) && idx >= 0 && idx < element.options.length) {
-      element.selectedIndex = idx;
-      element.value = element.options[idx]?.value ?? element.value;
-    }
-    element.dispatchEvent(new Event('input', { bubbles: true }));
-    element.dispatchEvent(new Event('change', { bubbles: true }));
-    const w = window as unknown as {
-      jQuery?: (el: Element) => {
-        val?: (v: string) => void;
-        trigger?: (ev: string) => void;
-        selectmenu?: (cmd: string) => void;
-      };
-    };
-    const $el = w.jQuery?.(element);
-    if ($el?.val && $el.trigger) {
-      try {
-        $el.val(element.value);
-        $el.trigger('change');
-        $el.trigger('selectmenuchange');
-      } catch {
-        /* ignore */
-      }
-      try {
-        $el.selectmenu?.('refresh');
-      } catch {
-        /* ignore */
-      }
-    }
-  }, optionIndex);
-  await page.waitForTimeout(PLAYWRIGHT_SELECT_WAIT_MS);
-}
-
-async function applyTransportSelection(
-  page: Page,
-  outbound: { selectIndex: number; optionIndex: number } | null,
-  returnSelect: { selectIndex: number; optionIndex: number } | null
-) {
-  if (outbound) {
-    await setSelectOptionByIndex(page, outbound.selectIndex, outbound.optionIndex);
-  }
-  if (returnSelect) {
-    await setSelectOptionByIndex(page, returnSelect.selectIndex, returnSelect.optionIndex);
-  }
-}
-
-async function observeTransportCombination(
-  page: Page,
-  outboundSelect: TransportSelectCandidate | null,
-  returnSelect: TransportSelectCandidate | null,
-  outboundOption: TransportSelectOption | null,
-  returnOption: TransportSelectOption | null,
-  baseOutbound: TransportSelectOption | null,
-  baseReturn: TransportSelectOption | null,
-  observationKind: ObservedTransportCombination['observationKind'],
-  waitForCatalogOfferPrice: boolean
-): Promise<ObservedTransportCombination | null> {
-  await applyTransportSelection(
-    page,
-    outboundSelect && baseOutbound
-      ? { selectIndex: outboundSelect.selectIndex, optionIndex: baseOutbound.index }
-      : null,
-    returnSelect && baseReturn
-      ? { selectIndex: returnSelect.selectIndex, optionIndex: baseReturn.index }
-      : null
-  );
-
-  await applyTransportSelection(
-    page,
-    outboundSelect && outboundOption
-      ? { selectIndex: outboundSelect.selectIndex, optionIndex: outboundOption.index }
-      : null,
-    returnSelect && returnOption
-      ? { selectIndex: returnSelect.selectIndex, optionIndex: returnOption.index }
-      : null
-  );
-
-  await page.waitForTimeout(450);
-
-  if (waitForCatalogOfferPrice) {
-    await page
-      .waitForFunction(
-        () => {
-          const offers = document.querySelector('td[itemprop="offers"], [itemprop="offers"]');
-          if (!offers) return false;
-          const meta = offers.querySelector('meta[itemprop="price"][content]')?.getAttribute('content')?.trim();
-          if (meta && /^[0-9]/.test(meta)) return true;
-          const t = offers.querySelector('span.PBSalesPrice')?.textContent?.trim();
-          return Boolean(t && /\d/.test(t));
-        },
-        { timeout: 4_000 }
-      )
-      .catch(() => undefined);
-  }
-
-  let departureCity =
-    outboundOption?.label ?? returnOption?.label ?? baseOutbound?.label ?? baseReturn?.label ?? null;
-  let returnCity =
-    returnOption?.label ?? outboundOption?.label ?? baseReturn?.label ?? baseOutbound?.label ?? null;
-
-  // Un seul menu « ville de départ » : la base (ex. dépose centre / 0 €) est le point d’arrivée, pas la même ville.
-  if (outboundOption && !returnOption) {
-    returnCity = baseReturn?.label ?? baseOutbound?.label ?? returnCity;
-  } else if (returnOption && !outboundOption) {
-    departureCity = baseOutbound?.label ?? baseReturn?.label ?? departureCity;
-  }
-
-  if (!departureCity && !returnCity) return null;
-
-  return {
-    departureCity: departureCity ?? returnCity ?? '',
-    returnCity: returnCity ?? departureCity ?? '',
-    departureLabelRaw: outboundOption?.rawLabel ?? baseOutbound?.rawLabel ?? null,
-    returnLabelRaw: returnOption?.rawLabel ?? baseReturn?.rawLabel ?? null,
-    pagePriceCents: await extractCurrentPriceCentsFromPage(page),
-    observationKind
-  };
-}
-
-function buildTransportRowsFromObserved(
-  sourceUrl: string,
-  observed: ObservedTransportCombination[],
-  explicitBasePriceCents: number | null,
-  hasExplicitBaseReference: boolean,
-  sessionReferencePriceCents: number | null,
-  insuranceDeductionCents: number | null
-): { transportVariants: DraftTransportVariant[]; transportPriceDebug: DraftTransportPriceDebug[] } {
-  const observedPrices = observed
-    .map((row) => row.pagePriceCents)
-    .filter((value): value is number => typeof value === 'number');
-  const legacyInferredBaseCents =
-    typeof explicitBasePriceCents === 'number'
-      ? explicitBasePriceCents
-      : observedPrices.length > 0
-        ? Math.min(...observedPrices)
-        : null;
-
-  const sessionRef =
-    typeof sessionReferencePriceCents === 'number' &&
-    sessionReferencePriceCents > 0 &&
-    sessionReferencePriceCents < 500_000
-      ? sessionReferencePriceCents
-      : null;
-
-  const insuranceCents =
-    typeof insuranceDeductionCents === 'number' &&
-    insuranceDeductionCents > 0 &&
-    insuranceDeductionCents < 100_000
-      ? Math.round(insuranceDeductionCents)
-      : 0;
-
-  const debugRows: DraftTransportPriceDebug[] = observed.map((row) => {
-    let amountCents: number | null = null;
-    let pricingMethod: DraftTransportPriceDebug['pricing_method'] = 'unresolved';
-    let confidence: DraftTransportPriceDebug['confidence'] = 'low';
-    let baseForRow: number | null = null;
-    let baseReason = 'playwright-no-base';
-
-    const pagePrice = row.pagePriceCents;
-    const fixedStackCents = sessionRef !== null ? sessionRef + insuranceCents : null;
-    const useSessionDelta =
-      sessionRef !== null &&
-      typeof pagePrice === 'number' &&
-      fixedStackCents !== null &&
-      pagePrice + 50 >= fixedStackCents;
-
-    if (useSessionDelta && sessionRef !== null && fixedStackCents !== null) {
-      const delta = pagePrice - fixedStackCents;
-      if (delta >= 0) {
-        amountCents = delta;
-        baseForRow = fixedStackCents;
-        pricingMethod = 'session_delta';
-        confidence = 'high';
-        baseReason =
-          insuranceCents > 0
-            ? `playwright-session-reference+insurance-${insuranceCents}c`
-            : 'playwright-session-reference';
-      }
-    }
-
-    if (amountCents === null && typeof pagePrice === 'number' && legacyInferredBaseCents !== null) {
-      const delta = pagePrice - legacyInferredBaseCents;
-      if (delta >= 0) {
-        amountCents = delta;
-        baseForRow = legacyInferredBaseCents;
-        pricingMethod = 'delta_from_base';
-        confidence = hasExplicitBaseReference
-          ? 'high'
-          : row.observationKind === 'same-city-pair' || row.observationKind === 'single-select'
-            ? 'medium'
-            : 'low';
-        baseReason = hasExplicitBaseReference
-          ? 'playwright-explicit-base'
-          : 'playwright-min-observed-base';
-      }
-    }
-
-    return {
-      variant_url: sourceUrl,
-      departure_city: row.departureCity,
-      return_city: row.returnCity,
-      page_price_cents: row.pagePriceCents,
-      base_price_cents: baseForRow,
-      amount_cents: amountCents,
-      pricing_method: pricingMethod,
-      confidence,
-      reason: `${baseReason}:${row.observationKind}`,
-      departure_label_raw: row.departureLabelRaw,
-      return_label_raw: row.returnLabelRaw
-    };
-  });
-
-  const variants = dedupeTransportVariants(
-    debugRows
-      .filter((row) => row.departure_city || row.return_city)
-      .map((row) => ({
-        departure_city: row.departure_city ?? row.return_city ?? '',
-        return_city: row.return_city ?? row.departure_city ?? '',
-        amount_cents: row.amount_cents,
-        currency: 'EUR' as const,
-        source_url: sourceUrl,
-        departure_label_raw: row.departure_label_raw ?? null,
-        return_label_raw: row.return_label_raw ?? null,
-        page_price_cents: row.page_price_cents,
-        base_price_cents: row.base_price_cents,
-        pricing_method: row.pricing_method,
-        confidence: row.confidence,
-        reason: row.reason
-      }))
-  );
-
-  return {
-    transportVariants: variants,
-    transportPriceDebug: debugRows
-  };
-}
-
-function transportOptionCityKeys(options: TransportSelectOption[]): Set<string> {
-  return new Set(
-    options
-      .filter((option) => Boolean(option.label) && !option.isBaseReference)
-      .map((option) => simplifyForMatch(option.label ?? ''))
-      .filter(Boolean)
-  );
-}
-
-/** Deux menus avec les mêmes villes (aller + retour) : éviter le produit cartésien. */
-function mirroredCitySelectLists(
-  outbound: TransportSelectCandidate,
-  returnSelect: TransportSelectCandidate
-): boolean {
-  const a = transportOptionCityKeys(outbound.options);
-  const b = transportOptionCityKeys(returnSelect.options);
-  if (a.size < 2 || b.size < 2) return false;
-  let overlap = 0;
-  Array.from(a).forEach((key) => {
-    if (b.has(key)) overlap += 1;
-  });
-  return overlap / Math.min(a.size, b.size) >= 0.65;
-}
-
-export type PlaywrightStayImportOptions = {
-  /** Prix séjour extrait (sessions / « à partir de ») : supplément transport = prix affiché sur la fiche − cette valeur (ex. Thalie). */
-  sessionReferencePriceCents?: number | null;
-  /** Assurance annulation (fixe) souvent incluse dans le total affiché : retranchée en plus du prix session. */
-  insuranceDeductionCents?: number | null;
-};
-
-async function collectTransportVariants(
-  page: Page,
-  importOptions?: PlaywrightStayImportOptions
-): Promise<{
-  transportVariants: DraftTransportVariant[];
-  transportPriceDebug: DraftTransportPriceDebug[];
-  transportDetected: boolean;
-}> {
-  const sessionReferencePriceCents = importOptions?.sessionReferencePriceCents ?? null;
-  const insuranceDeductionCents = importOptions?.insuranceDeductionCents ?? null;
-  const waitForCatalogOfferPrice =
-    typeof sessionReferencePriceCents === 'number' &&
-    sessionReferencePriceCents > 0 &&
-    sessionReferencePriceCents < 500_000;
-
-  const candidates = await readTransportSelects(page);
-  const { outbound, returnSelect } = pickTransportSelects(candidates);
-  if (!outbound && !returnSelect) {
-    return {
-      transportVariants: [],
-      transportPriceDebug: [],
-      transportDetected: false
-    };
-  }
-
-  const baseOutbound = chooseBaseOption(outbound);
-  const baseReturn = chooseBaseOption(returnSelect);
-
-  await applyTransportSelection(
-    page,
-    outbound && baseOutbound ? { selectIndex: outbound.selectIndex, optionIndex: baseOutbound.index } : null,
-    returnSelect && baseReturn
-      ? { selectIndex: returnSelect.selectIndex, optionIndex: baseReturn.index }
-      : null
-  );
-
-  const explicitBasePriceCents = await extractCurrentPriceCentsFromPage(page);
-  const hasExplicitBaseReference = Boolean(baseOutbound?.isBaseReference || baseReturn?.isBaseReference);
-  const observed = new Map<string, ObservedTransportCombination>();
-
-  const pushObserved = (value: ObservedTransportCombination | null) => {
-    if (!value) return;
-    const key = makeTransportVariantKey(value.departureCity, value.returnCity);
-    if (!key) return;
-    const existing = observed.get(key);
-    if (!existing || (existing.pagePriceCents === null && value.pagePriceCents !== null)) {
-      observed.set(key, value);
-    }
-  };
-
-  const normalizedOutboundOptions =
-    outbound?.options.filter((option) => option.label && !option.isBaseReference) ?? [];
-  const normalizedReturnOptions =
-    returnSelect?.options.filter((option) => option.label && !option.isBaseReference) ?? [];
-
-  if (outbound && returnSelect) {
-    const returnByLabel = new Map(
-      normalizedReturnOptions
-        .map((option) => [simplifyForMatch(option.label), option] as const)
-        .filter(([label]) => Boolean(label))
-    );
-
-    const overlappingPairs = normalizedOutboundOptions
-      .map((outboundOption) => {
-        const key = simplifyForMatch(outboundOption.label);
-        return {
-          outboundOption,
-          returnOption: key ? returnByLabel.get(key) ?? null : null
-        };
-      })
-      .filter(
-        (pair): pair is { outboundOption: TransportSelectOption; returnOption: TransportSelectOption } =>
-          Boolean(pair.returnOption)
-      );
-
-    const mirroredLists = mirroredCitySelectLists(outbound, returnSelect);
-
-    if (mirroredLists) {
-      const sameCityPairs =
-        overlappingPairs.length > 0
-          ? overlappingPairs
-          : normalizedOutboundOptions
-              .map((outboundOption) => {
-                const key = simplifyForMatch(outboundOption.label ?? '');
-                const returnOption = key ? returnByLabel.get(key) ?? null : null;
-                return returnOption
-                  ? { outboundOption, returnOption }
-                  : null;
-              })
-              .filter(
-                (pair): pair is { outboundOption: TransportSelectOption; returnOption: TransportSelectOption } =>
-                  Boolean(pair)
-              );
-
-      if (sameCityPairs.length > 0) {
-        for (const pair of sameCityPairs) {
-          pushObserved(
-            await observeTransportCombination(
-              page,
-              outbound,
-              returnSelect,
-              pair.outboundOption,
-              pair.returnOption,
-              baseOutbound,
-              baseReturn,
-              'same-city-pair',
-              waitForCatalogOfferPrice
-            )
-          );
-        }
-      } else {
-        const defaultReturn =
-          baseReturn ??
-          returnSelect.options.find((option) => option.isBaseReference) ??
-          returnSelect.options[0] ??
-          null;
-        if (defaultReturn) {
-          for (const outboundOption of normalizedOutboundOptions) {
-            pushObserved(
-              await observeTransportCombination(
-                page,
-                outbound,
-                returnSelect,
-                outboundOption,
-                defaultReturn,
-                baseOutbound,
-                baseReturn,
-                'outbound-with-default-return',
-                waitForCatalogOfferPrice
-              )
-            );
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0 Safari/537.36',
+    ...(videoDir
+      ? {
+          recordVideo: {
+            dir: videoDir,
+            size: { width: 1440, height: 1800 }
           }
         }
-      }
-    } else if (overlappingPairs.length > 0) {
-      for (const pair of overlappingPairs) {
-        pushObserved(
-          await observeTransportCombination(
-            page,
-            outbound,
-            returnSelect,
-            pair.outboundOption,
-            pair.returnOption,
-            baseOutbound,
-            baseReturn,
-            'same-city-pair',
-            waitForCatalogOfferPrice
-          )
-        );
-      }
-    } else if (normalizedOutboundOptions.length * normalizedReturnOptions.length <= PLAYWRIGHT_MAX_TRANSPORT_COMBINATIONS) {
-      for (const outboundOption of normalizedOutboundOptions) {
-        for (const returnOption of normalizedReturnOptions) {
-          pushObserved(
-            await observeTransportCombination(
-              page,
-              outbound,
-              returnSelect,
-              outboundOption,
-              returnOption,
-              baseOutbound,
-              baseReturn,
-              'cartesian',
-              waitForCatalogOfferPrice
-            )
-          );
-        }
-      }
-    } else {
-      for (const outboundOption of normalizedOutboundOptions) {
-        pushObserved(
-          await observeTransportCombination(
-            page,
-            outbound,
-            returnSelect,
-            outboundOption,
-            baseReturn,
-            baseOutbound,
-            baseReturn,
-            'outbound-with-default-return',
-            waitForCatalogOfferPrice
-          )
-        );
-      }
-      for (const returnOption of normalizedReturnOptions) {
-        pushObserved(
-          await observeTransportCombination(
-            page,
-            outbound,
-            returnSelect,
-            baseOutbound,
-            returnOption,
-            baseOutbound,
-            baseReturn,
-            'return-with-default-outbound',
-            waitForCatalogOfferPrice
-          )
-        );
-      }
-    }
-  } else {
-    const singleSelect = outbound ?? returnSelect;
-    const singleBase = baseOutbound ?? baseReturn;
-    const singleOptions = singleSelect?.options.filter((option) => option.label && !option.isBaseReference) ?? [];
-
-    for (const option of singleOptions) {
-      pushObserved(
-        await observeTransportCombination(
-          page,
-          singleSelect ?? null,
-          null,
-          option,
-          null,
-          singleBase,
-          null,
-          'single-select',
-          waitForCatalogOfferPrice
-        )
-      );
-    }
-  }
-
-  return {
-    ...buildTransportRowsFromObserved(
-      page.url(),
-      Array.from(observed.values()),
-      explicitBasePriceCents,
-      hasExplicitBaseReference,
-      sessionReferencePriceCents,
-      insuranceDeductionCents
-    ),
-    transportDetected: true
-  };
+      : {})
+  });
 }
 
 async function snapshotWithEngine(
   playwright: Record<BrowserEngineName, BrowserType>,
   browserEngine: BrowserEngineName,
   sourceUrl: string,
-  importOptions?: PlaywrightStayImportOptions
+  options: PlaywrightSnapshotOptions
 ): Promise<DynamicStayPageSnapshot | null> {
   const launcher = playwright[browserEngine];
   const browser = await launcher.launch({
@@ -1313,31 +1119,27 @@ async function snapshotWithEngine(
     }
 
     const page = await context.newPage();
-    await page.goto(sourceUrl, { waitUntil: 'load', timeout: PLAYWRIGHT_TIMEOUT_MS });
-    await page.waitForTimeout(1_000);
+    await page.goto(sourceUrl, { waitUntil: 'domcontentloaded', timeout: PLAYWRIGHT_TIMEOUT_MS });
+    await page.waitForTimeout(400);
     await acceptCookieBanners(page);
-    await scrollPage(page);
-    await expandCarousels(page);
-    await page.waitForTimeout(1_500);
+    if (options.collectImages) {
+      await scrollPage(page);
+      await expandCarousels(page);
+      await page.waitForTimeout(500);
+    }
 
-    const transportResult = await collectTransportVariants(page, importOptions).catch((error) => {
-      console.warn('[playwright-import] dynamic transport failed', {
-        sourceUrl,
-        browserEngine,
-        error: error instanceof Error ? error.message : 'unknown-error'
-      });
-      return {
-        transportVariants: [],
-        transportPriceDebug: [],
-        transportDetected: false
-      };
-    });
+    const transportResult = options.collectTransport
+      ? await collectDynamicTransportVariants(page)
+      : { transportVariants: [], transportPriceDebug: [], transportDetected: false };
+    const ceslSessionsFromPlaywright = await collectCeslDynamicSessions(page);
     const html = await page.content();
-    const imageUrls = unique([
-      ...(await collectPageImageUrls(page)),
-      ...(await exploreClickableGalleryImages(page))
-    ]);
-    const videoUrls = await collectPageVideoUrls(page);
+    const imageUrls = options.collectImages
+      ? unique([
+          ...(await collectPageImageUrls(page)),
+          ...(await exploreClickableGalleryImages(page))
+        ])
+      : [];
+    const videoUrls = options.collectVideos ? await collectPageVideoUrls(page) : [];
     const finalUrl = page.url();
 
     if (tracingStarted && traceDir) {
@@ -1362,7 +1164,8 @@ async function snapshotWithEngine(
         imageCount: imageUrls.length,
         videoCount: videoUrls.length,
         transportVariantCount: transportResult.transportVariants.length,
-        transportDetected: transportResult.transportDetected
+        transportDetected: transportResult.transportDetected,
+        ceslSessionCount: ceslSessionsFromPlaywright.length
       });
     }
 
@@ -1374,7 +1177,9 @@ async function snapshotWithEngine(
       browserEngine,
       transportVariants: transportResult.transportVariants,
       transportPriceDebug: transportResult.transportPriceDebug,
-      transportDetected: transportResult.transportDetected
+      transportDetected: transportResult.transportDetected,
+      ceslSessionsFromPlaywright,
+      thalieSessionBaselines: []
     };
   } catch (error) {
     if (tracingStarted && context && traceDir) {
@@ -1399,6 +1204,30 @@ async function snapshotWithEngine(
   }
 }
 
+type PlaywrightRuntime = {
+  chromium: BrowserType;
+  firefox: BrowserType;
+  webkit: BrowserType;
+};
+
+async function loadPlaywrightRuntime(): Promise<PlaywrightRuntime | null> {
+  try {
+    const dynamicImport = new Function('moduleName', 'return import(moduleName);') as (
+      moduleName: string
+    ) => Promise<unknown>;
+    const runtime = (await dynamicImport('playwright')) as Partial<PlaywrightRuntime>;
+    if (!runtime.chromium || !runtime.firefox || !runtime.webkit) {
+      return null;
+    }
+    return runtime as PlaywrightRuntime;
+  } catch (error) {
+    console.warn('[playwright-import] package not available', {
+      error: error instanceof Error ? error.message : 'unknown-error'
+    });
+    return null;
+  }
+}
+
 /**
  * Rend la page séjour dans un navigateur réel pour images carrousel, vidéos et transport dynamique.
  *
@@ -1408,20 +1237,38 @@ async function snapshotWithEngine(
  * - `PLAYWRIGHT_SLOW_MO_MS=250` : ralentit les actions.
  * - `PLAYWRIGHT_TRACE_DIR=/chemin/vers/dossier` : enregistre un fichier `.zip` ; puis
  *   `npx playwright show-trace /chemin/…/stay-import-chromium-….zip`.
+ * - `PLAYWRIGHT_IMPORT_VIDEO_DIR=/chemin` : vidéo MP4 du parcours (un fichier par contexte).
  * - `PLAYWRIGHT_VERBOSE_IMPORT=1` : logs résumés dans la console du serveur Next.
  */
 export async function renderStayPageWithPlaywright(
   sourceUrl: string,
-  importOptions?: PlaywrightStayImportOptions
+  options: PlaywrightSnapshotOptions = {}
 ): Promise<DynamicStayPageSnapshot | null> {
-  const { chromium, firefox, webkit } = await import('playwright');
+  const snapshotOptions: Required<PlaywrightSnapshotOptions> = {
+    collectImages: options.collectImages ?? true,
+    collectTransport: options.collectTransport ?? false,
+    collectVideos: options.collectVideos ?? true
+  };
+  const runtime = await loadPlaywrightRuntime();
+  if (!runtime) {
+    return null;
+  }
+  const { chromium, firefox, webkit } = runtime;
 
   const engines: BrowserEngineName[] = ['chromium', 'firefox', 'webkit'];
   for (const engine of engines) {
     try {
-      const snapshot = await snapshotWithEngine({ chromium, firefox, webkit }, engine, sourceUrl, importOptions);
+      const snapshot = await snapshotWithEngine(
+        { chromium, firefox, webkit },
+        engine,
+        sourceUrl,
+        snapshotOptions
+      );
+      const hasUsefulTransport =
+        !snapshotOptions.collectTransport || (snapshot?.transportVariants.length ?? 0) > 0;
       if (
         snapshot &&
+        hasUsefulTransport &&
         (snapshot.html.length > 0 ||
           snapshot.imageUrls.length > 0 ||
           snapshot.videoUrls.length > 0 ||
@@ -1436,6 +1283,7 @@ export async function renderStayPageWithPlaywright(
         sourceUrl,
         error: error instanceof Error ? error.message : 'unknown-error'
       });
+      continue;
     }
   }
 

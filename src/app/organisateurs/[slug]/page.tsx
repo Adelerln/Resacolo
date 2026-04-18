@@ -702,9 +702,8 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
         <div className="section-container">
           <div className="grid gap-8 lg:grid-cols-[minmax(0,0.56fr)_minmax(340px,0.44fr)] lg:gap-10">
             <div className="max-w-4xl -ml-8 sm:-ml-12 lg:-ml-20">
-              <p className="text-sm font-bold uppercase tracking-[0.12em] text-slate-400">Présentation</p>
               <h1 className="mt-2 font-display text-4xl font-bold leading-[1.02] text-[#505050] sm:text-5xl lg:text-[3.6rem]">
-                {organizerDisplayName}
+                Présentation
               </h1>
               <div
                 className="mt-5 text-left text-[0.88rem] font-medium leading-[1.6] text-slate-600 sm:text-[0.95rem] [&_b]:text-[1rem] [&_b]:font-extrabold [&_br]:block [&_br]:content-[''] [&_em]:italic [&_i]:italic [&_li]:ml-5 [&_li]:list-disc [&_li]:pl-1 [&_ol]:ml-5 [&_ol]:list-decimal [&_ol]:space-y-2 [&_p]:mb-4 [&_strong]:text-[1rem] [&_strong]:font-extrabold [&_u]:underline [&_ul]:space-y-2 sm:[&_b]:text-[1.05rem] sm:[&_strong]:text-[1.05rem]"
@@ -961,20 +960,21 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
               return (
                 <div key={stay.id} className="flex h-full min-h-[520px] justify-center">
                   <OrganizerStayPreviewCard
-                  title={stay.title}
-                  summary={stay.summary ?? null}
-                  description={stay.description ?? null}
-                  locationLabel={stay.location_text?.trim() || 'Lieu à préciser'}
-                  ageRangeLabel={formatPublicAgeRange(stay.age_min, stay.age_max)}
-                  seasonIconSrc={seasonDisplay.iconPath}
-                  seasonBadge={seasonDisplay.badgeText}
-                  durationLabel={sessionMeta.durationLabel}
-                  priceFromEuros={sessionMeta.priceFrom}
-                  coverUrl={coverUrl}
-                  href={stayCanonicalPathById.get(stay.id) ?? '/sejours'}
-                  organizerLogoUrl={logoUrl}
-                  organizerName={organizerDisplayName}
-                />
+                    title={stay.title}
+                    summary={stay.summary ?? null}
+                    description={stay.description ?? null}
+                    locationLabel={stay.location_text?.trim() || 'Lieu à préciser'}
+                    ageRangeLabel={formatPublicAgeRange(stay.age_min, stay.age_max)}
+                    seasonIconSrc={seasonDisplay.iconPath}
+                    seasonBadge={seasonDisplay.badgeText}
+                    durationLabel={sessionMeta.durationLabel}
+                    priceFromEuros={sessionMeta.priceFrom}
+                    coverUrl={coverUrl}
+                    href={stayCanonicalPathById.get(stay.id) ?? '/sejours'}
+                    organizerLogoUrl={logoUrl}
+                    organizerName={organizerDisplayName}
+                    disableBlueHoverEffect
+                  />
                 </div>
               );
             })}

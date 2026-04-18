@@ -23,12 +23,27 @@ Configurer la clé OpenAI dans `.env` :
 
 ```
 OPENAI_API_KEY=sk-...
+OPENAI_CHAT_MODEL=gpt-4o-mini
+OPENAI_EMBED_MODEL=text-embedding-3-small
 ```
 
 Pour le tunnel checkout/paiement, le projet utilise désormais un provider local `Monetico mock` (mode test) :
 
 ```
 Aucune clé de paiement requise en local.
+```
+
+Pour le chatbot RAG public :
+
+```
+NEXT_PUBLIC_CHATBOT_ENABLED=1
+RAG_REINDEX_TOKEN=change-me
+CHATBOT_ESCALATION_EMAIL=support@resacolo.com
+SMTP_HOST=smtp.example.com
+SMTP_PORT=465
+SMTP_USER=user
+SMTP_PASS=pass
+SMTP_FROM=chatbot@resacolo.com
 ```
 
 ## Synchronisation des séjours
@@ -44,6 +59,16 @@ Aucune clé de paiement requise en local.
 - Ajoutez/retirez des organisateurs dans `src/lib/constants.ts`.
 - Adaptez la taxonomie des filtres dans `FILTER_LABELS`.
 - Le rendu des cartes et des fiches se trouve dans `src/components/sejours`.
+
+## Chatbot RAG (V1)
+
+- Endpoint question/réponse : `POST /api/chatbot/query`
+- Handoff humain : `POST /api/chatbot/handoff`
+- Instrumentation frontend : `POST /api/chatbot/event`
+- Reindex manuel sécurisé : `POST /api/rag/reindex` (Bearer `RAG_REINDEX_TOKEN`)
+- Cron full reindex : `GET /api/cron/rag-full-reindex?token=...`
+- Fallback source publique : `/assistant/sources/[id]`
+- Dashboard KPI interne : `/mnemos/chatbot`
 
 ## Limitations actuelles
 

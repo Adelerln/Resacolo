@@ -8,6 +8,16 @@ type AccommodationLocationInput = {
   itinerantZone?: string | null;
 };
 
+type AccommodationCenterCoordinatesInput = {
+  centerLatitude?: string | number | null;
+  centerLongitude?: string | number | null;
+};
+
+export type AccommodationCenterCoordinates = {
+  centerLatitude: number | null;
+  centerLongitude: number | null;
+};
+
 const ACCOMMODATION_LOCATION_META_PATTERN =
   /<!--\s*resacolo:accommodation-location:([^\n]*?)\s*-->/i;
 
@@ -39,6 +49,78 @@ function normalizeDepartmentCode(value?: string | null) {
   const cleaned = cleanValue(value);
   if (!cleaned) return null;
   return cleaned.toUpperCase().replace(/\s+/g, '');
+}
+
+function normalizeCoordinateInput(value?: string | number | null) {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? String(value) : '';
+  }
+  return String(value ?? '').trim().replace(',', '.');
+}
+
+function parseCoordinate(raw: string) {
+  if (!raw) return null;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return Number.NaN;
+  return parsed;
+}
+
+export function validateAndParseAccommodationCenterCoordinates(
+  input: AccommodationCenterCoordinatesInput
+): { value: AccommodationCenterCoordinates; error: string | null } {
+  const latitudeRaw = normalizeCoordinateInput(input.centerLatitude);
+  const longitudeRaw = normalizeCoordinateInput(input.centerLongitude);
+  const latitude = parseCoordinate(latitudeRaw);
+  const longitude = parseCoordinate(longitudeRaw);
+  const hasLatitude = latitude !== null;
+  const hasLongitude = longitude !== null;
+
+  if (hasLatitude !== hasLongitude) {
+    return {
+      value: { centerLatitude: null, centerLongitude: null },
+      error: 'Renseigne latitude et longitude ensemble.'
+    };
+  }
+
+  if (!hasLatitude && !hasLongitude) {
+    return {
+      value: { centerLatitude: null, centerLongitude: null },
+      error: null
+    };
+  }
+
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    return {
+      value: { centerLatitude: null, centerLongitude: null },
+      error: 'Latitude/longitude invalides: utilise des nombres décimaux.'
+    };
+  }
+
+  if (latitude == null || longitude == null) {
+    return {
+      value: { centerLatitude: null, centerLongitude: null },
+      error: 'Renseigne latitude et longitude ensemble.'
+    };
+  }
+
+  if (latitude < -90 || latitude > 90) {
+    return {
+      value: { centerLatitude: null, centerLongitude: null },
+      error: 'Latitude invalide: valeur attendue entre -90 et 90.'
+    };
+  }
+
+  if (longitude < -180 || longitude > 180) {
+    return {
+      value: { centerLatitude: null, centerLongitude: null },
+      error: 'Longitude invalide: valeur attendue entre -180 et 180.'
+    };
+  }
+
+  return {
+    value: { centerLatitude: latitude, centerLongitude: longitude },
+    error: null
+  };
 }
 
 export function normalizeAccommodationLocation(input: AccommodationLocationInput) {

@@ -9,6 +9,7 @@ import {
 } from '@/lib/stay-categories';
 import { inferTransportLogisticsModeFromSignals } from '@/lib/stay-draft-content';
 import { enrichStayDraftWithAI, StayDraftAiEnrichmentError } from '@/lib/stay-draft-ai-enrichment';
+import { resolveAccommodationCenterCoordinates } from '@/lib/accommodation-center-geocoding';
 import { mockOrganizerTenant } from '@/lib/mocks';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import type { Database, Json } from '@/types/supabase';
@@ -275,16 +276,53 @@ function readImportedExistingAccommodationId(rawPayload: Json | null): string | 
   return typeof selectedId === 'string' && selectedId.trim().length > 0 ? selectedId.trim() : null;
 }
 
-function buildDraftUpdateFromAi(
+async function buildDraftUpdateFromAi(
   draft: StayDraftRow,
   ai: Awaited<ReturnType<typeof enrichStayDraftWithAI>>,
   force: boolean
-): StayDraftUpdate {
+): Promise<StayDraftUpdate> {
   const patch: StayDraftUpdate = {};
   const extracted = ai.extracted;
   const currentRawPayload = asObject(draft.raw_payload);
   const linkedAccommodationId = readImportedExistingAccommodationId(draft.raw_payload);
-  const extractedAccommodation = linkedAccommodationId ? null : extracted.accommodations_json;
+  let extractedAccommodation = linkedAccommodationId ? null : extracted.accommodations_json;
+  let accommodationGeocodingMeta: Json | null = null;
+  const shouldResolveAccommodationCoordinates =
+    Boolean(extractedAccommodation) && (force || !hasJsonValue(draft.accommodations_json));
+
+  if (extractedAccommodation && shouldResolveAccommodationCoordinates) {
+    const resolvedCoordinates = await resolveAccommodationCenterCoordinates({
+      title: extractedAccommodation.title,
+      locationMode: extractedAccommodation.location_mode,
+      locationCity: extractedAccommodation.location_city,
+      locationDepartmentCode: extractedAccommodation.location_department_code,
+      locationCountry: extractedAccommodation.location_country,
+      geocodingQuery: extractedAccommodation.center_geocoding_query,
+      draftLocationText: draft.location_text,
+      draftRegionText: draft.region_text,
+      centerLatitude: extractedAccommodation.center_latitude,
+      centerLongitude: extractedAccommodation.center_longitude
+    });
+
+    if (
+      resolvedCoordinates.centerLatitude != null &&
+      resolvedCoordinates.centerLongitude != null
+    ) {
+      extractedAccommodation = {
+        ...extractedAccommodation,
+        center_latitude: resolvedCoordinates.centerLatitude,
+        center_longitude: resolvedCoordinates.centerLongitude
+      };
+    }
+
+    accommodationGeocodingMeta = {
+      source: resolvedCoordinates.source,
+      query_used: resolvedCoordinates.queryUsed,
+      confidence: resolvedCoordinates.confidence,
+      center_latitude: resolvedCoordinates.centerLatitude,
+      center_longitude: resolvedCoordinates.centerLongitude
+    } as Json;
+  }
   const normalizedCategoryLabels = normalizeStayDraftCategories(extracted.categories).categories;
   const categoryContext = [
     extracted.location_text,
@@ -358,9 +396,6 @@ function buildDraftUpdateFromAi(
   if ((force || !hasJsonValue(draft.sessions_json)) && extracted.sessions_json.length > 0) {
     patch.sessions_json = extracted.sessions_json;
   }
-  if ((force || !hasJsonValue(draft.extra_options_json)) && extracted.extra_options_json.length > 0) {
-    patch.extra_options_json = extracted.extra_options_json;
-  }
   if ((force || !hasJsonValue(draft.transport_options_json)) && extracted.transport_options_json.length > 0) {
     patch.transport_options_json = extracted.transport_options_json;
   }
@@ -374,9 +409,11 @@ function buildDraftUpdateFromAi(
     ai_raw: ai.rawResponse,
     ai_extracted: {
       ...extracted,
+      extra_options_json: [],
       accommodations_json: extractedAccommodation,
       categories: normalizedCategories
     },
+    ai_accommodation_geocoding: accommodationGeocodingMeta,
     ai_prompt_version: ai.promptVersion,
     ai_model: ai.model,
     ai_enriched_at: aiEnrichedAt,
@@ -611,7 +648,7 @@ export async function POST(req: Request) {
     return makeErrorResponse(req, selectedOrganizerId, message, 502);
   }
 
-  const updatePayload = buildDraftUpdateFromAi(draft, aiResult, force);
+  const updatePayload = await buildDraftUpdateFromAi(draft, aiResult, force);
   logInfo('supabase payload prepared', {
     draftId,
     force,

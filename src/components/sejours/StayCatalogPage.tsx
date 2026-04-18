@@ -317,6 +317,50 @@ export function StayCatalogPage({
     () => applyStayCatalogFilters(stays, filters),
     [stays, filters]
   );
+  const panelOptions = useMemo(() => {
+    function withSelectedFallbacks<TOption extends StayCatalogFilterOption>(
+      computed: TOption[],
+      fallback: TOption[],
+      selectedValues: string[]
+    ) {
+      if (selectedValues.length === 0) return computed;
+
+      const computedValues = new Set(computed.map((option) => option.value));
+      const extras = selectedValues
+        .filter((selectedValue) => !computedValues.has(selectedValue))
+        .map((selectedValue) => fallback.find((option) => option.value === selectedValue))
+        .filter((option): option is TOption => Boolean(option))
+        .map((option) => ({ ...option, count: 0 } as TOption));
+
+      if (extras.length === 0) return computed;
+      return [...computed, ...extras];
+    }
+
+    const seasonBase = buildStayCatalogFilterOptions(
+      applyStayCatalogFilters(stays, { ...filters, seasonIds: [] })
+    ).seasons;
+    const categoryBase = buildStayCatalogFilterOptions(
+      applyStayCatalogFilters(stays, { ...filters, categories: [] })
+    ).categories;
+    const ageBandBase = buildStayCatalogFilterOptions(
+      applyStayCatalogFilters(stays, { ...filters, ageBands: [] })
+    ).ageBands;
+    const destinationBase = buildStayCatalogFilterOptions(
+      applyStayCatalogFilters(stays, { ...filters, destinations: [] })
+    ).destinations;
+    const organizerBase = buildStayCatalogFilterOptions(
+      applyStayCatalogFilters(stays, { ...filters, organizerIds: [] })
+    ).organizers;
+
+    return {
+      ...filterOptions,
+      seasons: withSelectedFallbacks(seasonBase, filterOptions.seasons, filters.seasonIds),
+      categories: withSelectedFallbacks(categoryBase, filterOptions.categories, filters.categories),
+      ageBands: withSelectedFallbacks(ageBandBase, filterOptions.ageBands, filters.ageBands),
+      destinations: withSelectedFallbacks(destinationBase, filterOptions.destinations, filters.destinations),
+      organizers: withSelectedFallbacks(organizerBase, filterOptions.organizers, filters.organizerIds)
+    };
+  }, [filterOptions, filters, stays]);
   const sortedStays = useMemo(
     () => applyStayCatalogSort(filteredStays, sort, { randomSeed }),
     [filteredStays, randomSeed, sort]
@@ -390,7 +434,7 @@ export function StayCatalogPage({
           <div className="hidden xl:block">
             <FiltersPanel
               value={filters}
-              options={filterOptions}
+              options={panelOptions}
               onSearchChange={(nextValue) => setFilters((previous) => ({ ...previous, q: nextValue }))}
               onToggle={updateMultiFilter}
               onReset={resetFilters}
@@ -461,7 +505,7 @@ export function StayCatalogPage({
             </div>
             <FiltersPanel
               value={filters}
-              options={filterOptions}
+              options={panelOptions}
               className="border-none p-0 shadow-none"
               onSearchChange={(nextValue) => setFilters((previous) => ({ ...previous, q: nextValue }))}
               onToggle={updateMultiFilter}

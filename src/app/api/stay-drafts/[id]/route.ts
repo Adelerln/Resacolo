@@ -68,8 +68,9 @@ const bodySchema = z.object({
       })
     )
     .optional()
-    .default([])
-  video_urls: z.array(z.string()).optional().default([])
+    .default([]),
+  video_urls: z.array(z.string()).optional().default([]),
+  partner_discount_percent: z.number().min(0).max(100).nullable().optional().default(null)
 });
 
 type StayDraftRow = Database['public']['Tables']['stay_drafts']['Row'];
@@ -128,6 +129,82 @@ function removeSeoFields(payload: Record<string, unknown>): Record<string, unkno
     }
   }
   return nextPayload;
+}
+
+export async function GET(
+  req: Request,
+  context: { params: Promise<{ id: string }> }
+) {
+  const isMockMode = process.env.MOCK_UI === '1' || process.env.DISABLE_AUTH === '1';
+  const session = await getSession();
+
+  if (!isMockMode && (!session || session.role !== 'ORGANISATEUR')) {
+    return NextResponse.json({ error: 'Non authentifié.' }, { status: 401 });
+  }
+
+  const { id } = await context.params;
+  const searchParams = new URL(req.url).searchParams;
+  const fallbackOrganizerId = isMockMode ? mockOrganizerTenant.id : session?.tenantId ?? null;
+  const { selectedOrganizerId } = await resolveOrganizerSelection(
+    searchParams.get('organizerId') ?? undefined,
+    fallbackOrganizerId
+  );
+
+  if (!selectedOrganizerId) {
+    return NextResponse.json({ error: 'Aucun organisateur disponible.' }, { status: 400 });
+  }
+
+  const supabase = getServerSupabaseClient();
+  const { data: draft, error } = await supabase
+    .from('stay_drafts')
+    .select('id,status,updated_at,raw_payload')
+    .eq('id', id)
+    .eq('organizer_id', selectedOrganizerId)
+    .maybeSingle();
+
+  if (error || !draft) {
+    return NextResponse.json(
+      { error: error?.message ?? 'Brouillon introuvable.' },
+      { status: 404 }
+    );
+  }
+
+  const rawPayload = asObject(draft.raw_payload);
+  const progressRaw =
+    rawPayload.import_progress &&
+    typeof rawPayload.import_progress === 'object' &&
+    !Array.isArray(rawPayload.import_progress)
+      ? (rawPayload.import_progress as Record<string, unknown>)
+      : null;
+
+  const rawPercent = progressRaw?.percent;
+  const percent =
+    typeof rawPercent === 'number' && Number.isFinite(rawPercent)
+      ? Math.max(0, Math.min(100, Math.round(rawPercent)))
+      : normalizeStatus(draft.status) === 'pending'
+        ? 5
+        : 100;
+
+  return NextResponse.json({
+    success: true,
+    draft: {
+      id: draft.id,
+      status: draft.status,
+      updated_at: draft.updated_at
+    },
+    importProgress: {
+      step: typeof progressRaw?.step === 'string' ? progressRaw.step : 'created',
+      label:
+        typeof progressRaw?.label === 'string' && progressRaw.label.trim().length > 0
+          ? progressRaw.label
+          : 'Import en cours',
+      percent,
+      completed: Boolean(progressRaw?.completed),
+      error: typeof progressRaw?.error === 'string' ? progressRaw.error : null,
+      updated_at:
+        typeof progressRaw?.updated_at === 'string' ? progressRaw.updated_at : draft.updated_at
+    }
+  });
 }
 
 async function updateDraftPublicationMetadata(input: {
@@ -237,8 +314,12 @@ async function parseBody(req: Request): Promise<{ payload: StayDraftReviewPayloa
     seo_internal_link_anchor_suggestions: sanitizeSeoTags(data.seo_internal_link_anchor_suggestions),
     seo_slug_candidate: sanitizeSeoText(data.seo_slug_candidate),
     seo_score: data.seo_score,
-    seo_checks: data.seo_checks
-    video_urls: data.video_urls.map((url) => normalizeString(url)).filter(Boolean)
+    seo_checks: data.seo_checks,
+    video_urls: data.video_urls.map((url) => normalizeString(url)).filter(Boolean),
+    partner_discount_percent:
+      data.partner_discount_percent != null && Number.isFinite(data.partner_discount_percent)
+        ? data.partner_discount_percent
+        : null
   };
 
   if (!payload.title) {
@@ -324,7 +405,8 @@ async function handleUpdate(req: Request, params: { id: string }, mode: 'save' |
     raw_payload: {
       ...currentRawPayload,
       video_urls:
-        parsedBody.payload.video_urls.length > 0 ? parsedBody.payload.video_urls : null
+        parsedBody.payload.video_urls.length > 0 ? parsedBody.payload.video_urls : null,
+      partner_discount_percent: parsedBody.payload.partner_discount_percent
     },
     updated_at: now
   };

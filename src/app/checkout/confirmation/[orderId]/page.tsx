@@ -39,20 +39,30 @@ export default function CheckoutConfirmationPage() {
       mode === 'dev-bypass' &&
       (isDevBypassCheckout() || process.env.NODE_ENV === 'development')
     ) {
+      const devBypassPaidStorageKey = `resacolo-dev-bypass-paid:${orderId}`;
+      const simulatedPaidAt =
+        typeof window !== 'undefined'
+          ? sessionStorage.getItem(devBypassPaidStorageKey)
+          : null;
+      const isSimulatedPaymentConfirmed = Boolean(simulatedPaidAt);
+
       setOrder({
         orderId,
-        status: 'PAID',
-        paidAt: new Date().toISOString(),
-        paymentStatus: 'PAID',
+        status: isSimulatedPaymentConfirmed ? 'PAID (SIMULÉ)' : 'EN ATTENTE (SIMULÉ)',
+        paidAt: simulatedPaidAt,
+        paymentStatus: isSimulatedPaymentConfirmed ? 'PAID (SIMULÉ)' : 'NON PAYÉ',
         totalCents: 0,
         currency: 'EUR'
       });
       setErrorMessage(null);
       setIsLoading(false);
-      if (!checkoutResetDoneRef.current) {
+      if (isSimulatedPaymentConfirmed && !checkoutResetDoneRef.current) {
         clearCart();
         resetCheckout();
         checkoutResetDoneRef.current = true;
+      }
+      if (simulatedPaidAt && typeof window !== 'undefined') {
+        sessionStorage.removeItem(devBypassPaidStorageKey);
       }
       return;
     }
@@ -136,7 +146,8 @@ export default function CheckoutConfirmationPage() {
           ) : null}
           {mode === 'dev-bypass' ? (
             <p className="text-xs text-amber-800">
-              Mode dev : confirmation fictive (NEXT_PUBLIC_DEV_BYPASS_CHECKOUT=1), sans commande en base.
+              Mode dev : confirmation fictive (NEXT_PUBLIC_DEV_BYPASS_CHECKOUT=1), sans commande en base et sans
+              paiement réel.
             </p>
           ) : null}
         </div>

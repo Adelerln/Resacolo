@@ -6,7 +6,8 @@ const mnemosNav = [
   { href: '/mnemos/organizers', label: 'Organismes' },
   { href: '/mnemos/billing', label: 'Facturation période' },
   { href: '/mnemos/inquiries', label: 'Demandes renseignements' },
-  { href: '/mnemos/support', label: 'Support organismes' }
+  { href: '/mnemos/support', label: 'Support organismes' },
+  { href: '/mnemos/chatbot', label: 'Chatbot' }
 ];
 
 export default async function MnemosLayout({ children }: { children: React.ReactNode }) {

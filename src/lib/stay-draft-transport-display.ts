@@ -13,7 +13,13 @@ export type TransportVariantForDraft = {
   return_label_raw?: string | null;
   page_price_cents?: number | null;
   base_price_cents?: number | null;
-  pricing_method?: 'delta_from_base' | 'session_delta' | 'absolute_price' | 'unresolved';
+  pricing_method?:
+    | 'delta_from_base'
+    | 'session_delta'
+    | 'absolute_price'
+    | 'unresolved'
+    | 'thalie_pbpdt_delta'
+    | 'thalie_option_url_delta';
   confidence?: 'high' | 'medium' | 'low';
   reason?: string;
 };
@@ -124,12 +130,35 @@ function rankForMerge(variant: TransportVariantForDraft): number {
   if (variant.confidence === 'high') score += 50_000;
   else if (variant.confidence === 'medium') score += 30_000;
   else if (variant.confidence === 'low') score += 10_000;
-  if (variant.pricing_method === 'session_delta') score += 5_000;
+  if (
+    variant.pricing_method === 'session_delta' ||
+    variant.pricing_method === 'thalie_pbpdt_delta' ||
+    variant.pricing_method === 'thalie_option_url_delta'
+  ) {
+    score += 5_000;
+  }
   return score;
 }
 
+/** Clé de regroupement : Thalie = ville × session (sinon on écrase les suppléments entre dates). */
+function collapseTransportVariantGroupKey(variant: TransportVariantForDraft): string | null {
+  if (variant.pricing_method === 'thalie_pbpdt_delta') {
+    const cityRaw = normalizeWhitespace(variant.departure_label_raw ?? '');
+    const dateRaw = normalizeWhitespace(variant.return_label_raw ?? '');
+    if (cityRaw && dateRaw) {
+      return `thalie|${simplifyForMatch(cityRaw)}|${simplifyForMatch(dateRaw)}`;
+    }
+    const combo = normalizeWhitespace(variant.departure_city ?? '');
+    if (combo) return `thalie|${simplifyForMatch(combo)}`;
+  }
+  const city = pickPrimaryTransportCityLabel(variant);
+  if (!city) return null;
+  const key = simplifyForMatch(city);
+  return key || null;
+}
+
 /**
- * Une entrée par ville (supplément max / variante la plus fiable en cas d’ex aequo).
+ * Une entrée par ville (et par session pour Thalie PBP), variante la plus fiable en cas d’ex aequo.
  */
 export function collapseTransportVariantsForDraft(
   variants: TransportVariantForDraft[]
@@ -137,23 +166,22 @@ export function collapseTransportVariantsForDraft(
   const map = new Map<string, TransportVariantForDraft>();
   for (const variant of variants) {
     if (typeof variant.amount_cents !== 'number' || !Number.isFinite(variant.amount_cents)) continue;
-    const city = pickPrimaryTransportCityLabel(variant);
-    if (!city) continue;
-    const key = simplifyForMatch(city);
-    if (!key) continue;
+    const groupKey = collapseTransportVariantGroupKey(variant);
+    if (!groupKey) continue;
+    const city = pickPrimaryTransportCityLabel(variant) ?? variant.departure_city;
     const merged: TransportVariantForDraft = {
       ...variant,
-      departure_city: city,
-      return_city: city
+      departure_city: city || variant.departure_city,
+      return_city: city || variant.return_city
     };
-    const existing = map.get(key);
+    const existing = map.get(groupKey);
     if (!existing || rankForMerge(merged) > rankForMerge(existing)) {
-      map.set(key, merged);
+      map.set(groupKey, merged);
     }
   }
   return Array.from(map.values()).sort((left, right) => {
-    const a = pickPrimaryTransportCityLabel(left) ?? '';
-    const b = pickPrimaryTransportCityLabel(right) ?? '';
+    const a = pickPrimaryTransportCityLabel(left) ?? left.departure_city ?? '';
+    const b = pickPrimaryTransportCityLabel(right) ?? right.departure_city ?? '';
     return a.localeCompare(b, 'fr');
   });
 }
@@ -165,8 +193,14 @@ export function buildDraftTransportOptionsFromVariants(
     .filter((variant) => typeof variant.amount_cents === 'number' && Number.isFinite(variant.amount_cents))
     .map((variant) => {
       const city = pickPrimaryTransportCityLabel(variant) ?? variant.departure_city;
+      const label =
+        variant.pricing_method === 'thalie_pbpdt_delta' &&
+        normalizeWhitespace(variant.departure_label_raw ?? '') &&
+        normalizeWhitespace(variant.return_label_raw ?? '')
+          ? `${normalizeWhitespace(variant.departure_label_raw ?? '')} — ${normalizeWhitespace(variant.return_label_raw ?? '')}`
+          : city;
       return {
-        label: city,
+        label,
         departure_city: city,
         return_city: city,
         amount_cents: variant.amount_cents,

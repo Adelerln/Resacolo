@@ -5,6 +5,7 @@ import AccommodationFormFields from '@/components/organisme/AccommodationFormFie
 import {
   buildAccessibilityInfoFromForm,
   embedAccommodationLocationMeta,
+  validateAndParseAccommodationCenterCoordinates,
   validateAccommodationLocation
 } from '@/lib/accommodation-location';
 import { requireRole } from '@/lib/auth/require';
@@ -46,7 +47,7 @@ export default async function NewAccommodationPage({ searchParams }: PageProps) 
     const locationInput = {
       locationMode: String(formData.get('location_mode') ?? '').trim(),
       locationCity: String(formData.get('location_city') ?? '').trim(),
-      locationDepartmentCode: String(formData.get('location_department_code') ?? '').trim(),
+      locationDepartmentCode: String(formData.get('location_department_code') ?? '').trim().slice(0, 2),
       locationCountry: String(formData.get('location_country') ?? '').trim(),
       itinerantZone: String(formData.get('itinerant_zone') ?? '').trim()
     };
@@ -60,6 +61,19 @@ export default async function NewAccommodationPage({ searchParams }: PageProps) 
       redirect(
         withOrganizerQuery(
           `/organisme/hebergements/new?error=${encodeURIComponent(locationError)}`,
+          selectedOrganizerId
+        )
+      );
+    }
+
+    const centerCoordinatesResult = validateAndParseAccommodationCenterCoordinates({
+      centerLatitude: String(formData.get('center_latitude') ?? '').trim(),
+      centerLongitude: String(formData.get('center_longitude') ?? '').trim()
+    });
+    if (centerCoordinatesResult.error) {
+      redirect(
+        withOrganizerQuery(
+          `/organisme/hebergements/new?error=${encodeURIComponent(centerCoordinatesResult.error)}`,
           selectedOrganizerId
         )
       );
@@ -80,6 +94,8 @@ export default async function NewAccommodationPage({ searchParams }: PageProps) 
       status: 'DRAFT',
       validated_at: null,
       validated_by_user_id: null,
+      center_latitude: centerCoordinatesResult.value.centerLatitude,
+      center_longitude: centerCoordinatesResult.value.centerLongitude,
       created_at: now,
       updated_at: now
     });

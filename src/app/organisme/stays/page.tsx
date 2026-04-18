@@ -1,7 +1,7 @@
 import { revalidatePath } from 'next/cache';
-import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import ErrorToast from '@/components/common/ErrorToast';
+import NewStayChoiceModalTrigger from '@/components/organisme/NewStayChoiceModalTrigger';
 import SavedToast from '@/components/common/SavedToast';
 import OrganizerStaysTable from '@/components/organisme/OrganizerStaysTable';
 import { requireRole } from '@/lib/auth/require';
@@ -483,12 +483,7 @@ export default async function OrganizerStaysPage({ searchParams }: PageProps) {
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Séjours</h1>
         </div>
-        <Link
-          href={withOrganizerQuery('/organisme/sejours/new', organizerId)}
-          className="inline-flex min-h-[44px] items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white"
-        >
-          Nouveau séjour
-        </Link>
+        <NewStayChoiceModalTrigger organizerId={organizerId} />
       </div>
 
       {stayRows.length > 0 || importDraftRows.length > 0 ? (

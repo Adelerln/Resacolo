@@ -1,240 +1,117 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
+import ErrorToast from '@/components/common/ErrorToast';
 import { requireRole } from '@/lib/auth/require';
-import GoogleMapsCityInput from '@/components/common/GoogleMapsCityInput';
 import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers.server';
-import { normalizeStayCategories, STAY_CATEGORY_OPTIONS } from '@/lib/stay-categories';
-import { getStayAgeBounds, parseStayAges, STAY_AGE_OPTIONS } from '@/lib/stay-ages';
-import { isMissingRegionTextColumnError, normalizeStayRegion, STAY_REGION_OPTIONS } from '@/lib/stay-regions';
-import { maybeRecordPublicationFeeWhenStayPublished } from '@/lib/resacolo-fee-ledger.server';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
-import type { Database } from '@/types/supabase';
 
 type PageProps = {
   searchParams?: Promise<{
     organizerId?: string | string[];
+    error?: string | string[];
   }>;
 };
 
+function formatRedirectValue(value?: string | string[]) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+/**
+ * La saisie manuelle ouvre le même tunnel que la review d’un brouillon après import :
+ * création d’un `stay_drafts` puis redirection vers `/organisme/sejours/drafts/[id]`.
+ */
 export default async function NewStayManualPage({ searchParams }: PageProps) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const session = await requireRole('ORGANISATEUR');
-  const supabase = getServerSupabaseClient();
   const { selectedOrganizer, selectedOrganizerId } = await resolveOrganizerSelection(
     resolvedSearchParams?.organizerId,
     session.tenantId ?? null
   );
-  const organizerTenantId = selectedOrganizerId;
-  const { data: seasonsRaw } = await supabase.from('seasons').select('id,name');
-  const seasonOrder = ['Hiver', 'Printemps', 'Été', 'Automne', "Fin d'année"];
-  const seasons = [...(seasonsRaw ?? [])].sort((a, b) => {
-    const indexA = seasonOrder.indexOf(a.name);
-    const indexB = seasonOrder.indexOf(b.name);
-    if (indexA === -1 && indexB === -1) {
-      return a.name.localeCompare(b.name, 'fr');
-    }
-    if (indexA === -1) return 1;
-    if (indexB === -1) return -1;
-    return indexA - indexB;
-  });
+  const errorParam = formatRedirectValue(resolvedSearchParams?.error);
 
-  async function createStay(formData: FormData) {
+  async function startManualDraft(formData: FormData) {
     'use server';
-    const supabase = getServerSupabaseClient();
-    if (!organizerTenantId) {
-      redirect('/organisme/sejours');
-    }
-    const seasonId = String(formData.get('season_id') ?? '');
-    if (!seasonId) {
-      redirect(withOrganizerQuery('/organisme/sejours', organizerTenantId));
-    }
-    const title = String(formData.get('title') ?? '').trim();
-    const description = String(formData.get('description') ?? '').trim();
-    const selectedAges = parseStayAges(formData);
-    const categories = normalizeStayCategories(
-      formData
-        .getAll('categories')
-        .map((value) => String(value).trim())
-        .filter(Boolean)
+    const requestedOrganizerId = String(formData.get('organizerId') ?? '').trim();
+    const sessionInner = await requireRole('ORGANISATEUR');
+    const supabaseInner = getServerSupabaseClient();
+    const { selectedOrganizerId: actionOrganizerId } = await resolveOrganizerSelection(
+      requestedOrganizerId || undefined,
+      sessionInner.tenantId ?? null
     );
-    const { ages, ageMin, ageMax } = getStayAgeBounds(selectedAges);
-    const location = String(formData.get('location') ?? '').trim();
-    const region = normalizeStayRegion(formData.get('region_text'));
-    const status = String(formData.get('status') ?? 'PUBLISHED').trim();
-    const transportMode = String(formData.get('transport_mode') ?? 'Sans transport').trim();
-    const normalizedStatus: Database['public']['Enums']['stay_status'] =
-      status === 'DRAFT' || status === 'HIDDEN' || status === 'ARCHIVED' ? status : 'PUBLISHED';
 
-    if (!title) {
-      redirect(withOrganizerQuery('/organisme/sejours/new/manual', organizerTenantId));
+    if (!actionOrganizerId) {
+      redirect('/organisme/sejours?error=Aucun%20organisateur%20disponible.');
     }
 
-    const basePayload: Database['public']['Tables']['stays']['Insert'] = {
-      organizer_id: organizerTenantId,
-      season_id: seasonId,
-      title,
-      description: description || null,
-      categories,
-      ages,
-      age_min: ageMin,
-      age_max: ageMax,
-      location_text: location || null,
-      transport_mode:
-        transportMode === 'Aller/Retour similaire' ||
-        transportMode === 'Aller/Retour différencié' ||
-        transportMode === 'Sans transport'
-          ? transportMode
-          : 'Sans transport',
-      status: normalizedStatus
-    };
+    const manualSourceUrl = `https://resacolo.com/creation-manuelle/${crypto.randomUUID()}`;
+    const { data: insertedDraft, error: insertError } = await supabaseInner
+      .from('stay_drafts')
+      .insert({
+        organizer_id: actionOrganizerId,
+        source_url: manualSourceUrl,
+        status: 'pending',
+        raw_payload: {
+          manual_entry: true,
+          created_via: 'manual-flow',
+          created_at: new Date().toISOString()
+        }
+      })
+      .select('id')
+      .single();
 
-    const payloadWithRegion = region ? { ...basePayload, region_text: region } : basePayload;
-
-    let insertedStay: { id: string } | null = null;
-    let insertError: { message: string } | null = null;
-
-    const firstAttempt = await supabase.from('stays').insert(payloadWithRegion).select('id').single();
-    insertedStay = firstAttempt.data;
-    insertError = firstAttempt.error;
-
-    if (insertError && isMissingRegionTextColumnError(insertError.message)) {
-      const fallbackAttempt = await supabase.from('stays').insert(basePayload).select('id').single();
-      insertedStay = fallbackAttempt.data;
-      insertError = fallbackAttempt.error;
+    if (insertError || !insertedDraft) {
+      redirect(
+        withOrganizerQuery(
+          `/organisme/sejours/new/manual?error=${encodeURIComponent(
+            insertError?.message ?? 'Impossible de créer le brouillon manuel.'
+          )}`,
+          actionOrganizerId
+        )
+      );
     }
 
-    if (insertError || !insertedStay) {
-      console.error('Erreur Supabase (create stay)', insertError?.message ?? 'unknown');
-      redirect(withOrganizerQuery('/organisme/sejours/new/manual', organizerTenantId));
-    }
+    redirect(withOrganizerQuery(`/organisme/sejours/drafts/${insertedDraft.id}`, actionOrganizerId));
+  }
 
-    await maybeRecordPublicationFeeWhenStayPublished(supabase, {
-      stayId: insertedStay.id,
-      organizerId: organizerTenantId,
-      previousStatus: undefined,
-      newStatus: normalizedStatus,
-      occurredAt: new Date().toISOString()
-    });
-
-    redirect(withOrganizerQuery(`/organisme/sejours/${insertedStay?.id ?? ''}`, organizerTenantId));
+  if (!selectedOrganizerId) {
+    redirect('/organisme/sejours');
   }
 
   return (
     <div className="space-y-6">
+      {errorParam ? <ErrorToast message={decodeURIComponent(errorParam)} /> : null}
+
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Nouveau séjour</h1>
-          <p className="text-sm text-slate-600">
+          <h1 className="text-2xl font-semibold text-slate-900">Saisie manuelle</h1>
+          <p className="mt-1 text-sm text-slate-600">
             {selectedOrganizer
-              ? `Création manuelle d'un séjour pour ${selectedOrganizer.name}.`
-              : 'Création manuelle d’un séjour.'}
+              ? `Tu vas utiliser le même éditeur que pour un séjour importé (étapes, champs, validation) — ${selectedOrganizer.name}.`
+              : 'Tu vas utiliser le même éditeur que pour un séjour importé (étapes, champs, validation).'}
           </p>
         </div>
         <Link
-          href={withOrganizerQuery('/organisme/sejours/new', organizerTenantId)}
-          className="inline-flex min-h-[44px] items-center justify-center rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700"
+          href={withOrganizerQuery('/organisme/sejours/new', selectedOrganizerId)}
+          className="inline-flex min-h-[44px] shrink-0 items-center justify-center rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700"
         >
           Retour au choix
         </Link>
       </div>
-      <form action={createStay} className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
-        <label className="block text-sm font-medium text-slate-700">
-          Titre
-          <input name="title" className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2" required />
-        </label>
-        <label className="block text-sm font-medium text-slate-700">
-          Saison
-          <select name="season_id" className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2" required>
-            <option value="">Sélectionner</option>
-            {(seasons ?? []).map((season) => (
-              <option key={season.id} value={season.id}>
-                {season.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="block text-sm font-medium text-slate-700">
-          Description
-          <textarea name="description" rows={4} className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2" />
-        </label>
-        <div className="space-y-3">
-          <div>
-            <div className="text-sm font-medium text-slate-700">Catégories du séjour</div>
-            <p className="mt-1 text-xs text-slate-500">Tu peux en sélectionner plusieurs.</p>
-          </div>
-          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-            {STAY_CATEGORY_OPTIONS.map((category) => (
-              <label
-                key={category.value}
-                className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700"
-              >
-                <input type="checkbox" name="categories" value={category.value} className="cursor-pointer" />
-                <span>{category.label}</span>
-              </label>
-            ))}
-          </div>
-        </div>
-        <div className="space-y-3">
-          <div>
-            <div className="text-sm font-medium text-slate-700">Âges</div>
-            <p className="mt-1 text-xs text-slate-500">Coche les âges proposés.</p>
-          </div>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8">
-            {STAY_AGE_OPTIONS.map((age) => (
-              <label
-                key={age}
-                className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700"
-              >
-                <input type="checkbox" name="ages" value={age} className="cursor-pointer" />
-                <span>{age} ans</span>
-              </label>
-            ))}
-          </div>
-        </div>
-        <GoogleMapsCityInput name="location" label="Ville du séjour" />
-        <label className="block text-sm font-medium text-slate-700">
-          Région du séjour
-          <select name="region_text" defaultValue="" className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2">
-            <option value="">Sélectionner</option>
-            {STAY_REGION_OPTIONS.map((region) => (
-              <option key={region} value={region}>
-                {region}
-              </option>
-            ))}
-          </select>
-          <span className="mt-1 block text-xs text-slate-500">Choisir “Étranger” si le séjour se déroule hors de France.</span>
-        </label>
-        <label className="block text-sm font-medium text-slate-700">
-          Mode de transport
-          <select
-            name="transport_mode"
-            defaultValue="Sans transport"
-            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-          >
-            <option value="Aller/Retour similaire">Aller/Retour similaire</option>
-            <option value="Aller/Retour différencié">Aller/Retour différencié</option>
-            <option value="Sans transport">Sans transport</option>
-          </select>
-        </label>
-        <label className="block text-sm font-medium text-slate-700">
-          Statut de publication
-          <select
-            name="status"
-            defaultValue="DRAFT"
-            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-          >
-            <option value="DRAFT">Brouillon (recommandé : finaliser avant publication)</option>
-            <option value="PUBLISHED">Publié sur le catalogue</option>
-            <option value="HIDDEN">Masqué</option>
-            <option value="ARCHIVED">Archivé</option>
-          </select>
-          <span className="mt-1 block text-xs text-slate-500">
-            Tu peux enregistrer en brouillon puis ouvrir la fiche séjour pour tout peaufiner avant de repasser en
-            « Publié ».
-          </span>
-        </label>
-        <button className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">
-          Creer
+
+      <form
+        action={startManualDraft}
+        className="rounded-2xl border border-slate-200 bg-white p-6 sm:p-8"
+      >
+        <input type="hidden" name="organizerId" value={selectedOrganizerId} />
+        <p className="text-sm text-slate-600">
+          Un brouillon vide est créé, puis tu es redirigé vers la relecture (tunnel identique à
+          l&apos;après-import).
+        </p>
+        <button
+          type="submit"
+          className="mt-4 inline-flex min-h-[44px] items-center justify-center rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white"
+        >
+          Ouvrir l&apos;éditeur de brouillon
         </button>
       </form>
     </div>

@@ -396,9 +396,6 @@ async function buildDraftUpdateFromAi(
   if ((force || !hasJsonValue(draft.sessions_json)) && extracted.sessions_json.length > 0) {
     patch.sessions_json = extracted.sessions_json;
   }
-  if ((force || !hasJsonValue(draft.extra_options_json)) && extracted.extra_options_json.length > 0) {
-    patch.extra_options_json = extracted.extra_options_json;
-  }
   if ((force || !hasJsonValue(draft.transport_options_json)) && extracted.transport_options_json.length > 0) {
     patch.transport_options_json = extracted.transport_options_json;
   }
@@ -412,6 +409,7 @@ async function buildDraftUpdateFromAi(
     ai_raw: ai.rawResponse,
     ai_extracted: {
       ...extracted,
+      extra_options_json: [],
       accommodations_json: extractedAccommodation,
       categories: normalizedCategories
     },

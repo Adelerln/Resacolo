@@ -12,6 +12,7 @@ import {
   normalizeAccommodationTypeToken,
   normalizeLocationMode
 } from '@/lib/stay-draft-accommodation-import';
+import { isPartnerTariffExtraOptionLabel } from '@/lib/stay-draft-extra-options-split';
 import { createOpenAIClient } from '@/lib/openai';
 import type { Database, Json } from '@/types/supabase';
 
@@ -176,6 +177,7 @@ Règles impératives :
 - La racine du JSON doit être un objet unique, jamais un tableau.
 - Respecte strictement les clés attendues, sans en ajouter d'autres.
 - Les prix complexes doivent rester dans sessions_json / extra_options_json / transport_options_json.
+- N'inclus jamais dans extra_options_json les lignes « tarif partenaire » / tarif collectivités (ex. CESL) : ce cas est couvert par la remise partenaire sur la fiche, pas comme option supplémentaire payante.
 - Pour availability dans sessions_json, utilise seulement : "available", "full", "unknown" ou null.
 - "summary" doit être une phrase courte de ${MAX_STAY_SUMMARY_LENGTH} caractères maximum (environ 2 lignes dans une carte). Pas de ponctuation de liste, pas de saut de ligne.
 - "location_text" doit contenir uniquement la ville principale (et le pays si hors de France) : 50 caractères maximum. Exemples : "Avignon, France", "Saint-Jean-de-Luz", "Saulieu, Bourgogne", "Londres, Royaume-Uni".
@@ -504,7 +506,8 @@ function normalizeAiExtracted(data: StayDraftAiExtracted): StayDraftAiExtracted 
     description: data.description,
     location_text: truncateLocation(data.location_text),
     categories: normalizedCategories.categories,
-    ages: dedupeNumbers(data.ages)
+    ages: dedupeNumbers(data.ages),
+    extra_options_json: data.extra_options_json.filter((row) => !isPartnerTariffExtraOptionLabel(row.label))
   };
 }
 
@@ -671,7 +674,9 @@ function normalizeAiExtractedCandidate(value: unknown): StayDraftAiExtracted {
     categories: toStringArray(record.categories),
     ages: expandDraftAges(toNumberArray(record.ages)),
     sessions_json: normalizeSessionList(record.sessions_json),
-    extra_options_json: normalizeOptionList(record.extra_options_json),
+    extra_options_json: normalizeOptionList(record.extra_options_json).filter(
+      (row) => !isPartnerTariffExtraOptionLabel(row.label)
+    ),
     transport_options_json: normalizeOptionList(record.transport_options_json),
     accommodations_json: normalizeAccommodations(record.accommodations_json)
   };
@@ -905,6 +910,9 @@ Règles strictes pour "sessions_json.availability" :
 - Si la page laisse clairement réserver / inscrire sans mention de complet, préfère "available".
 - Si la session est complète, renvoie "full".
 - Si la disponibilité n'est vraiment pas déterminable, renvoie "unknown" ou null.
+
+Règles strictes pour "extra_options_json" :
+- N'y mets pas les tarifs « partenaire » / collectivités (ex. ligne CESL « Tarif partenaire ») : ce n'est pas une option payante à la carte sur RESACOLO.
 
 Contexte :
 ${JSON.stringify(inputPayload)}

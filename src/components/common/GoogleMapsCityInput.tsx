@@ -13,6 +13,8 @@ type GoogleMapsCityInputProps = {
   showApiHint?: boolean;
   required?: boolean;
   className?: string;
+  /** Classes du champ texte (ex. bordures review brouillon). */
+  inputClassName?: string;
 };
 
 type AddressApiFeature = {
@@ -55,7 +57,8 @@ export default function GoogleMapsCityInput({
   value: controlledValue,
   onValueChange,
   required = false,
-  className
+  className,
+  inputClassName
 }: GoogleMapsCityInputProps) {
   const isControlled = typeof onValueChange === 'function';
   const containerRef = useRef<HTMLLabelElement | null>(null);
@@ -189,7 +192,7 @@ export default function GoogleMapsCityInput({
           required={required}
           autoComplete="off"
           placeholder="Commence à saisir une ville (ex. Moncoutant…)"
-          className="w-full rounded-lg border border-slate-200 px-3 py-2"
+          className={inputClassName ?? 'w-full rounded-lg border border-slate-200 px-3 py-2'}
         />
         {isLoading && (
           <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400">

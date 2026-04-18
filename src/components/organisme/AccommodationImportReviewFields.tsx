@@ -6,16 +6,23 @@ import {
   defaultAccommodationImportRecord,
   mergeAccommodationImportRecord
 } from '@/lib/stay-draft-accommodation-import';
-
-const INPUT_CLASS = 'mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900';
+import { draftReviewControlClass } from '@/lib/draft-review-field-styles';
+import { cn } from '@/lib/utils';
 
 type Props = {
   value: Record<string, unknown>;
   onChange: (next: Record<string, unknown>) => void;
   fieldError?: string | null;
+  /** Classes du champ « Nom de l'hébergement » (tunnel review). */
+  nameInputClassName?: string;
 };
 
-export default function AccommodationImportReviewFields({ value, onChange, fieldError }: Props) {
+export default function AccommodationImportReviewFields({
+  value,
+  onChange,
+  fieldError,
+  nameInputClassName
+}: Props) {
   const draft = mergeAccommodationImportRecord(defaultAccommodationImportRecord(), value);
 
   function patch(partial: Record<string, unknown>) {
@@ -47,7 +54,14 @@ export default function AccommodationImportReviewFields({ value, onChange, field
         <label className="block text-sm font-medium text-slate-700">
           Nom de l&apos;hébergement
           <input
-            className={INPUT_CLASS}
+            className={
+              nameInputClassName ??
+              draftReviewControlClass({
+                required: true,
+                filled: Boolean(String(draft.title ?? '').trim()),
+                hasError: Boolean(fieldError)
+              })
+            }
             value={String(draft.title ?? '')}
             onChange={(e) => patch({ title: e.target.value })}
           />
@@ -86,7 +100,10 @@ export default function AccommodationImportReviewFields({ value, onChange, field
           <label className="mt-3 block text-sm font-medium text-slate-700">
             Type de lieu
             <select
-              className={INPUT_CLASS}
+              className={draftReviewControlClass({
+                required: false,
+                filled: Boolean(locationMode)
+              })}
               value={locationMode}
               onChange={(e) =>
                 patch({
@@ -106,7 +123,10 @@ export default function AccommodationImportReviewFields({ value, onChange, field
               <label className="block text-sm font-medium text-slate-700">
                 Ville
                 <input
-                  className={INPUT_CLASS}
+                  className={draftReviewControlClass({
+                    required: false,
+                    filled: Boolean(String(draft.location_city ?? '').trim())
+                  })}
                   value={String(draft.location_city ?? '')}
                   onChange={(e) => patch({ location_city: e.target.value })}
                 />
@@ -114,7 +134,10 @@ export default function AccommodationImportReviewFields({ value, onChange, field
               <label className="block text-sm font-medium text-slate-700">
                 Numéro de département
                 <input
-                  className={INPUT_CLASS}
+                  className={draftReviewControlClass({
+                    required: false,
+                    filled: Boolean(String(draft.location_department_code ?? '').trim())
+                  })}
                   placeholder="Ex. 85"
                   value={String(draft.location_department_code ?? '')}
                   maxLength={2}
@@ -129,7 +152,10 @@ export default function AccommodationImportReviewFields({ value, onChange, field
               <label className="block text-sm font-medium text-slate-700">
                 Ville
                 <input
-                  className={INPUT_CLASS}
+                  className={draftReviewControlClass({
+                    required: false,
+                    filled: Boolean(String(draft.location_city ?? '').trim())
+                  })}
                   value={String(draft.location_city ?? '')}
                   onChange={(e) => patch({ location_city: e.target.value })}
                 />
@@ -137,7 +163,10 @@ export default function AccommodationImportReviewFields({ value, onChange, field
               <label className="block text-sm font-medium text-slate-700">
                 Pays
                 <input
-                  className={INPUT_CLASS}
+                  className={draftReviewControlClass({
+                    required: false,
+                    filled: Boolean(String(draft.location_country ?? '').trim())
+                  })}
                   value={String(draft.location_country ?? '')}
                   onChange={(e) => patch({ location_country: e.target.value })}
                 />
@@ -149,7 +178,10 @@ export default function AccommodationImportReviewFields({ value, onChange, field
             <label className="mt-4 block text-sm font-medium text-slate-700">
               Zone ou itinéraire
               <input
-                className={INPUT_CLASS}
+                className={draftReviewControlClass({
+                  required: false,
+                  filled: Boolean(String(draft.itinerant_zone ?? '').trim())
+                })}
                 value={String(draft.itinerant_zone ?? '')}
                 onChange={(e) => patch({ itinerant_zone: e.target.value })}
               />
@@ -160,7 +192,13 @@ export default function AccommodationImportReviewFields({ value, onChange, field
         <label className="block text-sm font-medium text-slate-700">
           Description (lieu, région, infrastructures — pas couchage / sanitaires / repas / PMR)
           <textarea
-            className={`${INPUT_CLASS} min-h-[7rem]`}
+            className={cn(
+              draftReviewControlClass({
+                required: false,
+                filled: Boolean(String(draft.description ?? '').trim())
+              }),
+              'min-h-[7rem]'
+            )}
             rows={5}
             value={String(draft.description ?? '')}
             onChange={(e) => patch({ description: e.target.value })}
@@ -170,7 +208,13 @@ export default function AccommodationImportReviewFields({ value, onChange, field
         <label className="block text-sm font-medium text-slate-700">
           Couchage / informations couchage
           <textarea
-            className={`${INPUT_CLASS} min-h-[5rem]`}
+            className={cn(
+              draftReviewControlClass({
+                required: false,
+                filled: Boolean(String(draft.bed_info ?? '').trim())
+              }),
+              'min-h-[5rem]'
+            )}
             rows={3}
             value={String(draft.bed_info ?? '')}
             onChange={(e) => patch({ bed_info: e.target.value })}
@@ -181,7 +225,13 @@ export default function AccommodationImportReviewFields({ value, onChange, field
         <label className="block text-sm font-medium text-slate-700">
           Sanitaires
           <textarea
-            className={`${INPUT_CLASS} min-h-[5rem]`}
+            className={cn(
+              draftReviewControlClass({
+                required: false,
+                filled: Boolean(String(draft.bathroom_info ?? '').trim())
+              }),
+              'min-h-[5rem]'
+            )}
             rows={3}
             value={String(draft.bathroom_info ?? '')}
             onChange={(e) => patch({ bathroom_info: e.target.value })}
@@ -192,7 +242,13 @@ export default function AccommodationImportReviewFields({ value, onChange, field
         <label className="block text-sm font-medium text-slate-700">
           Restauration
           <textarea
-            className={`${INPUT_CLASS} min-h-[5rem]`}
+            className={cn(
+              draftReviewControlClass({
+                required: false,
+                filled: Boolean(String(draft.catering_info ?? '').trim())
+              }),
+              'min-h-[5rem]'
+            )}
             rows={3}
             value={String(draft.catering_info ?? '')}
             onChange={(e) => patch({ catering_info: e.target.value })}

@@ -50,6 +50,11 @@ import {
 } from '@/lib/stay-draft-extra-options-split';
 import { collapseTransportDraftOptionsJson } from '@/lib/stay-draft-transport-display';
 import { normalizeImportedImageUrlList, normalizeImportedVideoUrlList } from '@/lib/stay-draft-url-extract';
+import {
+  draftReviewControlClass,
+  draftReviewFieldGroupClass,
+  draftReviewSectionClass
+} from '@/lib/draft-review-field-styles';
 import type { StayDraftReviewFieldErrors, StayDraftReviewPayload } from '@/types/stay-draft-review';
 
 type StayDraftReviewFormProps = {
@@ -565,12 +570,16 @@ export default function StayDraftReviewForm({
       nextErrors.ages = 'Les âges doivent être une liste de nombres séparés par des virgules.';
     }
 
-    const sessionsPayload = sessionsList.filter(
-      (row) =>
-        String(row.label ?? '').trim().length > 0 ||
-        String(row.start_date ?? '').trim().length > 0 ||
-        String(row.end_date ?? '').trim().length > 0
-    );
+    const sessionsPayload = sessionsList.filter((row) => {
+      const hasStart = String(row.start_date ?? '').trim().length > 0;
+      const hasEnd = String(row.end_date ?? '').trim().length > 0;
+      const hasLabel = String(row.label ?? '').trim().length > 0;
+      const p = row.price;
+      const hasPrice =
+        (typeof p === 'number' && Number.isFinite(p)) ||
+        (p != null && String(p).trim() !== '' && String(p).trim() !== 'null');
+      return hasStart || hasEnd || hasLabel || hasPrice;
+    });
     const extraOptionsPayload = extraOptionsList.filter(
       (row) => String(row.label ?? '').trim().length > 0
     );
@@ -850,6 +859,11 @@ export default function StayDraftReviewForm({
               value={accommodationImport}
               onChange={setAccommodationImport}
               fieldError={fieldErrors.accommodations_json}
+              nameInputClassName={draftReviewControlClass({
+                required: true,
+                filled: Boolean(String(accommodationImport.title ?? '').trim()),
+                hasError: Boolean(fieldErrors.accommodations_json)
+              })}
             />
           )}
 
@@ -875,7 +889,11 @@ export default function StayDraftReviewForm({
           <input
             value={title}
             onChange={(event) => setTitle(event.target.value)}
-            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+            className={draftReviewControlClass({
+              required: true,
+              filled: Boolean(title.trim()),
+              hasError: Boolean(fieldErrors.title)
+            })}
           />
           {fieldErrors.title && <span className="mt-1 block text-xs text-rose-600">{fieldErrors.title}</span>}
         </label>
@@ -888,13 +906,21 @@ export default function StayDraftReviewForm({
             value={locationText}
             onValueChange={setLocationText}
             showApiHint
+            inputClassName={draftReviewControlClass({
+              required: false,
+              filled: Boolean(locationText.trim()),
+              omitOuterMargin: true
+            })}
           />
           <label className="block text-sm font-medium text-slate-700">
             Région
             <input
               value={regionText}
               onChange={(event) => setRegionText(event.target.value)}
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+              className={draftReviewControlClass({
+                required: false,
+                filled: Boolean(regionText.trim())
+              })}
             />
           </label>
         </div>
@@ -905,7 +931,10 @@ export default function StayDraftReviewForm({
             value={summary}
             onChange={(event) => setSummary(event.target.value)}
             rows={3}
-            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+            className={draftReviewControlClass({
+              required: false,
+              filled: Boolean(summary.trim())
+            })}
           />
           <span className="mt-1 block text-xs text-slate-500">
             Phrase d&apos;accroche, {MAX_STAY_SUMMARY_LENGTH} caractères max.
@@ -920,7 +949,10 @@ export default function StayDraftReviewForm({
             value={description}
             onChange={(event) => setDescription(event.target.value)}
             rows={6}
-            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+            className={draftReviewControlClass({
+              required: false,
+              filled: Boolean(description.trim())
+            })}
           />
         </label>
 
@@ -930,7 +962,10 @@ export default function StayDraftReviewForm({
             value={programText}
             onChange={(event) => setProgramText(event.target.value)}
             rows={6}
-            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+            className={draftReviewControlClass({
+              required: false,
+              filled: Boolean(programText.trim())
+            })}
           />
         </label>
 
@@ -940,7 +975,10 @@ export default function StayDraftReviewForm({
             value={supervisionText}
             onChange={(event) => setSupervisionText(event.target.value)}
             rows={5}
-            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+            className={draftReviewControlClass({
+              required: false,
+              filled: Boolean(supervisionText.trim())
+            })}
           />
         </label>
 
@@ -950,7 +988,10 @@ export default function StayDraftReviewForm({
             value={transportText}
             onChange={(event) => setTransportText(event.target.value)}
             rows={4}
-            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+            className={draftReviewControlClass({
+              required: false,
+              filled: Boolean(transportText.trim())
+            })}
           />
           <span className="mt-1 block text-xs text-slate-500">
             Préciser en phrases si le trajet se fait en train, en train puis en car, en car, en avion ou sur place.
@@ -960,7 +1001,16 @@ export default function StayDraftReviewForm({
         <div className="grid gap-4 md:grid-cols-2">
           <div className="block text-sm font-medium text-slate-700">
             <span>Catégories (multi-sélection)</span>
-            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+            <div
+              className={cn(
+                'mt-2 grid gap-2 sm:grid-cols-2',
+                draftReviewFieldGroupClass({
+                  required: false,
+                  filled: selectedCategories.length > 0,
+                  hasError: Boolean(fieldErrors.categories)
+                })
+              )}
+            >
               {STAY_CATEGORY_OPTIONS.map((category) => {
                 const checked = selectedCategories.includes(category.label);
                 return (
@@ -992,7 +1042,11 @@ export default function StayDraftReviewForm({
             <input
               value={agesText}
               onChange={(event) => setAgesText(event.target.value)}
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+              className={draftReviewControlClass({
+                required: false,
+                filled: Boolean(agesText.trim()),
+                hasError: Boolean(fieldErrors.ages)
+              })}
             />
             {fieldErrors.ages && <span className="mt-1 block text-xs text-rose-600">{fieldErrors.ages}</span>}
           </label>
@@ -1002,7 +1056,18 @@ export default function StayDraftReviewForm({
           )}
 
         {effectiveStep === 'seo' && (
-        <section className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+        <section
+          className={cn(
+            'space-y-4 rounded-2xl',
+            draftReviewSectionClass({
+              required: false,
+              satisfied:
+                Boolean(seoPrimaryKeyword.trim()) ||
+                Boolean(seoTitle.trim()) ||
+                Boolean(seoMetaDescription.trim())
+            })
+          )}
+        >
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h3 className="text-base font-semibold text-slate-900">SEO du brouillon</h3>
@@ -1058,7 +1123,10 @@ export default function StayDraftReviewForm({
             <input
               value={seoPrimaryKeyword}
               onChange={(event) => setSeoPrimaryKeyword(event.target.value)}
-              className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2"
+              className={draftReviewControlClass({
+                required: false,
+                filled: Boolean(seoPrimaryKeyword.trim())
+              })}
               placeholder="Ex. colonie de vacances surf à Biarritz"
             />
           </label>
@@ -1096,7 +1164,11 @@ export default function StayDraftReviewForm({
                     setSeoSecondaryInput('');
                   }
                 }}
-                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                className={draftReviewControlClass({
+                  required: false,
+                  filled: Boolean(seoSecondaryInput.trim()),
+                  omitOuterMargin: true
+                })}
                 placeholder="Ajouter un mot-clé secondaire"
               />
               <button
@@ -1118,7 +1190,10 @@ export default function StayDraftReviewForm({
               <input
                 value={seoTargetCity}
                 onChange={(event) => setSeoTargetCity(event.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2"
+                className={draftReviewControlClass({
+                  required: false,
+                  filled: Boolean(seoTargetCity.trim())
+                })}
                 placeholder="Ex. Biarritz"
               />
             </label>
@@ -1127,7 +1202,10 @@ export default function StayDraftReviewForm({
               <input
                 value={seoTargetRegion}
                 onChange={(event) => setSeoTargetRegion(event.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2"
+                className={draftReviewControlClass({
+                  required: false,
+                  filled: Boolean(seoTargetRegion.trim())
+                })}
                 placeholder="Ex. Nouvelle-Aquitaine"
               />
             </label>
@@ -1164,7 +1242,11 @@ export default function StayDraftReviewForm({
                     setSeoIntentInput('');
                   }
                 }}
-                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                className={draftReviewControlClass({
+                  required: false,
+                  filled: Boolean(seoIntentInput.trim()),
+                  omitOuterMargin: true
+                })}
                 placeholder="Ex. séjour sportif adolescents"
               />
               <button
@@ -1220,7 +1302,10 @@ export default function StayDraftReviewForm({
               <input
                 value={seoTitle}
                 onChange={(event) => setSeoTitle(event.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2"
+                className={draftReviewControlClass({
+                  required: false,
+                  filled: Boolean(seoTitle.trim())
+                })}
                 placeholder="Laisser vide pour fallback automatique"
               />
               <span className="mt-1 block text-xs text-slate-500">
@@ -1235,7 +1320,10 @@ export default function StayDraftReviewForm({
                 value={seoMetaDescription}
                 onChange={(event) => setSeoMetaDescription(event.target.value)}
                 rows={3}
-                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2"
+                className={draftReviewControlClass({
+                  required: false,
+                  filled: Boolean(seoMetaDescription.trim())
+                })}
                 placeholder="Laisser vide pour fallback automatique"
               />
               <span className="mt-1 block text-xs text-slate-500">
@@ -1251,7 +1339,10 @@ export default function StayDraftReviewForm({
               value={seoIntroText}
               onChange={(event) => setSeoIntroText(event.target.value)}
               rows={3}
-              className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2"
+              className={draftReviewControlClass({
+                required: false,
+                filled: Boolean(seoIntroText.trim())
+              })}
               placeholder="Paragraphe d'introduction SEO"
             />
           </label>
@@ -1262,7 +1353,10 @@ export default function StayDraftReviewForm({
               <input
                 value={seoH1Variant}
                 onChange={(event) => setSeoH1Variant(event.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2"
+                className={draftReviewControlClass({
+                  required: false,
+                  filled: Boolean(seoH1Variant.trim())
+                })}
               />
             </label>
 
@@ -1271,7 +1365,10 @@ export default function StayDraftReviewForm({
               <input
                 value={seoSlugCandidate}
                 onChange={(event) => setSeoSlugCandidate(event.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2"
+                className={draftReviewControlClass({
+                  required: false,
+                  filled: Boolean(seoSlugCandidate.trim())
+                })}
               />
             </label>
           </div>
@@ -1307,7 +1404,11 @@ export default function StayDraftReviewForm({
                     setSeoAnchorInput('');
                   }
                 }}
-                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                className={draftReviewControlClass({
+                  required: false,
+                  filled: Boolean(seoAnchorInput.trim()),
+                  omitOuterMargin: true
+                })}
                 placeholder="Ajouter une ancre interne"
               />
               <button
@@ -1378,6 +1479,11 @@ export default function StayDraftReviewForm({
           value={sessionsList}
           onChange={setSessionsList}
           error={fieldErrors.sessions_json}
+          containerClassName={draftReviewSectionClass({
+            required: false,
+            satisfied: sessionsList.length > 0,
+            hasError: Boolean(fieldErrors.sessions_json)
+          })}
         />
         )}
 
@@ -1391,6 +1497,11 @@ export default function StayDraftReviewForm({
               if (next.length === 0) setInsuranceSectionVisible(false);
             }}
             error={fieldErrors.extra_options_json}
+            containerClassName={draftReviewSectionClass({
+              required: false,
+              satisfied: insuranceOptionsList.length > 0,
+              hasError: Boolean(fieldErrors.extra_options_json)
+            })}
           />
         ) : (
           <div className="rounded-lg border border-dashed border-amber-200/80 bg-amber-50/30 px-4 py-3">
@@ -1416,6 +1527,11 @@ export default function StayDraftReviewForm({
               if (next.length === 0) setExtrasSectionVisible(false);
             }}
             error={fieldErrors.extra_options_json}
+            containerClassName={draftReviewSectionClass({
+              required: false,
+              satisfied: extraOptionsList.length > 0,
+              hasError: Boolean(fieldErrors.extra_options_json)
+            })}
           />
         ) : (
           <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50/50 px-4 py-3">
@@ -1444,11 +1560,29 @@ export default function StayDraftReviewForm({
           transportMode={transportMode}
           onTransportModeChange={setTransportMode}
           transportModeError={fieldErrors.transport_mode}
+          containerClassName={draftReviewSectionClass({
+            required: false,
+            satisfied:
+              transportOptionsList.length > 0 ||
+              Boolean(transportMode && transportMode !== 'À préciser'),
+            hasError: Boolean(
+              fieldErrors.transport_options_json || fieldErrors.transport_mode
+            )
+          })}
         />
         )}
 
         {effectiveStep === 'partenaires' && (
-          <section className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/50 p-4">
+          <section
+            className={cn(
+              'space-y-3',
+              draftReviewSectionClass({
+                required: false,
+                satisfied: Boolean(partnerDiscountPercent.trim()),
+                hasError: Boolean(fieldErrors.partner_discount_percent)
+              })
+            )}
+          >
             <div>
               <h3 className="text-base font-semibold text-slate-900">Partenaires</h3>
               <p className="mt-1 text-sm text-slate-600">
@@ -1468,7 +1602,11 @@ export default function StayDraftReviewForm({
                 value={partnerDiscountPercent}
                 onChange={(event) => setPartnerDiscountPercent(event.target.value)}
                 placeholder="Ex. 5"
-                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2"
+                className={draftReviewControlClass({
+                  required: false,
+                  filled: Boolean(partnerDiscountPercent.trim()),
+                  hasError: Boolean(fieldErrors.partner_discount_percent)
+                })}
               />
               {fieldErrors.partner_discount_percent ? (
                 <span className="mt-1 block text-xs text-rose-600">{fieldErrors.partner_discount_percent}</span>
@@ -1483,7 +1621,15 @@ export default function StayDraftReviewForm({
 
         {effectiveStep === 'photos' && (
           <>
-        <div className="relative space-y-2 rounded-xl border border-slate-200 bg-slate-50/60 p-3 pr-14">
+        <div
+          className={cn(
+            'relative space-y-2 p-3 pr-14',
+            draftReviewSectionClass({
+              required: false,
+              satisfied: imagePreviewUrls.length > 0
+            })
+          )}
+        >
           <button
             type="button"
             onClick={addImageFromPrompt}
@@ -1523,7 +1669,15 @@ export default function StayDraftReviewForm({
           )}
         </div>
 
-        <div className="relative space-y-2 rounded-xl border border-slate-200 bg-slate-50/60 p-3 pr-14">
+        <div
+          className={cn(
+            'relative space-y-2 p-3 pr-14',
+            draftReviewSectionClass({
+              required: false,
+              satisfied: videoUrls.some((u) => u.trim().length > 0)
+            })
+          )}
+        >
           <button
             type="button"
             onClick={addVideoFromPrompt}
@@ -1555,7 +1709,14 @@ export default function StayDraftReviewForm({
                         current.map((item, itemIndex) => (itemIndex === index ? value : item))
                       );
                     }}
-                    className="min-w-0 flex-1 rounded border border-slate-200 px-2 py-1.5 font-mono text-xs text-slate-900"
+                    className={cn(
+                      draftReviewControlClass({
+                        required: false,
+                        filled: Boolean(url.trim()),
+                        omitOuterMargin: true
+                      }),
+                      'min-w-0 flex-1 font-mono text-xs'
+                    )}
                     spellCheck={false}
                     aria-label={`URL de la vidéo ${index + 1}`}
                   />

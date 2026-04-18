@@ -22,6 +22,7 @@ import {
   uploadImportedStayImages
 } from '@/lib/stay-media-storage';
 import { mapToCanonicalStayRegion } from '@/lib/stay-regions';
+import { isPartnerTariffExtraOptionLabel } from '@/lib/stay-draft-extra-options-split';
 import { normalizeStayTitle } from '@/lib/stay-title';
 import { maybeRecordPublicationFeeWhenStayPublished } from '@/lib/resacolo-fee-ledger.server';
 import type { Database, Json } from '@/types/supabase';
@@ -532,9 +533,9 @@ function normalizeTransportMode(
   return 'Sans transport';
 }
 
-function parseSessions(value: Json | null): Array<{ startDate: string; endDate: string; status: SessionStatus; priceCents: number | null; currency: string }> {
+function parseSessions(value: Json | null): Array<{ startDate: string; endDate: string; status: SessionStatus; priceCents: number | null; currency: string; remainingPlaces: number | null }> {
   const rows = asRecordArray(value);
-  const output: Array<{ startDate: string; endDate: string; status: SessionStatus; priceCents: number | null; currency: string }> = [];
+  const output: Array<{ startDate: string; endDate: string; status: SessionStatus; priceCents: number | null; currency: string; remainingPlaces: number | null }> = [];
 
   for (const row of rows) {
     const startDate = normalizeDateOnly(row.start_date);
@@ -546,15 +547,21 @@ function parseSessions(value: Json | null): Array<{ startDate: string; endDate: 
     const status: SessionStatus = availability === 'full' ? 'FULL' : 'OPEN';
 
     const price = toNumber(row.price);
+    const remainingPlacesValue = toNumber(row.remaining_places);
     const currency = normalizeWhitespace(String(row.currency ?? 'EUR')).toUpperCase() || 'EUR';
     const priceCents = price !== null && price >= 0 ? Math.round(price * 100) : null;
+    const remainingPlaces =
+      remainingPlacesValue !== null && remainingPlacesValue >= 0
+        ? Math.round(remainingPlacesValue)
+        : null;
 
     output.push({
       startDate,
       endDate,
       status,
       priceCents,
-      currency
+      currency,
+      remainingPlaces
     });
   }
 
@@ -597,11 +604,6 @@ function parseExtraAndInsuranceOptions(
   const rows: Array<Record<string, unknown>> = [...asRecordArray(draft.extra_options_json)];
 
   const aiExtracted = isPlainObject(rawPayload.ai_extracted) ? rawPayload.ai_extracted : null;
-  if (aiExtracted && Array.isArray(aiExtracted.extra_options_json)) {
-    for (const item of aiExtracted.extra_options_json) {
-      if (isPlainObject(item)) rows.push(item);
-    }
-  }
   if (aiExtracted && Array.isArray(aiExtracted.insurance_options_json)) {
     for (const item of aiExtracted.insurance_options_json) {
       if (isPlainObject(item)) rows.push(item);
@@ -614,6 +616,7 @@ function parseExtraAndInsuranceOptions(
   for (const row of rows) {
     const label = normalizeWhitespace(String(row.label ?? ''));
     if (!label) continue;
+    if (isPartnerTariffExtraOptionLabel(label)) continue;
 
     const description = normalizeWhitespace(String(row.description ?? ''));
     const pricingModeRaw = normalizeWhitespace(String(row.pricing_mode ?? row.mode ?? '')).toUpperCase();
@@ -1432,7 +1435,7 @@ async function updateOrInsertStay(
 async function syncSessions(
   supabase: SupabaseClient<Database>,
   stayId: string,
-  sessions: Array<{ startDate: string; endDate: string; status: SessionStatus; priceCents: number | null; currency: string }>
+  sessions: Array<{ startDate: string; endDate: string; status: SessionStatus; priceCents: number | null; currency: string; remainingPlaces: number | null }>
 ): Promise<void> {
   const { data: existingSessions, error: listError } = await supabase
     .from('sessions')
@@ -1471,7 +1474,7 @@ async function syncSessions(
       start_date: session.startDate,
       end_date: session.endDate,
       status: session.status,
-      capacity_total: 0,
+      capacity_total: session.remainingPlaces ?? 0,
       capacity_reserved: 0
     };
 

@@ -1,6 +1,9 @@
 import {
+  type DraftSessionItem,
   type DraftTransportPriceDebug,
   type DraftTransportVariant,
+  detectSessionAvailability,
+  parseSessionLabelToItem,
   type ThalieSessionBaseline
 } from '@/lib/stay-draft-import';
 
@@ -80,10 +83,10 @@ interface BrowserType {
   launch(options: { headless: boolean; slowMo: number }): Promise<Browser>;
 }
 
-const PLAYWRIGHT_TIMEOUT_MS = 30_000;
-const PLAYWRIGHT_SCROLL_STEPS = 8;
-const PLAYWRIGHT_MAX_CAROUSEL_CLICKS = 10;
-const PLAYWRIGHT_MAX_IMAGE_CANDIDATE_CLICKS = 24;
+const PLAYWRIGHT_TIMEOUT_MS = 15_000;
+const PLAYWRIGHT_SCROLL_STEPS = 5;
+const PLAYWRIGHT_MAX_CAROUSEL_CLICKS = 5;
+const PLAYWRIGHT_MAX_IMAGE_CANDIDATE_CLICKS = 10;
 const CAROUSEL_HINT_PATTERN =
   /\b(carrousel|carousel|slider|swiper|slick|splide|embla|flickity|glide|diaporama|galerie|mosaic|mosaique|lightgallery|fancybox|photos)\b/i;
 
@@ -115,6 +118,8 @@ export type DynamicStayPageSnapshot = {
   transportVariants: DraftTransportVariant[];
   transportPriceDebug: DraftTransportPriceDebug[];
   transportDetected: boolean;
+  /** Sessions CESL : une ligne par option « Période de séjour », prix lu sur `.tarif-1` (tarif public) après changement de période. */
+  ceslSessionsFromPlaywright: DraftSessionItem[];
   /** Totaux « référence » (option ville index 0) par date — aligner les prix session sur le catalogue dynamique. */
   thalieSessionBaselines: ThalieSessionBaseline[];
 };
@@ -133,6 +138,18 @@ type DynamicTransportSelect = {
   context: string;
   direction: DynamicTransportDirection;
   options: DynamicTransportOption[];
+};
+
+type DynamicTransportCollectionResult = {
+  transportVariants: DraftTransportVariant[];
+  transportPriceDebug: DraftTransportPriceDebug[];
+  transportDetected: boolean;
+};
+
+type PlaywrightSnapshotOptions = {
+  collectImages?: boolean;
+  collectTransport?: boolean;
+  collectVideos?: boolean;
 };
 
 function unique(values: string[]): string[] {
@@ -278,11 +295,25 @@ async function setDynamicSelectOption(
     }
   }, option.index);
 
-  await page.waitForTimeout(900);
+  await page.waitForTimeout(450);
 }
 
 async function readDynamicTransportAmountCents(page: Page): Promise<number | null> {
   return page.evaluate(() => {
+    const findTransportScopedAmount = () => {
+      const labels = Array.from(document.querySelectorAll('.tarif-label'));
+      for (const label of labels) {
+        const text = (label.textContent ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+        if (!text.includes('tarif transport')) continue;
+        const container =
+          label.closest('div, li, article, section, td') ?? label.parentElement ?? label;
+        const amountNode = container.querySelector('.sejour-tarif.active, .sejour-tarif');
+        const amountText = (amountNode?.textContent ?? '').trim();
+        if (amountText) return amountText;
+      }
+      return null;
+    };
+
     const selectors = [
       '.tarif-label + .badge .sejour-tarif.active',
       '.tarif-label + .badge .sejour-tarif',
@@ -308,6 +339,15 @@ async function readDynamicTransportAmountCents(page: Page): Promise<number | nul
       return Number.isFinite(parsed) ? Math.round(parsed * 100) : null;
     };
 
+    const scopedTransportText = findTransportScopedAmount();
+    if (scopedTransportText) {
+      const scopedMatch = scopedTransportText.match(/([+-]?\s*\d[\d\s\.,]*)/);
+      if (scopedMatch?.[1]) {
+        const scopedCents = parseNumber(scopedMatch[1]);
+        if (scopedCents !== null && scopedCents >= 0 && scopedCents < 8_000_000) return scopedCents;
+      }
+    }
+
     for (const selector of selectors) {
       const element = document.querySelector(selector);
       if (!element) continue;
@@ -322,11 +362,297 @@ async function readDynamicTransportAmountCents(page: Page): Promise<number | nul
   });
 }
 
-async function collectDynamicTransportVariants(page: Page): Promise<{
-  transportVariants: DraftTransportVariant[];
-  transportPriceDebug: DraftTransportPriceDebug[];
-  transportDetected: boolean;
-}> {
+async function waitForDynamicTransportAmountCents(
+  page: Page,
+  previousAmountCents: number | null
+): Promise<number | null> {
+  let lastSeen = previousAmountCents;
+
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const current = await readDynamicTransportAmountCents(page);
+    if (current !== null) {
+      lastSeen = current;
+      if (previousAmountCents === null || current !== previousAmountCents || attempt >= 2) {
+        return current;
+      }
+    }
+    await page.waitForTimeout(250);
+  }
+
+  return lastSeen;
+}
+
+/** Lit le tarif public séjour (colonne `.tarif-1`) pour chaque période du select CESL. Logique de sélection de période dupliquée ici pour ne pas partager de code avec `collectCeslDynamicTransportVariants`. */
+async function collectCeslDynamicSessions(page: Page): Promise<DraftSessionItem[]> {
+  const periodSelect = page.locator('select[name="sejour_periode"], #sejour-periode').first();
+  if ((await periodSelect.count().catch(() => 0)) === 0) return [];
+
+  const readSelectOptions = async (locator: PlaywrightLocator) =>
+    locator.evaluate((element: HTMLSelectElement) => {
+      const normalize = (value: string | null | undefined) => (value ?? '').replace(/\s+/g, ' ').trim();
+      return Array.from(element.options).map((option, index) => ({
+        index,
+        value: normalize(option.value),
+        label: normalize(option.textContent),
+        selected: option.selected
+      }));
+    });
+
+  const periodOptions = (await readSelectOptions(periodSelect)).filter((option) => option.value !== '');
+  if (periodOptions.length === 0) return [];
+
+  const sessions: DraftSessionItem[] = [];
+
+  for (const periodOption of periodOptions) {
+    try {
+      if (periodOption.value) {
+        await periodSelect.selectOption({ value: periodOption.value }).catch(async () => {
+          await periodSelect.selectOption({ index: periodOption.index });
+        });
+      } else {
+        await periodSelect.selectOption({ index: periodOption.index });
+      }
+
+      await periodSelect.evaluate((element: HTMLSelectElement, optionIndex: number) => {
+        if (Number.isInteger(optionIndex) && optionIndex >= 0 && optionIndex < element.options.length) {
+          element.selectedIndex = optionIndex;
+          element.value = element.options[optionIndex]?.value ?? element.value;
+        }
+        element.dispatchEvent(new Event('input', { bubbles: true }));
+        element.dispatchEvent(new Event('change', { bubbles: true }));
+        const w = window as unknown as {
+          jQuery?: (el: Element) => {
+            val?: (v: string) => void;
+            trigger?: (ev: string) => void;
+            selectmenu?: (cmd: string) => void;
+          };
+        };
+        const $el = w.jQuery?.(element);
+        if ($el?.val && $el.trigger) {
+          try {
+            $el.val(element.value);
+            $el.trigger('change');
+            $el.trigger('selectmenuchange');
+            $el.selectmenu?.('refresh');
+          } catch {
+            /* ignore */
+          }
+        }
+      }, periodOption.index);
+
+      await page.waitForTimeout(700);
+
+      const priceEur = await page.evaluate(() => {
+        const root = document.querySelector('.tarif-1');
+        if (!root) return null;
+        const el = root.querySelector('.tarif-value');
+        const raw = (el?.textContent ?? '').replace(/\s/g, '').replace(/\u00A0/g, '');
+        if (!raw) return null;
+        const n = Number(raw.replace(',', '.'));
+        if (!Number.isFinite(n) || n < 30 || n > 20000) return null;
+        return n;
+      });
+
+      const parsed = parseSessionLabelToItem(periodOption.label);
+      if (!parsed) continue;
+
+      sessions.push({
+        ...parsed,
+        label: normalizeWhitespace(periodOption.label),
+        price: priceEur,
+        availability: detectSessionAvailability(periodOption.label) ?? parsed.availability ?? null
+      });
+    } catch {
+      // Période suivante
+    }
+  }
+
+  return sessions;
+}
+
+/** Transport CESL : inchangé dans sa structure (sélection période + villes + lecture tarif transport). */
+async function collectCeslDynamicTransportVariants(
+  page: Page
+): Promise<DynamicTransportCollectionResult | null> {
+  const ceslSelect = page.locator('select[name="sejour_villedepart"], #sejour-villedepart').first();
+  const hasCeslSelect = (await ceslSelect.count().catch(() => 0)) > 0;
+  if (!hasCeslSelect) return null;
+
+  const periodSelect = page.locator('select[name="sejour_periode"], #sejour-periode').first();
+  const hasPeriodSelect = (await periodSelect.count().catch(() => 0)) > 0;
+
+  const readSelectOptions = async (locator: PlaywrightLocator) =>
+    locator.evaluate((element: HTMLSelectElement) => {
+      const normalize = (value: string | null | undefined) => (value ?? '').replace(/\s+/g, ' ').trim();
+      return Array.from(element.options).map((option, index) => ({
+        index,
+        value: normalize(option.value),
+        label: normalize(option.textContent),
+        selected: option.selected
+      }));
+    });
+
+  const periodOptions = hasPeriodSelect
+    ? (await readSelectOptions(periodSelect)).filter((option) => option.value !== '')
+    : [{ index: 0, value: '', label: '', selected: true }];
+
+  const debugRows: DraftTransportPriceDebug[] = [];
+  const samplesByCity = new Map<string, DraftTransportVariant>();
+  let previousAmountCents = await readDynamicTransportAmountCents(page);
+
+  for (const periodOption of periodOptions) {
+    if (hasPeriodSelect) {
+      try {
+        if (periodOption.value) {
+          await periodSelect.selectOption({ value: periodOption.value }).catch(async () => {
+            await periodSelect.selectOption({ index: periodOption.index });
+          });
+        } else {
+          await periodSelect.selectOption({ index: periodOption.index });
+        }
+
+        await periodSelect.evaluate((element: HTMLSelectElement, optionIndex: number) => {
+          if (Number.isInteger(optionIndex) && optionIndex >= 0 && optionIndex < element.options.length) {
+            element.selectedIndex = optionIndex;
+            element.value = element.options[optionIndex]?.value ?? element.value;
+          }
+          element.dispatchEvent(new Event('input', { bubbles: true }));
+          element.dispatchEvent(new Event('change', { bubbles: true }));
+          const w = window as unknown as {
+            jQuery?: (el: Element) => {
+              val?: (v: string) => void;
+              trigger?: (ev: string) => void;
+              selectmenu?: (cmd: string) => void;
+            };
+          };
+          const $el = w.jQuery?.(element);
+          if ($el?.val && $el.trigger) {
+            try {
+              $el.val(element.value);
+              $el.trigger('change');
+              $el.trigger('selectmenuchange');
+              $el.selectmenu?.('refresh');
+            } catch {
+              /* ignore */
+            }
+          }
+        }, periodOption.index);
+
+        await page.waitForTimeout(700);
+      } catch {
+        continue;
+      }
+    }
+
+    const cityOptions = (await readSelectOptions(ceslSelect))
+      .map((option) => ({ ...option, normalizedLabel: normalizeDynamicTransportLabel(option.label) }))
+      .filter(
+        (option) =>
+          Boolean(option.normalizedLabel) &&
+          option.value !== '' &&
+          !/^ville de depart$/i.test(option.label)
+      );
+
+    if (cityOptions.length === 0) continue;
+
+    for (const option of cityOptions) {
+      try {
+        if (option.value) {
+          await ceslSelect.selectOption({ value: option.value }).catch(async () => {
+            await ceslSelect.selectOption({ index: option.index });
+          });
+        } else {
+          await ceslSelect.selectOption({ index: option.index });
+        }
+
+        await ceslSelect.evaluate((element: HTMLSelectElement, optionIndex: number) => {
+          if (Number.isInteger(optionIndex) && optionIndex >= 0 && optionIndex < element.options.length) {
+            element.selectedIndex = optionIndex;
+            element.value = element.options[optionIndex]?.value ?? element.value;
+          }
+          element.dispatchEvent(new Event('input', { bubbles: true }));
+          element.dispatchEvent(new Event('change', { bubbles: true }));
+          const w = window as unknown as {
+            jQuery?: (el: Element) => {
+              val?: (v: string) => void;
+              trigger?: (ev: string) => void;
+              selectmenu?: (cmd: string) => void;
+            };
+          };
+          const $el = w.jQuery?.(element);
+          if ($el?.val && $el.trigger) {
+            try {
+              $el.val(element.value);
+              $el.trigger('change');
+              $el.trigger('selectmenuchange');
+              $el.selectmenu?.('refresh');
+            } catch {
+              /* ignore */
+            }
+          }
+        }, option.index);
+
+        await page.waitForTimeout(450);
+        const amountCents = await waitForDynamicTransportAmountCents(page, previousAmountCents);
+        previousAmountCents = amountCents;
+        const city = option.normalizedLabel ?? option.label;
+        const reasonSuffix = periodOption.label || periodOption.value || 'single-period';
+
+        debugRows.push({
+          variant_url: page.url(),
+          departure_city: city,
+          return_city: city,
+          page_price_cents: amountCents,
+          base_price_cents: null,
+          amount_cents: amountCents,
+          pricing_method: amountCents !== null ? 'absolute_price' : 'unresolved',
+          confidence: amountCents !== null ? 'high' : 'low',
+          reason: `playwright-dynamic-transport-cesl:${reasonSuffix}`,
+          departure_label_raw: option.label,
+          return_label_raw: option.label
+        });
+
+        if (amountCents === null) continue;
+
+        const key = simplifyForMatch(city);
+        if (!key) continue;
+
+        const nextVariant: DraftTransportVariant = {
+          departure_city: city,
+          return_city: city,
+          amount_cents: amountCents,
+          currency: 'EUR',
+          source_url: page.url(),
+          departure_label_raw: option.label,
+          return_label_raw: option.label,
+          page_price_cents: amountCents,
+          base_price_cents: null,
+          pricing_method: 'absolute_price',
+          confidence: 'high',
+          reason: `playwright-dynamic-transport-cesl:${reasonSuffix}`
+        };
+
+        const existing = samplesByCity.get(key);
+        if (!existing || amountCents > (existing.amount_cents ?? -1)) {
+          samplesByCity.set(key, nextVariant);
+        }
+      } catch {
+        // Ignore one city and continue.
+      }
+    }
+  }
+
+  return {
+    transportVariants: Array.from(samplesByCity.values()),
+    transportPriceDebug: debugRows,
+    transportDetected: true
+  };
+}
+
+async function collectDynamicTransportVariants(page: Page): Promise<DynamicTransportCollectionResult> {
+  const ceslSpecific = await collectCeslDynamicTransportVariants(page);
+  if (ceslSpecific) return ceslSpecific;
+
   const selects = await readDynamicTransportSelects(page);
   if (selects.length === 0) {
     return { transportVariants: [], transportPriceDebug: [], transportDetected: false };
@@ -343,11 +669,13 @@ async function collectDynamicTransportVariants(page: Page): Promise<{
 
   const debugRows: DraftTransportPriceDebug[] = [];
   const variants: DraftTransportVariant[] = [];
+  let previousAmountCents = await readDynamicTransportAmountCents(page);
 
   for (const option of options) {
     try {
       await setDynamicSelectOption(page, primary.index, option);
-      const amountCents = await readDynamicTransportAmountCents(page);
+      const amountCents = await waitForDynamicTransportAmountCents(page, previousAmountCents);
+      previousAmountCents = amountCents;
       const city = option.normalizedLabel ?? option.label;
       const row: DraftTransportPriceDebug = {
         variant_url: page.url(),
@@ -402,6 +730,15 @@ async function collectDynamicTransportVariants(page: Page): Promise<{
 export function shouldUsePlaywrightForDynamicImages(html: string, extractedImageCount: number): boolean {
   if (extractedImageCount < 4) return true;
   return CAROUSEL_HINT_PATTERN.test(html);
+}
+
+export function shouldUsePlaywrightForDynamicTransport(html: string): boolean {
+  return (
+    /sejour[_-]?villedepart/i.test(html) ||
+    /ui-selectmenu/i.test(html) ||
+    /sejour-tarif/i.test(html) ||
+    /tarif transport a\/r/i.test(html)
+  );
 }
 
 async function collectPageImageUrls(page: Page): Promise<string[]> {
@@ -564,7 +901,7 @@ async function acceptCookieBanners(page: Page) {
       const locator = page.locator(selector).first();
       if (await locator.isVisible()) {
         await locator.click({ timeout: 1_500 });
-        await page.waitForTimeout(300);
+        await page.waitForTimeout(150);
         return;
       }
     } catch {
@@ -583,7 +920,7 @@ async function scrollPage(page: Page) {
       },
       { step: index, totalSteps: PLAYWRIGHT_SCROLL_STEPS }
     );
-    await page.waitForTimeout(350);
+    await page.waitForTimeout(180);
   }
 
   await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
@@ -632,7 +969,7 @@ async function closeOpenImageOverlays(page: Page) {
   }
 
   await page.keyboard.press('Escape').catch(() => undefined);
-  await page.waitForTimeout(150);
+  await page.waitForTimeout(100);
 }
 
 async function clickLocatorAndRecover(page: Page, locator: ReturnType<Page['locator']>) {
@@ -643,11 +980,11 @@ async function clickLocatorAndRecover(page: Page, locator: ReturnType<Page['loca
     return;
   }
 
-  await page.waitForTimeout(400);
+  await page.waitForTimeout(250);
 
   if (page.url() !== beforeUrl) {
     await page.goBack({ waitUntil: 'domcontentloaded', timeout: 5_000 }).catch(() => undefined);
-    await page.waitForTimeout(400);
+    await page.waitForTimeout(250);
     await acceptCookieBanners(page);
     await scrollPage(page);
   }
@@ -713,7 +1050,8 @@ async function createContext(browser: Browser): Promise<BrowserContext> {
 async function snapshotWithEngine(
   playwright: Record<BrowserEngineName, BrowserType>,
   browserEngine: BrowserEngineName,
-  sourceUrl: string
+  sourceUrl: string,
+  options: PlaywrightSnapshotOptions
 ): Promise<DynamicStayPageSnapshot | null> {
   const launcher = playwright[browserEngine];
   const browser = await launcher.launch({
@@ -733,20 +1071,27 @@ async function snapshotWithEngine(
     }
 
     const page = await context.newPage();
-    await page.goto(sourceUrl, { waitUntil: 'load', timeout: PLAYWRIGHT_TIMEOUT_MS });
-    await page.waitForTimeout(1_000);
+    await page.goto(sourceUrl, { waitUntil: 'domcontentloaded', timeout: PLAYWRIGHT_TIMEOUT_MS });
+    await page.waitForTimeout(400);
     await acceptCookieBanners(page);
-    await scrollPage(page);
-    await expandCarousels(page);
-    await page.waitForTimeout(1_500);
+    if (options.collectImages) {
+      await scrollPage(page);
+      await expandCarousels(page);
+      await page.waitForTimeout(500);
+    }
 
-    const transportResult = await collectDynamicTransportVariants(page);
+    const transportResult = options.collectTransport
+      ? await collectDynamicTransportVariants(page)
+      : { transportVariants: [], transportPriceDebug: [], transportDetected: false };
+    const ceslSessionsFromPlaywright = await collectCeslDynamicSessions(page);
     const html = await page.content();
-    const imageUrls = unique([
-      ...(await collectPageImageUrls(page)),
-      ...(await exploreClickableGalleryImages(page))
-    ]);
-    const videoUrls = await collectPageVideoUrls(page);
+    const imageUrls = options.collectImages
+      ? unique([
+          ...(await collectPageImageUrls(page)),
+          ...(await exploreClickableGalleryImages(page))
+        ])
+      : [];
+    const videoUrls = options.collectVideos ? await collectPageVideoUrls(page) : [];
     const finalUrl = page.url();
 
     if (tracingStarted && traceDir) {
@@ -771,7 +1116,8 @@ async function snapshotWithEngine(
         imageCount: imageUrls.length,
         videoCount: videoUrls.length,
         transportVariantCount: transportResult.transportVariants.length,
-        transportDetected: transportResult.transportDetected
+        transportDetected: transportResult.transportDetected,
+        ceslSessionCount: ceslSessionsFromPlaywright.length
       });
     }
 
@@ -784,6 +1130,7 @@ async function snapshotWithEngine(
       transportVariants: transportResult.transportVariants,
       transportPriceDebug: transportResult.transportPriceDebug,
       transportDetected: transportResult.transportDetected,
+      ceslSessionsFromPlaywright,
       thalieSessionBaselines: []
     };
   } catch (error) {
@@ -846,8 +1193,14 @@ async function loadPlaywrightRuntime(): Promise<PlaywrightRuntime | null> {
  * - `PLAYWRIGHT_VERBOSE_IMPORT=1` : logs résumés dans la console du serveur Next.
  */
 export async function renderStayPageWithPlaywright(
-  sourceUrl: string
+  sourceUrl: string,
+  options: PlaywrightSnapshotOptions = {}
 ): Promise<DynamicStayPageSnapshot | null> {
+  const snapshotOptions: Required<PlaywrightSnapshotOptions> = {
+    collectImages: options.collectImages ?? true,
+    collectTransport: options.collectTransport ?? false,
+    collectVideos: options.collectVideos ?? true
+  };
   const runtime = await loadPlaywrightRuntime();
   if (!runtime) {
     return null;
@@ -857,9 +1210,17 @@ export async function renderStayPageWithPlaywright(
   const engines: BrowserEngineName[] = ['chromium', 'firefox', 'webkit'];
   for (const engine of engines) {
     try {
-      const snapshot = await snapshotWithEngine({ chromium, firefox, webkit }, engine, sourceUrl);
+      const snapshot = await snapshotWithEngine(
+        { chromium, firefox, webkit },
+        engine,
+        sourceUrl,
+        snapshotOptions
+      );
+      const hasUsefulTransport =
+        !snapshotOptions.collectTransport || (snapshot?.transportVariants.length ?? 0) > 0;
       if (
         snapshot &&
+        hasUsefulTransport &&
         (snapshot.html.length > 0 ||
           snapshot.imageUrls.length > 0 ||
           snapshot.videoUrls.length > 0 ||
@@ -874,6 +1235,7 @@ export async function renderStayPageWithPlaywright(
         sourceUrl,
         error: error instanceof Error ? error.message : 'unknown-error'
       });
+      continue;
     }
   }
 

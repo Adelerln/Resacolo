@@ -27,6 +27,13 @@ function simplifyForMatch(value: string | null | undefined): string {
     .trim();
 }
 
+/** Tarif collectivités / partenaires (ex. CESL) : la remise est gérée via « Remise partenaire », pas comme option payante. */
+export function isPartnerTariffExtraOptionLabel(label: string | null | undefined): boolean {
+  const s = simplifyForMatch(label);
+  if (!s) return false;
+  return s.includes('tarif partenaire') || s.includes('tarif partenaires');
+}
+
 function isInsuranceCandidate(
   label: string,
   description: string,
@@ -58,6 +65,8 @@ export function splitDraftExtraOptionsJson(rows: Array<Record<string, unknown>>)
   const extras: Array<Record<string, unknown>> = [];
   const insurance: Array<Record<string, unknown>> = [];
   for (const row of rows) {
+    const label = normalizeWhitespace(String(row.label ?? ''));
+    if (isPartnerTariffExtraOptionLabel(label)) continue;
     if (isInsuranceOptionRow(row)) {
       insurance.push({ ...row });
     } else {

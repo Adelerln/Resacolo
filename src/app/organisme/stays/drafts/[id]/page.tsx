@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
+import DraftImportStatusBanner from '@/components/organisme/DraftImportStatusBanner';
 import StayDraftReviewForm from '@/components/organisme/StayDraftReviewForm';
 import { requireRole } from '@/lib/auth/require';
 import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers.server';
@@ -15,9 +16,10 @@ import type { StayDraftReviewPayload } from '@/types/stay-draft-review';
 
 type PageProps = {
   params: Promise<{ id: string }>;
-  searchParams?: {
+  searchParams?: Promise<{
     organizerId?: string | string[];
-  };
+    importPending?: string | string[];
+  }>;
 };
 
 export const dynamic = 'force-dynamic';
@@ -132,6 +134,13 @@ function readExistingAccommodationId(rawPayload: Record<string, unknown>): strin
   return typeof selectedId === 'string' && selectedId.trim().length > 0 ? selectedId.trim() : null;
 }
 
+/** Brouillon créé depuis « Saisie manuelle » — pas d’import URL, pas de polling « import en cours ». */
+function isManualCreationDraft(rawPayload: Record<string, unknown>): boolean {
+  if (rawPayload.manual_entry === true) return true;
+  if (rawPayload.created_via === 'manual-flow') return true;
+  return false;
+}
+
 function draftStatusBadgeClass(status: string | null): string {
   switch ((status ?? '').toLowerCase()) {
     case 'validated':
@@ -169,6 +178,24 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
   }
 
   const rawPayload = asObject(draft.raw_payload);
+
+  const importErrorMessage =
+    typeof rawPayload.fetch_error === 'string' && rawPayload.fetch_error.trim()
+      ? rawPayload.fetch_error.trim()
+      : typeof rawPayload.import_fatal_error === 'string' && rawPayload.import_fatal_error.trim()
+        ? rawPayload.import_fatal_error.trim()
+        : typeof rawPayload.import_update_error === 'string' && rawPayload.import_update_error.trim()
+          ? rawPayload.import_update_error.trim()
+          : null;
+
+  const hasImportedTitle = Boolean(normalizeString(draft.title));
+  const manualDraft = isManualCreationDraft(rawPayload);
+  const pollWhilePending =
+    !manualDraft &&
+    (draft.status ?? '').toLowerCase() === 'pending' &&
+    !importErrorMessage &&
+    !hasImportedTitle;
+
   const aiModel = typeof rawPayload.ai_model === 'string' ? rawPayload.ai_model : null;
   const aiPromptVersion =
     typeof rawPayload.ai_prompt_version === 'string' ? rawPayload.ai_prompt_version : null;
@@ -241,9 +268,13 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Relecture du brouillon séjour</h1>
           <p className="text-sm text-slate-600">
-            {selectedOrganizer
-              ? `Relecture et validation manuelle pour ${selectedOrganizer.name}.`
-              : 'Relecture et validation manuelle du brouillon.'}
+            {manualDraft
+              ? selectedOrganizer
+                ? `Saisie manuelle — même parcours qu’après un import (étapes et champs) pour ${selectedOrganizer.name}.`
+                : 'Saisie manuelle — même parcours qu’après un import (étapes et champs).'
+              : selectedOrganizer
+                ? `Relecture et validation manuelle pour ${selectedOrganizer.name}.`
+                : 'Relecture et validation manuelle du brouillon.'}
           </p>
         </div>
         <Link
@@ -254,6 +285,8 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
         </Link>
       </div>
 
+      <DraftImportStatusBanner pollWhilePending={pollWhilePending} importErrorMessage={importErrorMessage} />
+
       <div className="rounded-2xl border border-slate-200 bg-white p-6">
         <div className="grid gap-3 text-sm md:grid-cols-2">
           <p>
@@ -261,15 +294,19 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
             <span className="font-mono text-slate-900">{draft.id}</span>
           </p>
           <p>
-            <span className="font-medium text-slate-700">Source URL :</span>{' '}
-            <a
-              href={draft.source_url}
-              target="_blank"
-              rel="noreferrer"
-              className="break-all text-emerald-700 underline"
-            >
-              {draft.source_url}
-            </a>
+            <span className="font-medium text-slate-700">Source :</span>{' '}
+            {manualDraft ? (
+              <span className="text-slate-900">Saisie manuelle (pas d&apos;import depuis une URL)</span>
+            ) : (
+              <a
+                href={draft.source_url}
+                target="_blank"
+                rel="noreferrer"
+                className="break-all text-emerald-700 underline"
+              >
+                {draft.source_url}
+              </a>
+            )}
           </p>
           <p>
             <span className="font-medium text-slate-700">Statut :</span>{' '}

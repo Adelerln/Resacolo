@@ -21,6 +21,13 @@ type PageProps = {
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+const SEASON_ORDER = ['Hiver', 'Printemps', 'Été', 'Automne', 'Toussaint', "Fin d'année"];
+
+type DraftSeasonOption = {
+  id: string;
+  name: string;
+};
+
 export default async function OrganizerStayEditTunnelPage({ params: paramsPromise, searchParams }: PageProps) {
   const params = await paramsPromise;
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
@@ -46,6 +53,7 @@ export default async function OrganizerStayEditTunnelPage({ params: paramsPromis
   }
 
   const [
+    { data: seasonsRaw },
     { data: sessionsRaw },
     { data: mediaRaw },
     { data: accommodationsRaw },
@@ -54,6 +62,7 @@ export default async function OrganizerStayEditTunnelPage({ params: paramsPromis
     { data: insuranceOptionsRaw },
     { data: transportOptionsRaw }
   ] = await Promise.all([
+    supabase.from('seasons').select('id,name').order('name', { ascending: true }),
     supabase
       .from('sessions')
       .select(
@@ -88,6 +97,15 @@ export default async function OrganizerStayEditTunnelPage({ params: paramsPromis
       .select('id,departure_city,return_city,amount_cents,stay_id')
       .eq('stay_id', stay.id)
   ]);
+
+  const seasonOptions: DraftSeasonOption[] = [...(seasonsRaw ?? [])].sort((a, b) => {
+    const indexA = SEASON_ORDER.indexOf(a.name);
+    const indexB = SEASON_ORDER.indexOf(b.name);
+    if (indexA === -1 && indexB === -1) return a.name.localeCompare(b.name, 'fr');
+    if (indexA === -1) return 1;
+    if (indexB === -1) return -1;
+    return indexA - indexB;
+  });
 
   const sessions = sessionsRaw ?? [];
   const reservedSessionCounts = await getReservedSessionCounts(
@@ -141,6 +159,7 @@ export default async function OrganizerStayEditTunnelPage({ params: paramsPromis
       <StayDraftReviewForm
         draftId={stay.id}
         organizerId={stay.organizer_id}
+        seasonOptions={seasonOptions}
         backHref={backHref}
         initialPayload={initialPayload}
         initialStatus={stay.status}

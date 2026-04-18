@@ -11,11 +11,11 @@ import { stayStatusLabel } from '@/lib/ui/labels';
 
 type PageProps = {
   params: Promise<{ id: string }>;
-  searchParams?: {
+  searchParams?: Promise<{
     organizerId?: string | string[];
     saved?: string | string[];
     error?: string | string[];
-  };
+  }>;
 };
 
 export const dynamic = 'force-dynamic';

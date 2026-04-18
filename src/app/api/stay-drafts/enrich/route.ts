@@ -8,6 +8,10 @@ import {
   stayCategoryValueToLabel
 } from '@/lib/stay-categories';
 import { inferTransportLogisticsModeFromSignals } from '@/lib/stay-draft-content';
+import {
+  buildDraftTransportOptionsFromVariants,
+  type TransportVariantForDraft
+} from '@/lib/stay-draft-transport-display';
 import { enrichStayDraftWithAI, StayDraftAiEnrichmentError } from '@/lib/stay-draft-ai-enrichment';
 import { resolveAccommodationCenterCoordinates } from '@/lib/accommodation-center-geocoding';
 import { mockOrganizerTenant } from '@/lib/mocks';
@@ -194,6 +198,92 @@ function hasJsonValue(value: Json | null | undefined): boolean {
   return true;
 }
 
+function asRecordArray(value: unknown): Array<Record<string, unknown>> {
+  if (Array.isArray(value)) {
+    return value.filter(
+      (item): item is Record<string, unknown> =>
+        Boolean(item) && typeof item === 'object' && !Array.isArray(item)
+    );
+  }
+
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      if (Array.isArray(parsed)) {
+        return parsed.filter(
+          (item): item is Record<string, unknown> =>
+            Boolean(item) && typeof item === 'object' && !Array.isArray(item)
+        );
+      }
+    } catch {
+      return [];
+    }
+  }
+
+  return [];
+}
+
+function countPricedTransportOptions(rows: Array<Record<string, unknown>>): number {
+  return rows.filter((row) => {
+    if (typeof row.amount_cents === 'number' && Number.isFinite(row.amount_cents)) return true;
+    if (typeof row.price === 'number' && Number.isFinite(row.price)) return true;
+    if (typeof row.price === 'string' && row.price.trim().length > 0) {
+      const parsed = Number(row.price.trim().replace(',', '.'));
+      return Number.isFinite(parsed);
+    }
+    return false;
+  }).length;
+}
+
+function toTransportVariant(record: Record<string, unknown>): TransportVariantForDraft | null {
+  const departureCity = String(record.departure_city ?? '').trim();
+  const returnCity = String(record.return_city ?? departureCity).trim() || departureCity;
+  const amountCents =
+    typeof record.amount_cents === 'number' && Number.isFinite(record.amount_cents)
+      ? Math.round(record.amount_cents)
+      : typeof record.price === 'number' && Number.isFinite(record.price)
+        ? Math.round(record.price * 100)
+        : null;
+
+  if (!departureCity || amountCents === null) return null;
+
+  return {
+    departure_city: departureCity,
+    return_city: returnCity,
+    amount_cents: amountCents,
+    currency: 'EUR',
+    source_url: typeof record.source_url === 'string' ? record.source_url : undefined,
+    departure_label_raw:
+      typeof record.departure_label_raw === 'string' ? record.departure_label_raw : null,
+    return_label_raw: typeof record.return_label_raw === 'string' ? record.return_label_raw : null,
+    page_price_cents:
+      typeof record.page_price_cents === 'number' && Number.isFinite(record.page_price_cents)
+        ? Math.round(record.page_price_cents)
+        : null,
+    base_price_cents:
+      typeof record.base_price_cents === 'number' && Number.isFinite(record.base_price_cents)
+        ? Math.round(record.base_price_cents)
+        : null,
+    pricing_method: record.pricing_method as TransportVariantForDraft['pricing_method'] | undefined,
+    confidence: record.confidence as TransportVariantForDraft['confidence'] | undefined,
+    reason: typeof record.reason === 'string' ? record.reason : undefined
+  };
+}
+
+function recoverImportedTransportOptions(
+  rawPayload: Record<string, unknown>
+): Array<Record<string, unknown>> {
+  const variantSources = [
+    ...asRecordArray(rawPayload.transport_variants),
+    ...asRecordArray(rawPayload.transport_price_debug)
+  ];
+  const variants = variantSources
+    .map(toTransportVariant)
+    .filter((row): row is TransportVariantForDraft => Boolean(row));
+  if (variants.length === 0) return [];
+  return buildDraftTransportOptionsFromVariants(variants);
+}
+
 function simplifyForMatch(value: string | null | undefined): string {
   if (!value) return '';
   return value
@@ -284,6 +374,8 @@ async function buildDraftUpdateFromAi(
   const patch: StayDraftUpdate = {};
   const extracted = ai.extracted;
   const currentRawPayload = asObject(draft.raw_payload);
+  const currentTransportOptions = asRecordArray(draft.transport_options_json);
+  const recoveredImportedTransportOptions = recoverImportedTransportOptions(currentRawPayload);
   const linkedAccommodationId = readImportedExistingAccommodationId(draft.raw_payload);
   let extractedAccommodation = linkedAccommodationId ? null : extracted.accommodations_json;
   let accommodationGeocodingMeta: Json | null = null;
@@ -396,8 +488,16 @@ async function buildDraftUpdateFromAi(
   if ((force || !hasJsonValue(draft.sessions_json)) && extracted.sessions_json.length > 0) {
     patch.sessions_json = extracted.sessions_json;
   }
-  if ((force || !hasJsonValue(draft.transport_options_json)) && extracted.transport_options_json.length > 0) {
-    patch.transport_options_json = extracted.transport_options_json;
+  const recoveredPricedTransportCount = countPricedTransportOptions(recoveredImportedTransportOptions);
+  const currentPricedTransportCount = countPricedTransportOptions(currentTransportOptions);
+  if (recoveredPricedTransportCount > currentPricedTransportCount) {
+    patch.transport_options_json = recoveredImportedTransportOptions as Json;
+  } else if (
+    currentPricedTransportCount === 0 &&
+    !hasJsonValue(draft.transport_options_json) &&
+    extracted.transport_options_json.length > 0
+  ) {
+    patch.transport_options_json = extracted.transport_options_json as Json;
   }
   if ((force || !hasJsonValue(draft.accommodations_json)) && extractedAccommodation) {
     patch.accommodations_json = extractedAccommodation;

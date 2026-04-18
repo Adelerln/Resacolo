@@ -7,6 +7,11 @@ import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers.
 import { normalizeStayDraftCategories } from '@/lib/stay-categories';
 import { extractVideoUrls } from '@/lib/stay-draft-import';
 import {
+  buildDraftTransportOptionsFromVariants,
+  collapseTransportDraftOptionsJson,
+  type TransportVariantForDraft
+} from '@/lib/stay-draft-transport-display';
+import {
   normalizeImportedImageUrlList,
   normalizeImportedVideoUrlList
 } from '@/lib/stay-draft-url-extract';
@@ -30,6 +35,13 @@ type LinkedAccommodationSummary = {
   name: string;
   accommodationType: string | null;
 };
+
+type DraftSeasonOption = {
+  id: string;
+  name: string;
+};
+
+const SEASON_ORDER = ['Hiver', 'Printemps', 'Été', 'Automne', 'Toussaint', "Fin d'année"];
 
 function normalizeString(value: string | null | undefined): string {
   return value?.trim() ?? '';
@@ -73,6 +85,168 @@ function asArrayOfObjects(value: Json | null): Array<Record<string, unknown>> {
   }
 
   return [];
+}
+
+function buildSessionSignature(rows: Array<Record<string, unknown>>): string {
+  return rows
+    .map((row) =>
+      [
+        String(row.start_date ?? ''),
+        String(row.end_date ?? ''),
+        String(row.price ?? ''),
+        String(row.availability ?? '')
+      ].join('|')
+    )
+    .sort((a, b) => a.localeCompare(b, 'fr'))
+    .join('||');
+}
+
+function asRecordArray(value: unknown): Array<Record<string, unknown>> {
+  if (Array.isArray(value)) {
+    return value.filter((item): item is Record<string, unknown> => isPlainRecord(item));
+  }
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      if (Array.isArray(parsed)) {
+        return parsed.filter((item): item is Record<string, unknown> => isPlainRecord(item));
+      }
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+function countPricedTransportOptions(rows: Array<Record<string, unknown>>): number {
+  return rows.filter((row) => {
+    if (typeof row.amount_cents === 'number' && Number.isFinite(row.amount_cents)) return true;
+    if (typeof row.price === 'number' && Number.isFinite(row.price)) return true;
+    if (typeof row.price === 'string' && row.price.trim().length > 0) {
+      const parsed = Number(row.price.trim().replace(',', '.'));
+      return Number.isFinite(parsed);
+    }
+    return false;
+  }).length;
+}
+
+function inferDraftSeasonName(sessions: Array<Record<string, unknown>>): string {
+  if (sessions.length === 0) return '';
+
+  const counts = new Map<string, number>();
+  for (const session of sessions) {
+    const rawStartDate = typeof session.start_date === 'string' ? session.start_date.trim() : '';
+    if (!rawStartDate) continue;
+    const parsed = new Date(`${rawStartDate}T00:00:00Z`);
+    if (!Number.isFinite(parsed.getTime())) continue;
+    const month = parsed.getUTCMonth() + 1;
+    const season =
+      month === 10
+        ? 'Toussaint'
+        : month >= 12 || month <= 2
+          ? 'Hiver'
+          : month >= 3 && month <= 5
+            ? 'Printemps'
+            : month >= 6 && month <= 8
+              ? 'Été'
+              : 'Automne';
+    counts.set(season, (counts.get(season) ?? 0) + 1);
+  }
+
+  const ranked = Array.from(counts.entries()).sort((left, right) => {
+    if (left[1] !== right[1]) return right[1] - left[1];
+    return left[0].localeCompare(right[0], 'fr');
+  });
+
+  return ranked[0]?.[0] ?? '';
+}
+
+function normalizeSeasonKey(value: string | null | undefined): string {
+  const normalized = (value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+
+  if (!normalized) return '';
+  if (normalized.includes('fin') && normalized.includes('annee')) return 'fin_annee';
+  if (
+    normalized.includes('toussaint') ||
+    normalized.includes('octobre') ||
+    normalized.includes('automne')
+  ) {
+    return 'toussaint';
+  }
+  if (normalized.includes('hiver')) return 'hiver';
+  if (normalized.includes('printemps')) return 'printemps';
+  if (normalized.includes('ete')) return 'ete';
+  return normalized;
+}
+
+function readDraftSeasonIds(rawPayload: Record<string, unknown>): string[] {
+  const raw = rawPayload.draft_season_ids;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((item): item is string => typeof item === 'string')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function readDraftSeasonNames(rawPayload: Record<string, unknown>): string[] {
+  const raw = rawPayload.draft_season_names;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((item): item is string => typeof item === 'string')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function toTransportVariant(record: Record<string, unknown>): TransportVariantForDraft | null {
+  const departureCity = String(record.departure_city ?? '').trim();
+  const returnCity = String(record.return_city ?? departureCity).trim() || departureCity;
+  const amountCents =
+    typeof record.amount_cents === 'number' && Number.isFinite(record.amount_cents)
+      ? Math.round(record.amount_cents)
+      : typeof record.price === 'number' && Number.isFinite(record.price)
+        ? Math.round(record.price * 100)
+        : null;
+
+  if (!departureCity || amountCents === null) return null;
+
+  return {
+    departure_city: departureCity,
+    return_city: returnCity,
+    amount_cents: amountCents,
+    currency: 'EUR',
+    source_url: typeof record.source_url === 'string' ? record.source_url : undefined,
+    departure_label_raw:
+      typeof record.departure_label_raw === 'string' ? record.departure_label_raw : null,
+    return_label_raw: typeof record.return_label_raw === 'string' ? record.return_label_raw : null,
+    page_price_cents:
+      typeof record.page_price_cents === 'number' && Number.isFinite(record.page_price_cents)
+        ? Math.round(record.page_price_cents)
+        : null,
+    base_price_cents:
+      typeof record.base_price_cents === 'number' && Number.isFinite(record.base_price_cents)
+        ? Math.round(record.base_price_cents)
+        : null,
+    pricing_method: record.pricing_method as TransportVariantForDraft['pricing_method'] | undefined,
+    confidence: record.confidence as TransportVariantForDraft['confidence'] | undefined,
+    reason: typeof record.reason === 'string' ? record.reason : undefined
+  };
+}
+
+function recoverImportedTransportOptions(rawPayload: Record<string, unknown>): Array<Record<string, unknown>> {
+  const variants = [
+    ...asRecordArray(rawPayload.transport_variants),
+    ...asRecordArray(rawPayload.transport_price_debug)
+  ]
+    .map(toTransportVariant)
+    .filter((row): row is TransportVariantForDraft => Boolean(row));
+
+  if (variants.length === 0) return [];
+  return buildDraftTransportOptionsFromVariants(variants);
 }
 
 function asStringArray(value: Json | null): string[] {
@@ -152,6 +326,23 @@ function draftStatusBadgeClass(status: string | null): string {
   }
 }
 
+function formatDebugValue(value: unknown): string {
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  if (typeof value === 'string') return value;
+  if (value == null) return '—';
+  return JSON.stringify(value);
+}
+
+function formatDebugEuroFromCents(value: unknown): string {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '—';
+  return new Intl.NumberFormat('fr-FR', {
+    style: 'currency',
+    currency: 'EUR',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(value / 100);
+}
+
 export default async function StayDraftReviewPage({ params: paramsPromise, searchParams }: PageProps) {
   const params = await paramsPromise;
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
@@ -220,9 +411,110 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
       : typeof rawPayload.html === 'string' && typeof draft.source_url === 'string'
         ? extractVideoUrls(rawPayload.html, draft.source_url)
         : [];
+  const { data: seasonsRaw } = await supabase
+    .from('seasons')
+    .select('id,name')
+    .order('name', { ascending: true });
+  const seasonOptions: DraftSeasonOption[] = [...(seasonsRaw ?? [])].sort((a, b) => {
+    const indexA = SEASON_ORDER.indexOf(a.name);
+    const indexB = SEASON_ORDER.indexOf(b.name);
+    if (indexA === -1 && indexB === -1) return a.name.localeCompare(b.name, 'fr');
+    if (indexA === -1) return 1;
+    if (indexB === -1) return -1;
+    return indexA - indexB;
+  });
+  const importReviewDebrief = asObject((rawPayload.import_review_debrief as Json | null) ?? null);
+  const sourceHost = normalizeString(String(importReviewDebrief.source_host ?? ''));
+  const sessionPriceExtraction = asObject(
+    (importReviewDebrief.session_price_extraction as Json | null) ?? null
+  );
+  const ceslStructuredDebug = asObject(
+    (sessionPriceExtraction.cesl_structured_booking as Json | null) ?? null
+  );
+  const ceslStructuredSessions = Array.isArray(ceslStructuredDebug.sessions)
+    ? ceslStructuredDebug.sessions.filter((item): item is Record<string, unknown> => isPlainRecord(item))
+    : [];
+  const transportPriceDebug = asRecordArray(rawPayload.transport_price_debug ?? null);
+  const thalieTransportDebug = sourceHost.includes('thalie')
+    ? transportPriceDebug
+    : [];
+  const thalieTransportDebugFailures = thalieTransportDebug.filter(
+    (row) => typeof row.amount_cents !== 'number' || !Number.isFinite(row.amount_cents)
+  );
+  const draftSessionsFromDb = asArrayOfObjects(draft.sessions_json);
+  const draftTransportOptionsFromDb = collapseTransportDraftOptionsJson(
+    asArrayOfObjects(draft.transport_options_json)
+  );
+  const recoveredTransportOptions = recoverImportedTransportOptions(rawPayload);
+  const shouldRepairCeslSessions =
+    ceslStructuredSessions.length > 0 &&
+    buildSessionSignature(draftSessionsFromDb) !== buildSessionSignature(ceslStructuredSessions);
+  const shouldRepairTransportOptions =
+    recoveredTransportOptions.length > 0 &&
+    countPricedTransportOptions(recoveredTransportOptions) >
+      countPricedTransportOptions(draftTransportOptionsFromDb);
+
+  if (shouldRepairCeslSessions) {
+    await supabase
+      .from('stay_drafts')
+      .update({
+        sessions_json: ceslStructuredSessions as Json,
+        updated_at: new Date().toISOString(),
+        raw_payload: {
+          ...rawPayload,
+          cesl_page_repair_applied_at: new Date().toISOString()
+        } as Json
+      })
+      .eq('id', draft.id)
+      .eq('organizer_id', selectedOrganizerId);
+  }
+
+  if (shouldRepairTransportOptions) {
+    await supabase
+      .from('stay_drafts')
+      .update({
+        transport_options_json: recoveredTransportOptions as Json,
+        updated_at: new Date().toISOString(),
+        raw_payload: {
+          ...rawPayload,
+          transport_page_repair_applied_at: new Date().toISOString()
+        } as Json
+      })
+      .eq('id', draft.id)
+      .eq('organizer_id', selectedOrganizerId);
+  }
+
+  const effectiveSessionsJson = shouldRepairCeslSessions ? ceslStructuredSessions : draftSessionsFromDb;
+  const effectiveTransportOptionsJson = shouldRepairTransportOptions
+    ? recoveredTransportOptions
+    : draftTransportOptionsFromDb;
+  const inferredSeasonName = inferDraftSeasonName(effectiveSessionsJson);
+  const storedDraftSeasonIds = readDraftSeasonIds(rawPayload);
+  const storedDraftSeasonNames = readDraftSeasonNames(rawPayload);
+  const resolvedSeasonIds =
+    storedDraftSeasonIds.length > 0
+      ? storedDraftSeasonIds
+      : inferredSeasonName
+        ? seasonOptions
+            .filter((season) => normalizeSeasonKey(season.name) === normalizeSeasonKey(inferredSeasonName))
+            .map((season) => season.id)
+        : [];
+  const resolvedSeasonNames =
+    storedDraftSeasonNames.length > 0
+      ? storedDraftSeasonNames
+      : resolvedSeasonIds.length > 0
+        ? seasonOptions
+            .filter((season) => resolvedSeasonIds.includes(season.id))
+            .map((season) => season.name)
+        : inferredSeasonName
+          ? [inferredSeasonName]
+          : [];
 
   const initialPayload: StayDraftReviewPayload = {
     title: normalizeString(draft.title),
+    season_name: resolvedSeasonNames.join(', ') || null,
+    season_ids: resolvedSeasonIds,
+    season_names: resolvedSeasonNames,
     summary: normalizeString(draft.summary),
     location_text: normalizeString(draft.location_text),
     region_text: normalizeString(draft.region_text),
@@ -233,9 +525,9 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
     transport_mode: normalizeString(draft.transport_mode),
     categories: normalizeStayDraftCategories(draft.categories ?? []).categories,
     ages: draft.ages ?? [],
-    sessions_json: asArrayOfObjects(draft.sessions_json),
+    sessions_json: effectiveSessionsJson,
     extra_options_json: asArrayOfObjects(draft.extra_options_json),
-    transport_options_json: asArrayOfObjects(draft.transport_options_json),
+    transport_options_json: effectiveTransportOptionsJson,
     accommodations_json:
       !linkedAccommodation && Object.keys(accommodationsObject).length > 0
         ? accommodationsObject
@@ -342,11 +634,111 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
         </div>
       ) : null}
 
+      {Object.keys(importReviewDebrief).length > 0 ? (
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-700">
+            Diagnostic d&apos;import
+          </h2>
+          <div className="mt-3 grid gap-3 text-sm md:grid-cols-2">
+            <p>
+              <span className="font-medium text-slate-700">Sessions stockées dans le brouillon :</span>{' '}
+              {initialPayload.sessions_json.length}
+            </p>
+            <p>
+              <span className="font-medium text-slate-700">Villes de transport stockées :</span>{' '}
+              {initialPayload.transport_options_json.length}
+            </p>
+            {sourceHost.includes('thalie') ? (
+              <p>
+                <span className="font-medium text-slate-700">Villes de transport réparées depuis `raw_payload` :</span>{' '}
+                {shouldRepairTransportOptions ? 'oui' : 'non'}
+              </p>
+            ) : null}
+            <p>
+              <span className="font-medium text-slate-700">Prix de base statique :</span>{' '}
+              {formatDebugValue(sessionPriceExtraction.price_from_eur_static)}
+            </p>
+            <p>
+              <span className="font-medium text-slate-700">Prix après DOM dynamique :</span>{' '}
+              {formatDebugValue(sessionPriceExtraction.price_from_eur_after_dynamic_dom)}
+            </p>
+            <p>
+              <span className="font-medium text-slate-700">Prix CESL structuré :</span>{' '}
+              {formatDebugValue(sessionPriceExtraction.price_from_eur_cesl_structured)}
+            </p>
+            <p>
+              <span className="font-medium text-slate-700">Sessions CESL structurées :</span>{' '}
+              {formatDebugValue(ceslStructuredDebug.session_count)}
+            </p>
+          </div>
+
+          {ceslStructuredSessions.length > 0 ? (
+            <div className="mt-4">
+              <p className="text-sm font-medium text-slate-700">Sessions lues dans `sDureesJson`</p>
+              <ul className="mt-2 space-y-1 text-xs text-slate-600">
+                {ceslStructuredSessions.map((session, index) => (
+                  <li key={`${session.start_date ?? 'na'}|${session.end_date ?? 'na'}|raw|${index}`}>
+                    {formatDebugValue(session.start_date)} → {formatDebugValue(session.end_date)} · prix{' '}
+                    {formatDebugValue(session.price)} · dispo {formatDebugValue(session.availability)}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {sourceHost.includes('thalie') ? (
+            <div className="mt-4 space-y-3">
+              <div>
+                <p className="text-sm font-medium text-slate-700">Pourquoi un prix transport Thalie peut manquer</p>
+                <ul className="mt-2 space-y-1 text-xs text-slate-600">
+                  <li>Le calcul ne lit pas un prix “transport” direct: il calcule un delta entre le total de la date seule et le total de la même date avec une ville de départ.</li>
+                  <li>Le prix reste vide si le prix de base de la date n&apos;a pas été lu, si l&apos;URL de la ville n&apos;a pas été récupérée, ou si le total ville n&apos;est pas supérieur au total de base.</li>
+                  <li>Sur Thalie, une même ville peut aussi varier selon la session. Si les pages retournent des valeurs incohérentes ou incomplètes, la ville est importée sans montant fiable.</li>
+                </ul>
+              </div>
+
+              <div>
+                <p className="text-sm font-medium text-slate-700">Transport Thalie: données lues pendant l&apos;import</p>
+                {thalieTransportDebug.length > 0 ? (
+                  <ul className="mt-2 space-y-1 text-xs text-slate-600">
+                    {thalieTransportDebug.slice(0, 40).map((row, index) => (
+                      <li
+                        key={`${String(row.variant_url ?? 'na')}|${String(row.departure_city ?? 'na')}|${index}`}
+                      >
+                        {formatDebugValue(row.departure_city)} · session {formatDebugValue(row.return_label_raw)} · total lu {formatDebugEuroFromCents(row.page_price_cents)} · base session {formatDebugEuroFromCents(row.base_price_cents)} · delta retenu {formatDebugEuroFromCents(row.amount_cents)} · méthode {formatDebugValue(row.pricing_method)} · raison {formatDebugValue(row.reason)}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-2 text-xs text-slate-600">Aucune ligne `transport_price_debug` disponible pour cet import.</p>
+                )}
+              </div>
+
+              {thalieTransportDebugFailures.length > 0 ? (
+                <div>
+                  <p className="text-sm font-medium text-slate-700">Lignes Thalie sans prix calculé</p>
+                  <ul className="mt-2 space-y-1 text-xs text-rose-700">
+                    {thalieTransportDebugFailures.slice(0, 20).map((row, index) => (
+                      <li
+                        key={`fail|${String(row.variant_url ?? 'na')}|${String(row.departure_city ?? 'na')}|${index}`}
+                      >
+                        {formatDebugValue(row.departure_city)} · session {formatDebugValue(row.return_label_raw)} · total lu {formatDebugEuroFromCents(row.page_price_cents)} · base session {formatDebugEuroFromCents(row.base_price_cents)} · raison {formatDebugValue(row.reason)}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
       <StayDraftReviewForm
         draftId={draft.id}
         organizerId={draft.organizer_id}
         backHref={backHref}
         initialPayload={initialPayload}
+        seasonOptions={seasonOptions}
         initialStatus={draft.status}
         initialValidatedAt={draft.validated_at}
         initialValidatedByUserId={draft.validated_by_user_id}

@@ -2,6 +2,7 @@ import { load, type CheerioAPI } from 'cheerio';
 import type { AnyNode } from 'domhandler';
 import { createHash } from 'crypto';
 import iconv from 'iconv-lite';
+import { draftSessionStableKey } from '@/lib/draft-session-keys';
 import { STAY_REGION_OPTIONS } from '@/lib/stay-regions';
 import {
   extractVideoUrlsFromArbitraryString,
@@ -362,7 +363,7 @@ export type DraftSessionItem = {
   start_date: string | null;
   end_date: string | null;
   price: number | null;
-  availability: 'full' | 'available' | 'limited' | 'waitlist' | null;
+  availability: 'full' | 'available' | 'limited' | 'waitlist' | 'unknown' | null;
 };
 
 export type DraftAccommodation = {
@@ -2104,7 +2105,25 @@ export function parseSessionLabelToItem(label: string): DraftSessionItem | null 
       start_date: month ? toIsoDate(dayStart, month, year) : null,
       end_date: month ? toIsoDate(dayEnd, month, year) : null,
       price: null,
-      availability: detectSessionAvailability(normalized)
+      availability: detectSessionAvailability(normalized) ?? 'unknown'
+    };
+  }
+
+  const crossMonth = normalized.match(
+    /\bdu\s+(\d{1,2})\s+([A-Za-zÀ-ÖØ-öø-ÿ]+)\s+(?:au|a|à)\s+(\d{1,2})\s+([A-Za-zÀ-ÖØ-öø-ÿ]+)\s+(\d{4})\b/i
+  );
+  if (crossMonth) {
+    const dayStart = Number(crossMonth[1]);
+    const startMonth = MONTHS[simplifyForMatch(crossMonth[2])];
+    const dayEnd = Number(crossMonth[3]);
+    const endMonth = MONTHS[simplifyForMatch(crossMonth[4])];
+    const year = Number(crossMonth[5]);
+    return {
+      label: normalized,
+      start_date: startMonth ? toIsoDate(dayStart, startMonth, year) : null,
+      end_date: endMonth ? toIsoDate(dayEnd, endMonth, year) : null,
+      price: null,
+      availability: detectSessionAvailability(normalized) ?? 'unknown'
     };
   }
 
@@ -2117,7 +2136,7 @@ export function parseSessionLabelToItem(label: string): DraftSessionItem | null 
       start_date: parseFrenchDate(numeric[1]),
       end_date: parseFrenchDate(numeric[2]),
       price: null,
-      availability: detectSessionAvailability(normalized)
+      availability: detectSessionAvailability(normalized) ?? 'unknown'
     };
   }
 
@@ -2242,17 +2261,17 @@ function mergeCeslSelectPeriodOptionsIntoSessions(html: string, sessions: Map<st
     'select#sejour-periode option, select.sejour-periode option, select[name="sejour_periode"] option';
   $(selector).each((_, el) => {
     const value = ($(el).attr('value') ?? '').trim();
-    if (!value) return;
     const label = normalizeCeslPeriodOptionLabel($(el).text());
     if (!label) return;
     const parsed = parseSessionLabelToItem(label);
+    if (!value && !parsed && !detectSessionAvailability(label)) return;
     if (!parsed) {
       mergeCeslSessionIntoMap(sessions, {
         label,
         start_date: null,
         end_date: null,
         price: null,
-        availability: detectSessionAvailability(label)
+        availability: detectSessionAvailability(label) ?? 'unknown'
       });
       return;
     }
@@ -2261,7 +2280,7 @@ function mergeCeslSelectPeriodOptionsIntoSessions(html: string, sessions: Map<st
       ...parsed,
       label,
       price: null,
-      availability: detectSessionAvailability(label) ?? parsed.availability ?? null
+      availability: detectSessionAvailability(label) ?? parsed.availability ?? 'unknown'
     };
 
     mergeCeslSessionIntoMap(sessions, fromSelect);
@@ -2284,12 +2303,14 @@ export function mergeDraftSessionItems(a: DraftSessionItem, b: DraftSessionItem)
   const pb = typeof b.price === 'number' && Number.isFinite(b.price) && b.price > 0 ? b.price : null;
   const price = pb ?? pa ?? null;
   const label = (a.label?.length ?? 0) >= (b.label?.length ?? 0) ? a.label : b.label;
+  const availabilityA = a.availability === 'unknown' ? null : a.availability;
+  const availabilityB = b.availability === 'unknown' ? null : b.availability;
   return {
     ...a,
     ...b,
     price,
     label,
-    availability: b.availability ?? a.availability
+    availability: availabilityB ?? availabilityA ?? 'unknown'
   };
 }
 
@@ -2319,7 +2340,7 @@ function extractCeslSessionsFromHtml(html: string): DraftSessionItem[] | null {
           ...parsed,
           label: dates,
           price,
-          availability: parseCeslAvailability(entry)
+          availability: parseCeslAvailability(entry) ?? 'unknown'
         };
         mergeCeslSessionIntoMap(sessions, session);
       }
@@ -2394,6 +2415,95 @@ function extractCeslSelectedPeriodPublicFromJson(html: string): number | null {
     }
   }
   return null;
+}
+
+export function extractCeslStructuredBookingData(
+  html: string,
+  sourceUrl: string
+): {
+  sessions: DraftSessionItem[];
+  transportOptions: Array<Record<string, unknown>>;
+  priceFrom: number | null;
+} | null {
+  const durationJson = extractCeslDurationJson(html);
+  if (!durationJson) return null;
+
+  const sessions = extractCeslSessionsFromHtml(html) ?? [];
+  const allSessionKeys = sessions.map((session, index) => draftSessionStableKey(session as Record<string, unknown>, index));
+  const cityRows = new Map<
+    string,
+    {
+      city: string;
+      amountCents: number;
+      includedSessionKeys: Set<string>;
+    }
+  >();
+
+  for (const durationEntries of Object.values(durationJson)) {
+    if (!durationEntries || typeof durationEntries !== 'object') continue;
+    for (const entry of Object.values(durationEntries)) {
+      const dates = normalizeWhitespace(entry?.dates ?? '');
+      if (!dates) continue;
+      const parsedSession = parseSessionLabelToItem(dates);
+      if (!parsedSession) continue;
+      const sessionIndex = sessions.findIndex(
+        (session) =>
+          session.start_date === parsedSession.start_date &&
+          session.end_date === parsedSession.end_date
+      );
+      const sessionKey =
+        sessionIndex >= 0
+          ? allSessionKeys[sessionIndex]
+          : draftSessionStableKey(parsedSession as Record<string, unknown>, allSessionKeys.length);
+
+      const citiesRaw = normalizeWhitespace(entry?.villes ?? '');
+      if (!citiesRaw) continue;
+      for (const chunk of citiesRaw.split(',')) {
+        const normalizedChunk = normalizeWhitespace(chunk);
+        if (!normalizedChunk) continue;
+        const separatorIndex = normalizedChunk.lastIndexOf(':');
+        if (separatorIndex <= 0) continue;
+
+        const city = normalizeTransportCityLabel(normalizedChunk.slice(0, separatorIndex));
+        const amountEur = parseFrenchAmount(normalizedChunk.slice(separatorIndex + 1), 0, 20_000);
+        if (!city || amountEur === null) continue;
+
+        const amountCents = Math.round(amountEur * 100);
+        const key = `${simplifyForMatch(city)}|${amountCents}`;
+        const existing = cityRows.get(key) ?? {
+          city,
+          amountCents,
+          includedSessionKeys: new Set<string>()
+        };
+        existing.includedSessionKeys.add(sessionKey);
+        cityRows.set(key, existing);
+      }
+    }
+  }
+
+  const transportOptions = Array.from(cityRows.values())
+    .map((row) => ({
+      label: row.city,
+      departure_city: row.city,
+      return_city: row.city,
+      amount_cents: row.amountCents,
+      price: Number((row.amountCents / 100).toFixed(2)),
+      currency: 'EUR',
+      source_url: sourceUrl,
+      excluded_session_keys: allSessionKeys.filter((sessionKey) => !row.includedSessionKeys.has(sessionKey))
+    }))
+    .sort((left, right) => String(left.label).localeCompare(String(right.label), 'fr'));
+
+  const publicPrices = sessions
+    .map((session) => session.price)
+    .filter((price): price is number => typeof price === 'number' && Number.isFinite(price) && price > 0);
+  const distinctPublicPrices = Array.from(new Set(publicPrices));
+
+  return {
+    sessions,
+    transportOptions,
+    priceFrom: distinctPublicPrices.length === 1 ? distinctPublicPrices[0] : null
+  };
 }
 
 function extractReservationCallToAction(
@@ -2471,7 +2581,7 @@ function extractSessions($: CheerioAPI, visibleText: string, html: string): Draf
       start_date: startDate,
       end_date: endDate,
       price: findPublicPriceInText(snippet),
-      availability: detectSessionAvailability(snippet) ?? defaultAvailability
+      availability: detectSessionAvailability(snippet) ?? defaultAvailability ?? 'unknown'
     });
   }
 
@@ -2491,7 +2601,7 @@ function extractSessions($: CheerioAPI, visibleText: string, html: string): Draf
       start_date: startDate,
       end_date: endDate,
       price: findPublicPriceInText(snippet),
-      availability: detectSessionAvailability(snippet) ?? defaultAvailability
+      availability: detectSessionAvailability(snippet) ?? defaultAvailability ?? 'unknown'
     });
   }
 
@@ -2521,7 +2631,7 @@ function extractSessions($: CheerioAPI, visibleText: string, html: string): Draf
       const merged = {
         ...session,
         price: inferred?.price ?? null,
-        availability: session.availability ?? inferred?.availability ?? defaultAvailability
+        availability: session.availability ?? inferred?.availability ?? defaultAvailability ?? 'unknown'
       };
       mergedByPeriod.set(buildSessionKey(merged), merged);
     }
@@ -2606,7 +2716,12 @@ const TRANSPORT_PLACEHOLDER_KEYS = [
   'aucun transport',
   'sans transport',
   'none',
-  'tous'
+  'tous',
+  'transport aller retour',
+  'transport aerien',
+  'transport aerien aller retour',
+  'transport aérien',
+  'transport aérien aller retour'
 ];
 
 const TRANSPORT_BASE_REFERENCE_KEYS = [
@@ -2648,6 +2763,9 @@ function normalizeTransportCityLabel(value: string | null | undefined): string |
   const key = simplifyForMatch(normalized);
   if (!key) return null;
   if (TRANSPORT_PLACEHOLDER_KEYS.some((item) => key.includes(simplifyForMatch(item)))) {
+    return null;
+  }
+  if (key.includes('transport') && /\b(aerien|aerienne|aeroport|aller retour)\b/.test(key)) {
     return null;
   }
   return normalized.length > 80 ? normalized.slice(0, 80).trim() : normalized;
@@ -3347,7 +3465,7 @@ export function mergeThalieSessionBaselinesIntoSessions(
   const existingSessions = sessions ?? [];
   const matchedSessionIndexes = new Set<number>();
 
-  const findMatchingSession = (baseline: ThalieSessionBaseline): DraftSessionItem | null => {
+  const findMatchingSession = (baseline: ThalieSessionBaseline): { index: number; session: DraftSessionItem } | null => {
     const baselineKey = simplifyForMatch(baseline.date_label);
     const baselineDates = parseBaselineDates(baseline.date_label);
 
@@ -3357,7 +3475,7 @@ export function mergeThalieSessionBaselinesIntoSessions(
       const sessionKey = simplifyForMatch(session.label);
       if (baselineKey && sessionKey && (baselineKey.includes(sessionKey) || sessionKey.includes(baselineKey))) {
         matchedSessionIndexes.add(index);
-        return session;
+        return { index, session };
       }
       if (
         baselineDates.startDate &&
@@ -3366,7 +3484,7 @@ export function mergeThalieSessionBaselinesIntoSessions(
         session.end_date === baselineDates.endDate
       ) {
         matchedSessionIndexes.add(index);
-        return session;
+        return { index, session };
       }
     }
 
@@ -3381,29 +3499,40 @@ export function mergeThalieSessionBaselinesIntoSessions(
         start_date: dates.startDate,
         end_date: dates.endDate,
         price: priceEur(b.baseline_total_cents),
-        availability: null
+        availability: 'unknown'
       };
     });
   }
 
-  if (sessions.length === baselines.length) {
-    return sessions.map((session, i) => {
-      const p = priceEur(baselines[i]?.baseline_total_cents);
-      return p != null ? { ...session, price: p } : session;
-    });
-  }
+  const mergedSessions = existingSessions.map((session) => ({ ...session }));
+  const extraSessions: DraftSessionItem[] = [];
 
-  return baselines.map((baseline) => {
+  for (const baseline of baselines) {
     const matched = findMatchingSession(baseline);
     const baselineDates = parseBaselineDates(baseline.date_label);
     const p = priceEur(baseline.baseline_total_cents);
-    return {
-      label: matched?.label ?? baseline.date_label,
-      start_date: matched?.start_date ?? baselineDates.startDate,
-      end_date: matched?.end_date ?? baselineDates.endDate,
-      price: p ?? matched?.price ?? null,
-      availability: matched?.availability ?? null
-    };
+    if (matched) {
+      mergedSessions[matched.index] = {
+        ...matched.session,
+        price: p ?? matched.session.price ?? null,
+        availability: matched.session.availability ?? 'unknown'
+      };
+      continue;
+    }
+
+    extraSessions.push({
+      label: baseline.date_label,
+      start_date: baselineDates.startDate,
+      end_date: baselineDates.endDate,
+      price: p,
+      availability: 'unknown'
+    });
+  }
+
+  return [...mergedSessions, ...extraSessions].sort((left, right) => {
+    const leftKey = left.start_date ?? left.end_date ?? left.label ?? '';
+    const rightKey = right.start_date ?? right.end_date ?? right.label ?? '';
+    return leftKey.localeCompare(rightKey, 'fr');
   });
 }
 

@@ -1,5 +1,6 @@
 import {
   buildStaySessionMergeKey,
+  extractCeslStructuredBookingData,
   extractJsonLdOfferPricesFromHtml,
   extractStayData,
   extractThalieOptionUrlPricing,
@@ -31,6 +32,73 @@ function envTruthy(value: string | undefined): boolean {
 }
 
 const PLAYWRIGHT_RENDER_BUDGET_MS = 20_000;
+
+function parseIsoDateAtUtcMidnight(value: unknown): Date | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return null;
+  const parsed = new Date(`${trimmed}T00:00:00Z`);
+  return Number.isFinite(parsed.getTime()) ? parsed : null;
+}
+
+function seasonNameFromUtcDate(date: Date): string | null {
+  const month = date.getUTCMonth() + 1;
+  const day = date.getUTCDate();
+
+  if ((month === 12 && day >= 15) || (month === 1 && day <= 15)) return "Fin d'année";
+  if ((month === 1 && day >= 20) || month === 2 || (month === 3 && day <= 15)) return 'Hiver';
+  if ((month === 3 && day >= 20) || month === 4 || (month === 5 && day <= 10)) return 'Printemps';
+  if ((month === 6 && day >= 20) || month === 7 || month === 8 || (month === 9 && day <= 10)) return 'Été';
+  if (month === 10 || (month === 11 && day <= 10)) return 'Toussaint';
+
+  return null;
+}
+
+function normalizeSeasonKey(value: string | null | undefined): string {
+  const normalized = (value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+
+  if (!normalized) return '';
+  if (normalized.includes('fin') && normalized.includes('annee')) return 'fin_annee';
+  if (
+    normalized.includes('toussaint') ||
+    normalized.includes('octobre') ||
+    normalized.includes('automne')
+  ) {
+    return 'toussaint';
+  }
+  if (normalized.includes('hiver')) return 'hiver';
+  if (normalized.includes('printemps')) return 'printemps';
+  if (normalized.includes('ete')) return 'ete';
+  return normalized;
+}
+
+function inferDraftSeasonNamesFromSessions(
+  sessions: ReturnType<typeof extractStayData>['sessionsJson']
+): string[] {
+  if (!Array.isArray(sessions)) return [];
+  const required = new Set<string>();
+
+  for (const session of sessions) {
+    const start = parseIsoDateAtUtcMidnight(session.start_date);
+    const end = parseIsoDateAtUtcMidnight(session.end_date);
+    if (!start || !end) continue;
+
+    const cursor = new Date(start.getTime());
+    const limit = end.getTime();
+    while (cursor.getTime() <= limit) {
+      const seasonName = seasonNameFromUtcDate(cursor);
+      if (seasonName) required.add(seasonName);
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+    }
+  }
+
+  return Array.from(required);
+}
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -258,7 +326,8 @@ function buildDraftUpdatePayload(
   extracted: ReturnType<typeof extractStayData>,
   rawPayload: ReturnType<typeof buildRawPayload>,
   transportVariants: DraftTransportVariant[],
-  includePricing: boolean
+  includePricing: boolean,
+  directTransportOptionsOverride?: Array<Record<string, unknown>> | null
 ) {
   const payload: Record<string, unknown> = {};
 
@@ -298,7 +367,7 @@ function buildDraftUpdatePayload(
   }
   if (columns.has('transport_options_json')) {
     const transportOptions = includePricing
-      ? buildDraftTransportOptionsFromVariants(transportVariants)
+      ? directTransportOptionsOverride ?? buildDraftTransportOptionsFromVariants(transportVariants)
       : [];
     payload.transport_options_json = transportOptions.length > 0 ? transportOptions : null;
   }
@@ -307,6 +376,37 @@ function buildDraftUpdatePayload(
   }
 
   return payload;
+}
+
+function asRecordArray(value: unknown): Array<Record<string, unknown>> {
+  if (Array.isArray(value)) {
+    return value.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object');
+  }
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      if (Array.isArray(parsed)) {
+        return parsed.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object');
+      }
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+function buildSessionSignature(rows: Array<Record<string, unknown>>): string {
+  return rows
+    .map((row) =>
+      [
+        String(row.start_date ?? ''),
+        String(row.end_date ?? ''),
+        String(row.price ?? ''),
+        String(row.availability ?? '')
+      ].join('|')
+    )
+    .sort((a, b) => a.localeCompare(b, 'fr'))
+    .join('||');
 }
 
 async function updateDraftWithFallbacks(draftId: string, payload: Record<string, unknown>) {
@@ -363,6 +463,24 @@ async function updateDraftWithFallbacks(draftId: string, payload: Record<string,
   }
 
   return lastError;
+}
+
+async function updateDraftCriticalJsonFields(
+  draftId: string,
+  payload: {
+    sessions_json?: Record<string, unknown>[] | null;
+    transport_options_json?: Array<Record<string, unknown>> | null;
+  }
+) {
+  const supabase = getServerSupabaseClient();
+  const { error } = await supabase
+    .from('stay_drafts')
+    .update({
+      sessions_json: (payload.sessions_json ?? null) as Json,
+      transport_options_json: (payload.transport_options_json ?? null) as Json
+    })
+    .eq('id', draftId);
+  return error ?? null;
 }
 
 async function mergeRawPayloadError(
@@ -498,6 +616,9 @@ export async function runStayImportInBackground(params: {
           return null;
         })
       : null;
+    const ceslStructuredBooking = includePricing && sourceHost?.includes('cesl.fr')
+      ? extractCeslStructuredBookingData(fetchedHtml.html, fetchedHtml.finalUrl)
+      : null;
     const mergedStaticAndDomSessions = mergeExtractedSessions(
       extracted.sessionsJson,
       extractedWithDynamicDom.sessionsJson
@@ -511,9 +632,15 @@ export async function runStayImportInBackground(params: {
       transportMode: thaliePricing?.transportMode || extractedWithDynamicDom.transportMode,
       sessionsJson:
         mergeThalieSessionBaselinesIntoSessions(
-          mergedWithCeslPlaywrightSessions,
+          ceslStructuredBooking?.sessions.length
+            ? mergeExtractedSessions(mergedWithCeslPlaywrightSessions, ceslStructuredBooking.sessions)
+            : mergedWithCeslPlaywrightSessions,
           thaliePricing?.sessionBaselines ?? dynamicSnapshot?.thalieSessionBaselines ?? []
-        ) ?? mergedWithCeslPlaywrightSessions
+        ) ??
+        (ceslStructuredBooking?.sessions.length
+          ? mergeExtractedSessions(mergedWithCeslPlaywrightSessions, ceslStructuredBooking.sessions)
+          : mergedWithCeslPlaywrightSessions),
+      priceFrom: ceslStructuredBooking?.priceFrom ?? extractedWithDynamicDom.priceFrom
     };
     const mergedExtractedImages = Array.from(
       new Set([
@@ -562,9 +689,27 @@ export async function runStayImportInBackground(params: {
             ? mergedExtractedImages
             : extractedAfterThalieSessions.images
     };
+    const extractedWithCeslStructuredOverride = ceslStructuredBooking
+      ? {
+          ...extractedWithSmartImages,
+          sessionsJson: ceslStructuredBooking.sessions,
+          priceFrom: ceslStructuredBooking.priceFrom ?? extractedWithSmartImages.priceFrom
+        }
+      : extractedWithSmartImages;
     const extractedForDraft = includePricing
-      ? extractedWithSmartImages
-      : stripPricingFromExtracted(extractedWithSmartImages);
+      ? extractedWithCeslStructuredOverride
+      : stripPricingFromExtracted(extractedWithCeslStructuredOverride);
+    const inferredDraftSeasonNames = inferDraftSeasonNamesFromSessions(extractedForDraft.sessionsJson);
+    const { data: seasonsRaw } = inferredDraftSeasonNames.length
+      ? await supabase.from('seasons').select('id,name')
+      : { data: [] as Array<{ id: string; name: string }> };
+    const inferredDraftSeasonIds = (seasonsRaw ?? [])
+      .filter((season) =>
+        inferredDraftSeasonNames.some(
+          (seasonName) => normalizeSeasonKey(seasonName) === normalizeSeasonKey(season.name)
+        )
+      )
+      .map((season) => season.id);
     const thaliePricingFromOptionUrls = Boolean(thaliePricing);
     const thaliePbpFromPlaywright =
       !thaliePricingFromOptionUrls && (dynamicSnapshot?.thalieSessionBaselines?.length ?? 0) > 0;
@@ -607,6 +752,10 @@ export async function runStayImportInBackground(params: {
         includePricing
       }
     );
+    Object.assign(rawPayload, {
+      draft_season_names: inferredDraftSeasonNames,
+      draft_season_ids: inferredDraftSeasonIds
+    });
     const traceDirConfigured = Boolean(process.env.PLAYWRIGHT_TRACE_DIR?.trim());
     const videoDirConfigured = Boolean(process.env.PLAYWRIGHT_IMPORT_VIDEO_DIR?.trim());
 
@@ -619,10 +768,25 @@ export async function runStayImportInBackground(params: {
         session_price_extraction: {
           price_from_eur_static: extracted.priceFrom,
           price_from_eur_after_dynamic_dom: extractedWithDynamicDom.priceFrom,
+          price_from_eur_cesl_structured: ceslStructuredBooking?.priceFrom ?? null,
           pick_reference_cents_static: pickImportedSessionReferencePriceCents(extracted),
           pick_reference_cents_after_dynamic_dom: pickImportedSessionReferencePriceCents(
             extractedAfterThalieSessions
           ),
+          cesl_structured_booking:
+            ceslStructuredBooking
+              ? {
+                  session_count: ceslStructuredBooking.sessions.length,
+                  transport_option_count: ceslStructuredBooking.transportOptions.length,
+                  sessions: ceslStructuredBooking.sessions.map((session) => ({
+                    label: session.label,
+                    start_date: session.start_date,
+                    end_date: session.end_date,
+                    price: session.price,
+                    availability: session.availability
+                  }))
+                }
+              : null,
           thalie_session_baselines_from_option_urls_eur:
             thaliePricing?.sessionBaselines?.map((b) => ({
               date_label: b.date_label,
@@ -727,7 +891,8 @@ export async function runStayImportInBackground(params: {
       extractedForDraft,
       rawPayload,
       transportVariants,
-      includePricing
+      includePricing,
+      ceslStructuredBooking?.transportOptions ?? null
     );
     const updateError = await updateDraftWithFallbacks(draftId, updatePayload);
 
@@ -741,6 +906,45 @@ export async function runStayImportInBackground(params: {
         })
       });
     } else {
+      if (ceslStructuredBooking) {
+        const expectedSessions = ceslStructuredBooking.sessions as Array<Record<string, unknown>>;
+        const expectedTransportOptions =
+          ceslStructuredBooking.transportOptions as Array<Record<string, unknown>>;
+
+        const criticalUpdateError = await updateDraftCriticalJsonFields(draftId, {
+          sessions_json: expectedSessions,
+          transport_options_json: expectedTransportOptions
+        });
+
+        if (criticalUpdateError) {
+          console.error('[import-stay] CESL critical JSON update failed', {
+            draftId,
+            error: criticalUpdateError.message
+          });
+          await mergeRawPayloadPatch(draftId, {
+            cesl_structured_repair_failed_at: new Date().toISOString(),
+            cesl_structured_repair_error: criticalUpdateError.message
+          });
+        } else {
+          await mergeRawPayloadPatch(draftId, {
+            cesl_structured_repair_applied_at: new Date().toISOString()
+          });
+          const { data: afterImportRow } = await supabase
+            .from('stay_drafts')
+            .select('sessions_json')
+            .eq('id', draftId)
+            .maybeSingle();
+          const currentSessions = asRecordArray(afterImportRow?.sessions_json ?? null);
+          console.info('[import-stay] CESL critical JSON update applied', {
+            draftId,
+            expectedSessionCount: expectedSessions.length,
+            storedSessionCount: currentSessions.length,
+            storedMatchesExpected:
+              buildSessionSignature(currentSessions) === buildSessionSignature(expectedSessions)
+          });
+        }
+      }
+
       await mergeRawPayloadPatch(draftId, {
         import_progress: buildImportProgress('completed')
       });

@@ -209,10 +209,27 @@ function normalizeDynamicTransportLabel(value: string | null | undefined): strin
   const key = simplifyForMatch(normalized);
   if (!key) return null;
   if (
-    ['choisir', 'selectionner', 'selectionnez', 'ville de depart', 'ville de retour', 'aucun transport', 'sans transport', 'tous'].some(
+    [
+      'choisir',
+      'selectionner',
+      'selectionnez',
+      'ville de depart',
+      'ville de retour',
+      'aucun transport',
+      'sans transport',
+      'tous',
+      'transport aller retour',
+      'transport aerien',
+      'transport aerien aller retour',
+      'transport aérien',
+      'transport aérien aller retour'
+    ].some(
       (item) => key.includes(simplifyForMatch(item))
     )
   ) {
+    return null;
+  }
+  if (key.includes('transport') && /\b(aerien|aerienne|aeroport|aller retour)\b/.test(key)) {
     return null;
   }
   return normalized;
@@ -408,7 +425,12 @@ async function collectCeslDynamicSessions(page: Page): Promise<DraftSessionItem[
       }));
     });
 
-  const periodOptions = (await readSelectOptions(periodSelect)).filter((option) => option.value !== '');
+  const periodOptions = (await readSelectOptions(periodSelect)).filter((option) => {
+    const key = simplifyForMatch(option.label);
+    if (!key) return false;
+    if (/\b(choisir|selectionner|selectionnez|periode de sejour)\b/.test(key)) return false;
+    return true;
+  });
   if (periodOptions.length === 0) return [];
 
   const sessions: DraftSessionItem[] = [];
@@ -505,7 +527,7 @@ async function collectCeslDynamicSessions(page: Page): Promise<DraftSessionItem[
           start_date: null,
           end_date: null,
           price: priceEur,
-          availability: detectSessionAvailability(periodOption.label)
+          availability: detectSessionAvailability(periodOption.label) ?? 'unknown'
         });
         continue;
       }
@@ -514,7 +536,7 @@ async function collectCeslDynamicSessions(page: Page): Promise<DraftSessionItem[
         ...parsed,
         label: labelNorm,
         price: priceEur,
-        availability: detectSessionAvailability(periodOption.label) ?? parsed.availability ?? null
+        availability: detectSessionAvailability(periodOption.label) ?? parsed.availability ?? 'unknown'
       });
     } catch {
       // Période suivante
@@ -547,7 +569,12 @@ async function collectCeslDynamicTransportVariants(
     });
 
   const periodOptions = hasPeriodSelect
-    ? (await readSelectOptions(periodSelect)).filter((option) => option.value !== '')
+    ? (await readSelectOptions(periodSelect)).filter((option) => {
+        const key = simplifyForMatch(option.label);
+        if (!key) return false;
+        if (/\b(choisir|selectionner|selectionnez|periode de sejour)\b/.test(key)) return false;
+        return true;
+      })
     : [{ index: 0, value: '', label: '', selected: true }];
 
   const debugRows: DraftTransportPriceDebug[] = [];

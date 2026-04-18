@@ -11,11 +11,13 @@ import { draftReviewControlClass } from '@/lib/draft-review-field-styles';
 import { cn } from '@/lib/utils';
 
 const DEFAULT_CURRENCY = 'EUR';
-const DEFAULT_SESSION_AVAILABILITY = 'available' as const;
+const DEFAULT_SESSION_AVAILABILITY = 'unknown' as const;
 
-function normalizeSessionAvailabilityUi(raw: unknown): 'available' | 'full' {
+function normalizeSessionAvailabilityUi(raw: unknown): 'available' | 'full' | 'unknown' {
   const s = raw != null ? String(raw).trim() : '';
-  return s === 'full' ? 'full' : 'available';
+  if (s === 'full') return 'full';
+  if (s === 'available') return 'available';
+  return 'unknown';
 }
 const CURRENCY_OPTIONS = [
   { value: 'EUR', label: 'EUR (€)' },
@@ -205,8 +207,12 @@ function sessionToRecord(row: SessionRow): Record<string, unknown> {
   const remainingTrim = row.remaining_places.trim();
   const remainingNum = remainingTrim === '' ? null : Number(remainingTrim.replace(',', '.'));
   const fused = buildFusedSessionLabel(row.start_date, row.end_date);
-  const availability: 'available' | 'full' =
-    row.availability.trim() === 'full' ? 'full' : 'available';
+  const availability: 'available' | 'full' | 'unknown' =
+    row.availability.trim() === 'full'
+      ? 'full'
+      : row.availability.trim() === 'available'
+        ? 'available'
+        : 'unknown';
   return {
     label: fused,
     start_date: row.start_date.trim() || null,
@@ -316,11 +322,17 @@ export function DraftSessionsEditor({
                     value={row.availability}
                     onChange={(e) =>
                       updateRow(index, {
-                        availability: e.target.value === 'full' ? 'full' : 'available'
+                        availability:
+                          e.target.value === 'full'
+                            ? 'full'
+                            : e.target.value === 'available'
+                              ? 'available'
+                              : 'unknown'
                       })
                     }
                     className="mt-1 w-full rounded border border-slate-200 bg-white px-2 py-1.5 text-sm"
                   >
+                    <option value="unknown">Inconnu</option>
                     <option value="available">Places disponibles</option>
                     <option value="full">Complet</option>
                   </select>
@@ -410,11 +422,17 @@ function transportOptionFromRecord(record: Record<string, unknown>): TransportOp
   const excluded_session_keys = Array.isArray(rawEx)
     ? rawEx.map((x) => String(x).trim()).filter(Boolean)
     : [];
+  const numericPrice =
+    typeof record.price === 'number' && Number.isFinite(record.price)
+      ? record.price
+      : typeof record.amount_cents === 'number' && Number.isFinite(record.amount_cents)
+        ? Number((record.amount_cents / 100).toFixed(2))
+        : null;
   return {
     label: record.label != null ? String(record.label) : '',
     price:
-      typeof record.price === 'number' && Number.isFinite(record.price)
-        ? String(record.price)
+      numericPrice !== null
+        ? String(numericPrice)
         : record.price != null
           ? String(record.price)
           : '',
@@ -426,9 +444,12 @@ function transportOptionFromRecord(record: Record<string, unknown>): TransportOp
 function transportOptionToRecord(row: TransportOptionRow): Record<string, unknown> {
   const priceTrim = row.price.trim().replace(',', '.');
   const priceNum = priceTrim === '' ? null : Number(priceTrim);
+  const amountCents =
+    priceNum !== null && Number.isFinite(priceNum) ? Math.round(priceNum * 100) : null;
   return {
     label: row.label.trim() || null,
     price: priceNum !== null && Number.isFinite(priceNum) ? priceNum : null,
+    amount_cents: amountCents,
     currency: normalizeDraftCurrency(row.currency),
     description: null,
     excluded_session_keys: row.excluded_session_keys.length > 0 ? row.excluded_session_keys : []

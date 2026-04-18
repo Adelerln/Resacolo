@@ -53,7 +53,12 @@ const TRANSPORT_PLACEHOLDER_KEYS = [
   'aucun transport',
   'sans transport',
   'none',
-  'tous'
+  'tous',
+  'transport aller retour',
+  'transport aerien',
+  'transport aerien aller retour',
+  'transport aérien',
+  'transport aérien aller retour'
 ];
 
 const TRANSPORT_BASE_REFERENCE_KEYS = [
@@ -97,6 +102,9 @@ function normalizeCityLabel(value: string | null | undefined): string | null {
   const key = simplifyForMatch(normalized);
   if (!key) return null;
   if (TRANSPORT_PLACEHOLDER_KEYS.some((item) => key.includes(simplifyForMatch(item)))) {
+    return null;
+  }
+  if (key.includes('transport') && /\b(aerien|aerienne|aeroport|aller retour)\b/.test(key)) {
     return null;
   }
   return normalized.length > 80 ? normalized.slice(0, 80).trim() : normalized;

@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Building2,
@@ -40,6 +40,7 @@ import {
 import { normalizeStayDraftCategories, STAY_CATEGORY_OPTIONS, stayCategoryLabelToValue } from '@/lib/stay-categories';
 import { cn, slugify } from '@/lib/utils';
 import { MAX_STAY_SUMMARY_LENGTH } from '@/lib/stay-draft-content';
+import UnsavedChangesGuard from '@/components/common/UnsavedChangesGuard';
 import {
   defaultAccommodationImportRecord,
   mergeAccommodationImportRecord
@@ -62,6 +63,7 @@ type StayDraftReviewFormProps = {
   organizerId: string | null;
   backHref: string;
   initialPayload: StayDraftReviewPayload;
+  seasonOptions: Array<{ id: string; name: string }>;
   initialStatus: string;
   initialValidatedAt: string | null;
   initialValidatedByUserId: string | null;
@@ -84,6 +86,72 @@ type SeoActionState = {
   level: 'info' | 'success' | 'error';
   message: string;
 };
+
+function parseIsoDateAtUtcMidnight(value: unknown): Date | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return null;
+  const parsed = new Date(`${trimmed}T00:00:00Z`);
+  return Number.isFinite(parsed.getTime()) ? parsed : null;
+}
+
+function seasonNameFromUtcDate(date: Date): string | null {
+  const month = date.getUTCMonth() + 1;
+  const day = date.getUTCDate();
+
+  if ((month === 12 && day >= 15) || (month === 1 && day <= 15)) return "Fin d'année";
+  if ((month === 1 && day >= 20) || month === 2 || (month === 3 && day <= 15)) return 'Hiver';
+  if ((month === 3 && day >= 20) || month === 4 || (month === 5 && day <= 10)) return 'Printemps';
+  if ((month === 6 && day >= 20) || month === 7 || month === 8 || (month === 9 && day <= 10)) return 'Été';
+  if (month === 10 || (month === 11 && day <= 10)) return 'Toussaint';
+
+  return null;
+}
+
+function normalizeSeasonKey(value: string | null | undefined): string {
+  const normalized = (value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+
+  if (!normalized) return '';
+  if (normalized.includes('fin') && normalized.includes('annee')) return 'fin_annee';
+  if (
+    normalized.includes('toussaint') ||
+    normalized.includes('octobre') ||
+    normalized.includes('automne')
+  ) {
+    return 'toussaint';
+  }
+  if (normalized.includes('hiver')) return 'hiver';
+  if (normalized.includes('printemps')) return 'printemps';
+  if (normalized.includes('ete')) return 'ete';
+  return normalized;
+}
+
+function inferProtectedSeasonNamesFromSessions(
+  sessions: Array<Record<string, unknown>>
+): string[] {
+  const required = new Set<string>();
+
+  for (const session of sessions) {
+    const start = parseIsoDateAtUtcMidnight(session.start_date);
+    const end = parseIsoDateAtUtcMidnight(session.end_date);
+    if (!start || !end) continue;
+
+    const cursor = new Date(start.getTime());
+    const limit = end.getTime();
+    while (cursor.getTime() <= limit) {
+      const seasonName = seasonNameFromUtcDate(cursor);
+      if (seasonName) required.add(seasonName);
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+    }
+  }
+
+  return Array.from(required);
+}
 
 function parseCommaSeparatedList(value: string): string[] {
   return value
@@ -164,6 +232,7 @@ export default function StayDraftReviewForm({
   organizerId,
   backHref,
   initialPayload,
+  seasonOptions,
   initialStatus,
   initialValidatedAt,
   initialValidatedByUserId,
@@ -179,6 +248,12 @@ export default function StayDraftReviewForm({
   );
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [title, setTitle] = useState(initialPayload.title);
+  const initialSeasonName = (initialPayload.season_name ?? '').trim();
+  const [selectedSeasonIds, setSelectedSeasonIds] = useState<string[]>(() =>
+    Array.isArray(initialPayload.season_ids)
+      ? initialPayload.season_ids.map((value) => String(value).trim()).filter(Boolean)
+      : []
+  );
   const [summary, setSummary] = useState(initialPayload.summary);
   const [locationText, setLocationText] = useState(initialPayload.location_text);
   const [regionText, setRegionText] = useState(initialPayload.region_text);
@@ -241,6 +316,7 @@ export default function StayDraftReviewForm({
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGeneratingSeo, setIsGeneratingSeo] = useState(false);
+  const initialSnapshotRef = useRef<string | null>(null);
 
   const [seoPrimaryKeyword, setSeoPrimaryKeyword] = useState(initialPayload.seo_primary_keyword);
   const [seoSecondaryKeywords, setSeoSecondaryKeywords] = useState<string[]>(
@@ -270,6 +346,86 @@ export default function StayDraftReviewForm({
   );
   const [seoActionState, setSeoActionState] = useState<SeoActionState | null>(null);
 
+  const serializeDraftState = useMemo(
+    () => () =>
+      JSON.stringify({
+        title,
+        summary,
+        locationText,
+        regionText,
+        description,
+        programText,
+        supervisionText,
+        transportMode,
+        transportText,
+        partnerDiscountPercent,
+        categories: selectedCategories,
+        agesText,
+        sessionsList,
+        extraOptionsList,
+        insuranceOptionsList,
+        transportOptionsList,
+        accommodationImport,
+        imageUrls,
+        videoUrls,
+        seoPrimaryKeyword,
+        seoSecondaryKeywords,
+        seoTargetCity,
+        seoTargetRegion,
+        seoSearchIntents,
+        seoTitle,
+        seoMetaDescription,
+        seoIntroText,
+        seoH1Variant,
+        seoInternalAnchors,
+        seoSlugCandidate
+      }),
+    [
+      title,
+      summary,
+      locationText,
+      regionText,
+      description,
+      programText,
+      supervisionText,
+      transportMode,
+      transportText,
+      partnerDiscountPercent,
+      selectedCategories,
+      agesText,
+      sessionsList,
+      extraOptionsList,
+      insuranceOptionsList,
+      transportOptionsList,
+      accommodationImport,
+      imageUrls,
+      videoUrls,
+      seoPrimaryKeyword,
+      seoSecondaryKeywords,
+      seoTargetCity,
+      seoTargetRegion,
+      seoSearchIntents,
+      seoTitle,
+      seoMetaDescription,
+      seoIntroText,
+      seoH1Variant,
+      seoInternalAnchors,
+      seoSlugCandidate
+    ]
+  );
+
+  const isDirty = useMemo(() => {
+    const baseline = initialSnapshotRef.current;
+    if (!baseline) return false;
+    return serializeDraftState() !== baseline;
+  }, [serializeDraftState]);
+
+  useEffect(() => {
+    if (initialSnapshotRef.current == null) {
+      initialSnapshotRef.current = serializeDraftState();
+    }
+  }, [serializeDraftState]);
+
   const seoCategoryValues = useMemo(
     () =>
       selectedCategories
@@ -280,6 +436,36 @@ export default function StayDraftReviewForm({
     [selectedCategories]
   );
 
+  const selectedSeasonNames = useMemo(
+    () =>
+      seasonOptions
+        .filter((season) => selectedSeasonIds.includes(season.id))
+        .map((season) => season.name),
+    [seasonOptions, selectedSeasonIds]
+  );
+
+  const resolvedSeasonName = selectedSeasonNames.join(', ') || initialSeasonName;
+  const protectedSeasonNames = useMemo(
+    () => inferProtectedSeasonNamesFromSessions(sessionsList),
+    [sessionsList]
+  );
+  const protectedSeasonIds = useMemo(
+    () =>
+      seasonOptions
+        .filter((season) =>
+          protectedSeasonNames.some(
+            (protectedName) => normalizeSeasonKey(protectedName) === normalizeSeasonKey(season.name)
+          )
+        )
+        .map((season) => season.id),
+    [seasonOptions, protectedSeasonNames]
+  );
+
+  useEffect(() => {
+    if (protectedSeasonIds.length === 0) return;
+    setSelectedSeasonIds((current) => Array.from(new Set([...current, ...protectedSeasonIds])));
+  }, [protectedSeasonIds]);
+
   const seoInput = useMemo(
     () => ({
       title,
@@ -289,7 +475,7 @@ export default function StayDraftReviewForm({
       programText,
       location: locationText,
       region: regionText,
-      seasonName: '',
+      seasonName: resolvedSeasonName,
       ageRange: formatAgeRangeFromAgesText(agesText),
       categories: seoCategoryValues,
       seo: {
@@ -315,6 +501,7 @@ export default function StayDraftReviewForm({
       programText,
       locationText,
       regionText,
+      resolvedSeasonName,
       agesText,
       seoCategoryValues,
       seoPrimaryKeyword,
@@ -423,6 +610,18 @@ export default function StayDraftReviewForm({
         return normalizeStayDraftCategories([...current, categoryLabel]).categories;
       }
       return current.filter((value) => value !== categoryLabel);
+    });
+  }
+
+  function toggleSeason(seasonId: string, checked: boolean) {
+    setSelectedSeasonIds((current) => {
+      if (!checked && protectedSeasonIds.includes(seasonId)) {
+        return current;
+      }
+      if (checked) {
+        return Array.from(new Set([...current, seasonId]));
+      }
+      return current.filter((value) => value !== seasonId);
     });
   }
 
@@ -619,12 +818,23 @@ export default function StayDraftReviewForm({
       }
     }
 
+    const missingProtectedSeasonIds = protectedSeasonIds.filter(
+      (seasonId) => !selectedSeasonIds.includes(seasonId)
+    );
+    if (missingProtectedSeasonIds.length > 0) {
+      nextErrors.season_ids =
+        'Impossible de retirer une saison couverte par au moins une date de session.';
+    }
+
     if (Object.keys(nextErrors).length > 0) {
       return { errors: nextErrors };
     }
 
     const payload: StayDraftReviewPayload = {
       title: normalizedTitle,
+      season_ids: selectedSeasonIds,
+      season_names: selectedSeasonNames,
+      season_name: resolvedSeasonName,
       summary,
       location_text: locationText,
       region_text: regionText,
@@ -726,6 +936,7 @@ export default function StayDraftReviewForm({
       setStatus(data?.draft?.status ?? status);
       setValidatedAt(data?.draft?.validated_at ?? validatedAt);
       setValidatedByUserId(data?.draft?.validated_by_user_id ?? validatedByUserId);
+      initialSnapshotRef.current = serializeDraftState();
 
       if (mode === 'validate') {
         const organizerIdFromResponse =
@@ -785,6 +996,14 @@ export default function StayDraftReviewForm({
 
   return (
     <div className="space-y-6">
+      {isDirty ? (
+        <UnsavedChangesGuard
+          formId="draft-review-guard-anchor"
+          message="Vous avez des modifications non enregistrées. Voulez-vous quitter sans enregistrer ?"
+        />
+      ) : null}
+
+      <div id="draft-review-guard-anchor" />
       {!hideTopStatusCard ? (
         <div className="rounded-2xl border border-slate-200 bg-white p-6">
           <div className="flex flex-wrap items-center gap-3">
@@ -928,6 +1147,46 @@ export default function StayDraftReviewForm({
               })}
             />
           </label>
+          <div className="block text-sm font-medium text-slate-700 md:col-span-2">
+            <span>Saisons</span>
+            <div
+              className={cn(
+                'mt-2 grid grid-cols-2 gap-2 md:grid-cols-5',
+                draftReviewFieldGroupClass({
+                  required: false,
+                  filled: selectedSeasonIds.length > 0 || Boolean(resolvedSeasonName),
+                  hasError: Boolean(fieldErrors.season_ids)
+                })
+              )}
+            >
+              {seasonOptions.map((season) => {
+                const checked = selectedSeasonIds.includes(season.id);
+                const locked = protectedSeasonIds.includes(season.id) && checked;
+                return (
+                  <label
+                    key={season.id}
+                    className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${
+                      checked
+                        ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
+                        : 'border-slate-200 bg-white text-slate-700'
+                    } ${locked ? 'cursor-not-allowed opacity-80' : ''}`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      disabled={locked}
+                      onChange={(event) => toggleSeason(season.id, event.target.checked)}
+                      className="h-4 w-4 rounded border-slate-300"
+                    />
+                    <span>{season.name}</span>
+                  </label>
+                );
+              })}
+            </div>
+            {fieldErrors.season_ids ? (
+              <span className="mt-1 block text-xs text-rose-600">{fieldErrors.season_ids}</span>
+            ) : null}
+          </div>
         </div>
 
         <label className="block text-sm font-medium text-slate-700">
@@ -1808,12 +2067,22 @@ export default function StayDraftReviewForm({
               </Link>
             </div>
           ) : (
-            <Link
-              href={backHref}
-              className="self-start rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 sm:self-auto"
-            >
-              Annuler
-            </Link>
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={() => submit('save')}
+                disabled={isSubmitting}
+                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+              >
+                Enregistrer le brouillon
+              </button>
+              <Link
+                href={backHref}
+                className="self-start rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 sm:self-auto"
+              >
+                Annuler
+              </Link>
+            </div>
           )}
         </div>
       </div>

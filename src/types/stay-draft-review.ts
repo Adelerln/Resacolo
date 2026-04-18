@@ -1,5 +1,8 @@
 export type StayDraftReviewPayload = {
   title: string;
+  season_name?: string | null;
+  season_ids?: string[];
+  season_names?: string[];
   summary: string;
   location_text: string;
   region_text: string;
@@ -41,6 +44,7 @@ export type StayDraftReviewPayload = {
 
 export type StayDraftReviewFieldErrorKey =
   | 'title'
+  | 'season_ids'
   | 'summary'
   | 'location_text'
   | 'region_text'

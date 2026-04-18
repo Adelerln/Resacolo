@@ -3,12 +3,14 @@ import { redirect } from 'next/navigation';
 import ErrorToast from '@/components/common/ErrorToast';
 import GoogleMapsCityInput from '@/components/common/GoogleMapsCityInput';
 import SavedToast from '@/components/common/SavedToast';
+import UnsavedChangesGuard from '@/components/common/UnsavedChangesGuard';
 import RemainingPlacesEditor from '@/components/organisme/RemainingPlacesEditor';
 import StayInsuranceForm from '@/components/organisme/StayInsuranceForm';
 import StayEditorialTabs from '@/components/organisme/StayEditorialTabs';
 import StayFloatingSaveButton from '@/components/organisme/StayFloatingSaveButton';
 import StaySeoEditor from '@/components/organisme/StaySeoEditor';
 import StayTransportCardEffects from '@/components/organisme/StayTransportCardEffects';
+import StayEditStepNavigator from '@/components/organisme/StayEditStepNavigator';
 import { extractAccommodationLocationMeta } from '@/lib/accommodation-location';
 import { requireRole } from '@/lib/auth/require';
 import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers.server';
@@ -1070,6 +1072,10 @@ export default async function OrganizerStayDetailPage({ params: paramsPromise, s
     <div className="space-y-6">
       {showSavedBanner && <SavedToast message="La fiche séjour a bien été enregistrée." />}
       {errorParam && <ErrorToast message={decodeURIComponent(errorParam)} />}
+
+      <StayEditStepNavigator />
+      <UnsavedChangesGuard formId="stay-form" />
+
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">{currentStay.title}</h1>
@@ -1082,7 +1088,7 @@ export default async function OrganizerStayDetailPage({ params: paramsPromise, s
         </span>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div id="sessions" className="grid gap-6 scroll-mt-28 lg:grid-cols-2">
         <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6 lg:col-span-2">
           <h2 className="text-lg font-semibold text-slate-900">Sessions</h2>
           <ul className="space-y-2 text-sm text-slate-600">
@@ -1202,6 +1208,7 @@ export default async function OrganizerStayDetailPage({ params: paramsPromise, s
         action={updateStay}
         className="space-y-4"
       >
+        <div id="sejour" className="scroll-mt-28" />
         <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
           <h2 className="text-lg font-semibold text-slate-900">Infos séjour</h2>
           <label className="block text-sm font-medium text-slate-700">
@@ -1243,37 +1250,39 @@ export default async function OrganizerStayDetailPage({ params: paramsPromise, s
           </label>
         </section>
 
-        <StaySeoEditor
-          canonicalPath={stayCanonicalPathPreview}
-          seasonNameById={seasonNameById}
-          initialContext={{
-            title: currentStay.title,
-            summary: currentStay.summary ?? '',
-            description: currentStay.description ?? '',
-            activitiesText: currentStay.activities_text ?? '',
-            programText: currentStay.program_text ?? '',
-            location: currentStay.location_text ?? '',
-            region: currentStay.region_text ?? '',
-            seasonName: seasonNameById[currentStay.season_id] ?? '',
-            ageRange: stayAgeRange,
-            categories: currentStay.categories ?? []
-          }}
-          initialSeo={{
-            primaryKeyword: currentStay.seo_primary_keyword ?? undefined,
-            secondaryKeywords: currentStay.seo_secondary_keywords ?? [],
-            targetCity: currentStay.seo_target_city ?? undefined,
-            targetRegion: currentStay.seo_target_region ?? undefined,
-            searchIntents: currentStay.seo_search_intents ?? [],
-            title: currentStay.seo_title ?? undefined,
-            metaDescription: currentStay.seo_meta_description ?? undefined
-          }}
-          generation={{
-            endpoint: `/api/organizer/stays/${currentStay.id}/seo`,
-            organizerId: selectedOrganizerId,
-            initialGeneratedAt: currentStay.seo_generated_at,
-            initialGenerationSource: currentStay.seo_generation_source
-          }}
-        />
+        <div id="seo" className="scroll-mt-28">
+          <StaySeoEditor
+            canonicalPath={stayCanonicalPathPreview}
+            seasonNameById={seasonNameById}
+            initialContext={{
+              title: currentStay.title,
+              summary: currentStay.summary ?? '',
+              description: currentStay.description ?? '',
+              activitiesText: currentStay.activities_text ?? '',
+              programText: currentStay.program_text ?? '',
+              location: currentStay.location_text ?? '',
+              region: currentStay.region_text ?? '',
+              seasonName: seasonNameById[currentStay.season_id] ?? '',
+              ageRange: stayAgeRange,
+              categories: currentStay.categories ?? []
+            }}
+            initialSeo={{
+              primaryKeyword: currentStay.seo_primary_keyword ?? undefined,
+              secondaryKeywords: currentStay.seo_secondary_keywords ?? [],
+              targetCity: currentStay.seo_target_city ?? undefined,
+              targetRegion: currentStay.seo_target_region ?? undefined,
+              searchIntents: currentStay.seo_search_intents ?? [],
+              title: currentStay.seo_title ?? undefined,
+              metaDescription: currentStay.seo_meta_description ?? undefined
+            }}
+            generation={{
+              endpoint: `/api/organizer/stays/${currentStay.id}/seo`,
+              organizerId: selectedOrganizerId,
+              initialGeneratedAt: currentStay.seo_generated_at,
+              initialGenerationSource: currentStay.seo_generation_source
+            }}
+          />
+        </div>
 
         <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
           <h2 className="text-lg font-semibold text-slate-900">Tarifs et conditions commerciales</h2>
@@ -1409,7 +1418,10 @@ export default async function OrganizerStayDetailPage({ params: paramsPromise, s
         </section>
       </form>
 
-      <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
+      <section
+        id="transports"
+        className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 scroll-mt-28 sm:p-6"
+      >
         <StayTransportCardEffects
           formId="stay-transport-form"
           scrollContainerId="stay-transport-table-scroll"
@@ -1563,7 +1575,7 @@ export default async function OrganizerStayDetailPage({ params: paramsPromise, s
         )}
       </section>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div id="options" className="grid gap-6 scroll-mt-28 lg:grid-cols-2">
         <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
           <h2 className="text-lg font-semibold text-slate-900">Médias</h2>
           <ul className="mt-4 space-y-2 text-sm text-slate-600">
@@ -1654,7 +1666,10 @@ export default async function OrganizerStayDetailPage({ params: paramsPromise, s
         </section>
       </div>
 
-      <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
+      <section
+        id="assurances"
+        className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 scroll-mt-28 sm:p-6"
+      >
         <h2 className="text-lg font-semibold text-slate-900">Assurances du séjour</h2>
 
         <div className="space-y-3">

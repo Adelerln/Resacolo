@@ -29,6 +29,8 @@ const arrayOfObjectsSchema = z.array(z.record(z.unknown())).optional().default([
 const bodySchema = z.object({
   organizerId: z.string().optional(),
   title: z.string().trim().min(1, 'Le titre est requis.'),
+  season_ids: z.array(z.string().trim().min(1)).optional().default([]),
+  season_names: z.array(z.string().trim().min(1)).optional().default([]),
   summary: textFieldSchema,
   location_text: textFieldSchema,
   region_text: textFieldSchema,
@@ -129,6 +131,72 @@ function removeSeoFields(payload: Record<string, unknown>): Record<string, unkno
     }
   }
   return nextPayload;
+}
+
+function parseIsoDateAtUtcMidnight(value: unknown): Date | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return null;
+  const parsed = new Date(`${trimmed}T00:00:00Z`);
+  return Number.isFinite(parsed.getTime()) ? parsed : null;
+}
+
+function seasonNameFromUtcDate(date: Date): string | null {
+  const month = date.getUTCMonth() + 1;
+  const day = date.getUTCDate();
+
+  if ((month === 12 && day >= 15) || (month === 1 && day <= 15)) return "Fin d'année";
+  if ((month === 1 && day >= 20) || month === 2 || (month === 3 && day <= 15)) return 'Hiver';
+  if ((month === 3 && day >= 20) || month === 4 || (month === 5 && day <= 10)) return 'Printemps';
+  if ((month === 6 && day >= 20) || month === 7 || month === 8 || (month === 9 && day <= 10)) return 'Été';
+  if (month === 10 || (month === 11 && day <= 10)) return 'Toussaint';
+
+  return null;
+}
+
+function normalizeSeasonKey(value: string | null | undefined): string {
+  const normalized = (value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+
+  if (!normalized) return '';
+  if (normalized.includes('fin') && normalized.includes('annee')) return 'fin_annee';
+  if (
+    normalized.includes('toussaint') ||
+    normalized.includes('octobre') ||
+    normalized.includes('automne')
+  ) {
+    return 'toussaint';
+  }
+  if (normalized.includes('hiver')) return 'hiver';
+  if (normalized.includes('printemps')) return 'printemps';
+  if (normalized.includes('ete')) return 'ete';
+  return normalized;
+}
+
+function inferProtectedSeasonNamesFromSessions(
+  sessions: Array<Record<string, unknown>>
+): string[] {
+  const required = new Set<string>();
+
+  for (const session of sessions) {
+    const start = parseIsoDateAtUtcMidnight(session.start_date);
+    const end = parseIsoDateAtUtcMidnight(session.end_date);
+    if (!start || !end) continue;
+
+    const cursor = new Date(start.getTime());
+    const limit = end.getTime();
+    while (cursor.getTime() <= limit) {
+      const seasonName = seasonNameFromUtcDate(cursor);
+      if (seasonName) required.add(seasonName);
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+    }
+  }
+
+  return Array.from(required);
 }
 
 export async function GET(
@@ -287,6 +355,9 @@ async function parseBody(req: Request): Promise<{ payload: StayDraftReviewPayloa
   const ages = expandDraftAges(data.ages);
   const payload: StayDraftReviewPayload = {
     title: normalizeStayTitle(data.title),
+    season_ids: data.season_ids.map((value) => normalizeString(value)).filter(Boolean),
+    season_names: data.season_names.map((value) => normalizeString(value)).filter(Boolean),
+    season_name: normalizeString(data.season_names[0] ?? data.season_names.join(', ')),
     summary: normalizeStaySummary(data.summary),
     location_text: normalizeString(data.location_text),
     region_text: mapToCanonicalStayRegion(data.region_text) ?? '',
@@ -324,6 +395,18 @@ async function parseBody(req: Request): Promise<{ payload: StayDraftReviewPayloa
 
   if (!payload.title) {
     return { errors: { title: 'Le titre est requis.' } };
+  }
+  const protectedSeasonNames = inferProtectedSeasonNamesFromSessions(payload.sessions_json);
+  const selectedSeasonKeys = new Set((payload.season_names ?? []).map((seasonName) => normalizeSeasonKey(seasonName)));
+  const missingProtectedSeasonNames = protectedSeasonNames.filter(
+    (seasonName) => !selectedSeasonKeys.has(normalizeSeasonKey(seasonName))
+  );
+  if (missingProtectedSeasonNames.length > 0) {
+    return {
+      errors: {
+        season_ids: 'Impossible de retirer une saison couverte par au moins une date de session.'
+      }
+    };
   }
   return {
     payload,
@@ -404,6 +487,10 @@ async function handleUpdate(req: Request, params: { id: string }, mode: 'save' |
     seo_checks: parsedBody.payload.seo_checks,
     raw_payload: {
       ...currentRawPayload,
+      draft_season_ids:
+        (parsedBody.payload.season_ids ?? []).length > 0 ? parsedBody.payload.season_ids : null,
+      draft_season_names:
+        (parsedBody.payload.season_names ?? []).length > 0 ? parsedBody.payload.season_names : null,
       video_urls:
         parsedBody.payload.video_urls.length > 0 ? parsedBody.payload.video_urls : null,
       partner_discount_percent: parsedBody.payload.partner_discount_percent

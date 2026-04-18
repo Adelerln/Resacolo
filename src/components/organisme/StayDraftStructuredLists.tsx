@@ -608,14 +608,17 @@ function insuranceFromRecord(record: Record<string, unknown>): InsuranceOptionRo
 }
 
 function insuranceToRecord(row: InsuranceOptionRow): Record<string, unknown> {
-  const label = row.label.trim();
+  // Ne pas `.trim()` le libellé ici : à chaque frappe on repasse par cette fonction ;
+  // un espace entre deux mots disparaît tant que le mot suivant n’est pas saisi.
+  const labelTrimmed = row.label.trim();
+  const label = labelTrimmed === '' ? null : row.label;
   const currency = normalizeDraftCurrency(row.currency);
 
   if (row.pricing_mode === 'PERCENT') {
     const pctTrim = row.percent_value.trim().replace(',', '.');
     const pctNum = pctTrim === '' ? null : Number(pctTrim);
     return {
-      label: label || null,
+      label,
       pricing_mode: 'PERCENT',
       percent_value: pctNum !== null && Number.isFinite(pctNum) ? pctNum : null,
       price: null,
@@ -628,7 +631,7 @@ function insuranceToRecord(row: InsuranceOptionRow): Record<string, unknown> {
   const priceTrim = row.price.trim().replace(',', '.');
   const priceNum = priceTrim === '' ? null : Number(priceTrim);
   return {
-    label: label || null,
+    label,
     pricing_mode: 'FIXED',
     price: priceNum !== null && Number.isFinite(priceNum) ? priceNum : null,
     percent_value: null,

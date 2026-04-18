@@ -502,7 +502,7 @@ function normalizeAges(ages: number[] | null, ageMin: number | null, ageMax: num
   return expandDraftAges(ages, ageMin, ageMax);
 }
 
-type ParsedTransportOption = {
+export type ParsedTransportOption = {
   departureCity: string;
   returnCity: string;
   amountCents: number;
@@ -594,22 +594,12 @@ function isInsuranceCandidate(...values: Array<unknown>): boolean {
   return INSURANCE_KEYWORDS.some((token) => key.includes(simplifyForMatch(token)));
 }
 
-function parseExtraAndInsuranceOptions(
-  draft: StayDraftRow,
-  rawPayload: Record<string, unknown>
-): {
+/** Même logique que `parseExtraAndInsuranceOptions` mais sur une liste fusionnée (ex. payload de relecture). */
+export function parseMergedExtraOptionsRows(rowsInput: Array<Record<string, unknown>>): {
   extraOptions: Array<{ label: string; amountCents: number }>;
   insuranceOptions: Array<{ label: string; pricingMode: 'FIXED' | 'PERCENT'; amountCents: number | null; percentValue: number | null }>;
 } {
-  const rows: Array<Record<string, unknown>> = [...asRecordArray(draft.extra_options_json)];
-
-  const aiExtracted = isPlainObject(rawPayload.ai_extracted) ? rawPayload.ai_extracted : null;
-  if (aiExtracted && Array.isArray(aiExtracted.insurance_options_json)) {
-    for (const item of aiExtracted.insurance_options_json) {
-      if (isPlainObject(item)) rows.push(item);
-    }
-  }
-
+  const rows = rowsInput;
   const extraOutput: Array<{ label: string; amountCents: number }> = [];
   const insuranceOutput: Array<{ label: string; pricingMode: 'FIXED' | 'PERCENT'; amountCents: number | null; percentValue: number | null }> = [];
 
@@ -680,6 +670,25 @@ function parseExtraAndInsuranceOptions(
   };
 }
 
+function parseExtraAndInsuranceOptions(
+  draft: StayDraftRow,
+  rawPayload: Record<string, unknown>
+): {
+  extraOptions: Array<{ label: string; amountCents: number }>;
+  insuranceOptions: Array<{ label: string; pricingMode: 'FIXED' | 'PERCENT'; amountCents: number | null; percentValue: number | null }>;
+} {
+  const rows: Array<Record<string, unknown>> = [...asRecordArray(draft.extra_options_json)];
+
+  const aiExtracted = isPlainObject(rawPayload.ai_extracted) ? rawPayload.ai_extracted : null;
+  if (aiExtracted && Array.isArray(aiExtracted.insurance_options_json)) {
+    for (const item of aiExtracted.insurance_options_json) {
+      if (isPlainObject(item)) rows.push(item);
+    }
+  }
+
+  return parseMergedExtraOptionsRows(rows);
+}
+
 function toBoolean(value: unknown): boolean {
   if (typeof value === 'boolean') return value;
   if (typeof value === 'number') return value !== 0;
@@ -693,7 +702,7 @@ function parseExcludedSessionKeysFromRow(row: Record<string, unknown>): string[]
   return raw.map((x) => String(x).trim()).filter(Boolean);
 }
 
-function parseTransportOptions(value: Json | null): ParsedTransportOption[] {
+export function parseTransportOptionsFromJson(value: Json | null): ParsedTransportOption[] {
   const rows = asRecordArray(value);
   type TransportCandidate = {
     departureCity: string;
@@ -1505,7 +1514,7 @@ async function syncSessions(
   }
 }
 
-async function syncStayMedia(
+export async function syncStayMedia(
   supabase: SupabaseClient<Database>,
   organizerId: string,
   stayId: string,
@@ -1561,7 +1570,7 @@ async function syncStayMedia(
   }
 }
 
-async function syncExtraOptions(
+export async function syncExtraOptions(
   supabase: SupabaseClient<Database>,
   stayId: string,
   options: Array<{ label: string; amountCents: number }>
@@ -1592,7 +1601,7 @@ async function syncExtraOptions(
   }
 }
 
-async function syncInsuranceOptions(
+export async function syncInsuranceOptions(
   supabase: SupabaseClient<Database>,
   stayId: string,
   options: Array<{ label: string; pricingMode: 'FIXED' | 'PERCENT'; amountCents: number | null; percentValue: number | null }>
@@ -1626,7 +1635,7 @@ async function syncInsuranceOptions(
   }
 }
 
-async function syncTransportOptions(
+export async function syncTransportOptions(
   supabase: SupabaseClient<Database>,
   stayId: string,
   options: ParsedTransportOption[]
@@ -2080,7 +2089,7 @@ export async function publishStayDraftToLive(
     draft.transport_options_json ??
     (rawAiExtracted?.transport_options_json as Json | undefined) ??
     null;
-  const transportOptions = parseTransportOptions(transportSource);
+  const transportOptions = parseTransportOptionsFromJson(transportSource);
   const accommodationSource = importedExistingAccommodationId
     ? null
     : draft.accommodations_json ??

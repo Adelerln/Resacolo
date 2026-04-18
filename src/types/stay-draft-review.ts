@@ -37,6 +37,10 @@ export type StayDraftReviewPayload = {
   video_urls: string[];
   /** Pourcentage de remise partenaire (0–100), ou null si non renseigné. */
   partner_discount_percent: number | null;
+  /** Champ éditorial live (`stays.activities_text`) — tunnel séjour publié. */
+  activities_text: string;
+  /** Champ live (`stays.required_documents_text`) — tunnel séjour publié. */
+  required_documents_text: string;
 };
 
 export type StayDraftReviewFieldErrorKey =
@@ -71,6 +75,8 @@ export type StayDraftReviewFieldErrorKey =
   | 'seo_checks'
   | 'video_urls'
   | 'partner_discount_percent'
+  | 'activities_text'
+  | 'required_documents_text'
   | 'form';
 
 export type StayDraftReviewFieldErrors = Partial<Record<StayDraftReviewFieldErrorKey, string>>;

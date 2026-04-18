@@ -269,6 +269,7 @@ export default function StayDraftReviewForm({
     initialPayload.seo_generation_source ?? null
   );
   const [seoActionState, setSeoActionState] = useState<SeoActionState | null>(null);
+  const [seoAdvancedVisible, setSeoAdvancedVisible] = useState(false);
 
   const seoCategoryValues = useMemo(
     () =>
@@ -1136,6 +1137,7 @@ export default function StayDraftReviewForm({
             />
           </label>
 
+<<<<<<< HEAD
           <div className="space-y-2">
             <p className="text-sm font-medium text-slate-700">Mots-clés secondaires</p>
             <div className="flex flex-wrap gap-2">
@@ -1299,6 +1301,10 @@ export default function StayDraftReviewForm({
                 </div>
               ))}
             </div>
+=======
+          <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600">
+            Les options avancées SEO sont masquées par défaut pour alléger la relecture.
+>>>>>>> e5fd835 (changement SEO)
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
@@ -1338,6 +1344,7 @@ export default function StayDraftReviewForm({
             </label>
           </div>
 
+<<<<<<< HEAD
           <label className="block text-sm font-medium text-slate-700">
             Introduction SEO
             <textarea
@@ -1429,41 +1436,13 @@ export default function StayDraftReviewForm({
             </div>
           </div>
 
+=======
+>>>>>>> e5fd835 (changement SEO)
           <div className="rounded-xl border border-slate-200 bg-white p-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Aperçu Google</p>
             <p className="mt-2 text-lg font-medium text-blue-700">{seoGooglePreview.title}</p>
             <p className="text-sm text-emerald-700">{seoGooglePreview.canonicalPath}</p>
             <p className="mt-2 text-sm text-slate-700">{seoGooglePreview.description}</p>
-          </div>
-
-          <div className="grid gap-3 lg:grid-cols-2">
-            <div className="rounded-xl border border-slate-200 bg-white p-4">
-              <p className="text-sm font-semibold text-slate-800">Score SEO</p>
-              <p className="mt-1 text-2xl font-bold text-slate-900">{seoScore ?? '—'}</p>
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-white p-4">
-              <p className="text-sm font-semibold text-slate-800">Checklist SEO</p>
-              <ul className="mt-2 space-y-1 text-sm">
-                {seoChecks.length > 0 ? (
-                  seoChecks.map((check) => (
-                    <li
-                      key={`${check.code}-${check.message}`}
-                      className={
-                        check.level === 'ok'
-                          ? 'text-emerald-700'
-                          : check.level === 'warning'
-                            ? 'text-amber-700'
-                            : 'text-slate-600'
-                      }
-                    >
-                      {check.message}
-                    </li>
-                  ))
-                ) : (
-                  <li className="text-slate-500">Aucune checklist disponible pour le moment.</li>
-                )}
-              </ul>
-            </div>
           </div>
 
           {seoWarnings.length > 0 && (
@@ -1476,10 +1455,291 @@ export default function StayDraftReviewForm({
               </ul>
             </div>
           )}
+
+          <button
+            type="button"
+            onClick={() => setSeoAdvancedVisible((current) => !current)}
+            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
+          >
+            {seoAdvancedVisible ? 'Masquer les options SEO avancées' : 'Afficher les options SEO avancées'}
+          </button>
+
+          {seoAdvancedVisible ? (
+            <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-4">
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-slate-700">Mots-clés secondaires</p>
+                <div className="flex flex-wrap gap-2">
+                  {seoSecondaryKeywords.map((keyword) => (
+                    <span
+                      key={keyword}
+                      className="inline-flex items-center gap-2 rounded-full bg-slate-50 px-3 py-1 text-xs font-medium text-slate-700"
+                    >
+                      {keyword}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setSeoSecondaryKeywords((current) => current.filter((item) => item !== keyword))
+                        }
+                        className="text-slate-500 hover:text-slate-800"
+                        aria-label={`Supprimer ${keyword}`}
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <input
+                    value={seoSecondaryInput}
+                    onChange={(event) => setSeoSecondaryInput(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        pushSeoTag(seoSecondaryInput, setSeoSecondaryKeywords);
+                        setSeoSecondaryInput('');
+                      }
+                    }}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                    placeholder="Ajouter un mot-clé secondaire"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      pushSeoTag(seoSecondaryInput, setSeoSecondaryKeywords);
+                      setSeoSecondaryInput('');
+                    }}
+                    className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700"
+                  >
+                    Ajouter
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="block text-sm font-medium text-slate-700">
+                  Ville cible SEO
+                  <input
+                    value={seoTargetCity}
+                    onChange={(event) => setSeoTargetCity(event.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2"
+                    placeholder="Ex. Biarritz"
+                  />
+                </label>
+                <label className="block text-sm font-medium text-slate-700">
+                  Région cible SEO
+                  <input
+                    value={seoTargetRegion}
+                    onChange={(event) => setSeoTargetRegion(event.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2"
+                    placeholder="Ex. Nouvelle-Aquitaine"
+                  />
+                </label>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-slate-700">Intentions de recherche associées</p>
+                <div className="flex flex-wrap gap-2">
+                  {seoSearchIntents.map((intent) => (
+                    <span
+                      key={intent}
+                      className="inline-flex items-center gap-2 rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700"
+                    >
+                      {intent}
+                      <button
+                        type="button"
+                        onClick={() => setSeoSearchIntents((current) => current.filter((item) => item !== intent))}
+                        className="text-amber-600 hover:text-amber-800"
+                        aria-label={`Supprimer ${intent}`}
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <input
+                    value={seoIntentInput}
+                    onChange={(event) => setSeoIntentInput(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        pushSeoTag(seoIntentInput, setSeoSearchIntents);
+                        setSeoIntentInput('');
+                      }
+                    }}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                    placeholder="Ex. séjour sportif adolescents"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      pushSeoTag(seoIntentInput, setSeoSearchIntents);
+                      setSeoIntentInput('');
+                    }}
+                    className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700"
+                  >
+                    Ajouter
+                  </button>
+                </div>
+              </div>
+
+              {seoSuggestions.length > 0 ? (
+                <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Suggestions intelligentes
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {seoSuggestions.map((suggestion) => (
+                      <div
+                        key={suggestion}
+                        className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs"
+                      >
+                        <p className="font-medium text-slate-800">{suggestion}</p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setSeoPrimaryKeyword(suggestion)}
+                            className="rounded-md border border-slate-300 px-2 py-1 font-semibold text-slate-700"
+                          >
+                            Principal
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => pushSeoTag(suggestion, setSeoSecondaryKeywords)}
+                            className="rounded-md border border-slate-300 px-2 py-1 font-semibold text-slate-700"
+                          >
+                            Secondaire
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => pushSeoTag(suggestion, setSeoSearchIntents)}
+                            className="rounded-md border border-slate-300 px-2 py-1 font-semibold text-slate-700"
+                          >
+                            Intention
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              <label className="block text-sm font-medium text-slate-700">
+                Intro SEO
+                <textarea
+                  value={seoIntroText}
+                  onChange={(event) => setSeoIntroText(event.target.value)}
+                  rows={3}
+                  className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2"
+                  placeholder="Paragraphe d'introduction SEO"
+                />
+              </label>
+
+              <div className="grid gap-4 lg:grid-cols-2">
+                <label className="block text-sm font-medium text-slate-700">
+                  Variante H1 (optionnel)
+                  <input
+                    value={seoH1Variant}
+                    onChange={(event) => setSeoH1Variant(event.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2"
+                  />
+                </label>
+
+                <label className="block text-sm font-medium text-slate-700">
+                  Slug candidat (sans impact canonique)
+                  <input
+                    value={seoSlugCandidate}
+                    onChange={(event) => setSeoSlugCandidate(event.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2"
+                  />
+                </label>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-slate-700">Suggestions d’ancres de maillage interne</p>
+                <div className="flex flex-wrap gap-2">
+                  {seoInternalAnchors.map((anchor) => (
+                    <span
+                      key={anchor}
+                      className="inline-flex items-center gap-2 rounded-full bg-slate-50 px-3 py-1 text-xs font-medium text-slate-700"
+                    >
+                      {anchor}
+                      <button
+                        type="button"
+                        onClick={() => setSeoInternalAnchors((current) => current.filter((item) => item !== anchor))}
+                        className="text-slate-500 hover:text-slate-800"
+                        aria-label={`Supprimer ${anchor}`}
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <input
+                    value={seoAnchorInput}
+                    onChange={(event) => setSeoAnchorInput(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        pushSeoTag(seoAnchorInput, setSeoInternalAnchors);
+                        setSeoAnchorInput('');
+                      }
+                    }}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                    placeholder="Ajouter une ancre interne"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      pushSeoTag(seoAnchorInput, setSeoInternalAnchors);
+                      setSeoAnchorInput('');
+                    }}
+                    className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700"
+                  >
+                    Ajouter
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid gap-3 lg:grid-cols-2">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-sm font-semibold text-slate-800">Score SEO</p>
+                  <p className="mt-1 text-2xl font-bold text-slate-900">{seoScore ?? '—'}</p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-sm font-semibold text-slate-800">Checklist SEO</p>
+                  <ul className="mt-2 space-y-1 text-sm">
+                    {seoChecks.length > 0 ? (
+                      seoChecks.map((check) => (
+                        <li
+                          key={`${check.code}-${check.message}`}
+                          className={
+                            check.level === 'ok'
+                              ? 'text-emerald-700'
+                              : check.level === 'warning'
+                                ? 'text-amber-700'
+                                : 'text-slate-600'
+                          }
+                        >
+                          {check.message}
+                        </li>
+                      ))
+                    ) : (
+                      <li className="text-slate-500">Aucune checklist disponible pour le moment.</li>
+                    )}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          ) : null}
         </section>
         )}
 
+<<<<<<< HEAD
         {effectiveStep === 'sessions' && (
+=======
+>>>>>>> e5fd835 (changement SEO)
         <DraftSessionsEditor
           value={sessionsList}
           onChange={setSessionsList}

@@ -18,6 +18,8 @@ export default function StayDraftEnrichLauncher({
   aiSuccess = false
 }: StayDraftEnrichLauncherProps) {
   const [draftId, setDraftId] = useState(initialDraftId || aiDraftId || '');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [progress, setProgress] = useState(0);
 
   useEffect(() => {
     const onDraftCreated = (event: Event) => {
@@ -33,12 +35,28 @@ export default function StayDraftEnrichLauncher({
       window.removeEventListener('resacolo:stay-draft-created', onDraftCreated as EventListener);
   }, []);
 
+  useEffect(() => {
+    if (!isSubmitting) return;
+    const interval = window.setInterval(() => {
+      setProgress((current) => {
+        if (current >= 92) return current;
+        const delta = Math.max(1, Math.round((100 - current) / 12));
+        return Math.min(92, current + delta);
+      });
+    }, 180);
+    return () => window.clearInterval(interval);
+  }, [isSubmitting]);
+
   return (
     <>
       <form
         action="/api/stay-drafts/enrich"
         method="post"
         className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end"
+        onSubmit={() => {
+          setProgress(10);
+          setIsSubmitting(true);
+        }}
       >
         <label className="block flex-1 text-sm font-medium text-slate-700">
           ID du draft
@@ -54,12 +72,26 @@ export default function StayDraftEnrichLauncher({
         </label>
         <input type="hidden" name="organizerId" value={organizerId} />
         <input type="hidden" name="force" value="true" />
-        <button
-          type="submit"
-          className="h-10 rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white"
-        >
-          Enrichir avec IA
-        </button>
+        <div className="w-full sm:w-56">
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            aria-busy={isSubmitting}
+            className="h-10 w-full rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white disabled:cursor-wait disabled:opacity-80"
+          >
+            {isSubmitting ? 'Enrichissement...' : 'Enrichir avec IA'}
+          </button>
+          {isSubmitting ? (
+            <div className="mt-2" aria-live="polite" aria-label="Progression de l'enrichissement IA">
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
+                <div
+                  className="h-full rounded-full bg-emerald-600 transition-all duration-200 ease-out"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+            </div>
+          ) : null}
+        </div>
       </form>
 
       {aiSuccess && aiDraftId ? (

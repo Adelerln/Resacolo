@@ -437,6 +437,21 @@ export type PaginatedDepartureTableData = {
   priceFrom: number | null;
 };
 
+export type ZigotoursDepartureDataResult = {
+  data: PaginatedDepartureTableData | null;
+  endpointUrl: string | null;
+  stayId: string | null;
+  rowCount: number;
+  reason:
+    | 'ok'
+    | 'missing_stay_id'
+    | 'invalid_endpoint_url'
+    | 'http_error'
+    | 'invalid_json'
+    | 'empty_rows';
+  statusCode: number | null;
+};
+
 export type FetchedHtml = {
   html: string;
   finalUrl: string;
@@ -2559,6 +2574,298 @@ function parseAjaxNumericAmount(value: unknown): number | null {
   return null;
 }
 
+function parseAjaxDecimalAmount(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value !== 'string') return null;
+
+  const cleaned = normalizeWhitespace(value)
+    .replace(/\u00a0/g, ' ')
+    .replace(/[^\d,.\-\s]/g, '')
+    .trim();
+  if (!cleaned) return null;
+
+  let normalized = cleaned.replace(/\s+/g, '');
+  if (normalized.includes(',') && normalized.includes('.')) {
+    if (normalized.lastIndexOf(',') > normalized.lastIndexOf('.')) {
+      normalized = normalized.replace(/\./g, '').replace(',', '.');
+    } else {
+      normalized = normalized.replace(/,/g, '');
+    }
+  } else if (normalized.includes(',')) {
+    normalized = normalized.replace(',', '.');
+  } else {
+    normalized = normalized.replace(/\.(?=\d{3}(?:\.|$))/g, '');
+  }
+
+  const amount = Number(normalized);
+  if (!Number.isFinite(amount) || amount < 0 || amount > 20_000) return null;
+  return Number(amount.toFixed(2));
+}
+
+type RawZigotoursDepartureRow = Record<string, unknown>;
+
+type ZigotoursSessionParsedRow = {
+  sessionKey: string;
+  label: string;
+  startDate: string;
+  endDate: string;
+  city: string | null;
+  totalPriceEur: number | null;
+  transportEur: number | null;
+  isFull: boolean;
+  isExplicitBase: boolean;
+};
+
+function parseSlashDateToIso(raw: string, preferMonthFirst: boolean): string | null {
+  const normalized = normalizeWhitespace(raw).replace(/\./g, '/').replace(/-/g, '/');
+  const match = normalized.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!match) return null;
+  const first = Number(match[1]);
+  const second = Number(match[2]);
+  const year = Number(match[3]);
+  if (!Number.isFinite(first) || !Number.isFinite(second) || !Number.isFinite(year)) return null;
+
+  let day = first;
+  let month = second;
+  if (first <= 12 && second > 12) {
+    month = first;
+    day = second;
+  } else if (first <= 12 && second <= 12 && preferMonthFirst) {
+    month = first;
+    day = second;
+  }
+
+  return toIsoDate(day, month, year);
+}
+
+function parseZigotoursDateRangeLabel(value: string): { start: string | null; end: string | null } | null {
+  const normalized = normalizeWhitespace(value);
+  if (!normalized) return null;
+  const match = normalized.match(
+    /(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4})\s*(?:au|a|à|-)\s*(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4})/i
+  );
+  if (!match?.[1] || !match[2]) return null;
+  return {
+    start: parseFrenchDate(match[1]) ?? parseSlashDateToIso(match[1], false),
+    end: parseFrenchDate(match[2]) ?? parseSlashDateToIso(match[2], false)
+  };
+}
+
+function parseZigotoursSessionRow(row: RawZigotoursDepartureRow): ZigotoursSessionParsedRow | null {
+  const startFromDt = parseSlashDateToIso(String(row.dtDb ?? ''), true);
+  const endFromDt = parseSlashDateToIso(String(row.dtFn ?? ''), true);
+  const fromLabel = parseZigotoursDateRangeLabel(String(row.date ?? ''));
+  const startDate = startFromDt ?? fromLabel?.start ?? null;
+  const endDate = endFromDt ?? fromLabel?.end ?? null;
+  if (!startDate || !endDate) return null;
+
+  const rawCity = normalizeWhitespace(String(row.nomVille ?? row.ville ?? ''));
+  const city = normalizeTransportCityLabel(rawCity);
+  const cityKey = simplifyForMatch(city ?? rawCity);
+  const transportEur = parseAjaxDecimalAmount(row.transport);
+  const isExplicitBase =
+    cityKey.includes('sur place') ||
+    row.ville === 0 ||
+    normalizeWhitespace(String(row.ville ?? '')) === '0';
+  const isFull =
+    row.complet === true ||
+    row.complet === 1 ||
+    normalizeWhitespace(String(row.complet ?? '')) === '1';
+  const totalPriceEur = parseAjaxDecimalAmount(row.prixAvecRemise) ?? parseAjaxDecimalAmount(row.prixSansRemise);
+  const label = normalizeWhitespace(String(row.date ?? '')) || `Du ${startDate} au ${endDate}`;
+
+  return {
+    sessionKey: `${startDate}|${endDate}`,
+    label,
+    startDate,
+    endDate,
+    city,
+    totalPriceEur,
+    transportEur,
+    isFull,
+    isExplicitBase
+  };
+}
+
+function buildZigotoursDepartureDataFromRows(
+  rows: RawZigotoursDepartureRow[],
+  sourceUrl: string
+): PaginatedDepartureTableData | null {
+  if (!Array.isArray(rows) || rows.length === 0) return null;
+
+  const sessionMap = new Map<
+    string,
+    {
+      session: DraftSessionItem;
+      rows: ZigotoursSessionParsedRow[];
+    }
+  >();
+
+  for (const row of rows) {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) continue;
+    const parsedRow = parseZigotoursSessionRow(row);
+    if (!parsedRow) continue;
+
+    const existing = sessionMap.get(parsedRow.sessionKey) ?? {
+      session: {
+        label: parsedRow.label,
+        start_date: parsedRow.startDate,
+        end_date: parsedRow.endDate,
+        price: null,
+        availability: parsedRow.isFull ? 'full' : 'available'
+      } satisfies DraftSessionItem,
+      rows: []
+    };
+
+    if (existing.session.availability !== 'available' && !parsedRow.isFull) {
+      existing.session.availability = 'available';
+    }
+    existing.rows.push(parsedRow);
+    sessionMap.set(parsedRow.sessionKey, existing);
+  }
+
+  if (sessionMap.size === 0) return null;
+
+  for (const entry of Array.from(sessionMap.values())) {
+    const explicitBase = entry.rows.find((row) => row.isExplicitBase && typeof row.totalPriceEur === 'number');
+    const minTotal = entry.rows
+      .map((row) => row.totalPriceEur)
+      .filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
+      .sort((a, b) => a - b)[0];
+    const basePrice = explicitBase?.totalPriceEur ?? minTotal ?? null;
+    entry.session.price = basePrice != null ? Number(basePrice.toFixed(2)) : null;
+  }
+
+  const sessions = Array.from(sessionMap.values())
+    .map((entry) => entry.session)
+    .sort((left, right) =>
+      `${left.start_date ?? ''}|${left.end_date ?? ''}`.localeCompare(
+        `${right.start_date ?? ''}|${right.end_date ?? ''}`,
+        'fr'
+      )
+    );
+  if (sessions.length === 0) return null;
+
+  const allSessionKeys = sessions.map((session, index) =>
+    draftSessionStableKey(session as Record<string, unknown>, index)
+  );
+  const sessionIndexByPeriod = new Map<string, string>(
+    sessions.map((session, index) => [
+      `${session.start_date ?? ''}|${session.end_date ?? ''}`,
+      allSessionKeys[index] ?? `idx:${index}`
+    ])
+  );
+
+  const transportByCity = new Map<
+    string,
+    {
+      city: string;
+      includedSessionKeys: Set<string>;
+      amountCounts: Map<number, number>;
+    }
+  >();
+  const transportPriceDebug: DraftTransportPriceDebug[] = [];
+
+  for (const [sessionKey, entry] of Array.from(sessionMap.entries())) {
+    const stableSessionKey = sessionIndexByPeriod.get(sessionKey) ?? sessionKey;
+    const sessionBaseEur =
+      typeof entry.session.price === 'number' && Number.isFinite(entry.session.price)
+        ? entry.session.price
+        : null;
+
+    for (const row of entry.rows) {
+      if (row.isExplicitBase || !row.city) continue;
+
+      const deltaEur =
+        row.transportEur ??
+        (row.totalPriceEur != null && sessionBaseEur != null
+          ? Number((row.totalPriceEur - sessionBaseEur).toFixed(2))
+          : null);
+      const amountCents =
+        deltaEur != null && Number.isFinite(deltaEur) && deltaEur >= 0
+          ? Math.round(deltaEur * 100)
+          : null;
+      if (amountCents == null) continue;
+
+      const cityKey = simplifyForMatch(row.city);
+      const existing = transportByCity.get(cityKey) ?? {
+        city: row.city,
+        includedSessionKeys: new Set<string>(),
+        amountCounts: new Map<number, number>()
+      };
+      existing.includedSessionKeys.add(stableSessionKey);
+      existing.amountCounts.set(amountCents, (existing.amountCounts.get(amountCents) ?? 0) + 1);
+      transportByCity.set(cityKey, existing);
+
+      transportPriceDebug.push({
+        variant_url: sourceUrl,
+        departure_city: row.city,
+        return_city: row.city,
+        page_price_cents:
+          row.totalPriceEur != null && Number.isFinite(row.totalPriceEur)
+            ? Math.round(row.totalPriceEur * 100)
+            : null,
+        base_price_cents:
+          sessionBaseEur != null && Number.isFinite(sessionBaseEur)
+            ? Math.round(sessionBaseEur * 100)
+            : null,
+        amount_cents: amountCents,
+        pricing_method: row.transportEur != null ? 'absolute_price' : 'session_delta',
+        confidence: row.transportEur != null ? 'high' : 'medium',
+        reason: `zigotours-getDepartDetails:${stableSessionKey}`,
+        departure_label_raw: row.city,
+        return_label_raw: row.city
+      });
+    }
+  }
+
+  const transportOptions = Array.from(transportByCity.values())
+    .map((entry): DraftTransportOptionItem | null => {
+      const amountCents = Array.from(entry.amountCounts.entries()).sort((a, b) => {
+        if (b[1] !== a[1]) return b[1] - a[1];
+        return a[0] - b[0];
+      })[0]?.[0] ?? null;
+      if (amountCents == null) return null;
+      return {
+        label: entry.city,
+        departure_city: entry.city,
+        return_city: entry.city,
+        amount_cents: amountCents,
+        price: Number((amountCents / 100).toFixed(2)),
+        currency: 'EUR',
+        source_url: sourceUrl,
+        excluded_session_keys: allSessionKeys.filter((key) => !entry.includedSessionKeys.has(key))
+      };
+    })
+    .filter((row): row is DraftTransportOptionItem => row !== null)
+    .sort((left, right) => String(left.label).localeCompare(String(right.label), 'fr'));
+
+  const transportVariants = transportOptions.map((row) => ({
+    departure_city: row.departure_city,
+    return_city: row.return_city,
+    amount_cents: Number.isFinite(row.amount_cents) ? Math.round(row.amount_cents) : null,
+    currency: 'EUR' as const,
+    source_url: row.source_url || sourceUrl,
+    pricing_method: 'absolute_price' as const,
+    confidence: 'high' as const,
+    reason: 'zigotours-getDepartDetails'
+  }));
+
+  const sessionPrices = sessions
+    .map((session) => session.price)
+    .filter((price): price is number => typeof price === 'number' && Number.isFinite(price) && price > 0);
+  const distinctSessionPrices = Array.from(new Set(sessionPrices));
+
+  return {
+    rowCount: rows.length,
+    sessions,
+    transportOptions,
+    transportVariants,
+    transportPriceDebug,
+    priceFrom: distinctSessionPrices.length === 1 ? distinctSessionPrices[0] : null
+  };
+}
+
 function buildPaginatedDepartureTableDataFromRows(
   rows: RawDepartureTableAjaxRow[],
   sourceUrl: string
@@ -2842,6 +3149,163 @@ export async function fetchPaginatedDepartureTableData(
     return buildPaginatedDepartureTableDataFromRows(dataRows, query.toString());
   } catch {
     return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function detectZigotoursStayId($: CheerioAPI, sourceUrl: string): string | null {
+  const stayIdFromInput = normalizeWhitespace(
+    $('#sejourId').attr('value') ??
+      $('input#sejourId').attr('value') ??
+      $('input[name="sejour_id"]').first().attr('value') ??
+      ''
+  );
+  if (stayIdFromInput) return stayIdFromInput;
+
+  try {
+    const parsed = new URL(sourceUrl);
+    const inQuery = normalizeWhitespace(parsed.searchParams.get('sejour_id') ?? '');
+    if (inQuery) return inQuery;
+    const fromPath = normalizeWhitespace(parsed.pathname.match(/\/tarifsejour\/(\d+)/i)?.[1] ?? '');
+    if (fromPath) return fromPath;
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+function detectZigotoursEndpointPath($: CheerioAPI): string {
+  const dynamicPath = normalizeWhitespace(
+    $('.urlDepart').first().attr('value') ??
+      $('input.urlDepart').first().attr('value') ??
+      $('input[name="urlDepart"]').first().attr('value') ??
+      ''
+  );
+  return dynamicPath || '/getDepartDetails';
+}
+
+export async function fetchZigotoursDepartureData(
+  html: string,
+  sourceUrl: string
+): Promise<ZigotoursDepartureDataResult> {
+  const $ = load(html);
+  const stayId = detectZigotoursStayId($, sourceUrl);
+  if (!stayId) {
+    return {
+      data: null,
+      endpointUrl: null,
+      stayId: null,
+      rowCount: 0,
+      reason: 'missing_stay_id',
+      statusCode: null
+    };
+  }
+
+  const endpointPath = detectZigotoursEndpointPath($);
+  let endpointUrl: string;
+  try {
+    endpointUrl = new URL(endpointPath, sourceUrl).toString();
+  } catch {
+    return {
+      data: null,
+      endpointUrl: null,
+      stayId,
+      rowCount: 0,
+      reason: 'invalid_endpoint_url',
+      statusCode: null
+    };
+  }
+
+  const query = new URL(endpointUrl);
+  query.searchParams.set('sejour_id', stayId);
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(query.toString(), {
+      method: 'GET',
+      redirect: 'follow',
+      signal: controller.signal,
+      headers: {
+        'user-agent':
+          'Mozilla/5.0 (compatible; ResacoloImportBot/1.0; +https://resacolo.com)',
+        accept: 'application/json,text/plain,*/*',
+        'accept-language': 'fr-FR,fr;q=0.9,en;q=0.8',
+        'x-requested-with': 'XMLHttpRequest'
+      }
+    });
+    if (!response.ok) {
+      return {
+        data: null,
+        endpointUrl: query.toString(),
+        stayId,
+        rowCount: 0,
+        reason: 'http_error',
+        statusCode: response.status
+      };
+    }
+
+    const payload = (await response.json().catch(() => null)) as unknown;
+    const rows = Array.isArray(payload)
+      ? payload
+      : payload && typeof payload === 'object' && Array.isArray((payload as { data?: unknown }).data)
+        ? ((payload as { data: unknown[] }).data ?? [])
+        : [];
+    if (!Array.isArray(rows)) {
+      return {
+        data: null,
+        endpointUrl: query.toString(),
+        stayId,
+        rowCount: 0,
+        reason: 'invalid_json',
+        statusCode: response.status
+      };
+    }
+    if (rows.length === 0) {
+      return {
+        data: null,
+        endpointUrl: query.toString(),
+        stayId,
+        rowCount: 0,
+        reason: 'empty_rows',
+        statusCode: response.status
+      };
+    }
+
+    const parsed = buildZigotoursDepartureDataFromRows(
+      rows.filter((row): row is RawZigotoursDepartureRow => Boolean(row) && typeof row === 'object'),
+      query.toString()
+    );
+    if (!parsed) {
+      return {
+        data: null,
+        endpointUrl: query.toString(),
+        stayId,
+        rowCount: rows.length,
+        reason: 'empty_rows',
+        statusCode: response.status
+      };
+    }
+
+    return {
+      data: parsed,
+      endpointUrl: query.toString(),
+      stayId,
+      rowCount: rows.length,
+      reason: 'ok',
+      statusCode: response.status
+    };
+  } catch {
+    return {
+      data: null,
+      endpointUrl: query.toString(),
+      stayId,
+      rowCount: 0,
+      reason: 'http_error',
+      statusCode: null
+    };
   } finally {
     clearTimeout(timeout);
   }

@@ -2,6 +2,7 @@ import {
   buildStaySessionMergeKey,
   extractCeslStructuredBookingData,
   fetchPaginatedDepartureTableData,
+  fetchZigotoursDepartureData,
   extractJsonLdOfferPricesFromHtml,
   extractStayData,
   extractThalieOptionUrlPricing,
@@ -14,7 +15,8 @@ import {
   pickImportedSessionReferencePriceCents,
   selectBestStayImages,
   type DraftTransportPriceDebug,
-  type DraftTransportVariant
+  type DraftTransportVariant,
+  type ZigotoursDepartureDataResult
 } from '@/lib/stay-draft-import';
 import { load } from 'cheerio';
 import {
@@ -72,6 +74,29 @@ function countUsableSessions(
   return (sessions ?? []).filter((row) => Boolean(row.start_date || row.end_date || row.label)).length;
 }
 
+function countDatedSessions(
+  sessions: ReturnType<typeof extractStayData>['sessionsJson']
+): number {
+  return (sessions ?? []).filter((row) => Boolean(row.start_date && row.end_date)).length;
+}
+
+function buildSessionQualitySignature(
+  sessions: ReturnType<typeof extractStayData>['sessionsJson']
+): string {
+  return (sessions ?? [])
+    .map((session) =>
+      [
+        String(session.start_date ?? ''),
+        String(session.end_date ?? ''),
+        String(session.label ?? ''),
+        String(session.price ?? ''),
+        String(session.availability ?? '')
+      ].join('|')
+    )
+    .sort((a, b) => a.localeCompare(b, 'fr'))
+    .join('||');
+}
+
 function countPricedTransportVariants(variants: DraftTransportVariant[]): number {
   return variants.filter(
     (variant) =>
@@ -79,6 +104,108 @@ function countPricedTransportVariants(variants: DraftTransportVariant[]): number
       Number.isFinite(variant.amount_cents) &&
       variant.amount_cents >= 0
   ).length;
+}
+
+function countPricedTransportOptions(rows: Array<Record<string, unknown>>): number {
+  return rows.filter((row) => {
+    const amountCents = Number(row.amount_cents);
+    if (Number.isFinite(amountCents) && amountCents >= 0) return true;
+    const price = Number(row.price);
+    return Number.isFinite(price) && price >= 0;
+  }).length;
+}
+
+async function runZigotoursFallback(params: {
+  html: string;
+  pageUrl: string;
+  includePricing: boolean;
+  baseSessions: ReturnType<typeof extractStayData>['sessionsJson'];
+  baseTransportVariants: DraftTransportVariant[];
+}) {
+  const beforeSessionCount = countUsableSessions(params.baseSessions);
+  const beforeDatedSessionCount = countDatedSessions(params.baseSessions);
+  const beforeSessionSignature = buildSessionQualitySignature(params.baseSessions);
+  const beforePricedTransportCount = countPricedTransportVariants(params.baseTransportVariants);
+  const baseTransportOptionsCount = countPricedTransportOptions(
+    buildDraftTransportOptionsFromVariants(params.baseTransportVariants)
+  );
+  const fetchResult: ZigotoursDepartureDataResult = await fetchZigotoursDepartureData(
+    params.html,
+    params.pageUrl
+  );
+
+  const zigotoursData = fetchResult.data;
+  const zigotoursDatedSessionCount = countDatedSessions(zigotoursData?.sessions ?? null);
+  const shouldReplaceSessionsWithZigotours = Boolean(
+    zigotoursData &&
+      zigotoursDatedSessionCount > 0 &&
+      (zigotoursDatedSessionCount >= beforeDatedSessionCount || beforeDatedSessionCount === 0)
+  );
+  const mergedSessions = shouldReplaceSessionsWithZigotours
+    ? zigotoursData?.sessions ?? params.baseSessions
+    : zigotoursData
+      ? mergeExtractedSessions(params.baseSessions, zigotoursData.sessions)
+      : params.baseSessions;
+  const mergedTransportVariants =
+    params.includePricing && zigotoursData
+      ? mergeTransportVariants(params.baseTransportVariants, zigotoursData.transportVariants)
+      : params.baseTransportVariants;
+
+  const afterSessionCount = countUsableSessions(mergedSessions);
+  const afterDatedSessionCount = countDatedSessions(mergedSessions);
+  const afterSessionSignature = buildSessionQualitySignature(mergedSessions);
+  const afterPricedTransportCount = countPricedTransportVariants(mergedTransportVariants);
+  const fetchedTransportOptionsCount = countPricedTransportOptions(zigotoursData?.transportOptions ?? []);
+  const improvedSessions =
+    afterSessionSignature !== beforeSessionSignature &&
+    (afterDatedSessionCount >= beforeDatedSessionCount || afterSessionCount > beforeSessionCount);
+  const improvedTransport = afterPricedTransportCount > beforePricedTransportCount;
+  const improvedTransportOptions =
+    params.includePricing && fetchedTransportOptionsCount > baseTransportOptionsCount;
+
+  return {
+    sessions: mergedSessions,
+    transportVariants: mergedTransportVariants,
+    transportPriceDebug: zigotoursData?.transportPriceDebug ?? [],
+    transportOptionsOverride:
+      params.includePricing && improvedTransportOptions && (zigotoursData?.transportOptions.length ?? 0) > 0
+        ? zigotoursData?.transportOptions ?? null
+        : null,
+    debrief: {
+      enabled: true,
+      triggered: true,
+      endpoint_url: fetchResult.endpointUrl,
+      sejour_id: fetchResult.stayId,
+      fetch_reason: fetchResult.reason,
+      fetch_status_code: fetchResult.statusCode,
+      source_rows_count: fetchResult.rowCount,
+      zigotours_data: zigotoursData
+        ? {
+            sessions_count: zigotoursData.sessions.length,
+            transport_options_count: zigotoursData.transportOptions.length,
+            transport_variants_count: zigotoursData.transportVariants.length
+          }
+        : null,
+      before: {
+        sessions_count: beforeSessionCount,
+        dated_sessions_count: beforeDatedSessionCount,
+        priced_transport_count: beforePricedTransportCount,
+        priced_transport_options_count: baseTransportOptionsCount
+      },
+      after: {
+        sessions_count: afterSessionCount,
+        dated_sessions_count: afterDatedSessionCount,
+        priced_transport_count: afterPricedTransportCount,
+        priced_transport_options_count: fetchedTransportOptionsCount
+      },
+      improved: {
+        sessions: improvedSessions,
+        transport: improvedTransport,
+        transport_options: improvedTransportOptions
+      },
+      applied_session_strategy: shouldReplaceSessionsWithZigotours ? 'zigotours-authoritative' : 'merged'
+    }
+  };
 }
 
 type ColosFallbackCandidate = {
@@ -872,6 +999,7 @@ export async function runStayImportInBackground(params: {
     }
     const isThalieImport = Boolean(sourceHost?.includes('thalie.eu'));
     const isColosBonheurImport = Boolean(sourceHost?.includes('colosdubonheur.fr'));
+    const isZigotoursImport = Boolean(sourceHost?.includes('zigotours.com'));
     const forcePlaywright = envTruthy(process.env.IMPORT_STAY_FORCE_PLAYWRIGHT);
     const needsDynamicImages = shouldUsePlaywrightForDynamicImages(fetchedHtml.html, extracted.images.length);
     const needsDynamicSessions = shouldUsePlaywrightForDynamicSessions(fetchedHtml.html);
@@ -1058,6 +1186,55 @@ export async function runStayImportInBackground(params: {
               ])
         ]
       : [];
+    let zigotoursFallbackDebrief: Record<string, unknown> | null = null;
+    let zigotoursTransportOptionsOverride: Array<Record<string, unknown>> | null = null;
+    if (isZigotoursImport) {
+      const sessionsMissing = countUsableSessions(extractedForDraft.sessionsJson) === 0;
+      const datedSessionsMissing = countDatedSessions(extractedForDraft.sessionsJson) === 0;
+      const transportMissing = includePricing && countPricedTransportVariants(transportVariants) === 0;
+      if (sessionsMissing || datedSessionsMissing || transportMissing) {
+        const fallbackResult = await runZigotoursFallback({
+          html: effectiveHtml,
+          pageUrl: effectiveFinalUrl,
+          includePricing,
+          baseSessions: extractedForDraft.sessionsJson,
+          baseTransportVariants: transportVariants
+        });
+        const improvedSessions = Boolean(
+          (fallbackResult.debrief.improved as Record<string, unknown>)?.sessions
+        );
+        const improvedTransport = Boolean(
+          (fallbackResult.debrief.improved as Record<string, unknown>)?.transport
+        );
+
+        if (improvedSessions) {
+          extractedForDraft = {
+            ...extractedForDraft,
+            sessionsJson: fallbackResult.sessions
+          };
+        }
+        if (improvedTransport) {
+          transportVariants = fallbackResult.transportVariants;
+          transportPriceDebug = [...transportPriceDebug, ...fallbackResult.transportPriceDebug];
+        }
+        if ((fallbackResult.transportOptionsOverride?.length ?? 0) > 0) {
+          zigotoursTransportOptionsOverride = fallbackResult.transportOptionsOverride;
+        }
+        zigotoursFallbackDebrief = fallbackResult.debrief;
+      } else {
+        zigotoursFallbackDebrief = {
+          enabled: true,
+          triggered: false,
+          reason: 'base-import-already-had-dated-sessions-and-transport-pricing',
+          before: {
+            sessions_count: countUsableSessions(extractedForDraft.sessionsJson),
+            dated_sessions_count: countDatedSessions(extractedForDraft.sessionsJson),
+            priced_transport_count: countPricedTransportVariants(transportVariants)
+          }
+        };
+      }
+    }
+
     let colosFallbackDebrief: Record<string, unknown> | null = null;
     let colosTransportOptionsOverride: Array<Record<string, unknown>> | null = null;
     if (isColosBonheurImport) {
@@ -1108,8 +1285,9 @@ export async function runStayImportInBackground(params: {
     const sessionsStillMissingAfterFallback = countUsableSessions(extractedForDraft.sessionsJson) === 0;
     const transportStillMissingAfterFallback =
       includePricing && countPricedTransportVariants(transportVariants) === 0;
+    const shouldWarnOnPartialImport = isColosBonheurImport || isZigotoursImport;
     const importWarning =
-      isColosBonheurImport && (sessionsStillMissingAfterFallback || transportStillMissingAfterFallback)
+      shouldWarnOnPartialImport && (sessionsStillMissingAfterFallback || transportStillMissingAfterFallback)
         ? sessionsStillMissingAfterFallback && transportStillMissingAfterFallback
           ? "Import partiel: impossible d'extraire des sessions et des tarifs de transport fiables. Vérifiez la source de réservation/tarifs puis complétez manuellement."
           : sessionsStillMissingAfterFallback
@@ -1289,6 +1467,11 @@ export async function runStayImportInBackground(params: {
               force_playwright_flag: forcePlaywright
             }
     };
+    if (zigotoursFallbackDebrief) {
+      Object.assign(importReviewDebrief, {
+        zigotours_fallback: zigotoursFallbackDebrief
+      });
+    }
     if (colosFallbackDebrief) {
       Object.assign(importReviewDebrief, {
         colos_fallback: colosFallbackDebrief
@@ -1328,6 +1511,7 @@ export async function runStayImportInBackground(params: {
         (paginatedDepartureTableData?.transportOptions.length
           ? paginatedDepartureTableData.transportOptions
           : null) ??
+        zigotoursTransportOptionsOverride ??
         (dynamicSnapshot?.tableTransportOptionsFromPlaywright.length
           ? dynamicSnapshot.tableTransportOptionsFromPlaywright
           : null) ??

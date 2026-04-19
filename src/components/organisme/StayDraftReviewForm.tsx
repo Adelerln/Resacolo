@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Building2,
@@ -60,6 +60,10 @@ import type { StayDraftReviewFieldErrors, StayDraftReviewPayload } from '@/types
 type StayDraftReviewFormProps = {
   draftId: string;
   organizerId: string | null;
+  seasonOptions?: Array<{
+    id: string;
+    name: string;
+  }>;
   backHref: string;
   initialPayload: StayDraftReviewPayload;
   initialStatus: string;
@@ -67,11 +71,13 @@ type StayDraftReviewFormProps = {
   initialValidatedByUserId: string | null;
   /** Saisie manuelle : masque la carte Statut / validé en tête du tunnel. */
   hideTopStatusCard?: boolean;
+  variant?: 'draft' | 'published';
   linkedAccommodation?: {
     id: string;
     name: string;
     accommodationType: string | null;
   } | null;
+  publishedSessionsStep?: ReactNode;
 };
 
 type SeoCheck = {
@@ -107,6 +113,72 @@ function resolveDraftCanonicalPath(slugCandidate: string, title: string) {
   const fallback = slugify(sanitizeSeoText(title)) || 'slug-a-definir';
   const finalSlug = normalizedCandidate || fallback;
   return `/sejours/${finalSlug}`;
+}
+
+const SEASON_CARD_ORDER = ['Hiver', 'Printemps', 'Été', 'Automne', 'Toussaint', "Fin d'année"];
+
+function parseIsoDateAtUtcMidnight(value: unknown): Date | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return null;
+  const parsed = new Date(`${trimmed}T00:00:00Z`);
+  return Number.isFinite(parsed.getTime()) ? parsed : null;
+}
+
+function seasonNameFromUtcDate(date: Date): string | null {
+  const month = date.getUTCMonth() + 1;
+  const day = date.getUTCDate();
+
+  if ((month === 12 && day >= 15) || (month === 1 && day <= 15)) return "Fin d'année";
+  if ((month === 1 && day >= 20) || month === 2 || (month === 3 && day <= 15)) return 'Hiver';
+  if ((month === 3 && day >= 20) || month === 4 || (month === 5 && day <= 10)) return 'Printemps';
+  if ((month === 6 && day >= 20) || month === 7 || month === 8 || (month === 9 && day <= 10)) return 'Été';
+  if (month === 10 || (month === 11 && day <= 10)) return 'Toussaint';
+
+  return null;
+}
+
+function normalizeSeasonKey(value: string | null | undefined): string {
+  const normalized = (value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+
+  if (!normalized) return '';
+  if (normalized.includes('fin') && normalized.includes('annee')) return 'fin_annee';
+  if (
+    normalized.includes('toussaint') ||
+    normalized.includes('octobre') ||
+    normalized.includes('automne')
+  ) {
+    return 'toussaint';
+  }
+  if (normalized.includes('hiver')) return 'hiver';
+  if (normalized.includes('printemps')) return 'printemps';
+  if (normalized.includes('ete')) return 'ete';
+  return normalized;
+}
+
+function inferProtectedSeasonNamesFromSessions(sessions: Array<Record<string, unknown>>): string[] {
+  const required = new Set<string>();
+
+  for (const session of sessions) {
+    const start = parseIsoDateAtUtcMidnight(session.start_date);
+    const end = parseIsoDateAtUtcMidnight(session.end_date);
+    if (!start || !end) continue;
+
+    const cursor = new Date(start.getTime());
+    const limit = end.getTime();
+    while (cursor.getTime() <= limit) {
+      const seasonName = seasonNameFromUtcDate(cursor);
+      if (seasonName) required.add(seasonName);
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+    }
+  }
+
+  return Array.from(required);
 }
 
 type DraftReviewStepId =
@@ -162,13 +234,16 @@ function draftReviewNextStep(step: DraftReviewStepId): DraftReviewStepId | null 
 export default function StayDraftReviewForm({
   draftId,
   organizerId,
+  seasonOptions = [],
   backHref,
   initialPayload,
   initialStatus,
   initialValidatedAt,
   initialValidatedByUserId,
   hideTopStatusCard = false,
-  linkedAccommodation = null
+  variant = 'draft',
+  linkedAccommodation = null,
+  publishedSessionsStep = null
 }: StayDraftReviewFormProps) {
   const router = useRouter();
   const [activeStep, setActiveStep] = useState<DraftReviewStepId>(() =>
@@ -182,6 +257,10 @@ export default function StayDraftReviewForm({
   const [summary, setSummary] = useState(initialPayload.summary);
   const [locationText, setLocationText] = useState(initialPayload.location_text);
   const [regionText, setRegionText] = useState(initialPayload.region_text);
+  const [selectedSeasonIds, setSelectedSeasonIds] = useState<string[]>(() => initialPayload.season_ids ?? []);
+  const [selectedSeasonNames, setSelectedSeasonNames] = useState<string[]>(
+    () => initialPayload.season_names ?? []
+  );
   const [description, setDescription] = useState(initialPayload.description);
   const [programText, setProgramText] = useState(initialPayload.program_text);
   const [supervisionText, setSupervisionText] = useState(initialPayload.supervision_text);
@@ -281,6 +360,54 @@ export default function StayDraftReviewForm({
     [selectedCategories]
   );
 
+  const protectedSeasonNames = useMemo(
+    () => inferProtectedSeasonNamesFromSessions(sessionsList),
+    [sessionsList]
+  );
+
+  const protectedSeasonKeys = useMemo(
+    () => new Set(protectedSeasonNames.map((seasonName) => normalizeSeasonKey(seasonName))),
+    [protectedSeasonNames]
+  );
+
+  const normalizedSeasonOptions = useMemo(() => {
+    const map = new Map<string, { id: string; name: string }>();
+
+    for (const option of seasonOptions) {
+      const key = normalizeSeasonKey(option.name);
+      if (!key || map.has(key)) continue;
+      map.set(key, option);
+    }
+
+    for (const fallbackName of SEASON_CARD_ORDER) {
+      const key = normalizeSeasonKey(fallbackName);
+      if (!key || map.has(key)) continue;
+      map.set(key, { id: key, name: fallbackName });
+    }
+
+    return Array.from(map.values()).sort((left, right) => {
+      const indexA = SEASON_CARD_ORDER.findIndex(
+        (candidate) => normalizeSeasonKey(candidate) === normalizeSeasonKey(left.name)
+      );
+      const indexB = SEASON_CARD_ORDER.findIndex(
+        (candidate) => normalizeSeasonKey(candidate) === normalizeSeasonKey(right.name)
+      );
+      if (indexA === -1 && indexB === -1) return left.name.localeCompare(right.name, 'fr');
+      if (indexA === -1) return 1;
+      if (indexB === -1) return -1;
+      return indexA - indexB;
+    });
+  }, [seasonOptions]);
+
+  const selectedSeasonKeySet = useMemo(
+    () =>
+      new Set([
+        ...selectedSeasonNames.map((seasonName) => normalizeSeasonKey(seasonName)),
+        ...protectedSeasonNames.map((seasonName) => normalizeSeasonKey(seasonName))
+      ]),
+    [protectedSeasonNames, selectedSeasonNames]
+  );
+
   const seoInput = useMemo(
     () => ({
       title,
@@ -290,7 +417,7 @@ export default function StayDraftReviewForm({
       programText,
       location: locationText,
       region: regionText,
-      seasonName: '',
+      seasonName: selectedSeasonNames.join(', '),
       ageRange: formatAgeRangeFromAgesText(agesText),
       categories: seoCategoryValues,
       seo: {
@@ -316,6 +443,7 @@ export default function StayDraftReviewForm({
       programText,
       locationText,
       regionText,
+      selectedSeasonNames,
       agesText,
       seoCategoryValues,
       seoPrimaryKeyword,
@@ -424,6 +552,33 @@ export default function StayDraftReviewForm({
         return normalizeStayDraftCategories([...current, categoryLabel]).categories;
       }
       return current.filter((value) => value !== categoryLabel);
+    });
+  }
+
+  function toggleSeason(option: { id: string; name: string }, checked: boolean) {
+    const seasonKey = normalizeSeasonKey(option.name);
+    if (!seasonKey) return;
+    if (!checked && protectedSeasonKeys.has(seasonKey)) return;
+
+    setSelectedSeasonNames((current) => {
+      const next = new Map<string, string>(
+        current.map((seasonName) => [normalizeSeasonKey(seasonName), seasonName] as const)
+      );
+      if (checked) next.set(seasonKey, option.name);
+      else next.delete(seasonKey);
+
+      return normalizedSeasonOptions
+        .filter((candidate) => next.has(normalizeSeasonKey(candidate.name)))
+        .map((candidate) => next.get(normalizeSeasonKey(candidate.name)) ?? candidate.name);
+    });
+
+    setSelectedSeasonIds((current) => {
+      const next = new Set(current);
+      if (checked) next.add(option.id);
+      else next.delete(option.id);
+      return normalizedSeasonOptions
+        .filter((candidate) => next.has(candidate.id))
+        .map((candidate) => candidate.id);
     });
   }
 
@@ -624,12 +779,24 @@ export default function StayDraftReviewForm({
       return { errors: nextErrors };
     }
 
+    const resolvedSeasonNames = normalizedSeasonOptions
+      .filter((option) => selectedSeasonKeySet.has(normalizeSeasonKey(option.name)))
+      .map((option) => option.name);
+    const resolvedSeasonIds = normalizedSeasonOptions
+      .filter((option) => selectedSeasonKeySet.has(normalizeSeasonKey(option.name)))
+      .map((option) => option.id);
+
     const payload: StayDraftReviewPayload = {
       title: normalizedTitle,
+      season_ids: resolvedSeasonIds,
+      season_names: resolvedSeasonNames,
+      season_name: resolvedSeasonNames[0] ?? resolvedSeasonNames.join(', '),
       summary,
       location_text: locationText,
       region_text: regionText,
       description,
+      activities_text: initialPayload.activities_text,
+      required_documents_text: initialPayload.required_documents_text,
       program_text: programText,
       supervision_text: supervisionText,
       transport_text: transportText,
@@ -904,6 +1071,45 @@ export default function StayDraftReviewForm({
           {fieldErrors.title && <span className="mt-1 block text-xs text-rose-600">{fieldErrors.title}</span>}
         </label>
 
+        <section className="rounded-2xl border border-slate-200 bg-white p-4">
+          <div className="space-y-3">
+            <div>
+              <h3 className="text-sm font-medium text-slate-700">Saisons</h3>
+            </div>
+            <div className="grid gap-3 md:grid-cols-5">
+              {normalizedSeasonOptions.map((option) => {
+                const seasonKey = normalizeSeasonKey(option.name);
+                const checked = selectedSeasonKeySet.has(seasonKey);
+                const locked = protectedSeasonKeys.has(seasonKey);
+                return (
+                  <label
+                    key={`${option.id}-${option.name}`}
+                    className={cn(
+                      'flex min-h-[60px] items-center gap-2.5 rounded-xl border px-3 py-2.5 text-sm transition',
+                      checked
+                        ? 'border-emerald-300 bg-emerald-50 text-emerald-900'
+                        : 'border-slate-200 bg-white text-slate-700',
+                      locked && 'cursor-not-allowed'
+                    )}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      disabled={locked && checked}
+                      onChange={(event) => toggleSeason(option, event.target.checked)}
+                      className="h-4 w-4 rounded border-slate-300"
+                    />
+                    <span className="font-medium leading-tight">{option.name}</span>
+                  </label>
+                );
+              })}
+            </div>
+            {fieldErrors.season_ids ? (
+              <span className="block text-xs text-rose-600">{fieldErrors.season_ids}</span>
+            ) : null}
+          </div>
+        </section>
+
         <div className="grid gap-4 md:grid-cols-2">
           <GoogleMapsCityInput
             key={draftId}
@@ -1137,174 +1343,8 @@ export default function StayDraftReviewForm({
             />
           </label>
 
-<<<<<<< HEAD
-          <div className="space-y-2">
-            <p className="text-sm font-medium text-slate-700">Mots-clés secondaires</p>
-            <div className="flex flex-wrap gap-2">
-              {seoSecondaryKeywords.map((keyword) => (
-                <span
-                  key={keyword}
-                  className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 text-xs font-medium text-slate-700"
-                >
-                  {keyword}
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setSeoSecondaryKeywords((current) => current.filter((item) => item !== keyword))
-                    }
-                    className="text-slate-500 hover:text-slate-800"
-                    aria-label={`Supprimer ${keyword}`}
-                  >
-                    ×
-                  </button>
-                </span>
-              ))}
-            </div>
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <input
-                value={seoSecondaryInput}
-                onChange={(event) => setSeoSecondaryInput(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
-                    event.preventDefault();
-                    pushSeoTag(seoSecondaryInput, setSeoSecondaryKeywords);
-                    setSeoSecondaryInput('');
-                  }
-                }}
-                className={draftReviewControlClass({
-                  required: false,
-                  filled: Boolean(seoSecondaryInput.trim()),
-                  omitOuterMargin: true
-                })}
-                placeholder="Ajouter un mot-clé secondaire"
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  pushSeoTag(seoSecondaryInput, setSeoSecondaryKeywords);
-                  setSeoSecondaryInput('');
-                }}
-                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700"
-              >
-                Ajouter
-              </button>
-            </div>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <label className="block text-sm font-medium text-slate-700">
-              Ville cible SEO
-              <input
-                value={seoTargetCity}
-                onChange={(event) => setSeoTargetCity(event.target.value)}
-                className={draftReviewControlClass({
-                  required: false,
-                  filled: Boolean(seoTargetCity.trim())
-                })}
-                placeholder="Ex. Biarritz"
-              />
-            </label>
-            <label className="block text-sm font-medium text-slate-700">
-              Région cible SEO
-              <input
-                value={seoTargetRegion}
-                onChange={(event) => setSeoTargetRegion(event.target.value)}
-                className={draftReviewControlClass({
-                  required: false,
-                  filled: Boolean(seoTargetRegion.trim())
-                })}
-                placeholder="Ex. Nouvelle-Aquitaine"
-              />
-            </label>
-          </div>
-
-          <div className="space-y-2">
-            <p className="text-sm font-medium text-slate-700">Intentions de recherche associées</p>
-            <div className="flex flex-wrap gap-2">
-              {seoSearchIntents.map((intent) => (
-                <span
-                  key={intent}
-                  className="inline-flex items-center gap-2 rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700"
-                >
-                  {intent}
-                  <button
-                    type="button"
-                    onClick={() => setSeoSearchIntents((current) => current.filter((item) => item !== intent))}
-                    className="text-amber-600 hover:text-amber-800"
-                    aria-label={`Supprimer ${intent}`}
-                  >
-                    ×
-                  </button>
-                </span>
-              ))}
-            </div>
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <input
-                value={seoIntentInput}
-                onChange={(event) => setSeoIntentInput(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
-                    event.preventDefault();
-                    pushSeoTag(seoIntentInput, setSeoSearchIntents);
-                    setSeoIntentInput('');
-                  }
-                }}
-                className={draftReviewControlClass({
-                  required: false,
-                  filled: Boolean(seoIntentInput.trim()),
-                  omitOuterMargin: true
-                })}
-                placeholder="Ex. séjour sportif adolescents"
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  pushSeoTag(seoIntentInput, setSeoSearchIntents);
-                  setSeoIntentInput('');
-                }}
-                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700"
-              >
-                Ajouter
-              </button>
-            </div>
-          </div>
-
-          <div className="space-y-2 rounded-xl border border-slate-200 bg-white p-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Suggestions intelligentes</p>
-            <div className="flex flex-wrap gap-2">
-              {seoSuggestions.map((suggestion) => (
-                <div key={suggestion} className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-2 text-xs">
-                  <p className="font-medium text-slate-800">{suggestion}</p>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setSeoPrimaryKeyword(suggestion)}
-                      className="rounded-md border border-slate-300 px-2 py-1 font-semibold text-slate-700"
-                    >
-                      Principal
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => pushSeoTag(suggestion, setSeoSecondaryKeywords)}
-                      className="rounded-md border border-slate-300 px-2 py-1 font-semibold text-slate-700"
-                    >
-                      Secondaire
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => pushSeoTag(suggestion, setSeoSearchIntents)}
-                      className="rounded-md border border-slate-300 px-2 py-1 font-semibold text-slate-700"
-                    >
-                      Intention
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-=======
           <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600">
             Les options avancées SEO sont masquées par défaut pour alléger la relecture.
->>>>>>> e5fd835 (changement SEO)
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
@@ -1344,100 +1384,6 @@ export default function StayDraftReviewForm({
             </label>
           </div>
 
-<<<<<<< HEAD
-          <label className="block text-sm font-medium text-slate-700">
-            Introduction SEO
-            <textarea
-              value={seoIntroText}
-              onChange={(event) => setSeoIntroText(event.target.value)}
-              rows={3}
-              className={draftReviewControlClass({
-                required: false,
-                filled: Boolean(seoIntroText.trim())
-              })}
-              placeholder="Paragraphe d'introduction SEO"
-            />
-          </label>
-
-          <div className="grid gap-4 lg:grid-cols-2">
-            <label className="block text-sm font-medium text-slate-700">
-              Variante H1 (optionnel)
-              <input
-                value={seoH1Variant}
-                onChange={(event) => setSeoH1Variant(event.target.value)}
-                className={draftReviewControlClass({
-                  required: false,
-                  filled: Boolean(seoH1Variant.trim())
-                })}
-              />
-            </label>
-
-            <label className="block text-sm font-medium text-slate-700">
-              Slug candidat (sans impact canonique)
-              <input
-                value={seoSlugCandidate}
-                onChange={(event) => setSeoSlugCandidate(event.target.value)}
-                className={draftReviewControlClass({
-                  required: false,
-                  filled: Boolean(seoSlugCandidate.trim())
-                })}
-              />
-            </label>
-          </div>
-
-          <div className="space-y-2">
-            <p className="text-sm font-medium text-slate-700">Suggestions d’ancres de maillage interne</p>
-            <div className="flex flex-wrap gap-2">
-              {seoInternalAnchors.map((anchor) => (
-                <span
-                  key={anchor}
-                  className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 text-xs font-medium text-slate-700"
-                >
-                  {anchor}
-                  <button
-                    type="button"
-                    onClick={() => setSeoInternalAnchors((current) => current.filter((item) => item !== anchor))}
-                    className="text-slate-500 hover:text-slate-800"
-                    aria-label={`Supprimer ${anchor}`}
-                  >
-                    ×
-                  </button>
-                </span>
-              ))}
-            </div>
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <input
-                value={seoAnchorInput}
-                onChange={(event) => setSeoAnchorInput(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
-                    event.preventDefault();
-                    pushSeoTag(seoAnchorInput, setSeoInternalAnchors);
-                    setSeoAnchorInput('');
-                  }
-                }}
-                className={draftReviewControlClass({
-                  required: false,
-                  filled: Boolean(seoAnchorInput.trim()),
-                  omitOuterMargin: true
-                })}
-                placeholder="Ajouter une ancre interne"
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  pushSeoTag(seoAnchorInput, setSeoInternalAnchors);
-                  setSeoAnchorInput('');
-                }}
-                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700"
-              >
-                Ajouter
-              </button>
-            </div>
-          </div>
-
-=======
->>>>>>> e5fd835 (changement SEO)
           <div className="rounded-xl border border-slate-200 bg-white p-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Aperçu Google</p>
             <p className="mt-2 text-lg font-medium text-blue-700">{seoGooglePreview.title}</p>
@@ -1736,20 +1682,21 @@ export default function StayDraftReviewForm({
         </section>
         )}
 
-<<<<<<< HEAD
         {effectiveStep === 'sessions' && (
-=======
->>>>>>> e5fd835 (changement SEO)
-        <DraftSessionsEditor
-          value={sessionsList}
-          onChange={setSessionsList}
-          error={fieldErrors.sessions_json}
-          containerClassName={draftReviewSectionClass({
-            required: false,
-            satisfied: sessionsList.length > 0,
-            hasError: Boolean(fieldErrors.sessions_json)
-          })}
-        />
+          variant === 'published' && publishedSessionsStep ? (
+            <>{publishedSessionsStep}</>
+          ) : (
+            <DraftSessionsEditor
+              value={sessionsList}
+              onChange={setSessionsList}
+              error={fieldErrors.sessions_json}
+              containerClassName={draftReviewSectionClass({
+                required: false,
+                satisfied: sessionsList.length > 0,
+                hasError: Boolean(fieldErrors.sessions_json)
+              })}
+            />
+          )
         )}
 
         {effectiveStep === 'options' && (

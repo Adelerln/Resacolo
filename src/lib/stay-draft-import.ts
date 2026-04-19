@@ -412,9 +412,29 @@ export type DraftTransportPriceDebug = {
   return_label_raw?: string | null;
 };
 
+type DraftTransportOptionItem = {
+  label: string;
+  departure_city: string;
+  return_city: string;
+  amount_cents: number;
+  price: number;
+  currency: 'EUR';
+  source_url: string;
+  excluded_session_keys: string[];
+};
+
 export type ExtractTransportVariantsResult = {
   transportVariants: DraftTransportVariant[];
   transportPriceDebug: DraftTransportPriceDebug[];
+};
+
+export type PaginatedDepartureTableData = {
+  rowCount: number;
+  sessions: DraftSessionItem[];
+  transportOptions: DraftTransportOptionItem[];
+  transportVariants: DraftTransportVariant[];
+  transportPriceDebug: DraftTransportPriceDebug[];
+  priceFrom: number | null;
 };
 
 export type FetchedHtml = {
@@ -2504,6 +2524,281 @@ export function extractCeslStructuredBookingData(
     transportOptions,
     priceFrom: distinctPublicPrices.length === 1 ? distinctPublicPrices[0] : null
   };
+}
+
+type RawDepartureTableAjaxRow = [
+  unknown,
+  unknown,
+  unknown,
+  unknown,
+  unknown,
+  unknown?,
+  unknown?,
+  unknown?,
+  unknown?,
+  unknown?,
+  unknown?,
+  unknown?,
+  unknown?,
+  unknown?,
+  unknown?,
+  unknown?,
+  unknown?,
+  unknown?,
+  unknown?
+];
+
+function parseFrenchLongDateLabel(raw: string): string | null {
+  const normalized = normalizeWhitespace(raw).replace(/^[A-Za-zÀ-ÖØ-öø-ÿ]+\s+/, '');
+  return parseFrenchDate(normalized);
+}
+
+function parseAjaxNumericAmount(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return Math.round(value);
+  if (typeof value === 'string' && value.trim()) return parseFrenchAmount(value, 0, 20_000);
+  return null;
+}
+
+function buildPaginatedDepartureTableDataFromRows(
+  rows: RawDepartureTableAjaxRow[],
+  sourceUrl: string
+): PaginatedDepartureTableData | null {
+  if (!Array.isArray(rows) || rows.length === 0) return null;
+
+  const sessionMap = new Map<
+    string,
+    {
+      session: DraftSessionItem;
+      rows: Array<{
+        city: string;
+        totalPriceEur: number | null;
+        basePriceEur: number | null;
+        deltaPriceEur: number | null;
+        availability: DraftSessionItem['availability'];
+        rawHtml: string;
+      }>;
+    }
+  >();
+
+  for (const row of rows) {
+    if (!Array.isArray(row)) continue;
+    const startLabel = normalizeWhitespace(String(row[0] ?? ''));
+    const endLabel = normalizeWhitespace(String(row[2] ?? ''));
+    const city = normalizeTransportCityLabel(String(row[3] ?? ''));
+    const startDate = parseFrenchLongDateLabel(startLabel);
+    const endDate = parseFrenchLongDateLabel(endLabel);
+    if (!startDate || !endDate || !city) continue;
+
+    const rawHtml = String(row[4] ?? '');
+    const totalPriceEur = parseAjaxNumericAmount(row[5]);
+    const deltaPriceEur = parseAjaxNumericAmount(row[7]);
+    const basePriceEur = parseAjaxNumericAmount(row[8]) ?? parseAjaxNumericAmount(row[16]);
+    const isFull = row[10] === true || /complet/i.test(rawHtml);
+    const availability: DraftSessionItem['availability'] = isFull ? 'full' : 'available';
+    const sessionKey = `${startDate}|${endDate}`;
+    const existing = sessionMap.get(sessionKey) ?? {
+      session: {
+        label: `Du ${startDate} au ${endDate}`,
+        start_date: startDate,
+        end_date: endDate,
+        price: null,
+        availability
+      },
+      rows: []
+    };
+
+    if (simplifyForMatch(city) === 'sur place') {
+      existing.session.price = totalPriceEur ?? basePriceEur ?? existing.session.price ?? null;
+    }
+    if (existing.session.availability !== 'available' && availability === 'available') {
+      existing.session.availability = 'available';
+    }
+
+    existing.rows.push({
+      city,
+      totalPriceEur,
+      basePriceEur,
+      deltaPriceEur,
+      availability,
+      rawHtml
+    });
+    sessionMap.set(sessionKey, existing);
+  }
+
+  const sessions = Array.from(sessionMap.values())
+    .map((entry) => entry.session)
+    .sort((left, right) =>
+      `${left.start_date ?? ''}|${left.end_date ?? ''}`.localeCompare(
+        `${right.start_date ?? ''}|${right.end_date ?? ''}`,
+        'fr'
+      )
+    );
+  if (sessions.length === 0) return null;
+
+  const allSessionKeys = sessions.map((session, index) =>
+    draftSessionStableKey(session as Record<string, unknown>, index)
+  );
+  const sessionIndexByKey = new Map<string, string>(
+    sessions.map((session, index) => [
+      `${session.start_date ?? ''}|${session.end_date ?? ''}`,
+      allSessionKeys[index] ?? `idx:${index}`
+    ])
+  );
+
+  const transportByCity = new Map<
+    string,
+    {
+      city: string;
+      includedSessionKeys: Set<string>;
+      amountCounts: Map<number, number>;
+    }
+  >();
+  const transportPriceDebug: DraftTransportPriceDebug[] = [];
+
+  for (const [sessionKey, entry] of Array.from(sessionMap.entries())) {
+    const stableSessionKey = sessionIndexByKey.get(sessionKey) ?? sessionKey;
+    const sessionBaseEur =
+      entry.rows.find((row) => simplifyForMatch(row.city) === 'sur place')?.totalPriceEur ??
+      entry.session.price ??
+      null;
+
+    for (const row of entry.rows) {
+      if (simplifyForMatch(row.city) === 'sur place') continue;
+
+      const deltaEur =
+        row.deltaPriceEur ??
+        (row.totalPriceEur != null && sessionBaseEur != null ? row.totalPriceEur - sessionBaseEur : null);
+      const amountCents =
+        deltaEur != null && Number.isFinite(deltaEur) && deltaEur >= 0
+          ? Math.round(deltaEur * 100)
+          : null;
+      const existing = transportByCity.get(simplifyForMatch(row.city)) ?? {
+        city: row.city,
+        includedSessionKeys: new Set<string>(),
+        amountCounts: new Map<number, number>()
+      };
+      existing.includedSessionKeys.add(stableSessionKey);
+      if (amountCents != null) {
+        existing.amountCounts.set(amountCents, (existing.amountCounts.get(amountCents) ?? 0) + 1);
+      }
+      transportByCity.set(simplifyForMatch(row.city), existing);
+
+      transportPriceDebug.push({
+        variant_url: sourceUrl,
+        departure_city: row.city,
+        return_city: row.city,
+        page_price_cents:
+          row.totalPriceEur != null && Number.isFinite(row.totalPriceEur)
+            ? Math.round(row.totalPriceEur * 100)
+            : null,
+        base_price_cents:
+          sessionBaseEur != null && Number.isFinite(sessionBaseEur)
+            ? Math.round(sessionBaseEur * 100)
+            : null,
+        amount_cents: amountCents,
+        pricing_method: amountCents != null ? 'session_delta' : 'unresolved',
+        confidence: amountCents != null ? 'high' : 'low',
+        reason: `datatable-ajax:${stableSessionKey}`,
+        departure_label_raw: row.city,
+        return_label_raw: row.city
+      });
+    }
+  }
+
+  const transportOptions = Array.from(transportByCity.values())
+    .map((entry): DraftTransportOptionItem | null => {
+      const amountCents = Array.from(entry.amountCounts.entries()).sort((a, b) => {
+        if (b[1] !== a[1]) return b[1] - a[1];
+        return a[0] - b[0];
+      })[0]?.[0] ?? null;
+      if (amountCents == null) return null;
+      return {
+        label: entry.city,
+        departure_city: entry.city,
+        return_city: entry.city,
+        amount_cents: amountCents,
+        price: Number((amountCents / 100).toFixed(2)),
+        currency: 'EUR',
+        source_url: sourceUrl,
+        excluded_session_keys: allSessionKeys.filter((key) => !entry.includedSessionKeys.has(key))
+      };
+    })
+    .filter((row): row is DraftTransportOptionItem => row !== null)
+    .sort((left, right) => String(left.label).localeCompare(String(right.label), 'fr'));
+
+  const transportVariants = transportOptions.map((row) => ({
+    departure_city: row.departure_city,
+    return_city: row.return_city,
+    amount_cents: Number.isFinite(row.amount_cents) ? Math.round(row.amount_cents) : null,
+    currency: 'EUR' as const,
+    source_url: row.source_url || sourceUrl,
+    pricing_method: 'session_delta' as const,
+    confidence: 'high' as const,
+    reason: 'datatable-ajax'
+  }));
+
+  const sessionPrices = sessions
+    .map((session) => session.price)
+    .filter((price): price is number => typeof price === 'number' && Number.isFinite(price) && price > 0);
+  const distinctSessionPrices = Array.from(new Set(sessionPrices));
+
+  return {
+    rowCount: rows.length,
+    sessions,
+    transportOptions,
+    transportVariants,
+    transportPriceDebug,
+    priceFrom: distinctSessionPrices.length === 1 ? distinctSessionPrices[0] : null
+  };
+}
+
+export async function fetchPaginatedDepartureTableData(
+  html: string,
+  sourceUrl: string
+): Promise<PaginatedDepartureTableData | null> {
+  const $ = load(html);
+  const path = normalizeWhitespace($('#tableSejourPath').attr('value') ?? '');
+  const stayId = normalizeWhitespace($('#tableSejourId').attr('value') ?? '');
+  if (!path || !stayId) return null;
+
+  let endpointUrl: string;
+  try {
+    endpointUrl = new URL(path, sourceUrl).toString();
+  } catch {
+    return null;
+  }
+
+  const query = new URL(endpointUrl);
+  query.searchParams.set('sejour_id', stayId);
+  query.searchParams.set('length', '-1');
+  query.searchParams.set('draw', '0');
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(query.toString(), {
+      method: 'GET',
+      redirect: 'follow',
+      signal: controller.signal,
+      headers: {
+        'user-agent':
+          'Mozilla/5.0 (compatible; ResacoloImportBot/1.0; +https://resacolo.com)',
+        accept: 'application/json,text/plain,*/*',
+        'accept-language': 'fr-FR,fr;q=0.9,en;q=0.8',
+        'x-requested-with': 'XMLHttpRequest'
+      }
+    });
+    if (!response.ok) return null;
+    const payload = (await response.json().catch(() => null)) as
+      | { data?: unknown; recordsFiltered?: unknown }
+      | null;
+    const dataRows = Array.isArray(payload?.data) ? (payload?.data as RawDepartureTableAjaxRow[]) : [];
+    return buildPaginatedDepartureTableDataFromRows(dataRows, query.toString());
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function extractReservationCallToAction(

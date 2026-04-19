@@ -12,7 +12,7 @@ import {
   repriceCheckout,
   registerCheckoutClientAccount
 } from '@/lib/checkout/client';
-import { isDevBypassCheckout } from '@/lib/checkout/dev-bypass';
+import { buildDevMockPricing, isDevBypassCheckout } from '@/lib/checkout/dev-bypass';
 import {
   fetchFamilyProfileSnapshot,
   syncFamilyProfileFromCheckout
@@ -30,9 +30,6 @@ import {
   type CheckoutPricing
 } from '@/types/checkout';
 import type { FamilyProfile, FamilyProfileChild } from '@/types/family-profile';
-import { repriceCheckout, registerCheckoutClientAccount } from '@/lib/checkout/client';
-import { buildDevMockPricing, isDevBypassCheckout } from '@/lib/checkout/dev-bypass';
-import { createCheckoutId, type CheckoutContact, type CheckoutPricing } from '@/types/checkout';
 
 const INPUT_CLASS =
   'mt-1.5 min-h-[40px] w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm tracking-normal text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] outline-none transition placeholder:text-slate-400 focus:border-brand-300 focus:ring-2 focus:ring-brand-100';

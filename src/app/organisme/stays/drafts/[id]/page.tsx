@@ -326,23 +326,6 @@ function draftStatusBadgeClass(status: string | null): string {
   }
 }
 
-function formatDebugValue(value: unknown): string {
-  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
-  if (typeof value === 'string') return value;
-  if (value == null) return '—';
-  return JSON.stringify(value);
-}
-
-function formatDebugEuroFromCents(value: unknown): string {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return '—';
-  return new Intl.NumberFormat('fr-FR', {
-    style: 'currency',
-    currency: 'EUR',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  }).format(value / 100);
-}
-
 export default async function StayDraftReviewPage({ params: paramsPromise, searchParams }: PageProps) {
   const params = await paramsPromise;
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
@@ -428,19 +411,18 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
   const sessionPriceExtraction = asObject(
     (importReviewDebrief.session_price_extraction as Json | null) ?? null
   );
+  const paginatedDepartureTableDebug = asObject(
+    (importReviewDebrief.paginated_departure_table as Json | null) ?? null
+  );
+  const datatableTransportDebugRows = asRecordArray(rawPayload.transport_price_debug).filter((row) =>
+    normalizeString(String(row.reason ?? '')).includes('datatable-')
+  );
   const ceslStructuredDebug = asObject(
     (sessionPriceExtraction.cesl_structured_booking as Json | null) ?? null
   );
   const ceslStructuredSessions = Array.isArray(ceslStructuredDebug.sessions)
     ? ceslStructuredDebug.sessions.filter((item): item is Record<string, unknown> => isPlainRecord(item))
     : [];
-  const transportPriceDebug = asRecordArray(rawPayload.transport_price_debug ?? null);
-  const thalieTransportDebug = sourceHost.includes('thalie')
-    ? transportPriceDebug
-    : [];
-  const thalieTransportDebugFailures = thalieTransportDebug.filter(
-    (row) => typeof row.amount_cents !== 'number' || !Number.isFinite(row.amount_cents)
-  );
   const draftSessionsFromDb = asArrayOfObjects(draft.sessions_json);
   const draftTransportOptionsFromDb = collapseTransportDraftOptionsJson(
     asArrayOfObjects(draft.transport_options_json)
@@ -553,7 +535,6 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
     activities_text: '',
     required_documents_text: ''
   };
-
   const backHref = withOrganizerQuery('/organisme/sejours', selectedOrganizerId);
 
   return (
@@ -631,105 +612,6 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
               {aiEnrichedAt ? new Date(aiEnrichedAt).toLocaleString('fr-FR') : '—'}
             </p>
           </div>
-        </div>
-      ) : null}
-
-      {Object.keys(importReviewDebrief).length > 0 ? (
-        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-700">
-            Diagnostic d&apos;import
-          </h2>
-          <div className="mt-3 grid gap-3 text-sm md:grid-cols-2">
-            <p>
-              <span className="font-medium text-slate-700">Sessions stockées dans le brouillon :</span>{' '}
-              {initialPayload.sessions_json.length}
-            </p>
-            <p>
-              <span className="font-medium text-slate-700">Villes de transport stockées :</span>{' '}
-              {initialPayload.transport_options_json.length}
-            </p>
-            {sourceHost.includes('thalie') ? (
-              <p>
-                <span className="font-medium text-slate-700">Villes de transport réparées depuis `raw_payload` :</span>{' '}
-                {shouldRepairTransportOptions ? 'oui' : 'non'}
-              </p>
-            ) : null}
-            <p>
-              <span className="font-medium text-slate-700">Prix de base statique :</span>{' '}
-              {formatDebugValue(sessionPriceExtraction.price_from_eur_static)}
-            </p>
-            <p>
-              <span className="font-medium text-slate-700">Prix après DOM dynamique :</span>{' '}
-              {formatDebugValue(sessionPriceExtraction.price_from_eur_after_dynamic_dom)}
-            </p>
-            <p>
-              <span className="font-medium text-slate-700">Prix CESL structuré :</span>{' '}
-              {formatDebugValue(sessionPriceExtraction.price_from_eur_cesl_structured)}
-            </p>
-            <p>
-              <span className="font-medium text-slate-700">Sessions CESL structurées :</span>{' '}
-              {formatDebugValue(ceslStructuredDebug.session_count)}
-            </p>
-          </div>
-
-          {ceslStructuredSessions.length > 0 ? (
-            <div className="mt-4">
-              <p className="text-sm font-medium text-slate-700">Sessions lues dans `sDureesJson`</p>
-              <ul className="mt-2 space-y-1 text-xs text-slate-600">
-                {ceslStructuredSessions.map((session, index) => (
-                  <li key={`${session.start_date ?? 'na'}|${session.end_date ?? 'na'}|raw|${index}`}>
-                    {formatDebugValue(session.start_date)} → {formatDebugValue(session.end_date)} · prix{' '}
-                    {formatDebugValue(session.price)} · dispo {formatDebugValue(session.availability)}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-
-          {sourceHost.includes('thalie') ? (
-            <div className="mt-4 space-y-3">
-              <div>
-                <p className="text-sm font-medium text-slate-700">Pourquoi un prix transport Thalie peut manquer</p>
-                <ul className="mt-2 space-y-1 text-xs text-slate-600">
-                  <li>Le calcul ne lit pas un prix “transport” direct: il calcule un delta entre le total de la date seule et le total de la même date avec une ville de départ.</li>
-                  <li>Le prix reste vide si le prix de base de la date n&apos;a pas été lu, si l&apos;URL de la ville n&apos;a pas été récupérée, ou si le total ville n&apos;est pas supérieur au total de base.</li>
-                  <li>Sur Thalie, une même ville peut aussi varier selon la session. Si les pages retournent des valeurs incohérentes ou incomplètes, la ville est importée sans montant fiable.</li>
-                </ul>
-              </div>
-
-              <div>
-                <p className="text-sm font-medium text-slate-700">Transport Thalie: données lues pendant l&apos;import</p>
-                {thalieTransportDebug.length > 0 ? (
-                  <ul className="mt-2 space-y-1 text-xs text-slate-600">
-                    {thalieTransportDebug.slice(0, 40).map((row, index) => (
-                      <li
-                        key={`${String(row.variant_url ?? 'na')}|${String(row.departure_city ?? 'na')}|${index}`}
-                      >
-                        {formatDebugValue(row.departure_city)} · session {formatDebugValue(row.return_label_raw)} · total lu {formatDebugEuroFromCents(row.page_price_cents)} · base session {formatDebugEuroFromCents(row.base_price_cents)} · delta retenu {formatDebugEuroFromCents(row.amount_cents)} · méthode {formatDebugValue(row.pricing_method)} · raison {formatDebugValue(row.reason)}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="mt-2 text-xs text-slate-600">Aucune ligne `transport_price_debug` disponible pour cet import.</p>
-                )}
-              </div>
-
-              {thalieTransportDebugFailures.length > 0 ? (
-                <div>
-                  <p className="text-sm font-medium text-slate-700">Lignes Thalie sans prix calculé</p>
-                  <ul className="mt-2 space-y-1 text-xs text-rose-700">
-                    {thalieTransportDebugFailures.slice(0, 20).map((row, index) => (
-                      <li
-                        key={`fail|${String(row.variant_url ?? 'na')}|${String(row.departure_city ?? 'na')}|${index}`}
-                      >
-                        {formatDebugValue(row.departure_city)} · session {formatDebugValue(row.return_label_raw)} · total lu {formatDebugEuroFromCents(row.page_price_cents)} · base session {formatDebugEuroFromCents(row.base_price_cents)} · raison {formatDebugValue(row.reason)}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-            </div>
-          ) : null}
         </div>
       ) : null}
 

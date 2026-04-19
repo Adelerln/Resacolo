@@ -1,6 +1,7 @@
 import {
   buildStaySessionMergeKey,
   extractCeslStructuredBookingData,
+  fetchPaginatedDepartureTableData,
   extractJsonLdOfferPricesFromHtml,
   extractStayData,
   extractThalieOptionUrlPricing,
@@ -18,6 +19,7 @@ import {
 import {
   renderStayPageWithPlaywright,
   shouldUsePlaywrightForDynamicImages,
+  shouldUsePlaywrightForDynamicSessions,
   shouldUsePlaywrightForDynamicTransport
 } from '@/lib/stay-draft-playwright';
 import { normalizeStayAges } from '@/lib/stay-ages';
@@ -565,12 +567,14 @@ export async function runStayImportInBackground(params: {
     const isThalieImport = Boolean(sourceHost?.includes('thalie.eu'));
     const forcePlaywright = envTruthy(process.env.IMPORT_STAY_FORCE_PLAYWRIGHT);
     const needsDynamicImages = shouldUsePlaywrightForDynamicImages(fetchedHtml.html, extracted.images.length);
+    const needsDynamicSessions = shouldUsePlaywrightForDynamicSessions(fetchedHtml.html);
     const needsDynamicTransport = includePricing
       ? shouldUsePlaywrightForDynamicTransport(fetchedHtml.html)
       : false;
     const shouldTryDynamicRender =
       forcePlaywright ||
       needsDynamicImages ||
+      needsDynamicSessions ||
       needsDynamicTransport;
 
     await mergeRawPayloadPatch(draftId, {
@@ -619,6 +623,10 @@ export async function runStayImportInBackground(params: {
     const ceslStructuredBooking = includePricing && sourceHost?.includes('cesl.fr')
       ? extractCeslStructuredBookingData(fetchedHtml.html, fetchedHtml.finalUrl)
       : null;
+    const paginatedDepartureTableData = await fetchPaginatedDepartureTableData(
+      fetchedHtml.html,
+      fetchedHtml.finalUrl
+    ).catch(() => null);
     const mergedStaticAndDomSessions = mergeExtractedSessions(
       extracted.sessionsJson,
       extractedWithDynamicDom.sessionsJson
@@ -627,20 +635,31 @@ export async function runStayImportInBackground(params: {
       mergedStaticAndDomSessions,
       dynamicSnapshot?.ceslSessionsFromPlaywright ?? null
     );
+    const mergedWithPlaywrightTableSessions = mergeExtractedSessions(
+      mergedWithCeslPlaywrightSessions,
+      dynamicSnapshot?.tableSessionsFromPlaywright ?? null
+    );
+    const mergedWithAjaxDepartureTableSessions = mergeExtractedSessions(
+      mergedWithPlaywrightTableSessions,
+      paginatedDepartureTableData?.sessions ?? null
+    );
     const extractedAfterThalieSessions = {
       ...extractedWithDynamicDom,
       transportMode: thaliePricing?.transportMode || extractedWithDynamicDom.transportMode,
       sessionsJson:
         mergeThalieSessionBaselinesIntoSessions(
           ceslStructuredBooking?.sessions.length
-            ? mergeExtractedSessions(mergedWithCeslPlaywrightSessions, ceslStructuredBooking.sessions)
-            : mergedWithCeslPlaywrightSessions,
+            ? mergeExtractedSessions(mergedWithAjaxDepartureTableSessions, ceslStructuredBooking.sessions)
+            : mergedWithAjaxDepartureTableSessions,
           thaliePricing?.sessionBaselines ?? dynamicSnapshot?.thalieSessionBaselines ?? []
         ) ??
         (ceslStructuredBooking?.sessions.length
-          ? mergeExtractedSessions(mergedWithCeslPlaywrightSessions, ceslStructuredBooking.sessions)
-          : mergedWithCeslPlaywrightSessions),
-      priceFrom: ceslStructuredBooking?.priceFrom ?? extractedWithDynamicDom.priceFrom
+          ? mergeExtractedSessions(mergedWithAjaxDepartureTableSessions, ceslStructuredBooking.sessions)
+          : mergedWithAjaxDepartureTableSessions),
+      priceFrom:
+        ceslStructuredBooking?.priceFrom ??
+        paginatedDepartureTableData?.priceFrom ??
+        extractedWithDynamicDom.priceFrom
     };
     const mergedExtractedImages = Array.from(
       new Set([
@@ -715,7 +734,10 @@ export async function runStayImportInBackground(params: {
       !thaliePricingFromOptionUrls && (dynamicSnapshot?.thalieSessionBaselines?.length ?? 0) > 0;
     const transportVariants = includePricing
       ? mergeTransportVariants(
-          thaliePricing?.transportVariants ?? dynamicSnapshot?.transportVariants ?? [],
+          thaliePricing?.transportVariants ??
+            paginatedDepartureTableData?.transportVariants ??
+            dynamicSnapshot?.transportVariants ??
+            [],
           thaliePricingFromOptionUrls || thaliePbpFromPlaywright
             ? []
             : mergeTransportVariants(
@@ -726,7 +748,12 @@ export async function runStayImportInBackground(params: {
       : [];
     const transportPriceDebug = includePricing
       ? [
-          ...(thaliePricing?.transportPriceDebug ?? dynamicSnapshot?.transportPriceDebug ?? []),
+          ...(
+            thaliePricing?.transportPriceDebug ??
+            paginatedDepartureTableData?.transportPriceDebug ??
+            dynamicSnapshot?.transportPriceDebug ??
+            []
+          ),
           ...(thaliePricingFromOptionUrls || thaliePbpFromPlaywright
             ? []
             : [
@@ -807,6 +834,33 @@ export async function runStayImportInBackground(params: {
           json_ld_offer_prices_eur_sorted_effective: extractJsonLdOfferPricesFromHtml(effectiveHtml),
           note:
             'Si plusieurs tarifs session dans sessionsJson : pas de référence unique (pick null). Sinon priorité aux prix session puis priceFrom (min JSON-LD). Pour Thalie, priorité au parcours statique par URLs d’options (dates puis villes aller), avec prix session = Dépose centre / Reprise centre et transport global = aller x 2.'
+        },
+        paginated_departure_table: dynamicSnapshot?.tableDepartureRowCount
+          ? {
+              detected: true,
+              row_count:
+                paginatedDepartureTableData?.rowCount ?? dynamicSnapshot.tableDepartureRowCount,
+              session_count:
+                paginatedDepartureTableData?.sessions.length ??
+                dynamicSnapshot.tableSessionsFromPlaywright.length,
+              transport_option_count:
+                paginatedDepartureTableData?.transportOptions.length ??
+                dynamicSnapshot.tableTransportOptionsFromPlaywright.length,
+              note:
+                'Tableau #tableSejour : prix session lu sur la ligne SUR PLACE, supplément transport calculé par delta ville - SUR PLACE pour la même session.'
+            }
+          : {
+              detected: Boolean(paginatedDepartureTableData),
+              row_count: paginatedDepartureTableData?.rowCount ?? 0,
+              session_count: paginatedDepartureTableData?.sessions.length ?? 0,
+              transport_option_count: paginatedDepartureTableData?.transportOptions.length ?? 0
+            },
+        session_collection: {
+          needs_dynamic_sessions: needsDynamicSessions,
+          sessions_from_paginated_table:
+            paginatedDepartureTableData?.sessions.length ??
+            dynamicSnapshot?.tableSessionsFromPlaywright.length ??
+            0
         },
         playwright_how_to_debug: {
           trace_zip_ui: traceDirConfigured
@@ -892,7 +946,14 @@ export async function runStayImportInBackground(params: {
       rawPayload,
       transportVariants,
       includePricing,
-      ceslStructuredBooking?.transportOptions ?? null
+      ceslStructuredBooking?.transportOptions ??
+        (paginatedDepartureTableData?.transportOptions.length
+          ? paginatedDepartureTableData.transportOptions
+          : null) ??
+        (dynamicSnapshot?.tableTransportOptionsFromPlaywright.length
+          ? dynamicSnapshot.tableTransportOptionsFromPlaywright
+          : null) ??
+        null
     );
     const updateError = await updateDraftWithFallbacks(draftId, updatePayload);
 

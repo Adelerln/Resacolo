@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth/session';
 import { getFamilyProfileSnapshot } from '@/lib/account-profile/server';
+import type { FamilyProfileSnapshot } from '@/types/family-profile';
 import MonCompteClient from './MonCompteClient';
 
 export const metadata = {
@@ -59,7 +60,7 @@ export default async function MonComptePage() {
     updatedAt: null
   };
 
-  let snapshot = {
+  let snapshot: FamilyProfileSnapshot = {
     profile: fallbackProfile,
     upcomingReservations: []
   };

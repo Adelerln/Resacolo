@@ -43,6 +43,7 @@ export function OrganizerStayPreviewCard({
   const body =
     description?.trim() || summary?.trim() || 'Présentation du séjour à venir.';
   const subtitle = summary?.trim() && summary.trim() !== title.trim() ? summary.trim() : null;
+  const teaser = subtitle ?? (body.trim() !== title.trim() ? body : null);
   const hoverEnabled = !disableBlueHoverEffect;
   const articleClass = hoverEnabled
     ? 'group flex h-full w-full max-w-[320px] flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_18px_40px_-28px_rgba(15,23,42,0.35)]'
@@ -63,12 +64,9 @@ export function OrganizerStayPreviewCard({
   const subtitleClass = hoverEnabled
     ? 'mt-2 line-clamp-2 text-sm font-bold leading-snug text-[#505050] transition-colors group-hover:text-white'
     : 'mt-2 line-clamp-2 text-sm font-bold leading-snug text-[#505050]';
-  const bodyClass = hoverEnabled
-    ? 'mt-3 line-clamp-4 flex-1 text-sm leading-6 text-slate-600 transition-colors group-hover:text-white'
-    : 'mt-3 line-clamp-4 flex-1 text-sm leading-6 text-slate-600';
   const priceLineClass = hoverEnabled
-    ? 'mt-4 shrink-0 text-base font-semibold text-slate-600 transition-colors group-hover:text-white'
-    : 'mt-4 shrink-0 text-base font-semibold text-slate-600';
+    ? 'mt-4 flex-1 shrink-0 text-base font-semibold text-slate-600 transition-colors group-hover:text-white'
+    : 'mt-4 flex-1 shrink-0 text-base font-semibold text-slate-600';
   const priceValueClass = hoverEnabled
     ? 'text-xl font-bold text-[#FA8500] transition-colors group-hover:text-white'
     : 'text-xl font-bold text-[#FA8500]';
@@ -155,14 +153,11 @@ export function OrganizerStayPreviewCard({
 
         <div className="flex min-h-0 flex-1 flex-col px-4 pb-0 pt-2 text-center">
           <h3 className={headingClass}>{title}</h3>
-          {subtitle ? (
+          {teaser ? (
             <p className={subtitleClass}>
-              {subtitle}
+              {teaser}
             </p>
           ) : null}
-          <p className={bodyClass}>
-            {body}
-          </p>
           <p className={priceLineClass}>
             {priceFromEuros != null ? (
               <>

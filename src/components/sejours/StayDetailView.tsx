@@ -140,13 +140,43 @@ function normalizeRawText(value: unknown) {
   return String(value).trim();
 }
 
+function cleanEditorialText(value: string) {
+  if (!value) return '';
+  return value
+    .replace(/\r\n?/g, '\n')
+    .replace(/[’‘`´ʼʹʻ]/g, "'")
+    .replace(/â€™|â€˜/g, "'")
+    .replace(/â€“|â€”/g, '-')
+    .replace(/â€¦/g, '...')
+    .replace(/([A-Za-zÀ-ÖØ-öø-ÿ])[§^]([A-Za-zÀ-ÖØ-öø-ÿ])/g, "$1'$2")
+    .replace(/[§^]+/g, ' ')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/\s+([,.;:!?])/g, '$1')
+    .replace(/([,.;:!?])([^\s\n])/g, '$1 $2')
+    .trim();
+}
+
+function normalizeEditorialText(value: unknown) {
+  return cleanEditorialText(normalizeRawText(value));
+}
+
 function getRawField(raw: Record<string, unknown> | undefined, keys: string[]) {
   if (!raw) return '';
   for (const key of keys) {
     if (key in raw) {
-      const value = normalizeRawText(raw[key]);
+      const value = normalizeEditorialText(raw[key]);
       if (value) return value;
     }
+  }
+  return '';
+}
+
+function pickFirstEditorialText(values: unknown[]) {
+  for (const value of values) {
+    const normalized = normalizeEditorialText(value);
+    if (normalized) return normalized;
   }
   return '';
 }
@@ -492,18 +522,24 @@ export function StayDetailView({ stay }: { stay: Stay }) {
       ),
     [stay.videoUrls]
   );
-  const sejourText = getRawField(stay.rawContext, ['sejour', 'presentation', 'description']) || stay.summary;
-  const programmeText =
-    getRawField(stay.rawContext, ['programme', 'program', 'programme_details']) || stay.description;
-  const activitiesText = getRawField(stay.rawContext, ['activites', 'activities', 'activities_text']);
-  const hebergementText = getRawField(stay.rawContext, ['hebergement', 'lodging', 'lodging_details']);
-  const encadrementText = getRawField(stay.rawContext, ['encadrement', 'supervision']);
-  const documentsText = getRawField(stay.rawContext, [
+  const rawSejourText = getRawField(stay.rawContext, ['sejour', 'presentation', 'description']);
+  const rawProgrammeText = getRawField(stay.rawContext, ['programme', 'program', 'programme_details']);
+  const rawActivitiesText = getRawField(stay.rawContext, ['activites', 'activities', 'activities_text']);
+  const rawHebergementText = getRawField(stay.rawContext, ['hebergement', 'lodging', 'lodging_details']);
+  const rawEncadrementText = getRawField(stay.rawContext, ['encadrement', 'supervision']);
+  const rawDocumentsText = getRawField(stay.rawContext, [
     'documents_obligatoires',
     'documents',
     'documentsObligatoires'
   ]);
-  const transportText = getRawField(stay.rawContext, ['transport', 'transports']);
+  const rawTransportText = getRawField(stay.rawContext, ['transport', 'transports']);
+  const sejourText = pickFirstEditorialText([stay.description, rawSejourText, stay.summary]);
+  const programmeText = pickFirstEditorialText([stay.programText, rawProgrammeText, stay.description]);
+  const activitiesText = pickFirstEditorialText([stay.activitiesText, rawActivitiesText]);
+  const hebergementText = pickFirstEditorialText([rawHebergementText]);
+  const encadrementText = pickFirstEditorialText([rawEncadrementText]);
+  const documentsText = pickFirstEditorialText([rawDocumentsText]);
+  const transportText = pickFirstEditorialText([stay.transportText, rawTransportText]);
   const programmeBlocks = useMemo(() => getProgrammeBlocks(programmeText), [programmeText]);
   const firstCategory = stay.filters.categories[0];
   const themeLabel = firstCategory ? formatLabel('categories', firstCategory) : stay.title;

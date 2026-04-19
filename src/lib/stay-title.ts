@@ -25,6 +25,23 @@ function normalizeWhitespace(value: string | null | undefined): string {
   return value.replace(/\s+/g, ' ').trim();
 }
 
+function sanitizeScrapedTitleArtifacts(value: string): string {
+  return normalizeWhitespace(
+    value
+      // Apostrophes et guillemets courants vers apostrophe simple.
+      .replace(/[’‘`´ʼʹʻ]/g, "'")
+      // Mojibake fréquent.
+      .replace(/â€™|â€˜/g, "'")
+      // `§` / `^` parfois injectés à la place de séparateurs.
+      .replace(/([A-Za-zÀ-ÖØ-öø-ÿ])[§^]([A-Za-zÀ-ÖØ-öø-ÿ])/g, "$1'$2")
+      .replace(/[§^]+/g, ' ')
+      // Nettoyage des apostrophes isolées en début/fin de mot.
+      .replace(/\s'(?=\S)/g, ' ')
+      .replace(/(\S)'\s/g, '$1 ')
+      .replace(/(\S)'$/g, '$1')
+  );
+}
+
 function simplifyForMatch(value: string | null | undefined): string {
   return normalizeWhitespace(value)
     .toLowerCase()
@@ -42,7 +59,7 @@ function toStartCaseWord(word: string): string {
 }
 
 export function normalizeStayTitle(value: string | null | undefined): string {
-  const normalized = normalizeWhitespace(value);
+  const normalized = sanitizeScrapedTitleArtifacts(normalizeWhitespace(value));
   if (!normalized) return '';
 
   return normalized

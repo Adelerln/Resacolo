@@ -14,7 +14,7 @@ import {
   normalizeStayTransportLogisticsMode
 } from '@/lib/stay-draft-content';
 import { isMissingRegionTextColumnError, normalizeStayRegion } from '@/lib/stay-regions';
-import { sanitizeSeoTags, sanitizeSeoText } from '@/lib/stay-seo';
+import { sanitizeSeoPrimaryKeyword, sanitizeSeoTags, sanitizeSeoText } from '@/lib/stay-seo';
 import { normalizeStayTitle } from '@/lib/stay-title';
 import type { Json } from '@/types/supabase';
 import type { Database } from '@/types/supabase';
@@ -110,7 +110,7 @@ export async function applyPublishedStayReviewPayload(
   };
 
   const seoPayload: StayUpdate = {
-    seo_primary_keyword: sanitizeSeoText(payload.seo_primary_keyword) || null,
+    seo_primary_keyword: sanitizeSeoPrimaryKeyword(payload.seo_primary_keyword) || null,
     seo_secondary_keywords: sanitizeSeoTags(payload.seo_secondary_keywords),
     seo_target_city: sanitizeSeoText(payload.seo_target_city) || null,
     seo_target_region: sanitizeSeoText(payload.seo_target_region) || null,

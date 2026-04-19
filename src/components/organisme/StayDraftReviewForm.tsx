@@ -30,6 +30,7 @@ import {
   buildStaySeoGooglePreview,
   buildStaySeoSuggestions,
   buildStaySeoWarnings,
+  sanitizeSeoPrimaryKeyword,
   sanitizeSeoTags,
   sanitizeSeoText,
   SEO_META_RECOMMENDED_MAX,
@@ -321,7 +322,9 @@ export default function StayDraftReviewForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGeneratingSeo, setIsGeneratingSeo] = useState(false);
 
-  const [seoPrimaryKeyword, setSeoPrimaryKeyword] = useState(initialPayload.seo_primary_keyword);
+  const [seoPrimaryKeyword, setSeoPrimaryKeyword] = useState(
+    sanitizeSeoPrimaryKeyword(initialPayload.seo_primary_keyword)
+  );
   const [seoSecondaryKeywords, setSeoSecondaryKeywords] = useState<string[]>(
     sanitizeSeoTags(initialPayload.seo_secondary_keywords)
   );
@@ -605,7 +608,7 @@ export default function StayDraftReviewForm({
     seo_generated_at?: string | null;
     seo_generation_source?: string | null;
   }) {
-    setSeoPrimaryKeyword(sanitizeSeoText(seo.seo_primary_keyword));
+    setSeoPrimaryKeyword(sanitizeSeoPrimaryKeyword(seo.seo_primary_keyword));
     setSeoSecondaryKeywords(sanitizeSeoTags(seo.seo_secondary_keywords ?? []));
     setSeoTargetCity(sanitizeSeoText(seo.seo_target_city));
     setSeoTargetRegion(sanitizeSeoText(seo.seo_target_region));
@@ -809,7 +812,7 @@ export default function StayDraftReviewForm({
       accommodations_json: accommodationsParsed.value ?? null,
       images: imagesPayload,
       video_urls: videosPayload,
-      seo_primary_keyword: sanitizeSeoText(seoPrimaryKeyword),
+      seo_primary_keyword: sanitizeSeoPrimaryKeyword(seoPrimaryKeyword),
       seo_secondary_keywords: sanitizeSeoTags(seoSecondaryKeywords),
       seo_target_city: sanitizeSeoText(seoTargetCity),
       seo_target_region: sanitizeSeoText(seoTargetRegion),
@@ -894,6 +897,11 @@ export default function StayDraftReviewForm({
       setStatus(data?.draft?.status ?? status);
       setValidatedAt(data?.draft?.validated_at ?? validatedAt);
       setValidatedByUserId(data?.draft?.validated_by_user_id ?? validatedByUserId);
+
+      if (mode === 'save' && variant === 'draft') {
+        router.push(backHref);
+        return;
+      }
 
       if (mode === 'validate') {
         const organizerIdFromResponse =
@@ -1283,15 +1291,6 @@ export default function StayDraftReviewForm({
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h3 className="text-base font-semibold text-slate-900">SEO du brouillon</h3>
-              <p className="mt-1 text-sm text-slate-600">
-                Générez automatiquement un SEO propre à partir des données réelles du séjour, puis ajustez avant publication.
-              </p>
-              {seoGeneratedAt && (
-                <p className="mt-1 text-xs text-slate-500">
-                  Dernière génération: {new Date(seoGeneratedAt).toLocaleString('fr-FR')}
-                  {seoGenerationSource ? ` (${seoGenerationSource})` : ''}
-                </p>
-              )}
             </div>
             <div className="flex flex-wrap gap-2">
               <button
@@ -1335,6 +1334,7 @@ export default function StayDraftReviewForm({
             <input
               value={seoPrimaryKeyword}
               onChange={(event) => setSeoPrimaryKeyword(event.target.value)}
+              onBlur={() => setSeoPrimaryKeyword((current) => sanitizeSeoPrimaryKeyword(current))}
               className={draftReviewControlClass({
                 required: false,
                 filled: Boolean(seoPrimaryKeyword.trim())
@@ -1342,10 +1342,6 @@ export default function StayDraftReviewForm({
               placeholder="Ex. colonie de vacances surf à Biarritz"
             />
           </label>
-
-          <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600">
-            Les options avancées SEO sont masquées par défaut pour alléger la relecture.
-          </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
             <label className="block text-sm font-medium text-slate-700">
@@ -1544,7 +1540,7 @@ export default function StayDraftReviewForm({
                         <div className="mt-2 flex flex-wrap gap-2">
                           <button
                             type="button"
-                            onClick={() => setSeoPrimaryKeyword(suggestion)}
+                            onClick={() => setSeoPrimaryKeyword(sanitizeSeoPrimaryKeyword(suggestion))}
                             className="rounded-md border border-slate-300 px-2 py-1 font-semibold text-slate-700"
                           >
                             Principal

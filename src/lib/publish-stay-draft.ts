@@ -23,6 +23,7 @@ import {
 } from '@/lib/stay-media-storage';
 import { mapToCanonicalStayRegion } from '@/lib/stay-regions';
 import { isPartnerTariffExtraOptionLabel } from '@/lib/stay-draft-extra-options-split';
+import { sanitizeSeoPrimaryKeyword } from '@/lib/stay-seo';
 import { normalizeStayTitle } from '@/lib/stay-title';
 import { maybeRecordPublicationFeeWhenStayPublished } from '@/lib/resacolo-fee-ledger.server';
 import type { Database, Json } from '@/types/supabase';
@@ -1260,7 +1261,7 @@ async function updateOrInsertStay(
     transport_mode: transportMode,
     transport_text: toNullableText(draft.transport_text),
     partner_discount_percent: partnerDiscountPercent,
-    seo_primary_keyword: toNullableText(draft.seo_primary_keyword),
+    seo_primary_keyword: toNullableText(sanitizeSeoPrimaryKeyword(draft.seo_primary_keyword)),
     seo_secondary_keywords: draft.seo_secondary_keywords ?? [],
     seo_target_city: toNullableText(draft.seo_target_city),
     seo_target_region: toNullableText(draft.seo_target_region),

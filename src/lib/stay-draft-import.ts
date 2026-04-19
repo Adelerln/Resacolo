@@ -2757,9 +2757,51 @@ export async function fetchPaginatedDepartureTableData(
   sourceUrl: string
 ): Promise<PaginatedDepartureTableData | null> {
   const $ = load(html);
-  const path = normalizeWhitespace($('#tableSejourPath').attr('value') ?? '');
-  const stayId = normalizeWhitespace($('#tableSejourId').attr('value') ?? '');
-  if (!path || !stayId) return null;
+  const pathFromLegacyField = normalizeWhitespace($('#tableSejourPath').attr('value') ?? '');
+  const pathFromTableDataset = normalizeWhitespace(
+    $('#tableSejour').attr('data-server-url') ??
+      $('table.tableSejour').first().attr('data-server-url') ??
+      ''
+  );
+  const path = pathFromLegacyField || pathFromTableDataset;
+  if (!path) return null;
+
+  const legacyStayId = normalizeWhitespace($('#tableSejourId').attr('value') ?? '');
+  let stayId = legacyStayId;
+
+  if (!stayId) {
+    const parametersRaw = normalizeWhitespace(
+      $('#tableSejour input.parameters').first().attr('value') ??
+        $('table.tableSejour input.parameters').first().attr('value') ??
+        $('input.parameters').first().attr('value') ??
+        ''
+    );
+    if (parametersRaw) {
+      try {
+        const parsedParameters = JSON.parse(parametersRaw) as Record<string, unknown>;
+        stayId = normalizeWhitespace(
+          String(parsedParameters.sejour_id ?? parsedParameters.stay_id ?? '')
+        );
+      } catch {
+        const inlineMatch = parametersRaw.match(/"(?:sejour_id|stay_id)"\s*:\s*"?(?<id>\d+)"?/i);
+        stayId = normalizeWhitespace(inlineMatch?.groups?.id ?? '');
+      }
+    }
+  }
+
+  if (!stayId) {
+    try {
+      const parsedSourceUrl = new URL(sourceUrl);
+      stayId = normalizeWhitespace(
+        parsedSourceUrl.searchParams.get('sejour_id') ??
+          parsedSourceUrl.searchParams.get('stay_id') ??
+          parsedSourceUrl.pathname.match(/\/tarifsejour\/(\d+)/i)?.[1] ??
+          ''
+      );
+    } catch {
+      stayId = '';
+    }
+  }
 
   let endpointUrl: string;
   try {
@@ -2769,9 +2811,13 @@ export async function fetchPaginatedDepartureTableData(
   }
 
   const query = new URL(endpointUrl);
-  query.searchParams.set('sejour_id', stayId);
+  if (stayId) {
+    query.searchParams.set('sejour_id', stayId);
+  }
+  if (!normalizeWhitespace(query.searchParams.get('sejour_id') ?? '')) return null;
   query.searchParams.set('length', '-1');
   query.searchParams.set('draw', '0');
+  query.searchParams.set('start', '0');
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);

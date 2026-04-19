@@ -1,6 +1,7 @@
 import { mergeDraftExtraOptionsJson } from '@/lib/stay-draft-extra-options-split';
 import { collapseTransportDraftOptionsJson } from '@/lib/stay-draft-transport-display';
 import { normalizeImportedImageUrlList, normalizeImportedVideoUrlList } from '@/lib/stay-draft-url-extract';
+import { sanitizeSeoPrimaryKeyword } from '@/lib/stay-seo';
 import { normalizeStayDraftCategories } from '@/lib/stay-categories';
 import type { Database } from '@/types/supabase';
 import type { StayDraftReviewPayload } from '@/types/stay-draft-review';
@@ -156,7 +157,7 @@ export function mapPublishedStayToReviewPayload(input: {
     accommodations_json: null,
     images: imageUrls,
     video_urls: videoUrls,
-    seo_primary_keyword: stay.seo_primary_keyword ?? '',
+    seo_primary_keyword: sanitizeSeoPrimaryKeyword(stay.seo_primary_keyword ?? ''),
     seo_secondary_keywords: stay.seo_secondary_keywords ?? [],
     seo_target_city: stay.seo_target_city ?? '',
     seo_target_region: stay.seo_target_region ?? '',
@@ -179,4 +180,3 @@ export function mapPublishedStayToReviewPayload(input: {
     required_documents_text: stay.required_documents_text ?? ''
   };
 }
-

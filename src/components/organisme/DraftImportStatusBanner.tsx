@@ -7,6 +7,7 @@ type DraftImportStatusBannerProps = {
   /** Rafraîchit la page serveur tant que l’import n’a pas abouti. */
   pollWhilePending: boolean;
   importErrorMessage: string | null;
+  importWarningMessage: string | null;
 };
 
 function DraftImportAutoRefresh({ active }: { active: boolean }) {
@@ -25,7 +26,8 @@ function DraftImportAutoRefresh({ active }: { active: boolean }) {
 
 export default function DraftImportStatusBanner({
   pollWhilePending,
-  importErrorMessage
+  importErrorMessage,
+  importWarningMessage
 }: DraftImportStatusBannerProps) {
   return (
     <>
@@ -41,6 +43,17 @@ export default function DraftImportStatusBanner({
             met à jour automatiquement.
           </p>
           <DraftImportAutoRefresh active />
+        </div>
+      ) : null}
+
+      {importWarningMessage ? (
+        <div
+          className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+          role="status"
+          aria-live="polite"
+        >
+          <p className="font-semibold">Import partiel</p>
+          <p className="mt-1 whitespace-pre-wrap text-amber-900/90">{importWarningMessage}</p>
         </div>
       ) : null}
 

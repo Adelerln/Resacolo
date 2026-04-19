@@ -4,7 +4,7 @@ import { getSession } from '@/lib/auth/session';
 import { mockOrganizerTenant } from '@/lib/mocks';
 import { resolveOrganizerSelection } from '@/lib/organizers.server';
 import { generateStayDraftSeo } from '@/lib/stay-draft-seo';
-import { sanitizeSeoTags, sanitizeSeoText } from '@/lib/stay-seo';
+import { sanitizeSeoPrimaryKeyword, sanitizeSeoTags, sanitizeSeoText } from '@/lib/stay-seo';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import type { Database } from '@/types/supabase';
 
@@ -75,7 +75,7 @@ function pickSeoFromStay(stay: StayRow) {
     : [];
 
   return {
-    seo_primary_keyword: sanitizeSeoText(stay.seo_primary_keyword) || null,
+    seo_primary_keyword: sanitizeSeoPrimaryKeyword(stay.seo_primary_keyword) || null,
     seo_secondary_keywords: sanitizeSeoTags(stay.seo_secondary_keywords ?? []),
     seo_target_city: sanitizeSeoText(stay.seo_target_city) || null,
     seo_target_region: sanitizeSeoText(stay.seo_target_region) || null,

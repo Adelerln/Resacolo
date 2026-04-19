@@ -196,9 +196,6 @@ export default function ImportStayPrefillForm({
               de transport.
             </span>
           </span>
-          <span className="mt-1 block text-xs font-normal text-slate-500">
-            Si la case est cochée, alors l&apos;import est beaucoup plus long.
-          </span>
         </div>
       </div>
       <input type="hidden" name="organizerId" value={organizerId} />

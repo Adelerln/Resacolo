@@ -8,6 +8,7 @@ import {
   SEO_META_RECOMMENDED_MIN,
   SEO_TITLE_RECOMMENDED_MAX,
   SEO_TITLE_RECOMMENDED_MIN,
+  sanitizeSeoPrimaryKeyword,
   sanitizeSeoTags,
   sanitizeSeoText
 } from '@/lib/stay-seo';
@@ -98,7 +99,9 @@ export default function StaySeoEditor({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [context, setContext] = useState<StaySeoEditorContext>(initialContext);
 
-  const [primaryKeyword, setPrimaryKeyword] = useState(initialSeo.primaryKeyword ?? '');
+  const [primaryKeyword, setPrimaryKeyword] = useState(
+    sanitizeSeoPrimaryKeyword(initialSeo.primaryKeyword ?? '')
+  );
   const [secondaryKeywords, setSecondaryKeywords] = useState<string[]>(
     sanitizeSeoTags(initialSeo.secondaryKeywords)
   );
@@ -202,7 +205,7 @@ export default function StaySeoEditor({
     seo_generated_at?: string | null;
     seo_generation_source?: string | null;
   }) {
-    setPrimaryKeyword(sanitizeSeoText(seo.seo_primary_keyword));
+    setPrimaryKeyword(sanitizeSeoPrimaryKeyword(seo.seo_primary_keyword));
     setSecondaryKeywords(sanitizeSeoTags(seo.seo_secondary_keywords ?? []));
     setTargetCity(sanitizeSeoText(seo.seo_target_city));
     setTargetRegion(sanitizeSeoText(seo.seo_target_region));
@@ -350,6 +353,7 @@ export default function StaySeoEditor({
           name="seo_primary_keyword"
           value={primaryKeyword}
           onChange={(event) => setPrimaryKeyword(event.target.value)}
+          onBlur={() => setPrimaryKeyword((current) => sanitizeSeoPrimaryKeyword(current))}
           className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
           placeholder="Ex. colonie de vacances surf à Biarritz"
         />

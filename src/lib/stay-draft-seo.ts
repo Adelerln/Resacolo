@@ -6,6 +6,7 @@ import {
   buildStaySeoSuggestions,
   buildStaySeoTitle,
   buildStaySeoWarnings,
+  sanitizeSeoPrimaryKeyword,
   sanitizeSeoTags,
   sanitizeSeoText,
   SEO_META_RECOMMENDED_MAX,
@@ -150,6 +151,21 @@ function deriveCategoryValues(categories: string[] | null | undefined) {
       (value): value is NonNullable<ReturnType<typeof stayCategoryLabelToValue>> => value !== null
     );
   return sanitizeSeoTags(values);
+}
+
+function pickFallbackSeoCategory(categoryValues: string[]) {
+  const thematicPriority = [
+    'artistique',
+    'linguistique',
+    'scientifique',
+    'sportif',
+    'equestre',
+    'itinerant'
+  ];
+  for (const category of thematicPriority) {
+    if (categoryValues.includes(category)) return category;
+  }
+  return categoryValues[0] ?? '';
 }
 
 function buildInternalAnchorSuggestions(input: {
@@ -319,10 +335,13 @@ export function generateStayDraftSeo(source: StayDraftSeoSource): GeneratedStayD
   const fallbackPrimaryKeyword = sanitizeSeoTags([
     title,
     location ? `séjour à ${targetCity || location}` : '',
-    categoryValues[0] ? categoryFallbackKeywordMap[categoryValues[0]] ?? '' : ''
+    (() => {
+      const fallbackCategory = pickFallbackSeoCategory(categoryValues);
+      return fallbackCategory ? categoryFallbackKeywordMap[fallbackCategory] ?? '' : '';
+    })()
   ])[0];
 
-  const primaryKeyword = keywordSuggestions[0] || fallbackPrimaryKeyword || '';
+  const primaryKeyword = sanitizeSeoPrimaryKeyword(keywordSuggestions[0] || fallbackPrimaryKeyword || '');
   const secondaryKeywords = sanitizeSeoTags([
     ...keywordSuggestions.slice(1),
     targetCity ? `colonie de vacances ${targetCity}` : '',

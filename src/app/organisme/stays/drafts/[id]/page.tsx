@@ -361,6 +361,10 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
         : typeof rawPayload.import_update_error === 'string' && rawPayload.import_update_error.trim()
           ? rawPayload.import_update_error.trim()
           : null;
+  const importWarningMessage =
+    typeof rawPayload.import_warning === 'string' && rawPayload.import_warning.trim()
+      ? rawPayload.import_warning.trim()
+      : null;
 
   const hasImportedTitle = Boolean(normalizeString(draft.title));
   const manualDraft = isManualCreationDraft(rawPayload);
@@ -370,11 +374,6 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
     !importErrorMessage &&
     !hasImportedTitle;
 
-  const aiModel = typeof rawPayload.ai_model === 'string' ? rawPayload.ai_model : null;
-  const aiPromptVersion =
-    typeof rawPayload.ai_prompt_version === 'string' ? rawPayload.ai_prompt_version : null;
-  const aiEnrichedAt =
-    typeof rawPayload.ai_enriched_at === 'string' ? rawPayload.ai_enriched_at : null;
   const accommodationsObject = asObject(draft.accommodations_json);
   const linkedAccommodationId = readExistingAccommodationId(rawPayload);
   const linkedAccommodation =
@@ -556,7 +555,11 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
         </Link>
       </div>
 
-      <DraftImportStatusBanner pollWhilePending={pollWhilePending} importErrorMessage={importErrorMessage} />
+      <DraftImportStatusBanner
+        pollWhilePending={pollWhilePending}
+        importErrorMessage={importErrorMessage}
+        importWarningMessage={importWarningMessage}
+      />
 
       {!manualDraft ? (
         <div className="rounded-2xl border border-slate-200 bg-white p-6">
@@ -599,17 +602,6 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
             <p>
               <span className="font-medium text-slate-700">Validé par :</span>{' '}
               {draft.validated_by_user_id ?? '—'}
-            </p>
-            <p>
-              <span className="font-medium text-slate-700">Modèle IA :</span> {aiModel ?? '—'}
-            </p>
-            <p>
-              <span className="font-medium text-slate-700">Version du prompt IA :</span>{' '}
-              {aiPromptVersion ?? '—'}
-            </p>
-            <p>
-              <span className="font-medium text-slate-700">Enrichi par IA le :</span>{' '}
-              {aiEnrichedAt ? new Date(aiEnrichedAt).toLocaleString('fr-FR') : '—'}
             </p>
           </div>
         </div>

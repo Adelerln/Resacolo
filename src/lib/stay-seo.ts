@@ -9,6 +9,12 @@ const MAX_SEO_TAGS = 12;
 const SEO_TITLE_BRAND_SUFFIX = ' | Resacolo';
 
 const ACTIVITY_KEYWORDS = [
+  'chant',
+  'chorale',
+  'musique',
+  'guitare',
+  'piano',
+  'theatre',
   'surf',
   'ski',
   'snowboard',
@@ -16,7 +22,6 @@ const ACTIVITY_KEYWORDS = [
   'cheval',
   'poney',
   'danse',
-  'theatre',
   'manga',
   'anglais',
   'linguistique',
@@ -36,13 +41,31 @@ const CATEGORY_TO_SEO_BASE: Record<string, string> = {
   mer: 'colonie de vacances mer',
   montagne: 'colonie de vacances montagne',
   campagne: 'colonie de vacances nature',
-  artistique: 'colonie artistique',
+  artistique: 'séjour artistique',
   equestre: 'colonie équitation',
   linguistique: 'séjour linguistique',
   scientifique: 'séjour scientifique',
   sportif: 'séjour sportif',
   itinerant: 'séjour itinérant',
   etranger: 'colonie de vacances à l’étranger'
+};
+
+const THEME_CATEGORY_PRIORITY = [
+  'artistique',
+  'linguistique',
+  'scientifique',
+  'sportif',
+  'equestre',
+  'itinerant'
+];
+
+const CATEGORY_SIGNAL_KEYWORDS: Record<string, string[]> = {
+  artistique: ['chant', 'chorale', 'musique', 'danse', 'theatre', 'artistique', 'arts', 'photo', 'cinema'],
+  linguistique: ['linguistique', 'langue', 'anglais', 'espagnol', 'allemand', 'bilingue'],
+  scientifique: ['scientifique', 'science', 'robotique', 'astronomie', 'laboratoire'],
+  sportif: ['sport', 'football', 'basket', 'tennis', 'escalade', 'voile', 'surf', 'ski', 'multisport'],
+  equestre: ['equestre', 'equitation', 'cheval', 'poney'],
+  itinerant: ['itinerant', 'itinerance', 'road trip', 'circuit']
 };
 
 type StaySeoContext = {
@@ -158,12 +181,46 @@ function truncateAtWord(value: string, maxLength: number) {
   return `${truncated.slice(0, lastSpace)}…`;
 }
 
+function truncateAtWordWithoutEllipsis(value: string, maxLength: number) {
+  if (value.length <= maxLength) return value;
+  const truncated = value.slice(0, maxLength).trimEnd();
+  const lastSpace = truncated.lastIndexOf(' ');
+  if (lastSpace < 30) return truncated;
+  return truncated.slice(0, lastSpace).trimEnd();
+}
+
+function truncateAtSentenceWithoutEllipsis(value: string, maxLength: number) {
+  const normalized = normalizeWhitespace(value);
+  if (normalized.length <= maxLength) return normalized;
+
+  const truncated = normalized.slice(0, maxLength);
+  const sentenceMatches = Array.from(truncated.matchAll(/[.!?](?=\s|$)/g));
+  const lastSentence = sentenceMatches[sentenceMatches.length - 1];
+  if (lastSentence && typeof lastSentence.index === 'number') {
+    return truncated.slice(0, lastSentence.index + 1).trimEnd();
+  }
+
+  return truncateAtWordWithoutEllipsis(truncated, maxLength);
+}
+
+function capitalizeFirstLetter(value: string) {
+  const firstLetterMatch = value.match(/\p{L}/u);
+  if (!firstLetterMatch || typeof firstLetterMatch.index !== 'number') return value;
+  const letterIndex = firstLetterMatch.index;
+  const letter = firstLetterMatch[0];
+  return (
+    value.slice(0, letterIndex) +
+    letter.toLocaleUpperCase('fr-FR') +
+    value.slice(letterIndex + letter.length)
+  );
+}
+
 function withSeoTitleBrandSuffix(value: string) {
   const normalized = stripTrailingSeparator(stripTrailingBrand(normalizeWhitespace(value)));
   const base = normalized || 'Séjour enfants et adolescents';
   const maxBaseLength = Math.max(1, SEO_TITLE_RECOMMENDED_MAX - SEO_TITLE_BRAND_SUFFIX.length);
-  const truncatedBase = stripTrailingSeparator(truncateAtWord(base, maxBaseLength));
-  return `${truncatedBase}${SEO_TITLE_BRAND_SUFFIX}`;
+  const truncatedBase = stripTrailingSeparator(truncateAtWordWithoutEllipsis(base, maxBaseLength));
+  return `${capitalizeFirstLetter(truncatedBase)}${SEO_TITLE_BRAND_SUFFIX}`;
 }
 
 function includesPhrase(haystack: string, needle: string) {
@@ -204,10 +261,32 @@ function deriveAudienceLabel(ageRange: string | undefined) {
   return max >= 13 ? 'adolescents' : 'enfants';
 }
 
-function buildSeoBaseLabel(input: StaySeoInput) {
+function includesAnyKeyword(content: string, keywords: string[]) {
+  return keywords.some((keyword) => content.includes(normalizeForMatch(keyword)));
+}
+
+function inferPreferredSeoCategory(input: StaySeoInput) {
   const categories = input.categories ?? [];
-  const firstCategory = categories[0] ?? '';
-  return CATEGORY_TO_SEO_BASE[firstCategory] ?? 'colonie de vacances';
+
+  for (const thematicCategory of THEME_CATEGORY_PRIORITY) {
+    if (categories.includes(thematicCategory)) return thematicCategory;
+  }
+
+  const content = normalizeForMatch(
+    `${input.title ?? ''} ${input.summary ?? ''} ${input.description ?? ''} ${input.activitiesText ?? ''} ${input.programText ?? ''}`
+  );
+
+  for (const thematicCategory of THEME_CATEGORY_PRIORITY) {
+    const signals = CATEGORY_SIGNAL_KEYWORDS[thematicCategory] ?? [];
+    if (includesAnyKeyword(content, signals)) return thematicCategory;
+  }
+
+  return categories.find((category) => Boolean(CATEGORY_TO_SEO_BASE[category])) ?? '';
+}
+
+function buildSeoBaseLabel(input: StaySeoInput) {
+  const preferredCategory = inferPreferredSeoCategory(input);
+  return CATEGORY_TO_SEO_BASE[preferredCategory] ?? 'colonie de vacances';
 }
 
 function buildFallbackTitle(input: StaySeoInput) {
@@ -278,7 +357,7 @@ function buildFallbackMetaDescription(input: StaySeoInput) {
   }
 
   const composed = sentences.join(' ').replace(/\s+/g, ' ').trim();
-  return truncateAtWord(composed, SEO_META_RECOMMENDED_MAX);
+  return truncateAtSentenceWithoutEllipsis(composed, SEO_META_RECOMMENDED_MAX);
 }
 
 function countPhraseOccurrences(haystack: string, phrase: string) {
@@ -368,7 +447,7 @@ function sanitizeSeoContext(input: StaySeoInput): StaySeoInput {
     ageRange: normalizeWhitespace(input.ageRange),
     categories: dedupeKeywords(input.categories ?? []),
     seo: {
-      primaryKeyword: normalizeWhitespace(input.seo?.primaryKeyword) || undefined,
+      primaryKeyword: sanitizeSeoPrimaryKeyword(input.seo?.primaryKeyword) || undefined,
       secondaryKeywords,
       targetCity: normalizeWhitespace(input.seo?.targetCity) || undefined,
       targetRegion: normalizeWhitespace(input.seo?.targetRegion) || undefined,
@@ -391,6 +470,10 @@ export function sanitizeSeoText(value: FormDataEntryValue | string | null | unde
   return normalizeWhitespace(typeof value === 'string' ? value : String(value ?? ''));
 }
 
+export function sanitizeSeoPrimaryKeyword(value: FormDataEntryValue | string | null | undefined) {
+  return capitalizeFirstLetter(sanitizeSeoText(value));
+}
+
 export function sanitizeSeoTags(values: Array<FormDataEntryValue | string | null | undefined>) {
   return dedupeKeywords(values.map((value) => sanitizeSeoText(value)));
 }
@@ -406,7 +489,7 @@ export function buildStaySeoTitle(input: StaySeoInput) {
 export function buildStaySeoMetaDescription(input: StaySeoInput) {
   const sanitized = sanitizeSeoContext(input);
   if (sanitized.seo?.metaDescription) {
-    return truncateAtWord(sanitized.seo.metaDescription, SEO_META_RECOMMENDED_MAX);
+    return truncateAtSentenceWithoutEllipsis(sanitized.seo.metaDescription, SEO_META_RECOMMENDED_MAX);
   }
   return buildFallbackMetaDescription(sanitized);
 }

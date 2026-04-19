@@ -15,7 +15,7 @@ import {
   normalizeStayTransportLogisticsMode
 } from '@/lib/stay-draft-content';
 import { mapToCanonicalStayRegion } from '@/lib/stay-regions';
-import { sanitizeSeoTags, sanitizeSeoText } from '@/lib/stay-seo';
+import { sanitizeSeoPrimaryKeyword, sanitizeSeoTags, sanitizeSeoText } from '@/lib/stay-seo';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { normalizeStayTitle } from '@/lib/stay-title';
 import type { Database, Json } from '@/types/supabase';
@@ -378,7 +378,7 @@ async function parseBody(req: Request): Promise<{ payload: StayDraftReviewPayloa
     transport_options_json: data.transport_options_json,
     accommodations_json: data.accommodations_json,
     images: data.images.map((image) => normalizeString(image)).filter(Boolean),
-    seo_primary_keyword: sanitizeSeoText(data.seo_primary_keyword),
+    seo_primary_keyword: sanitizeSeoPrimaryKeyword(data.seo_primary_keyword),
     seo_secondary_keywords: sanitizeSeoTags(data.seo_secondary_keywords),
     seo_target_city: sanitizeSeoText(data.seo_target_city),
     seo_target_region: sanitizeSeoText(data.seo_target_region),

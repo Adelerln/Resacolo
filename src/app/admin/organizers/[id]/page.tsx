@@ -19,7 +19,7 @@ type BillingRow = Database['public']['Tables']['organizer_billing_settings']['Ro
 
 type PageProps = {
   params: Promise<{ id: string }>;
-  searchParams?: { error?: string; success?: string; billingSuccess?: string };
+  searchParams?: Promise<{ error?: string; success?: string; billingSuccess?: string }>;
 };
 
 function num(value: unknown): number {
@@ -31,6 +31,7 @@ function num(value: unknown): number {
 
 export default async function AdminOrganizerDetailPage({ params: paramsPromise, searchParams }: PageProps) {
   const params = await paramsPromise;
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
   await requireRole('ADMIN');
   const supabase = getServerSupabaseClient();
 
@@ -112,17 +113,17 @@ export default async function AdminOrganizerDetailPage({ params: paramsPromise, 
         </div>
       </div>
 
-      {searchParams?.error && (
+      {resolvedSearchParams?.error && (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {searchParams.error}
+          {resolvedSearchParams.error}
         </div>
       )}
-      {searchParams?.success && (
+      {resolvedSearchParams?.success && (
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
           Fiche organisme enregistrée.
         </div>
       )}
-      {searchParams?.billingSuccess && (
+      {resolvedSearchParams?.billingSuccess && (
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
           Paramètres de facturation enregistrés.
         </div>

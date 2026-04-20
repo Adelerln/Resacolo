@@ -3,11 +3,16 @@ import { requireRole } from '@/lib/auth/require';
 import { mockSeasons, mockSessions, mockStays } from '@/lib/mocks';
 import { stayStatusLabel } from '@/lib/ui/labels';
 
-export default async function PartnerCatalogPage({ searchParams }: { searchParams?: { q?: string } }) {
+export default async function PartnerCatalogPage({
+  searchParams
+}: {
+  searchParams?: Promise<{ q?: string }>;
+}) {
   const session = await requireRole('PARTENAIRE');
   const partnerTenantId = session.tenantId;
   const useMock = process.env.MOCK_UI === '1';
   const season = useMock ? mockSeasons[0] : null;
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
 
   if (!partnerTenantId || !season) {
     return (
@@ -18,7 +23,7 @@ export default async function PartnerCatalogPage({ searchParams }: { searchParam
     );
   }
 
-  const q = (searchParams?.q ?? '').toLowerCase();
+  const q = (resolvedSearchParams?.q ?? '').toLowerCase();
   const stays = useMock ? mockStays.filter((stay) => stay.status === 'PUBLISHED') : [];
   const filtered = q ? stays.filter((stay) => stay.title.toLowerCase().includes(q)) : stays;
 
@@ -42,7 +47,7 @@ export default async function PartnerCatalogPage({ searchParams }: { searchParam
         <form className="flex w-full items-center gap-2 sm:w-auto">
           <input
             name="q"
-            defaultValue={searchParams?.q ?? ''}
+            defaultValue={resolvedSearchParams?.q ?? ''}
             placeholder="Rechercher"
             className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm sm:w-auto"
           />

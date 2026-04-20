@@ -3090,8 +3090,8 @@ export async function fetchPaginatedDepartureTableData(
           String(parsedParameters.sejour_id ?? parsedParameters.stay_id ?? '')
         );
       } catch {
-        const inlineMatch = parametersRaw.match(/"(?:sejour_id|stay_id)"\s*:\s*"?(?<id>\d+)"?/i);
-        stayId = normalizeWhitespace(inlineMatch?.groups?.id ?? '');
+        const inlineMatch = parametersRaw.match(/"(?:sejour_id|stay_id)"\s*:\s*"?(\d+)"?/i);
+        stayId = normalizeWhitespace(inlineMatch?.[1] ?? '');
       }
     }
   }

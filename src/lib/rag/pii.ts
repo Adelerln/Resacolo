@@ -2,7 +2,7 @@ import type { Json } from '@/types/supabase';
 
 const EMAIL_RE = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi;
 const PHONE_RE =
-  /(?<!\w)(?:\+?\d{1,3}[\s.-]?)?(?:\(?\d{2,4}\)?[\s.-]?){2,5}\d{2,4}(?!\w)/g;
+  /(^|[^\w])((?:\+?\d{1,3}[\s.-]?)?(?:\(?\d{2,4}\)?[\s.-]?){2,5}\d{2,4})(?!\w)/g;
 const UUID_RE = /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/gi;
 
 const SENSITIVE_KEYWORDS = [
@@ -31,7 +31,7 @@ function isSensitiveKey(key: string) {
 export function redactPIIText(value: string) {
   return value
     .replace(EMAIL_RE, '[EMAIL_REDACTED]')
-    .replace(PHONE_RE, '[PHONE_REDACTED]')
+    .replace(PHONE_RE, (_match, prefix: string) => `${prefix}[PHONE_REDACTED]`)
     .replace(UUID_RE, '[ID_REDACTED]');
 }
 

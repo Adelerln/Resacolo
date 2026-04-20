@@ -6,10 +6,14 @@ import {
 } from '@/lib/auth/password-policy';
 import { ORGANIZER_ACCESS_ROLE_VALUES } from '@/lib/organizer-access';
 
-type PageProps = { params: Promise<{ id: string }>; searchParams?: { error?: string } };
+type PageProps = {
+  params: Promise<{ id: string }>;
+  searchParams?: Promise<{ error?: string }>;
+};
 
 export default async function AdminOrganizerMemberNewPage({ params: paramsPromise, searchParams }: PageProps) {
   const params = await paramsPromise;
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
   await requireRole('ADMIN');
 
   return (
@@ -19,9 +23,9 @@ export default async function AdminOrganizerMemberNewPage({ params: paramsPromis
         <p className="text-sm text-slate-600">Créer ou lier un utilisateur à cet organisme.</p>
       </div>
 
-      {searchParams?.error && (
+      {resolvedSearchParams?.error && (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {searchParams.error}
+          {resolvedSearchParams.error}
         </div>
       )}
 

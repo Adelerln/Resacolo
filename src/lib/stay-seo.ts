@@ -204,10 +204,9 @@ function truncateAtSentenceWithoutEllipsis(value: string, maxLength: number) {
 }
 
 function capitalizeFirstLetter(value: string) {
-  const firstLetterMatch = value.match(/\p{L}/u);
-  if (!firstLetterMatch || typeof firstLetterMatch.index !== 'number') return value;
-  const letterIndex = firstLetterMatch.index;
-  const letter = firstLetterMatch[0];
+  const letterIndex = value.search(/[A-Za-zÀ-ÖØ-öø-ÿ]/);
+  if (letterIndex < 0) return value;
+  const letter = value.charAt(letterIndex);
   return (
     value.slice(0, letterIndex) +
     letter.toLocaleUpperCase('fr-FR') +

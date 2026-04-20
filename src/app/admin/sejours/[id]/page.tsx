@@ -12,9 +12,9 @@ import type { Database } from '@/types/supabase';
 
 type PageProps = {
   params: Promise<{ id: string }>;
-  searchParams?: {
+  searchParams?: Promise<{
     saved?: string | string[];
-  };
+  }>;
 };
 
 export const dynamic = 'force-dynamic';
@@ -51,9 +51,12 @@ function getSessionPriceAmountCents(
 
 export default async function AdminStayDetailPage({ params: paramsPromise, searchParams }: PageProps) {
   const params = await paramsPromise;
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
   await requireRole('ADMIN');
   const supabase = getServerSupabaseClient();
-  const savedParam = Array.isArray(searchParams?.saved) ? searchParams?.saved[0] : searchParams?.saved;
+  const savedParam = Array.isArray(resolvedSearchParams?.saved)
+    ? resolvedSearchParams?.saved[0]
+    : resolvedSearchParams?.saved;
   const showSavedBanner = savedParam === '1';
 
   const { data: stay } = await supabase

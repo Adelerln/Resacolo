@@ -5,10 +5,11 @@ import {
   PASSWORD_POLICY_MIN_LENGTH
 } from '@/lib/auth/password-policy';
 
-type PageProps = { searchParams?: { error?: string } };
+type PageProps = { searchParams?: Promise<{ error?: string }> };
 
 export default async function AdminOrganizerNewPage({ searchParams }: PageProps) {
   await requireRole('ADMIN');
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
 
   return (
     <div className="space-y-6">
@@ -17,9 +18,9 @@ export default async function AdminOrganizerNewPage({ searchParams }: PageProps)
         <p className="text-sm text-slate-600">Créer un organisme et son compte principal.</p>
       </div>
 
-      {searchParams?.error && (
+      {resolvedSearchParams?.error && (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {searchParams.error}
+          {resolvedSearchParams.error}
         </div>
       )}
 

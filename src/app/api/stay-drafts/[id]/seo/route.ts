@@ -1,8 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { getSession } from '@/lib/auth/session';
-import { mockOrganizerTenant } from '@/lib/mocks';
-import { resolveOrganizerSelection } from '@/lib/organizers.server';
+import { requireOrganizerApiAccess } from '@/lib/organizer-backoffice-access.server';
 import { generateStayDraftSeo } from '@/lib/stay-draft-seo';
 import { sanitizeSeoPrimaryKeyword, sanitizeSeoTags, sanitizeSeoText } from '@/lib/stay-seo';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
@@ -110,26 +108,18 @@ export async function POST(
   context: { params: Promise<{ id: string }> }
 ) {
   const params = await context.params;
-  const isMockMode = process.env.MOCK_UI === '1' || process.env.DISABLE_AUTH === '1';
-  const session = await getSession();
-
-  if (!isMockMode && (!session || session.role !== 'ORGANISATEUR')) {
-    return NextResponse.json({ error: 'Non authentifié.' }, { status: 401 });
-  }
-
   const parsedInput = await parseRequestBody(req).catch(() => null);
   if (!parsedInput) {
     return NextResponse.json({ error: 'Payload invalide.' }, { status: 400 });
   }
-
-  const { selectedOrganizerId } = await resolveOrganizerSelection(
-    parsedInput.organizerId,
-    isMockMode ? mockOrganizerTenant.id : session?.tenantId ?? null
-  );
-
-  if (!selectedOrganizerId) {
-    return NextResponse.json({ error: 'Aucun organisateur disponible.' }, { status: 400 });
+  const access = await requireOrganizerApiAccess({
+    requestedOrganizerId: parsedInput.organizerId,
+    requiredSection: 'stays'
+  });
+  if (!access.ok) {
+    return NextResponse.json({ error: access.error }, { status: access.status });
   }
+  const { selectedOrganizerId } = access.context;
 
   const supabase = getServerSupabaseClient();
 

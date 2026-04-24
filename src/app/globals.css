@@ -148,6 +148,55 @@
     position: relative;
     z-index: 1;
   }
+
+  .contact-step-title {
+    @apply text-xs font-bold uppercase tracking-[0.08em] text-slate-700;
+  }
+
+  .contact-input {
+    @apply w-full rounded-[14px] border-2 border-white bg-white px-4 py-3 text-slate-800 shadow-[0_2px_5px_1px_rgba(0,0,0,0.1)] placeholder:text-slate-400;
+    transition:
+      border-color var(--flow-fast) var(--flow-ease),
+      box-shadow var(--flow-fast) var(--flow-ease);
+  }
+
+  .contact-input:hover {
+    @apply border-brand-500;
+  }
+
+  .contact-input:focus-visible {
+    @apply border-brand-500 outline-none;
+    box-shadow:
+      0 0 0 3px rgb(55 181 245 / 0.18),
+      0 2px 5px 1px rgb(0 0 0 / 0.1);
+  }
+
+  .contact-faq-item {
+    @apply self-start overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm;
+    transition:
+      border-color var(--flow-fast) var(--flow-ease),
+      box-shadow var(--flow-fast) var(--flow-ease);
+  }
+
+  .contact-faq-item[open] {
+    @apply border-slate-300 shadow-md;
+  }
+
+  .contact-faq-summary {
+    @apply flex list-none cursor-pointer items-center justify-between gap-4 px-5 py-4 text-left text-sm font-semibold text-slate-700 marker:hidden;
+  }
+
+  .contact-faq-summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .contact-faq-summary:hover {
+    @apply bg-slate-50;
+  }
+
+  .contact-faq-answer {
+    @apply border-t border-slate-100 px-5 py-4 text-sm leading-relaxed text-slate-600;
+  }
 }
 
 :root {

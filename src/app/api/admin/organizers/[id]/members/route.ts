@@ -2,6 +2,11 @@ import { NextResponse } from 'next/server';
 import { requireApiAdmin } from '@/lib/auth/api';
 import { isPasswordPolicyValid, PASSWORD_POLICY_MESSAGE } from '@/lib/auth/password-policy';
 import { isOrganizerAccessRole } from '@/lib/organizer-access';
+import {
+  ensurePrismaUserForOrganizerAccess,
+  removePrismaUserIfExists,
+  syncBackofficeAccessFromOrganizerMember
+} from '@/lib/organizer-backoffice-sync.server';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 
 export const runtime = 'nodejs';
@@ -58,6 +63,8 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
     );
   }
   let userId: string | null = null;
+  let createdSupabaseUserId: string | null = null;
+  let createdPrismaUserId: string | null = null;
 
   const { data: listData } = await supabase.auth.admin.listUsers({ perPage: 1000 });
   const existingUser = listData?.users?.find((u) => u.email?.toLowerCase() === email.toLowerCase());
@@ -99,6 +106,46 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
       );
     }
     userId = userData.user.id;
+    createdSupabaseUserId = userData.user.id;
+  }
+
+  try {
+    const prismaUser = await ensurePrismaUserForOrganizerAccess({
+      email,
+      tempPassword: tempPassword || undefined,
+      displayName: `${firstName} ${lastName}`.trim()
+    });
+    if (prismaUser.created) {
+      createdPrismaUserId = prismaUser.id;
+    }
+  } catch (prismaError) {
+    if (createdSupabaseUserId) {
+      await supabase.auth.admin.deleteUser(createdSupabaseUserId);
+    }
+    return NextResponse.redirect(
+      new URL(
+        `/admin/organizers/${idOrSlug}/members/new?error=${encodeURIComponent(
+          prismaError instanceof Error ? prismaError.message : 'Impossible de synchroniser le compte applicatif'
+        )}`,
+        req.url
+      ),
+      303
+    );
+  }
+  if (!userId) {
+    if (createdSupabaseUserId) {
+      await supabase.auth.admin.deleteUser(createdSupabaseUserId);
+    }
+    await removePrismaUserIfExists(createdPrismaUserId);
+    return NextResponse.redirect(
+      new URL(
+        `/admin/organizers/${idOrSlug}/members/new?error=${encodeURIComponent(
+          'Utilisateur introuvable après création.'
+        )}`,
+        req.url
+      ),
+      303
+    );
   }
 
   const { error: memberError } = await supabase.from('organizer_members').insert({
@@ -110,10 +157,41 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
   });
 
   if (memberError) {
+    if (createdSupabaseUserId) {
+      await supabase.auth.admin.deleteUser(createdSupabaseUserId);
+    }
+    await removePrismaUserIfExists(createdPrismaUserId);
     return NextResponse.redirect(
       new URL(
         `/admin/organizers/${idOrSlug}/members/new?error=${encodeURIComponent(
           memberError.message ?? "Impossible d'ajouter le membre"
+        )}`,
+        req.url
+      ),
+      303
+    );
+  }
+  try {
+    await syncBackofficeAccessFromOrganizerMember({
+      organizerId: organizer.id,
+      supabaseUserId: userId,
+      role,
+      emailHint: email
+    });
+  } catch (syncError) {
+    await supabase
+      .from('organizer_members')
+      .delete()
+      .eq('organizer_id', organizer.id)
+      .eq('user_id', userId);
+    if (createdSupabaseUserId) {
+      await supabase.auth.admin.deleteUser(createdSupabaseUserId);
+    }
+    await removePrismaUserIfExists(createdPrismaUserId);
+    return NextResponse.redirect(
+      new URL(
+        `/admin/organizers/${idOrSlug}/members/new?error=${encodeURIComponent(
+          syncError instanceof Error ? syncError.message : 'Impossible de synchroniser les accès back-office'
         )}`,
         req.url
       ),

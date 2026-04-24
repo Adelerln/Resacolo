@@ -4,8 +4,8 @@ import ErrorToast from '@/components/common/ErrorToast';
 import NewStayChoiceModalTrigger from '@/components/organisme/NewStayChoiceModalTrigger';
 import SavedToast from '@/components/common/SavedToast';
 import OrganizerStaysTable from '@/components/organisme/OrganizerStaysTable';
-import { requireRole } from '@/lib/auth/require';
-import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers.server';
+import { requireOrganizerPageAccess } from '@/lib/organizer-backoffice-access.server';
+import { withOrganizerQuery } from '@/lib/organizers.server';
 import { getReservedSessionCounts } from '@/lib/session-reservations';
 import { isPublishedStayStatus, stayDraftShouldAppearInImportList } from '@/lib/stay-draft-published';
 import { removeStayMediaStorageFiles } from '@/lib/stay-media-storage';
@@ -39,13 +39,11 @@ function formatRedirectValues(value?: string | string[]) {
 
 export default async function OrganizerStaysPage({ searchParams }: PageProps) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
-  const session = await requireRole('ORGANISATEUR');
+  const { selectedOrganizerId: organizerId } = await requireOrganizerPageAccess({
+    requestedOrganizerId: resolvedSearchParams?.organizerId,
+    requiredSection: 'stays'
+  });
   const supabase = getServerSupabaseClient();
-  const { selectedOrganizerId } = await resolveOrganizerSelection(
-    resolvedSearchParams?.organizerId,
-    session.tenantId ?? null
-  );
-  const organizerId = selectedOrganizerId;
   const savedParam = formatRedirectValue(resolvedSearchParams?.saved);
   const deletedParam = formatRedirectValue(resolvedSearchParams?.deleted);
   const draftDeletedParam = formatRedirectValue(resolvedSearchParams?.draftDeleted);
@@ -411,13 +409,12 @@ export default async function OrganizerStaysPage({ searchParams }: PageProps) {
   async function deleteStayDraft(formData: FormData) {
     'use server';
     const supabase = getServerSupabaseClient();
-    const session = await requireRole('ORGANISATEUR');
     const draftId = String(formData.get('draft_id') ?? '').trim();
     const requestedOrganizerId = String(formData.get('organizer_id') ?? '').trim() || undefined;
-    const { selectedOrganizerId } = await resolveOrganizerSelection(
+    const { selectedOrganizerId } = await requireOrganizerPageAccess({
       requestedOrganizerId,
-      session.tenantId ?? null
-    );
+      requiredSection: 'stays'
+    });
 
     if (!draftId || !selectedOrganizerId) {
       redirect(

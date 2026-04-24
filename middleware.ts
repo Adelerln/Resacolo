@@ -1,19 +1,25 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import {
-  canAccessOrganizerPath,
-  normalizeOrganizerAccessRole,
-  ORGANIZER_ACCESS_COOKIE_NAME
-} from '@/lib/organizer-access';
 
 type SessionPayload = {
-  role: 'ADMIN' | 'ORGANISATEUR' | 'PARTENAIRE';
+  role: 'ADMIN' | 'ORGANISATEUR' | 'PARTENAIRE' | 'CLIENT';
 };
 
-const rolePaths: Record<string, string> = {
+const knownRoles: SessionPayload['role'][] = ['ADMIN', 'ORGANISATEUR', 'PARTENAIRE', 'CLIENT'];
+
+const protectedPrefixes = ['/admin', '/organisme', '/partenaire', '/mnemos'];
+
+const roleHomePaths: Record<Exclude<SessionPayload['role'], 'CLIENT'>, string> = {
   ADMIN: '/admin',
   ORGANISATEUR: '/organisme',
   PARTENAIRE: '/partenaire'
+};
+
+const roleAllowedPrefixes: Record<SessionPayload['role'], string[]> = {
+  ADMIN: ['/admin', '/mnemos', '/organisme'],
+  ORGANISATEUR: ['/organisme'],
+  PARTENAIRE: ['/partenaire'],
+  CLIENT: []
 };
 
 export function middleware(req: NextRequest) {
@@ -30,43 +36,38 @@ export function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  const protectedPrefixes = ['/admin', '/organisme', '/partenaire'];
   const isProtected = protectedPrefixes.some((prefix) => pathname.startsWith(prefix));
   if (!isProtected) return NextResponse.next();
 
   const token = req.cookies.get('resacolo_session')?.value;
   if (!token) {
-    const url = req.nextUrl.clone();
-    url.pathname = '/login';
-    return NextResponse.redirect(url);
+    return NextResponse.redirect(loginUrl(req));
   }
 
   const session = parseSession(token);
   if (!session) {
-    const url = req.nextUrl.clone();
-    url.pathname = '/login';
-    return NextResponse.redirect(url);
+    return NextResponse.redirect(loginUrl(req));
   }
 
-  const expectedPrefix = rolePaths[session.role];
-  if (expectedPrefix && !pathname.startsWith(expectedPrefix)) {
+  const allowedPrefixes = roleAllowedPrefixes[session.role] ?? [];
+  const isAllowed = allowedPrefixes.some((prefix) => pathname.startsWith(prefix));
+  if (!isAllowed) {
     const url = req.nextUrl.clone();
-    url.pathname = expectedPrefix;
+    url.pathname = session.role === 'CLIENT' ? '/' : roleHomePaths[session.role];
+    url.search = '';
     return NextResponse.redirect(url);
-  }
-
-  if (session.role === 'ORGANISATEUR' && pathname.startsWith('/organisme')) {
-    const organizerAccessRole = normalizeOrganizerAccessRole(
-      req.cookies.get(ORGANIZER_ACCESS_COOKIE_NAME)?.value
-    );
-    if (!canAccessOrganizerPath(organizerAccessRole, pathname)) {
-      const url = req.nextUrl.clone();
-      url.pathname = '/organisme';
-      return NextResponse.redirect(url);
-    }
   }
 
   return NextResponse.next();
+}
+
+function loginUrl(req: NextRequest) {
+  const url = req.nextUrl.clone();
+  const redirectTo = `${req.nextUrl.pathname}${req.nextUrl.search}`;
+  url.pathname = '/login';
+  url.search = '';
+  url.searchParams.set('redirectTo', redirectTo);
+  return url;
 }
 
 function parseSession(token: string): SessionPayload | null {
@@ -76,7 +77,7 @@ function parseSession(token: string): SessionPayload | null {
     const padded = data.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(data.length / 4) * 4, '=');
     const json = atob(padded);
     const payload = JSON.parse(json) as SessionPayload;
-    if (!payload.role) return null;
+    if (!payload.role || !knownRoles.includes(payload.role)) return null;
     return payload;
   } catch {
     return null;
@@ -84,5 +85,5 @@ function parseSession(token: string): SessionPayload | null {
 }
 
 export const config = {
-  matcher: ['/admin/:path*', '/organisme/:path*', '/partenaire/:path*', '/login']
+  matcher: ['/admin/:path*', '/organisme/:path*', '/partenaire/:path*', '/mnemos/:path*', '/login']
 };

@@ -1,8 +1,8 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import ErrorToast from '@/components/common/ErrorToast';
-import { requireRole } from '@/lib/auth/require';
-import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers.server';
+import { requireOrganizerPageAccess } from '@/lib/organizer-backoffice-access.server';
+import { withOrganizerQuery } from '@/lib/organizers.server';
 import ManualDraftAutoStart from './ManualDraftAutoStart';
 
 type PageProps = {
@@ -22,11 +22,10 @@ function formatRedirectValue(value?: string | string[]) {
  */
 export default async function NewStayManualPage({ searchParams }: PageProps) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
-  const session = await requireRole('ORGANISATEUR');
-  const { selectedOrganizer, selectedOrganizerId } = await resolveOrganizerSelection(
-    resolvedSearchParams?.organizerId,
-    session.tenantId ?? null
-  );
+  const { selectedOrganizer, selectedOrganizerId } = await requireOrganizerPageAccess({
+    requestedOrganizerId: resolvedSearchParams?.organizerId,
+    requiredSection: 'stays'
+  });
   const errorParam = formatRedirectValue(resolvedSearchParams?.error);
 
   if (!selectedOrganizerId) {

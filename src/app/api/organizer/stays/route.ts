@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import { requireOrganizerApiAccess } from '@/lib/organizer-backoffice-access.server';
 import { prisma } from '@/lib/db';
 import { StayService } from '@/lib/domain/services/stayService';
 
@@ -19,14 +20,18 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const organizerTenantId = searchParams.get('organizerTenantId');
   const seasonId = searchParams.get('seasonId');
-
-  if (!organizerTenantId) {
-    return NextResponse.json({ error: 'organizerTenantId is required' }, { status: 400 });
+  const access = await requireOrganizerApiAccess({
+    requestedOrganizerId: organizerTenantId,
+    requiredSection: 'stays'
+  });
+  if (!access.ok) {
+    return NextResponse.json({ error: access.error }, { status: access.status });
   }
+  const { selectedOrganizerId } = access.context;
 
   const stays = await prisma.stay.findMany({
     where: {
-      organizerTenantId,
+      organizerTenantId: selectedOrganizerId,
       seasonId: seasonId ?? undefined
     },
     orderBy: { createdAt: 'desc' }
@@ -38,7 +43,18 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const body = await req.json();
   const input = staySchema.parse(body);
+  const access = await requireOrganizerApiAccess({
+    requestedOrganizerId: input.organizerTenantId,
+    requiredSection: 'stays'
+  });
+  if (!access.ok) {
+    return NextResponse.json({ error: access.error }, { status: access.status });
+  }
+  const { selectedOrganizerId } = access.context;
   const service = new StayService();
-  const stay = await service.create(input);
+  const stay = await service.create({
+    ...input,
+    organizerTenantId: selectedOrganizerId
+  });
   return NextResponse.json(stay, { status: 201 });
 }

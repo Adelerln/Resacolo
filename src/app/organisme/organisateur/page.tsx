@@ -5,7 +5,7 @@ import SavedToast from '@/components/common/SavedToast';
 import OrganizerCatalogTabs from '@/components/organisme/OrganizerCatalogTabs';
 import OrganizerProfileFormEnhancer from '@/components/organisme/OrganizerProfileFormEnhancer';
 import OrganizerRichTextEditor from '@/components/organisme/OrganizerRichTextEditor';
-import { requireRole } from '@/lib/auth/require';
+import { requireOrganizerPageAccess } from '@/lib/organizer-backoffice-access.server';
 import {
   ORGANIZER_ACTIVITY_OPTIONS,
   ORGANIZER_SEASON_OPTIONS,
@@ -18,7 +18,7 @@ import {
   sanitizeOrganizerRichText
 } from '@/lib/organizer-rich-text';
 import { syncOrganizerProfileCompletenessPercent } from '@/lib/organizer-profile-completeness';
-import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers.server';
+import { withOrganizerQuery } from '@/lib/organizers.server';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { slugify } from '@/lib/utils';
 
@@ -36,12 +36,11 @@ type PageProps = {
 
 export default async function OrganizerProfilePage({ searchParams }: PageProps) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
-  const session = await requireRole('ORGANISATEUR');
+  const { selectedOrganizerId: organizerId } = await requireOrganizerPageAccess({
+    requestedOrganizerId: resolvedSearchParams?.organizerId,
+    requiredSection: 'organizer-profile'
+  });
   const supabase = getServerSupabaseClient();
-  const { selectedOrganizerId } = await resolveOrganizerSelection(
-    resolvedSearchParams?.organizerId,
-    session.tenantId ?? null
-  );
   const savedParam = Array.isArray(resolvedSearchParams?.saved)
     ? resolvedSearchParams?.saved[0]
     : resolvedSearchParams?.saved;
@@ -49,7 +48,6 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
     ? resolvedSearchParams?.error[0]
     : resolvedSearchParams?.error;
   const showSavedBanner = savedParam === '1';
-  const organizerId = selectedOrganizerId;
 
   if (!organizerId) {
     redirect('/organisme');

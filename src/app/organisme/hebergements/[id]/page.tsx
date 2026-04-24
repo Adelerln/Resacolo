@@ -12,8 +12,8 @@ import {
   validateAccommodationLocation
 } from '@/lib/accommodation-location';
 import { deleteAccommodationForOrganizer } from '@/lib/accommodations';
-import { requireRole } from '@/lib/auth/require';
-import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers.server';
+import { requireOrganizerPageAccess } from '@/lib/organizer-backoffice-access.server';
+import { withOrganizerQuery } from '@/lib/organizers.server';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { accommodationStatusBadgeClassName, accommodationStatusLabel } from '@/lib/ui/labels';
 import { slugify } from '@/lib/utils';
@@ -45,12 +45,11 @@ function isAccommodationImportedFromStayDraft(ai: unknown): boolean {
 export default async function AccommodationDetailPage({ params: paramsPromise, searchParams }: PageProps) {
   const params = await paramsPromise;
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
-  const session = await requireRole('ORGANISATEUR');
+  const { session, selectedOrganizerId } = await requireOrganizerPageAccess({
+    requestedOrganizerId: resolvedSearchParams?.organizerId,
+    requiredSection: 'accommodations'
+  });
   const supabase = getServerSupabaseClient();
-  const { selectedOrganizerId } = await resolveOrganizerSelection(
-    resolvedSearchParams?.organizerId,
-    session.tenantId ?? null
-  );
   const savedParam = Array.isArray(resolvedSearchParams?.saved)
     ? resolvedSearchParams?.saved[0]
     : resolvedSearchParams?.saved;

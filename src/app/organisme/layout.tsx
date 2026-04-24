@@ -2,14 +2,12 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { Suspense } from 'react';
 import { ArrowLeft } from 'lucide-react';
-import { requireRole } from '@/lib/auth/require';
-import { getOrganizerAccessRole } from '@/lib/organizer-access.server';
 import { getOrganizerNavLinks } from '@/lib/organizer-access';
+import { requireOrganizerPageAccess } from '@/lib/organizer-backoffice-access.server';
 import {
   OrganizerWorkspaceNav,
   OrganizerWorkspaceSelector
 } from '@/components/organisme/OrganizerWorkspaceControls';
-import { resolveOrganizerSelection } from '@/lib/organizers.server';
 
 function withOrganizerQuery(path: string, organizerId?: string | null) {
   if (!organizerId) return path;
@@ -18,12 +16,8 @@ function withOrganizerQuery(path: string, organizerId?: string | null) {
 }
 
 export default async function OrganizerLayout({ children }: { children: React.ReactNode }) {
-  const session = await requireRole('ORGANISATEUR');
-  const accessRole = await getOrganizerAccessRole();
-  const { organizers, selectedOrganizerId } = await resolveOrganizerSelection(
-    undefined,
-    session.tenantId ?? null
-  );
+  const { organizers, selectedOrganizerId, accessRole, accessByOrganizerId } =
+    await requireOrganizerPageAccess();
   const organizerNavLinks = getOrganizerNavLinks(accessRole);
 
   return (
@@ -76,7 +70,7 @@ export default async function OrganizerLayout({ children }: { children: React.Re
             <OrganizerWorkspaceNav
               organizers={organizers}
               initialSelectedOrganizerId={selectedOrganizerId}
-              initialAccessRole={accessRole}
+              accessRolesByOrganizerId={accessByOrganizerId}
             />
           </Suspense>
           <div className="mt-auto px-6 pb-6 pt-4">
@@ -103,7 +97,7 @@ export default async function OrganizerLayout({ children }: { children: React.Re
             <OrganizerWorkspaceSelector
               organizers={organizers}
               initialSelectedOrganizerId={selectedOrganizerId}
-              initialAccessRole={accessRole}
+              accessRolesByOrganizerId={accessByOrganizerId}
             />
           </Suspense>
           {children}

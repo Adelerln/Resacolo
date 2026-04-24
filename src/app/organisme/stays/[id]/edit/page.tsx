@@ -2,9 +2,9 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import PublishedStaySessionsStep from '@/components/organisme/PublishedStaySessionsStep';
 import StayDraftReviewForm from '@/components/organisme/StayDraftReviewForm';
-import { requireRole } from '@/lib/auth/require';
+import { requireOrganizerPageAccess } from '@/lib/organizer-backoffice-access.server';
 import { mapPublishedStayToReviewPayload } from '@/lib/map-published-stay-to-review-payload';
-import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers.server';
+import { withOrganizerQuery } from '@/lib/organizers.server';
 import { getReservedSessionCounts } from '@/lib/session-reservations';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { extractAccommodationLocationMeta } from '@/lib/accommodation-location';
@@ -31,12 +31,11 @@ type DraftSeasonOption = {
 export default async function OrganizerStayEditTunnelPage({ params: paramsPromise, searchParams }: PageProps) {
   const params = await paramsPromise;
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
-  const session = await requireRole('ORGANISATEUR');
+  const { selectedOrganizerId } = await requireOrganizerPageAccess({
+    requestedOrganizerId: resolvedSearchParams?.organizerId,
+    requiredSection: 'stays'
+  });
   const supabase = getServerSupabaseClient();
-  const { selectedOrganizerId } = await resolveOrganizerSelection(
-    resolvedSearchParams?.organizerId,
-    session.tenantId ?? null
-  );
 
   if (!selectedOrganizerId) {
     redirect('/organisme/sejours');

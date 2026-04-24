@@ -11,10 +11,22 @@ export function hashPassword(password: string) {
 }
 
 export function verifyPassword(password: string, stored: string) {
-  const [algo, iterStr, salt, hash] = stored.split('$');
-  if (algo !== 'pbkdf2' || !iterStr || !salt || !hash) return false;
-  const iterations = Number(iterStr);
-  if (!Number.isFinite(iterations)) return false;
-  const computed = crypto.pbkdf2Sync(password, salt, iterations, KEYLEN, DIGEST).toString('hex');
-  return crypto.timingSafeEqual(Buffer.from(hash), Buffer.from(computed));
+  try {
+    const [algo, iterStr, salt, hash] = stored.split('$');
+    if (algo !== 'pbkdf2' || !iterStr || !salt || !hash) return false;
+
+    const iterations = Number(iterStr);
+    if (!Number.isFinite(iterations) || iterations < 1) return false;
+
+    // Compatibilite: certains comptes historiques peuvent avoir une longueur de hash differente.
+    if (!/^[a-f0-9]+$/i.test(hash) || hash.length % 2 !== 0) return false;
+    const keyLength = hash.length / 2;
+    if (!Number.isInteger(keyLength) || keyLength < 1) return false;
+
+    const computed = crypto.pbkdf2Sync(password, salt, iterations, keyLength, DIGEST).toString('hex');
+    if (hash.length !== computed.length) return false;
+    return crypto.timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(computed, 'hex'));
+  } catch {
+    return false;
+  }
 }

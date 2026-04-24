@@ -1,7 +1,15 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { prisma } from '@/lib/db';
 import { requireRole } from '@/lib/auth/require';
+import { canManageBackofficeAccess } from '@/lib/mnemos-backoffice-access-admins';
+import { ORGANIZER_ACCESS_LABELS, ORGANIZER_ACCESS_ROLE_VALUES } from '@/lib/organizer-access';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
+import {
+  addBackofficeAccess,
+  removeBackofficeAccess,
+  updateBackofficeAccessRole
+} from './actions';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -11,11 +19,16 @@ function euros(cents: number | null | undefined) {
   return (n / 100).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' });
 }
 
-type PageProps = { params: Promise<{ id: string }> };
+type PageProps = {
+  params: Promise<{ id: string }>;
+  searchParams?: Promise<{ access_saved?: string; access_error?: string; q?: string }>;
+};
 
-export default async function MnemosOrganizerDetailPage({ params }: PageProps) {
-  await requireRole('ADMIN');
+export default async function MnemosOrganizerDetailPage({ params, searchParams }: PageProps) {
+  const session = await requireRole('ADMIN');
   const { id } = await params;
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const canManageAccess = canManageBackofficeAccess(session.email);
   const supabase = getServerSupabaseClient();
 
   const [{ data: org }, { data: overview }, { data: billing }, { data: invoices }, { data: events }] =
@@ -36,10 +49,34 @@ export default async function MnemosOrganizerDetailPage({ params }: PageProps) {
         .order('created_at', { ascending: false })
         .limit(50)
     ]);
+  const { data: accessRows } = await supabase
+    .from('organizer_backoffice_access')
+    .select('app_user_id,role,access_code,created_at,updated_at,granted_at,revoked_at,revoke_reason')
+    .eq('organizer_id', id)
+    .order('created_at', { ascending: true });
 
   if (!org) {
     notFound();
   }
+  const accessSaved = resolvedSearchParams?.access_saved === '1';
+  const accessError = resolvedSearchParams?.access_error ?? '';
+  const searchTerm = String(resolvedSearchParams?.q ?? '').trim().toLowerCase();
+
+  const appUserIds = Array.from(new Set((accessRows ?? []).map((row) => row.app_user_id).filter(Boolean)));
+  const appUsers =
+    appUserIds.length > 0
+      ? await prisma.user.findMany({
+          where: { id: { in: appUserIds } },
+          select: { id: true, email: true, name: true }
+        })
+      : [];
+  const appUserById = new Map(appUsers.map((user) => [user.id, user]));
+  const filteredAccessRows = (accessRows ?? []).filter((row) => {
+    if (!searchTerm) return true;
+    const appUser = appUserById.get(row.app_user_id);
+    const email = appUser?.email?.toLowerCase() ?? '';
+    return email.includes(searchTerm);
+  });
 
   const invoiceIds = (invoices ?? []).map((i) => i.id);
   const { data: lines } = invoiceIds.length
@@ -136,6 +173,160 @@ export default async function MnemosOrganizerDetailPage({ params }: PageProps) {
             <dd className="text-xl font-semibold text-white">{overview?.stays_count ?? '—'}</dd>
           </div>
         </dl>
+      </section>
+
+      <section className="rounded-xl border border-slate-700 bg-slate-900/50 p-5">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Accès back-office</h2>
+        <p className="mt-1 text-xs text-slate-500">
+          Source de vérité des accès organisme (pilotage Mnemos + synchronisation admin).
+        </p>
+
+        {accessSaved && (
+          <div className="mt-4 rounded-lg border border-emerald-700/50 bg-emerald-950/30 px-3 py-2 text-sm text-emerald-200">
+            Accès mis à jour.
+          </div>
+        )}
+        {accessError && (
+          <div className="mt-4 rounded-lg border border-rose-700/50 bg-rose-950/30 px-3 py-2 text-sm text-rose-200">
+            {decodeURIComponent(accessError)}
+          </div>
+        )}
+
+        {!canManageAccess && (
+          <div className="mt-4 rounded-lg border border-amber-700/50 bg-amber-950/30 px-3 py-2 text-sm text-amber-200">
+            Vous etes connecte en admin, mais seul Jeanne et Adele peuvent gerer les acces back-office.
+          </div>
+        )}
+        {canManageAccess && (
+          <form action={addBackofficeAccess} className="mt-5 grid gap-3 md:grid-cols-[minmax(0,1fr)_220px_auto]">
+            <input type="hidden" name="organizer_id" value={id} />
+            <label className="text-xs font-medium uppercase tracking-wide text-slate-400">
+              Email
+              <input
+                name="email"
+                type="email"
+                required
+                className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+                placeholder="utilisateur@exemple.com"
+              />
+            </label>
+            <label className="text-xs font-medium uppercase tracking-wide text-slate-400">
+              Role
+              <select
+                name="role"
+                defaultValue="EDITOR"
+                className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+              >
+                {ORGANIZER_ACCESS_ROLE_VALUES.map((value) => (
+                  <option key={value} value={value}>
+                    {ORGANIZER_ACCESS_LABELS[value]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="md:self-end">
+              <button className="w-full rounded-lg border border-violet-500/70 bg-violet-950/50 px-4 py-2 text-sm font-semibold text-violet-100 hover:border-violet-400 md:w-auto">
+                Ajouter
+              </button>
+            </div>
+          </form>
+        )}
+
+        <form className="mt-4 grid gap-2 md:max-w-md" method="get">
+          <label className="text-xs font-medium uppercase tracking-wide text-slate-400">
+            Rechercher par email
+            <input
+              name="q"
+              defaultValue={resolvedSearchParams?.q ?? ''}
+              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+              placeholder="ex: adele.rolin@gmail.com"
+            />
+          </label>
+          <button className="justify-self-start rounded-md border border-slate-600 px-3 py-1.5 text-xs font-semibold text-slate-200">
+            Filtrer
+          </button>
+        </form>
+
+        <div className="mt-4 overflow-x-auto rounded-lg border border-slate-800">
+          <table className="min-w-[980px] w-full text-left text-sm">
+            <thead className="bg-slate-900 text-xs uppercase text-slate-500">
+              <tr>
+                <th className="px-3 py-2">Matricule</th>
+                <th className="px-3 py-2">Email</th>
+                <th className="px-3 py-2">Nom</th>
+                <th className="px-3 py-2">ID app</th>
+                <th className="px-3 py-2">Role</th>
+                <th className="px-3 py-2">Historique</th>
+                <th className="px-3 py-2">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800">
+              {filteredAccessRows.map((row) => {
+                const appUser = appUserById.get(row.app_user_id);
+                const roleLabel =
+                  ORGANIZER_ACCESS_LABELS[row.role as keyof typeof ORGANIZER_ACCESS_LABELS] ?? row.role;
+                const revokedLabel = row.revoked_at
+                  ? `Retire le ${new Date(row.revoked_at).toLocaleString('fr-FR')}`
+                  : 'Actif';
+
+                return (
+                  <tr key={row.app_user_id}>
+                    <td className="px-3 py-2 font-mono text-xs text-slate-300">{row.access_code}</td>
+                    <td className="px-3 py-2 text-slate-200">{appUser?.email ?? '—'}</td>
+                    <td className="px-3 py-2 text-slate-300">{appUser?.name ?? '—'}</td>
+                    <td className="px-3 py-2 font-mono text-xs text-slate-500">{row.app_user_id}</td>
+                    <td className="px-3 py-2 text-slate-300">{roleLabel}</td>
+                    <td className="px-3 py-2 text-xs text-slate-400">
+                      <div>Attribue le {new Date(row.granted_at ?? row.created_at).toLocaleString('fr-FR')}</div>
+                      <div>{revokedLabel}</div>
+                      {row.revoke_reason ? <div>Motif: {row.revoke_reason}</div> : null}
+                    </td>
+                    <td className="px-3 py-2">
+                      {canManageAccess ? (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <form action={updateBackofficeAccessRole} className="flex items-center gap-2">
+                            <input type="hidden" name="organizer_id" value={id} />
+                            <input type="hidden" name="app_user_id" value={row.app_user_id} />
+                            <select
+                              name="role"
+                              defaultValue={row.role}
+                              className="rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-100"
+                            >
+                              {ORGANIZER_ACCESS_ROLE_VALUES.map((value) => (
+                                <option key={value} value={value}>
+                                  {ORGANIZER_ACCESS_LABELS[value]}
+                                </option>
+                              ))}
+                            </select>
+                            <button className="rounded-md border border-slate-600 px-2 py-1 text-xs font-semibold text-slate-200">
+                              Mettre a jour
+                            </button>
+                          </form>
+                          <form action={removeBackofficeAccess}>
+                            <input type="hidden" name="organizer_id" value={id} />
+                            <input type="hidden" name="app_user_id" value={row.app_user_id} />
+                            <button className="rounded-md border border-rose-700/60 px-2 py-1 text-xs font-semibold text-rose-200">
+                              Retirer
+                            </button>
+                          </form>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-slate-500">Lecture seule</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+              {!filteredAccessRows.length && (
+                <tr>
+                  <td colSpan={7} className="px-3 py-6 text-center text-slate-500">
+                    Aucun accès back-office attribué.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </section>
 
       <section className="rounded-xl border border-slate-700 bg-slate-900/50 p-5">

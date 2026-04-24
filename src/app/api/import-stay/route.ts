@@ -1,8 +1,7 @@
 import { after } from 'next/server';
 import { NextResponse } from 'next/server';
-import { getSession } from '@/lib/auth/session';
-import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers.server';
-import { mockOrganizerTenant } from '@/lib/mocks';
+import { requireOrganizerApiAccess } from '@/lib/organizer-backoffice-access.server';
+import { withOrganizerQuery } from '@/lib/organizers.server';
 import { runStayImportInBackground } from '@/lib/run-stay-import-background';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 
@@ -97,16 +96,6 @@ async function readImportInput(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const isMockMode = process.env.MOCK_UI === '1' || process.env.DISABLE_AUTH === '1';
-  const session = await getSession();
-
-  if (!isMockMode && (!session || session.role !== 'ORGANISATEUR')) {
-    if (requestExpectsJson(req)) {
-      return NextResponse.json({ error: 'Authentification requise.' }, { status: 401 });
-    }
-    return NextResponse.redirect(new URL('/login', req.url), 303);
-  }
-
   const {
     sourceUrl: sourceUrlRaw,
     organizerId: organizerIdRaw,
@@ -116,10 +105,19 @@ export async function POST(req: Request) {
   const sourceUrl = sourceUrlRaw.trim();
   const requestedOrganizerId = organizerIdRaw.trim();
   const selectedAccommodationId = selectedAccommodationIdRaw.trim();
-  const { selectedOrganizerId } = await resolveOrganizerSelection(
-    requestedOrganizerId || undefined,
-    isMockMode ? mockOrganizerTenant.id : session?.tenantId ?? null
-  );
+  const access = await requireOrganizerApiAccess({
+    requestedOrganizerId: requestedOrganizerId || undefined,
+    requiredSection: 'stays'
+  });
+
+  if (!access.ok) {
+    if (requestExpectsJson(req)) {
+      return NextResponse.json({ error: access.error }, { status: access.status });
+    }
+    return NextResponse.redirect(new URL('/login', req.url), 303);
+  }
+
+  const { selectedOrganizerId } = access.context;
 
   if (!selectedOrganizerId) {
     if (requestExpectsJson(req)) {

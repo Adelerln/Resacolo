@@ -1,5 +1,4 @@
-import { requireRole } from '@/lib/auth/require';
-import { resolveOrganizerSelection } from '@/lib/organizers.server';
+import { requireOrganizerPageAccess } from '@/lib/organizer-backoffice-access.server';
 import { mockRequests, mockSessions, mockStages, mockStays } from '@/lib/mocks';
 
 type PageProps = {
@@ -10,11 +9,10 @@ type PageProps = {
 
 export default async function OrganizerRequestsPage({ searchParams }: PageProps) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
-  const session = await requireRole('ORGANISATEUR');
-  const { selectedOrganizer } = await resolveOrganizerSelection(
-    resolvedSearchParams?.organizerId,
-    session.tenantId ?? null
-  );
+  const { selectedOrganizer } = await requireOrganizerPageAccess({
+    requestedOrganizerId: resolvedSearchParams?.organizerId,
+    requiredSection: 'reservations'
+  });
   const useMock = process.env.MOCK_UI === '1';
   const requests = useMock
     ? mockRequests.map((request) => ({

@@ -972,6 +972,59 @@ export type Database = {
           },
         ]
       }
+      organizer_backoffice_access: {
+        Row: {
+          access_code: string
+          app_user_id: string
+          created_at: string
+          granted_at: string
+          granted_by: string | null
+          id: string
+          organizer_id: string
+          revoke_reason: string | null
+          revoked_at: string | null
+          revoked_by: string | null
+          role: string
+          updated_at: string
+        }
+        Insert: {
+          access_code?: string
+          app_user_id: string
+          created_at?: string
+          granted_at?: string
+          granted_by?: string | null
+          id?: string
+          organizer_id: string
+          revoke_reason?: string | null
+          revoked_at?: string | null
+          revoked_by?: string | null
+          role: string
+          updated_at?: string
+        }
+        Update: {
+          access_code?: string
+          app_user_id?: string
+          created_at?: string
+          granted_at?: string
+          granted_by?: string | null
+          id?: string
+          organizer_id?: string
+          revoke_reason?: string | null
+          revoked_at?: string | null
+          revoked_by?: string | null
+          role?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "organizer_backoffice_access_organizer_id_fkey"
+            columns: ["organizer_id"]
+            isOneToOne: false
+            referencedRelation: "organizers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       organizer_billing_settings: {
         Row: {
           commission_percent: number

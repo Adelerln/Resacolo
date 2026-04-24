@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { getSession } from '@/lib/auth/session';
-import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers.server';
+import { requireOrganizerApiAccess } from '@/lib/organizer-backoffice-access.server';
+import { withOrganizerQuery } from '@/lib/organizers.server';
 import {
   ensurePrimaryStaySettingCategory,
   normalizeStayDraftCategories,
@@ -14,7 +14,6 @@ import {
 } from '@/lib/stay-draft-transport-display';
 import { enrichStayDraftWithAI, StayDraftAiEnrichmentError } from '@/lib/stay-draft-ai-enrichment';
 import { resolveAccommodationCenterCoordinates } from '@/lib/accommodation-center-geocoding';
-import { mockOrganizerTenant } from '@/lib/mocks';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import type { Database, Json } from '@/types/supabase';
 
@@ -652,16 +651,6 @@ async function persistAiRawOnFailure(
 }
 
 export async function POST(req: Request) {
-  const isMockMode = process.env.MOCK_UI === '1' || process.env.DISABLE_AUTH === '1';
-  const session = await getSession();
-
-  if (!isMockMode && (!session || session.role !== 'ORGANISATEUR')) {
-    if (requestExpectsJson(req)) {
-      return NextResponse.json({ error: 'Non authentifié.' }, { status: 401 });
-    }
-    return NextResponse.redirect(new URL('/login', req.url), 303);
-  }
-
   const queryForce = parseBooleanInput(new URL(req.url).searchParams.get('force'));
   const { draftId: draftIdRaw, organizerId: organizerIdRaw, force: bodyForce } = await readEnrichInput(req);
   const draftId = draftIdRaw.trim();
@@ -678,15 +667,17 @@ export async function POST(req: Request) {
   if (!draftId) {
     return makeErrorResponse(req, requestedOrganizerId || null, "L'identifiant du draft est requis.");
   }
-
-  const { selectedOrganizerId } = await resolveOrganizerSelection(
-    requestedOrganizerId || undefined,
-    isMockMode ? mockOrganizerTenant.id : session?.tenantId ?? null
-  );
-
-  if (!selectedOrganizerId) {
-    return makeErrorResponse(req, null, 'Aucun organisateur disponible.');
+  const access = await requireOrganizerApiAccess({
+    requestedOrganizerId: requestedOrganizerId || undefined,
+    requiredSection: 'stays'
+  });
+  if (!access.ok) {
+    if (requestExpectsJson(req)) {
+      return NextResponse.json({ error: access.error }, { status: access.status });
+    }
+    return NextResponse.redirect(new URL('/login', req.url), 303);
   }
+  const { selectedOrganizerId } = access.context;
 
   const supabase = getServerSupabaseClient();
 

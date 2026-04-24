@@ -1,14 +1,10 @@
 import { NextResponse } from 'next/server';
-import { getOrganizerAccessRole } from '@/lib/organizer-access.server';
+import { requireOrganizerApiAccess } from '@/lib/organizer-backoffice-access.server';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 
 export const runtime = 'nodejs';
 
 export async function POST(req: Request, context: { params: Promise<{ slug: string }> }) {
-  if ((await getOrganizerAccessRole()) !== 'OWNER') {
-    return NextResponse.redirect(new URL('/organisme', req.url), 303);
-  }
-
   const { slug } = await context.params;
   const supabase = getServerSupabaseClient();
 
@@ -31,6 +27,16 @@ export async function POST(req: Request, context: { params: Promise<{ slug: stri
       new URL('/organisme/organisateur?error=Organisateur%20introuvable', req.url),
       303
     );
+  }
+  const access = await requireOrganizerApiAccess({
+    requestedOrganizerId: organizer.id,
+    requiredSection: 'organizer-profile'
+  });
+  if (!access.ok) {
+    return NextResponse.redirect(new URL('/login', req.url), 303);
+  }
+  if (access.context.accessRole !== 'OWNER') {
+    return NextResponse.redirect(new URL('/login', req.url), 303);
   }
 
   if (organizer.education_project_path) {

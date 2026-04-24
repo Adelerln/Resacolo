@@ -2,8 +2,8 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import DraftImportStatusBanner from '@/components/organisme/DraftImportStatusBanner';
 import StayDraftReviewForm from '@/components/organisme/StayDraftReviewForm';
-import { requireRole } from '@/lib/auth/require';
-import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers.server';
+import { requireOrganizerPageAccess } from '@/lib/organizer-backoffice-access.server';
+import { withOrganizerQuery } from '@/lib/organizers.server';
 import { normalizeStayDraftCategories } from '@/lib/stay-categories';
 import { extractVideoUrls } from '@/lib/stay-draft-import';
 import {
@@ -329,12 +329,11 @@ function draftStatusBadgeClass(status: string | null): string {
 export default async function StayDraftReviewPage({ params: paramsPromise, searchParams }: PageProps) {
   const params = await paramsPromise;
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
-  const session = await requireRole('ORGANISATEUR');
+  const { selectedOrganizer, selectedOrganizerId } = await requireOrganizerPageAccess({
+    requestedOrganizerId: resolvedSearchParams?.organizerId,
+    requiredSection: 'stays'
+  });
   const supabase = getServerSupabaseClient();
-  const { selectedOrganizer, selectedOrganizerId } = await resolveOrganizerSelection(
-    resolvedSearchParams?.organizerId,
-    session.tenantId ?? null
-  );
 
   if (!selectedOrganizerId) {
     redirect('/organisme/sejours');

@@ -11,6 +11,10 @@ export type SessionPayload = {
   tenantId?: string | null;
 };
 
+type SessionCookieOptions = {
+  rememberMe?: boolean;
+};
+
 const COOKIE_NAME = 'resacolo_session';
 const SECRET = process.env.AUTH_SECRET ?? 'dev-secret-change-me';
 
@@ -38,14 +42,16 @@ export function verifySessionToken(token: string): SessionPayload | null {
   }
 }
 
-export async function setSessionCookie(payload: SessionPayload) {
+export async function setSessionCookie(payload: SessionPayload, options?: SessionCookieOptions) {
   const token = createSessionToken(payload);
   const cookieStore = await cookies();
+  const rememberMe = options?.rememberMe === true;
   cookieStore.set(COOKIE_NAME, token, {
     httpOnly: true,
     sameSite: 'lax',
     path: '/',
-    secure: process.env.NODE_ENV === 'production'
+    secure: process.env.NODE_ENV === 'production',
+    ...(rememberMe ? { maxAge: 7 * 24 * 60 * 60 } : {})
   });
 }
 

@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 import { requireApiAdmin } from '@/lib/auth/api';
 import { isPasswordPolicyValid, PASSWORD_POLICY_MESSAGE } from '@/lib/auth/password-policy';
+import {
+  ensurePrismaUserForOrganizerAccess,
+  removePrismaUserIfExists,
+  syncBackofficeAccessFromOrganizerMember
+} from '@/lib/organizer-backoffice-sync.server';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { slugify } from '@/lib/utils';
 
@@ -39,6 +44,7 @@ export async function POST(req: Request) {
   }
 
   const supabase = getServerSupabaseClient();
+  let createdPrismaUserId: string | null = null;
   const slug = slugify(name);
 
   const foundedYear = foundedYearRaw ? Number(foundedYearRaw) : null;
@@ -139,6 +145,28 @@ export async function POST(req: Request) {
       303
     );
   }
+  try {
+    const prismaUser = await ensurePrismaUserForOrganizerAccess({
+      email: userEmail,
+      tempPassword,
+      displayName: `${firstName} ${lastName}`.trim()
+    });
+    if (prismaUser.created) {
+      createdPrismaUserId = prismaUser.id;
+    }
+  } catch (prismaError) {
+    await supabase.auth.admin.deleteUser(userData.user.id);
+    await supabase.from('organizers').delete().eq('id', organizer.id);
+    return NextResponse.redirect(
+      new URL(
+        `/admin/organizers/new?error=${encodeURIComponent(
+          prismaError instanceof Error ? prismaError.message : 'Impossible de créer le compte applicatif'
+        )}`,
+        req.url
+      ),
+      303
+    );
+  }
 
   const { error: memberError } = await supabase.from('organizer_members').insert({
     organizer_id: organizer.id,
@@ -151,10 +179,37 @@ export async function POST(req: Request) {
   if (memberError) {
     await supabase.auth.admin.deleteUser(userData.user.id);
     await supabase.from('organizers').delete().eq('id', organizer.id);
+    await removePrismaUserIfExists(createdPrismaUserId);
     return NextResponse.redirect(
       new URL(
         `/admin/organizers/new?error=${encodeURIComponent(
           memberError.message ?? "Impossible de lier l'utilisateur"
+        )}`,
+        req.url
+      ),
+      303
+    );
+  }
+  try {
+    await syncBackofficeAccessFromOrganizerMember({
+      organizerId: organizer.id,
+      supabaseUserId: userData.user.id,
+      role: 'OWNER',
+      emailHint: userEmail
+    });
+  } catch (syncError) {
+    await supabase
+      .from('organizer_members')
+      .delete()
+      .eq('organizer_id', organizer.id)
+      .eq('user_id', userData.user.id);
+    await supabase.auth.admin.deleteUser(userData.user.id);
+    await supabase.from('organizers').delete().eq('id', organizer.id);
+    await removePrismaUserIfExists(createdPrismaUserId);
+    return NextResponse.redirect(
+      new URL(
+        `/admin/organizers/new?error=${encodeURIComponent(
+          syncError instanceof Error ? syncError.message : 'Impossible de synchroniser les accès back-office'
         )}`,
         req.url
       ),

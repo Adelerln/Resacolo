@@ -1,14 +1,13 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
   ORGANIZER_COOKIE_NAME,
   type OrganizerOption
 } from '@/lib/organizers';
 import {
-  ORGANIZER_ACCESS_COOKIE_NAME,
   ORGANIZER_ACCESS_LABELS,
   getOrganizerNavLinks,
   type OrganizerAccessRole
@@ -17,7 +16,7 @@ import {
 type Props = {
   organizers: OrganizerOption[];
   initialSelectedOrganizerId?: string | null;
-  initialAccessRole: OrganizerAccessRole;
+  accessRolesByOrganizerId: Record<string, OrganizerAccessRole>;
 };
 
 const ORGANIZER_STORAGE_KEY = 'resacolo:selectedOrganizerId';
@@ -51,13 +50,14 @@ function useOrganizerSelection(
 export function OrganizerWorkspaceNav({
   organizers,
   initialSelectedOrganizerId,
-  initialAccessRole
+  accessRolesByOrganizerId
 }: Props) {
   const { pathname, selectedOrganizerId } = useOrganizerSelection(
     organizers,
     initialSelectedOrganizerId
   );
-  const links = getOrganizerNavLinks(initialAccessRole);
+  const currentAccessRole = accessRolesByOrganizerId[selectedOrganizerId] ?? 'EDITOR';
+  const links = getOrganizerNavLinks(currentAccessRole);
 
   return (
     <nav className="px-3 text-sm text-slate-600">
@@ -84,16 +84,11 @@ export function OrganizerWorkspaceNav({
 export function OrganizerWorkspaceSelector({
   organizers,
   initialSelectedOrganizerId,
-  initialAccessRole
+  accessRolesByOrganizerId
 }: Props) {
   const { pathname, router, searchParams, organizerIdFromUrl, selectedOrganizerId } =
     useOrganizerSelection(organizers, initialSelectedOrganizerId);
-  const [selectedAccessRole, setSelectedAccessRole] =
-    useState<OrganizerAccessRole>(initialAccessRole);
-
-  useEffect(() => {
-    setSelectedAccessRole(initialAccessRole);
-  }, [initialAccessRole]);
+  const selectedAccessRole = accessRolesByOrganizerId[selectedOrganizerId] ?? null;
 
   useEffect(() => {
     if (!selectedOrganizerId) return;
@@ -117,7 +112,7 @@ export function OrganizerWorkspaceSelector({
 
   return (
     <div className="mb-6 rounded-2xl border border-slate-200 bg-white px-4 py-4">
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_260px]">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
         <label className="block text-sm font-medium text-slate-700">
           Organisateur affiché
           <select
@@ -142,25 +137,12 @@ export function OrganizerWorkspaceSelector({
             ))}
           </select>
         </label>
-        <label className="block text-sm font-medium text-slate-700">
-          Jeu d&apos;accès
-          <select
-            className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
-            value={selectedAccessRole}
-            onChange={(event) => {
-              const nextAccessRole = event.target.value as OrganizerAccessRole;
-              setSelectedAccessRole(nextAccessRole);
-              document.cookie = `${ORGANIZER_ACCESS_COOKIE_NAME}=${encodeURIComponent(nextAccessRole)}; path=/; max-age=${60 * 60 * 24 * 365}; samesite=lax`;
-              router.refresh();
-            }}
-          >
-            {Object.entries(ORGANIZER_ACCESS_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Niveau d&apos;accès</p>
+          <p className="mt-1 text-sm font-medium text-slate-800">
+            {selectedAccessRole ? ORGANIZER_ACCESS_LABELS[selectedAccessRole] : 'Aucun accès'}
+          </p>
+        </div>
       </div>
     </div>
   );

@@ -8,11 +8,10 @@ import {
   Megaphone,
   TrendingUp
 } from 'lucide-react';
-import { requireRole } from '@/lib/auth/require';
 import { ORGANIZER_ACCESS_LABELS } from '@/lib/organizer-access';
-import { getOrganizerAccessRole } from '@/lib/organizer-access.server';
+import { requireOrganizerPageAccess } from '@/lib/organizer-backoffice-access.server';
 import { buildOrganizerDashboardModel } from '@/lib/organisme/dashboard-metrics';
-import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers.server';
+import { withOrganizerQuery } from '@/lib/organizers.server';
 import { getReservedSessionCounts } from '@/lib/session-reservations';
 import {
   STAY_VISIT_AUDIT_ACTION,
@@ -107,13 +106,15 @@ function formatStayDisplayTitle(title: string) {
 
 export default async function OrganizerDashboardPage({ searchParams }: PageProps) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
-  const session = await requireRole('ORGANISATEUR');
-  const accessRole = await getOrganizerAccessRole();
+  const {
+    accessRole,
+    selectedOrganizer,
+    selectedOrganizerId
+  } = await requireOrganizerPageAccess({
+    requestedOrganizerId: resolvedSearchParams?.organizerId,
+    requiredSection: 'dashboard'
+  });
   const supabase = getServerSupabaseClient();
-  const { selectedOrganizer, selectedOrganizerId } = await resolveOrganizerSelection(
-    resolvedSearchParams?.organizerId,
-    session.tenantId ?? null
-  );
   const organizerId = selectedOrganizerId;
 
   if (!organizerId) {

@@ -4,8 +4,8 @@ import ImportStayPrefillForm from '@/components/organisme/ImportStayPrefillForm'
 import StayDraftEnrichLauncher from '@/components/organisme/StayDraftEnrichLauncher';
 import { formatAccommodationType } from '@/lib/accommodation-types';
 import { extractAccommodationLocationMeta } from '@/lib/accommodation-location';
-import { requireRole } from '@/lib/auth/require';
-import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers.server';
+import { requireOrganizerPageAccess } from '@/lib/organizer-backoffice-access.server';
+import { withOrganizerQuery } from '@/lib/organizers.server';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 
 type PageProps = {
@@ -25,23 +25,21 @@ function formatRedirectValue(value?: string | string[]) {
 
 export default async function NewStayChoicePage({ searchParams }: PageProps) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
-  const session = await requireRole('ORGANISATEUR');
+  const { selectedOrganizerId: organizerId } = await requireOrganizerPageAccess({
+    requestedOrganizerId: resolvedSearchParams?.organizerId,
+    requiredSection: 'stays'
+  });
   const supabase = getServerSupabaseClient();
-  const { selectedOrganizerId } = await resolveOrganizerSelection(
-    resolvedSearchParams?.organizerId,
-    session.tenantId ?? null
-  );
-  const organizerId = selectedOrganizerId;
   const errorParam = formatRedirectValue(resolvedSearchParams?.error);
   const prefillParam = formatRedirectValue(resolvedSearchParams?.prefill);
   const draftIdParam = formatRedirectValue(resolvedSearchParams?.draftId);
   const aiParam = formatRedirectValue(resolvedSearchParams?.ai);
   const aiDraftIdParam = formatRedirectValue(resolvedSearchParams?.aiDraftId);
-  const { data: existingAccommodations } = selectedOrganizerId
+  const { data: existingAccommodations } = organizerId
     ? await supabase
         .from('accommodations')
         .select('id,name,accommodation_type,description,status')
-        .eq('organizer_id', selectedOrganizerId)
+        .eq('organizer_id', organizerId)
         .neq('status', 'ARCHIVED')
         .order('name', { ascending: true })
     : { data: [] };

@@ -1,18 +1,17 @@
 'use server';
 
 import { redirect } from 'next/navigation';
-import { requireRole } from '@/lib/auth/require';
-import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers.server';
+import { requireOrganizerPageAccess } from '@/lib/organizer-backoffice-access.server';
+import { withOrganizerQuery } from '@/lib/organizers.server';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 
 export async function startManualDraft(formData: FormData) {
   const requestedOrganizerId = String(formData.get('organizerId') ?? '').trim();
-  const sessionInner = await requireRole('ORGANISATEUR');
+  const { selectedOrganizerId: actionOrganizerId } = await requireOrganizerPageAccess({
+    requestedOrganizerId: requestedOrganizerId || undefined,
+    requiredSection: 'stays'
+  });
   const supabaseInner = getServerSupabaseClient();
-  const { selectedOrganizerId: actionOrganizerId } = await resolveOrganizerSelection(
-    requestedOrganizerId || undefined,
-    sessionInner.tenantId ?? null
-  );
 
   if (!actionOrganizerId) {
     redirect('/organisme/sejours?error=Aucun%20organisateur%20disponible.');

@@ -1,8 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { getSession } from '@/lib/auth/session';
-import { resolveOrganizerSelection } from '@/lib/organizers.server';
-import { mockOrganizerTenant } from '@/lib/mocks';
+import { requireOrganizerApiAccess } from '@/lib/organizer-backoffice-access.server';
 import {
   publishStayDraftToLive,
   PublishStayDraftError,
@@ -205,24 +203,16 @@ export async function GET(
   req: Request,
   context: { params: Promise<{ id: string }> }
 ) {
-  const isMockMode = process.env.MOCK_UI === '1' || process.env.DISABLE_AUTH === '1';
-  const session = await getSession();
-
-  if (!isMockMode && (!session || session.role !== 'ORGANISATEUR')) {
-    return NextResponse.json({ error: 'Non authentifié.' }, { status: 401 });
-  }
-
   const { id } = await context.params;
   const searchParams = new URL(req.url).searchParams;
-  const fallbackOrganizerId = isMockMode ? mockOrganizerTenant.id : session?.tenantId ?? null;
-  const { selectedOrganizerId } = await resolveOrganizerSelection(
-    searchParams.get('organizerId') ?? undefined,
-    fallbackOrganizerId
-  );
-
-  if (!selectedOrganizerId) {
-    return NextResponse.json({ error: 'Aucun organisateur disponible.' }, { status: 400 });
+  const access = await requireOrganizerApiAccess({
+    requestedOrganizerId: searchParams.get('organizerId') ?? undefined,
+    requiredSection: 'stays'
+  });
+  if (!access.ok) {
+    return NextResponse.json({ error: access.error }, { status: access.status });
   }
+  const { selectedOrganizerId } = access.context;
 
   const supabase = getServerSupabaseClient();
   const { data: draft, error } = await supabase
@@ -420,13 +410,6 @@ async function parseBody(req: Request): Promise<{ payload: StayDraftReviewPayloa
 }
 
 async function handleUpdate(req: Request, params: { id: string }, mode: 'save' | 'validate') {
-  const isMockMode = process.env.MOCK_UI === '1' || process.env.DISABLE_AUTH === '1';
-  const session = await getSession();
-
-  if (!isMockMode && (!session || session.role !== 'ORGANISATEUR')) {
-    return NextResponse.json({ error: 'Non authentifié.' }, { status: 401 });
-  }
-
   const parsedBody = await parseBody(req);
   if ('errors' in parsedBody) {
     return NextResponse.json(
@@ -435,15 +418,14 @@ async function handleUpdate(req: Request, params: { id: string }, mode: 'save' |
     );
   }
 
-  const fallbackOrganizerId = isMockMode ? mockOrganizerTenant.id : session?.tenantId ?? null;
-  const { selectedOrganizerId } = await resolveOrganizerSelection(
-    parsedBody.organizerId,
-    fallbackOrganizerId
-  );
-
-  if (!selectedOrganizerId) {
-    return NextResponse.json({ error: 'Aucun organisateur disponible.' }, { status: 400 });
+  const access = await requireOrganizerApiAccess({
+    requestedOrganizerId: parsedBody.organizerId,
+    requiredSection: 'stays'
+  });
+  if (!access.ok) {
+    return NextResponse.json({ error: access.error }, { status: access.status });
   }
+  const { selectedOrganizerId, session } = access.context;
 
   const supabase = getServerSupabaseClient();
   const now = new Date().toISOString();

@@ -4,9 +4,9 @@ import { redirect } from 'next/navigation';
 import SavedToast from '@/components/common/SavedToast';
 import { formatAccommodationType } from '@/lib/accommodation-types';
 import { extractAccommodationLocationMeta } from '@/lib/accommodation-location';
-import { requireRole } from '@/lib/auth/require';
 import { deleteAccommodationForOrganizer } from '@/lib/accommodations';
-import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers.server';
+import { requireOrganizerPageAccess } from '@/lib/organizer-backoffice-access.server';
+import { withOrganizerQuery } from '@/lib/organizers.server';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { accommodationStatusBadgeClassName, accommodationStatusLabel } from '@/lib/ui/labels';
 
@@ -26,12 +26,14 @@ export const revalidate = 0;
 
 export default async function OrganizerAccommodationsPage({ searchParams }: PageProps) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
-  const session = await requireRole('ORGANISATEUR');
+  const {
+    selectedOrganizer,
+    selectedOrganizerId
+  } = await requireOrganizerPageAccess({
+    requestedOrganizerId: resolvedSearchParams?.organizerId,
+    requiredSection: 'accommodations'
+  });
   const supabase = getServerSupabaseClient();
-  const { selectedOrganizer, selectedOrganizerId } = await resolveOrganizerSelection(
-    resolvedSearchParams?.organizerId,
-    session.tenantId ?? null
-  );
   const savedParam = Array.isArray(resolvedSearchParams?.saved)
     ? resolvedSearchParams?.saved[0]
     : resolvedSearchParams?.saved;

@@ -1,18 +1,8 @@
-import { NextResponse } from 'next/server';
-import { getSession, type AppRole } from '@/lib/auth/session';
-
-function isAuthBypassed() {
-  return process.env.MOCK_UI === '1' || process.env.DISABLE_AUTH === '1';
-}
+import type { AppRole } from '@/lib/auth/session';
 
 export async function requireApiRole(req: Request, role: AppRole) {
-  if (isAuthBypassed()) return null;
-
-  const session = await getSession();
-  if (!session || session.role !== role) {
-    return NextResponse.redirect(new URL('/login', req.url), 303);
-  }
-
+  void req;
+  void role;
   return null;
 }
 

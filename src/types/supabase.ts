@@ -1943,6 +1943,7 @@ export type Database = {
           seo_title: string | null
           sessions_json: Json | null
           source_url: string
+          source_url_canonical: string
           status: string
           summary: string | null
           supervision_text: string | null
@@ -1989,6 +1990,7 @@ export type Database = {
           seo_title?: string | null
           sessions_json?: Json | null
           source_url: string
+          source_url_canonical: string
           status?: string
           summary?: string | null
           supervision_text?: string | null
@@ -2035,6 +2037,7 @@ export type Database = {
           seo_title?: string | null
           sessions_json?: Json | null
           source_url?: string
+          source_url_canonical?: string
           status?: string
           summary?: string | null
           supervision_text?: string | null

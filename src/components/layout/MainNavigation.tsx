@@ -54,6 +54,10 @@ function isDropdownItem(
 
 export function MainNavigation() {
   const pathname = usePathname();
+  return <MainNavigationContent key={pathname} pathname={pathname} />;
+}
+
+function MainNavigationContent({ pathname }: { pathname: string }) {
   const { count: cartCount } = useCart();
   const { favoriteIdsArray } = useFavorites();
   const [open, setOpen] = useState(false);
@@ -108,12 +112,6 @@ export function MainNavigation() {
       }
     };
   }, []);
-
-  useEffect(() => {
-    setOpen(false);
-    setDropdownOpen(false);
-    setBackOfficeOpen(false);
-  }, [pathname]);
 
   useEffect(() => {
     if (!open) {

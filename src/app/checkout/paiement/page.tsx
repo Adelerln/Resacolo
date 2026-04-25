@@ -30,6 +30,12 @@ export default function CheckoutPaiementPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [paymentData, setPaymentData] = useState<PaymentInitData | null>(null);
+
+  useEffect(() => {
+    if (!paymentData?.orderId) return;
+    router.prefetch(`/checkout/confirmation/${paymentData.orderId}`);
+  }, [paymentData?.orderId, router]);
+
   const isContactComplete = useMemo(() => {
     return Boolean(
       contact.email &&

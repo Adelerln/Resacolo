@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { X } from 'lucide-react';
 import { StayCard } from '@/components/sejours/StayCard';
 import type { Stay } from '@/types/stay';
@@ -18,6 +19,10 @@ type ApiResponse = {
 };
 
 export function OrganizerDetailModal({ slug, onClose }: OrganizerDetailModalProps) {
+  return <OrganizerDetailModalContent key={slug} slug={slug} onClose={onClose} />;
+}
+
+function OrganizerDetailModalContent({ slug, onClose }: OrganizerDetailModalProps) {
   const [data, setData] = useState<ApiResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -31,8 +36,6 @@ export function OrganizerDetailModal({ slug, onClose }: OrganizerDetailModalProp
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setError(false);
     fetch(`/api/organisateurs/${encodeURIComponent(slug)}`)
       .then((res) => {
         if (!res.ok) throw new Error('Not found');
@@ -103,10 +106,13 @@ export function OrganizerDetailModal({ slug, onClose }: OrganizerDetailModalProp
             <div className="px-4 pb-6 sm:px-6 sm:pb-8">
               <header className="flex flex-col items-center gap-4 border-b border-slate-200 py-8 text-center">
                 {data.organizer.logoUrl ? (
-                  <img
+                  <Image
                     src={data.organizer.logoUrl}
                     alt={data.organizer.name}
+                    width={240}
+                    height={80}
                     className="h-20 w-auto object-contain"
+                    unoptimized
                   />
                 ) : (
                   <div className="flex h-20 w-20 items-center justify-center rounded-xl bg-slate-100">

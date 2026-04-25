@@ -76,6 +76,21 @@ function saveCheckoutState(value: CheckoutState) {
   }
 }
 
+function hasSameParticipantEntries(
+  left: Record<string, CheckoutParticipant>,
+  right: Record<string, CheckoutParticipant>
+) {
+  const leftKeys = Object.keys(left);
+  const rightKeys = Object.keys(right);
+  if (leftKeys.length !== rightKeys.length) return false;
+  for (const key of leftKeys) {
+    if (!(key in right) || left[key] !== right[key]) {
+      return false;
+    }
+  }
+  return true;
+}
+
 export function CheckoutProvider({ children }: { children: ReactNode }) {
   const { items } = useCart();
   const [state, setState] = useState<CheckoutState>(buildDefaultState);
@@ -83,25 +98,31 @@ export function CheckoutProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const loaded = loadCheckoutState();
-    if (loaded) {
-      setState(loaded);
-    }
-    setHydrated(true);
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      if (loaded) {
+        setState(loaded);
+      }
+      setHydrated(true);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  useEffect(() => {
-    if (!hydrated) return;
-
-    setState((prev) => ({
-      ...prev,
-      participants: ensureParticipantsForCart(prev.participants, items)
-    }));
-  }, [hydrated, items]);
+  const participants = useMemo(
+    () => ensureParticipantsForCart(state.participants, items),
+    [items, state.participants]
+  );
 
   useEffect(() => {
     if (!hydrated) return;
-    saveCheckoutState(state);
-  }, [hydrated, state]);
+    const persistedState = hasSameParticipantEntries(state.participants, participants)
+      ? state
+      : { ...state, participants };
+    saveCheckoutState(persistedState);
+  }, [hydrated, participants, state]);
 
   const setCheckoutId = useCallback((checkoutId: string) => {
     setState((prev) => ({
@@ -146,7 +167,7 @@ export function CheckoutProvider({ children }: { children: ReactNode }) {
       hydrated,
       checkoutId: state.checkoutId,
       contact: state.contact,
-      participants: state.participants,
+      participants,
       setCheckoutId,
       setContact,
       updateParticipant,
@@ -159,7 +180,7 @@ export function CheckoutProvider({ children }: { children: ReactNode }) {
       setContact,
       state.checkoutId,
       state.contact,
-      state.participants,
+      participants,
       updateParticipant
     ]
   );

@@ -3,7 +3,7 @@
 import type { ReactNode } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 
 const BLUE = '#52B0EA';
@@ -205,7 +205,11 @@ function AnswerBlock({ children }: { children: React.ReactNode }) {
 }
 
 export function FaqHubClient() {
-  const [active, setActive] = useState<CategoryId>('inscription');
+  const [active, setActive] = useState<CategoryId>(() => {
+    if (typeof window === 'undefined') return 'inscription';
+    const hash = window.location.hash.replace('#', '') as CategoryId;
+    return CATEGORIES.some((category) => category.id === hash) ? hash : 'inscription';
+  });
 
   const activeDef = CATEGORIES.find((c) => c.id === active)!;
 
@@ -213,13 +217,6 @@ export function FaqHubClient() {
     setActive(id);
     window.history.replaceState(null, '', `#${id}`);
   };
-
-  useEffect(() => {
-    const hash = window.location.hash.replace('#', '') as CategoryId;
-    if (CATEGORIES.some((c) => c.id === hash)) {
-      setActive(hash);
-    }
-  }, []);
 
   return (
     <div className="relative">

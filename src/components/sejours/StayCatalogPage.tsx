@@ -233,7 +233,7 @@ export function StayCatalogPage({
   );
   const [filters, setFilters] = useState<StayCatalogFilterState>(initialFilters);
   const [sort, setSort] = useState<StayCatalogSortValue>(initialSort);
-  const [randomSeed, setRandomSeed] = useState<number | null>(null);
+  const [randomSeed] = useState<number>(() => Math.floor(Math.random() * 2_147_483_647));
 
   const runtimeFilters = useMemo(
     () => parseStayCatalogFiltersFromSearchParams(runtimeSearchParams, filterOptions),
@@ -247,51 +247,37 @@ export function StayCatalogPage({
   const runtimeQuery = runtimeSearchParams.toString();
 
   useEffect(() => {
-    setFilters((previous) =>
-      stayCatalogFilterStateKey(previous) === runtimeFiltersKey ? previous : runtimeFilters
-    );
-  }, [runtimeFilters, runtimeFiltersKey]);
-
-  useEffect(() => {
-    setSort((previous) => (previous === runtimeSort ? previous : runtimeSort));
-  }, [runtimeSort]);
-
-  useEffect(() => {
-    setRandomSeed(Math.floor(Math.random() * 2_147_483_647));
-  }, []);
-
-  useEffect(() => {
-    setFilters((previous) => {
-      const next: StayCatalogFilterState = {
-        ...previous,
-        seasonIds: previous.seasonIds.filter((value) =>
-          filterOptions.seasons.some((option) => option.value === value)
-        ),
-        categories: previous.categories.filter((value) =>
-          filterOptions.categories.some((option) => option.value === value)
-        ),
-        ageBands: previous.ageBands.filter((value) =>
-          filterOptions.ageBands.some((option) => option.value === value)
-        ),
-        destinations: previous.destinations.filter((value) =>
-          filterOptions.destinations.some((option) => option.value === value)
-        ),
-        organizerIds: previous.organizerIds.filter((value) =>
-          filterOptions.organizers.some((option) => option.value === value)
-        )
-      };
-
-      return stayCatalogFilterStateKey(previous) === stayCatalogFilterStateKey(next) ? previous : next;
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setFilters((previous) =>
+        stayCatalogFilterStateKey(previous) === runtimeFiltersKey ? previous : runtimeFilters
+      );
+      setSort((previous) => (previous === runtimeSort ? previous : runtimeSort));
     });
-  }, [filterOptions]);
+    return () => {
+      cancelled = true;
+    };
+  }, [runtimeFilters, runtimeFiltersKey, runtimeSort]);
 
   const debouncedQuery = useDebouncedValue(filters.q);
   const urlFilters = useMemo(
     () => ({
-      ...filters,
-      q: debouncedQuery
+      q: debouncedQuery,
+      seasonIds: filters.seasonIds,
+      categories: filters.categories,
+      ageBands: filters.ageBands,
+      destinations: filters.destinations,
+      organizerIds: filters.organizerIds
     }),
-    [debouncedQuery, filters]
+    [
+      debouncedQuery,
+      filters.ageBands,
+      filters.categories,
+      filters.destinations,
+      filters.organizerIds,
+      filters.seasonIds
+    ]
   );
   const urlFiltersKey = useMemo(
     () => stayCatalogFilterStateKey(urlFilters),

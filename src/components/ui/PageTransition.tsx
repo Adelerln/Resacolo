@@ -2,20 +2,12 @@
 
 import { AnimatePresence, motion } from 'framer-motion';
 import { usePathname } from 'next/navigation';
-import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 
 const WIPE_DURATION = 0.82;
 
 export function PageTransition({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-
-  const [barVisible, setBarVisible] = useState(true);
-  useEffect(() => {
-    setBarVisible(true);
-    const t = setTimeout(() => setBarVisible(false), WIPE_DURATION * 1000);
-    return () => clearTimeout(t);
-  }, [pathname]);
 
   return (
     <>
@@ -46,10 +38,10 @@ export function PageTransition({ children }: { children: ReactNode }) {
       <motion.div
         key={`progress-${pathname}`}
         initial={{ scaleX: 0 }}
-        animate={{ scaleX: 1, opacity: barVisible ? 1 : 0 }}
+        animate={{ scaleX: 1, opacity: [1, 1, 0] }}
         transition={{
           scaleX: { duration: 0.2 },
-          opacity: { duration: 0.25 }
+          opacity: { duration: WIPE_DURATION, times: [0, 0.75, 1] }
         }}
         className="pointer-events-none fixed inset-x-0 top-0 z-[150] h-1 origin-left bg-gradient-to-r from-brand-400 via-brand-500 to-accent-400"
       />

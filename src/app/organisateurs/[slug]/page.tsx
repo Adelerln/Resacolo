@@ -3,6 +3,7 @@ import path from 'node:path';
 import Image from 'next/image';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { cache } from 'react';
 import { OrganizerStayPreviewCard } from '@/components/organisateurs/OrganizerStayPreviewCard';
 import { HorizontalCardsCarousel } from '@/components/organisateurs/HorizontalCardsCarousel';
 import { ExternalLink, MapPin } from 'lucide-react';
@@ -26,8 +27,7 @@ import { slugify } from '@/lib/utils';
 
 type PageProps = { params: Promise<{ slug: string }> };
 
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
+export const revalidate = 300;
 
 const BANNER_DIR = path.join(process.cwd(), 'public/image/organisateurs/bannieres_orga');
 const LIGHT_HERO_TEXT_KEYS = new Set([
@@ -58,54 +58,59 @@ const DARK_HERO_TEXT_KEYS = new Set([
   'zigotours'
 ]);
 
+const passthroughImageLoader = ({ src }: { src: string }) => src;
+
 function compactKey(value: string) {
   return slugify(value).replace(/-/g, '');
 }
 
 async function resolveOrganizerBannerPath(input: { name: string; slug: string }) {
+  const files = await listOrganizerBannerFiles();
+  if (files.length === 0) return null;
+
+  const organizerSlugKey = compactKey(input.slug);
+  const organizerNameKey = compactKey(input.name);
+
+  if (
+    organizerSlugKey.includes('poneydesquatresaisons') ||
+    organizerSlugKey.includes('poneysdes4saisons') ||
+    organizerSlugKey.includes('poneysdesquatresaisons') ||
+    organizerNameKey.includes('poneydesquatresaisons') ||
+    organizerNameKey.includes('poneysdes4saisons') ||
+    organizerNameKey.includes('poneysdesquatresaisons')
+  ) {
+    const p4sBanner = files.find((file) => compactKey(file).includes('p4s'));
+    if (p4sBanner) {
+      return `/image/organisateurs/bannieres_orga/${p4sBanner}`;
+    }
+  }
+
+  if (organizerSlugKey === 'cesl') {
+    const chicPlanetBanner = files.find((file) => compactKey(file).includes('chicplanet'));
+    if (chicPlanetBanner) {
+      return `/image/organisateurs/bannieres_orga/${chicPlanetBanner}`;
+    }
+  }
+
+  const organizerKeys = [compactKey(input.slug), compactKey(input.name)].filter(Boolean);
+  const matchedFile =
+    files.find((file) => {
+      const fileKey = compactKey(file.replace(/\.[^.]+$/, '').replace(/^banniere[-_\s]*/i, ''));
+      return organizerKeys.some((key) => fileKey.includes(key) || key.includes(fileKey));
+    }) ?? files[0];
+
+  return `/image/organisateurs/bannieres_orga/${matchedFile}`;
+}
+
+const listOrganizerBannerFiles = cache(async () => {
   try {
-    const files = (await readdir(BANNER_DIR))
+    return (await readdir(BANNER_DIR))
       .filter((file) => /\.(png|jpe?g|webp)$/i.test(file))
       .sort((a, b) => a.localeCompare(b, 'fr'));
-
-    if (files.length === 0) return null;
-
-    const organizerSlugKey = compactKey(input.slug);
-    const organizerNameKey = compactKey(input.name);
-
-    if (
-      organizerSlugKey.includes('poneydesquatresaisons') ||
-      organizerSlugKey.includes('poneysdes4saisons') ||
-      organizerSlugKey.includes('poneysdesquatresaisons') ||
-      organizerNameKey.includes('poneydesquatresaisons') ||
-      organizerNameKey.includes('poneysdes4saisons') ||
-      organizerNameKey.includes('poneysdesquatresaisons')
-    ) {
-      const p4sBanner = files.find((file) => compactKey(file).includes('p4s'));
-      if (p4sBanner) {
-        return `/image/organisateurs/bannieres_orga/${p4sBanner}`;
-      }
-    }
-
-    if (organizerSlugKey === 'cesl') {
-      const chicPlanetBanner = files.find((file) => compactKey(file).includes('chicplanet'));
-      if (chicPlanetBanner) {
-        return `/image/organisateurs/bannieres_orga/${chicPlanetBanner}`;
-      }
-    }
-
-    const organizerKeys = [compactKey(input.slug), compactKey(input.name)].filter(Boolean);
-    const matchedFile =
-      files.find((file) => {
-        const fileKey = compactKey(file.replace(/\.[^.]+$/, '').replace(/^banniere[-_\s]*/i, ''));
-        return organizerKeys.some((key) => fileKey.includes(key) || key.includes(fileKey));
-      }) ?? files[0];
-
-    return `/image/organisateurs/bannieres_orga/${matchedFile}`;
   } catch {
-    return null;
+    return [] as string[];
   }
-}
+});
 
 function formatPublicAgeRange(ageMin?: number | null, ageMax?: number | null) {
   if (ageMin != null || ageMax != null) return `De ${ageMin ?? '?'} à ${ageMax ?? '?'} ans`;
@@ -673,17 +678,23 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
             <div className="relative z-[1] flex items-center justify-center lg:justify-end">
               <div className="flex min-h-[190px] w-full max-w-[24rem] items-center justify-center p-3 sm:p-4 lg:min-h-[220px]">
                 {logoUrl ? (
-                  <img
+                  <Image
                     src={logoUrl}
                     alt={organizerDisplayName}
+                    width={480}
+                    height={240}
+                    loader={passthroughImageLoader}
+                    unoptimized
                     className={resolveHeroLogoImageClass(organizerSlug)}
                   />
                 ) : bannerPath ? (
                   <div className="relative h-40 w-40 overflow-hidden rounded-full bg-white/15 shadow-[0_18px_40px_-28px_rgba(15,23,42,0.35)] sm:h-48 sm:w-48 lg:h-56 lg:w-56">
-                    <img
+                    <Image
                       src={bannerPath}
                       alt={organizerDisplayName}
-                      className="h-full w-full scale-[2.35] object-cover"
+                      fill
+                      sizes="224px"
+                      className="scale-[2.35] object-cover"
                       style={{ objectPosition: resolveHeroLogoFallbackPosition(organizerSlug) }}
                     />
                   </div>
@@ -901,10 +912,14 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
                       >
                         <div className="relative h-[320px] bg-slate-100">
                           {accommodation.coverImage ? (
-                            <img
+                            <Image
                               src={accommodation.coverImage}
                               alt={accommodation.name}
-                              className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.03]"
+                              fill
+                              sizes="280px"
+                              loader={passthroughImageLoader}
+                              unoptimized
+                              className="object-cover transition duration-500 group-hover:scale-[1.03]"
                             />
                           ) : (
                             <div className="flex h-full items-center justify-center bg-slate-100 text-slate-400">

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { requireApiAdmin } from '@/lib/auth/api';
 import { syncOrganizerProfileCompletenessPercent } from '@/lib/organizer-profile-completeness';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
@@ -59,6 +60,8 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
   }
 
   await syncOrganizerProfileCompletenessPercent(supabase, organizer.id);
+  revalidatePath('/organisateurs');
+  revalidatePath(`/organisateurs/${organizer.slug ?? organizer.id}`);
 
   return NextResponse.redirect(
     new URL(`/admin/organizers/${organizerSlug}?success=1`, req.url),

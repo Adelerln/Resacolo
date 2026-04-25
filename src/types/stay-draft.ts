@@ -4,6 +4,7 @@ export interface StayDraft {
   id: string;
   organizer_id: string;
   source_url: string;
+  source_url_canonical: string;
   title: string | null;
   description: string | null;
   image: string | null;

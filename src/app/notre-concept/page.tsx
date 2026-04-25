@@ -67,7 +67,7 @@ export default function NotreConceptPage() {
           <div className="flex items-center justify-center md:justify-end">
             <div className="w-full max-w-[32rem]">
               <Image
-                src="/image/concept/gif_concept/Composition 1_2.gif"
+                src="/image/concept/gif_concept/Composition 1_2.webp"
                 alt="Animation Resacolo"
                 width={1920}
                 height={1080}

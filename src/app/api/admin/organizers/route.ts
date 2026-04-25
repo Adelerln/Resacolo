@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { requireApiAdmin } from '@/lib/auth/api';
 import { isPasswordPolicyValid, PASSWORD_POLICY_MESSAGE } from '@/lib/auth/password-policy';
 import {
@@ -216,6 +217,9 @@ export async function POST(req: Request) {
       303
     );
   }
+
+  revalidatePath('/organisateurs');
+  revalidatePath(`/organisateurs/${slug}`);
 
   return NextResponse.redirect(new URL(`/admin/organizers/${slug}?success=1`, req.url), 303);
 }

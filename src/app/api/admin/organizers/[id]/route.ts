@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import {
   embedOrganizerDurationMeta,
   extractOrganizerDurationMeta
@@ -39,14 +40,14 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
   const supabase = getServerSupabaseClient();
   let { data: organizer } = await supabase
     .from('organizers')
-    .select('id')
+    .select('id,slug')
     .eq('slug', idOrSlug)
     .maybeSingle();
 
   if (!organizer) {
     const { data: byId } = await supabase
       .from('organizers')
-      .select('id')
+      .select('id,slug')
       .eq('id', idOrSlug)
       .maybeSingle();
     organizer = byId ?? null;
@@ -140,6 +141,14 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
   }
 
   await syncOrganizerProfileCompletenessPercent(supabase, organizer.id);
+
+  const previousSlug = organizer.slug ?? idOrSlug;
+  const nextPublicSlug = slug ?? organizer.slug ?? idOrSlug;
+  revalidatePath('/organisateurs');
+  revalidatePath(`/organisateurs/${previousSlug}`);
+  if (nextPublicSlug !== previousSlug) {
+    revalidatePath(`/organisateurs/${nextPublicSlug}`);
+  }
 
   return NextResponse.redirect(new URL(`/admin/organizers/${urlSlug}?success=1`, req.url), 303);
 }

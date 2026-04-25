@@ -108,7 +108,7 @@ export default function DevenirPartenairePage() {
           <div className="flex items-center justify-center md:justify-end md:self-start">
             <div className="w-full max-w-[36rem]">
               <Image
-                src="/image/devenirpartenaire/gif_part/partenariat-formule.gif"
+                src="/image/devenirpartenaire/gif_part/partenariat-formule.webp"
                 alt="Formules de partenariat Resacolo"
                 width={1920}
                 height={1080}

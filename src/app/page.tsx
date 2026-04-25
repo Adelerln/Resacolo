@@ -132,19 +132,19 @@ const inspiCards = [
 
 const processSteps = [
   {
-    gifSrc: '/image/accueil/gif_accueil/pictogrammes_Selection resacolo-min.gif',
+    gifSrc: '/image/accueil/gif_accueil/pictogrammes_Selection resacolo-min.webp',
     gifAlt: 'Animation de sélection de séjour',
     title: '1. Choisir un séjour',
     desc: 'Trouvez la destination, les activités idéales pour votre enfant et consultez la fiche détaillée du séjour sur notre plateforme.'
   },
   {
-    gifSrc: '/image/accueil/gif_accueil/pictogrammes_Inscription-min.gif',
+    gifSrc: '/image/accueil/gif_accueil/pictogrammes_Inscription-min.webp',
     gifAlt: "Animation d'inscription",
     title: "2. S'inscrire",
     desc: 'Choisissez vos options (dates, transport…), saisissez vos informations personnelles puis transmettez votre réservation à l’organisateur du séjour.'
   },
   {
-    gifSrc: '/image/accueil/gif_accueil/chargement-animation-min.gif',
+    gifSrc: '/image/accueil/gif_accueil/chargement-animation-min.webp',
     gifAlt: 'Animation de validation de réservation',
     title: '3. Valider votre réservation',
     desc: 'L’organisateur se met en relation avec vous pour finaliser l’inscription de votre enfant et préparer son départ en séjour.'

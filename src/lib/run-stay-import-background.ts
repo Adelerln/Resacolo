@@ -26,6 +26,7 @@ import {
   shouldUsePlaywrightForDynamicTransport
 } from '@/lib/stay-draft-playwright';
 import { normalizeStayAges } from '@/lib/stay-ages';
+import { tryCanonicalizeStaySourceUrl } from '@/lib/stay-source-url-canonical';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { normalizeStayTitle } from '@/lib/stay-title';
 import type { Json } from '@/types/supabase';
@@ -782,6 +783,10 @@ function buildDraftUpdatePayload(
   }
   if (columns.has('source_url')) {
     payload.source_url = rawPayload.source_url;
+  }
+  if (columns.has('source_url_canonical')) {
+    payload.source_url_canonical =
+      tryCanonicalizeStaySourceUrl(String(rawPayload.source_url ?? '')) ?? String(rawPayload.source_url ?? '');
   }
   if (columns.has('raw_text')) {
     payload.raw_text = extracted.rawText;

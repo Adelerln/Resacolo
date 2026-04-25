@@ -5,8 +5,7 @@ import { slugify } from '@/lib/utils';
 
 const ORIGIN_GRAY = '#505050';
 
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
+export const revalidate = 300;
 
 export const metadata = {
   title: 'Organisateurs | ResaColo',
@@ -65,7 +64,7 @@ export default async function OrganisateursPage() {
           <div className="relative hidden lg:flex lg:justify-end">
             <div className="w-full max-w-[31rem]">
               <Image
-                src="/image/organisateurs/orga.gif"
+                src="/image/organisateurs/orga.webp"
                 alt="Animation organisateurs"
                 width={1200}
                 height={900}

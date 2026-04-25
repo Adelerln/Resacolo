@@ -8,6 +8,7 @@ import { requireOrganizerPageAccess } from '@/lib/organizer-backoffice-access.se
 import { withOrganizerQuery } from '@/lib/organizers.server';
 import { getReservedSessionCounts } from '@/lib/session-reservations';
 import { isPublishedStayStatus, stayDraftShouldAppearInImportList } from '@/lib/stay-draft-published';
+import { tryCanonicalizeStaySourceUrl } from '@/lib/stay-source-url-canonical';
 import { removeStayMediaStorageFiles } from '@/lib/stay-media-storage';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 
@@ -79,6 +80,10 @@ export default async function OrganizerStaysPage({ searchParams }: PageProps) {
         const u = row.source_url?.trim();
         if (u && isPublishedStayStatus(row.status)) {
           publishedStaySourceUrls.add(u);
+          const canonical = tryCanonicalizeStaySourceUrl(u);
+          if (canonical) {
+            publishedStaySourceUrls.add(canonical);
+          }
         }
       }
     } else if (!/source_url|column|42703|does not exist/i.test(stayUrlError.message)) {

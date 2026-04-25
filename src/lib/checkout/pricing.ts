@@ -220,124 +220,124 @@ function assertRowBelongsToStay(optionStayId: string | null, stayId: string, lab
 }
 
 export async function repriceCart(items: CartItem[]): Promise<CheckoutPricing> {
-  const pricedItems: CheckoutPricingItem[] = [];
+  const pricedItems = await Promise.all(
+    items.map(async (cartItem): Promise<CheckoutPricingItem> => {
+      const sessionId = cartItem.selection.sessionId;
+      if (!sessionId) {
+        asValidationError(`La session est manquante pour le séjour « ${cartItem.title} ».`);
+      }
 
-  for (const cartItem of items) {
-    const sessionId = cartItem.selection.sessionId;
-    if (!sessionId) {
-      asValidationError(`La session est manquante pour le séjour « ${cartItem.title} ».`);
-    }
-
-    const [session, stay, sessionPrice] = await Promise.all([
-      fetchSession(sessionId),
-      fetchStay(cartItem.stayId),
-      fetchSessionPrice(sessionId)
-    ]);
-
-    if (session.stay_id !== cartItem.stayId) {
-      asValidationError(`Le séjour « ${cartItem.title} » ne correspond plus à la session choisie.`);
-    }
-
-    if (stay.status !== 'PUBLISHED') {
-      asValidationError(`Le séjour « ${cartItem.title} » n’est plus disponible.`);
-    }
-
-    assertSessionAvailability(session);
-
-    const basePriceCents = sessionPrice.amount_cents;
-
-    let transportPriceCents = 0;
-    let transportLabel: string | null = null;
-    if (cartItem.selection.transportOptionId) {
-      const transportOption = await fetchTransportOption(cartItem.selection.transportOptionId);
-      assertRowBelongsToSession(transportOption.session_id, sessionId, 'Le transport');
-      assertRowBelongsToStay(transportOption.stay_id, cartItem.stayId, 'Le transport');
-      transportPriceCents = transportOption.amount_cents;
-      transportLabel = formatTransportLabel(
-        transportOption.departure_city,
-        transportOption.return_city
-      );
-    } else {
-      const [departureOption, returnOption] = await Promise.all([
-        cartItem.selection.departureTransportOptionId
-          ? fetchTransportOption(cartItem.selection.departureTransportOptionId)
-          : Promise.resolve(null),
-        cartItem.selection.returnTransportOptionId
-          ? fetchTransportOption(cartItem.selection.returnTransportOptionId)
-          : Promise.resolve(null)
+      const [session, stay, sessionPrice] = await Promise.all([
+        fetchSession(sessionId),
+        fetchStay(cartItem.stayId),
+        fetchSessionPrice(sessionId)
       ]);
 
-      if (departureOption) {
-        assertRowBelongsToSession(departureOption.session_id, sessionId, 'Le transport aller');
-        assertRowBelongsToStay(departureOption.stay_id, cartItem.stayId, 'Le transport aller');
-        transportPriceCents += computeDifferentiatedAmount(departureOption, 'outbound');
-      }
-      if (returnOption) {
-        assertRowBelongsToSession(returnOption.session_id, sessionId, 'Le transport retour');
-        assertRowBelongsToStay(returnOption.stay_id, cartItem.stayId, 'Le transport retour');
-        transportPriceCents += computeDifferentiatedAmount(returnOption, 'return');
+      if (session.stay_id !== cartItem.stayId) {
+        asValidationError(`Le séjour « ${cartItem.title} » ne correspond plus à la session choisie.`);
       }
 
-      transportLabel =
-        formatTransportLabel(
-          cartItem.selection.departureCity ?? departureOption?.departure_city ?? null,
-          cartItem.selection.returnCity ?? returnOption?.return_city ?? null
-        ) ??
-        formatTransportLabel(departureOption?.departure_city ?? null, returnOption?.return_city ?? null);
-    }
-
-    let insurancePriceCents = 0;
-    let persistedInsuranceOptionId: string | null = null;
-    let insuranceLabel: string | null = null;
-    if (cartItem.selection.insuranceOptionId) {
-      const insuranceOption = await fetchInsuranceOption(cartItem.selection.insuranceOptionId);
-      assertRowBelongsToSession(insuranceOption.session_id, sessionId, 'L’assurance');
-      assertRowBelongsToStay(insuranceOption.stay_id, cartItem.stayId, 'L’assurance');
-      insuranceLabel = insuranceOption.label;
-      if (insuranceOption.source === 'INSURANCE_OPTION') {
-        persistedInsuranceOptionId = insuranceOption.id;
+      if (stay.status !== 'PUBLISHED') {
+        asValidationError(`Le séjour « ${cartItem.title} » n’est plus disponible.`);
       }
 
-      if (insuranceOption.amount_cents != null) {
-        insurancePriceCents = insuranceOption.amount_cents;
-      } else if (insuranceOption.percent_value != null) {
-        insurancePriceCents = Math.round((basePriceCents * insuranceOption.percent_value) / 100);
+      assertSessionAvailability(session);
+
+      const basePriceCents = sessionPrice.amount_cents;
+
+      let transportPriceCents = 0;
+      let transportLabel: string | null = null;
+      if (cartItem.selection.transportOptionId) {
+        const transportOption = await fetchTransportOption(cartItem.selection.transportOptionId);
+        assertRowBelongsToSession(transportOption.session_id, sessionId, 'Le transport');
+        assertRowBelongsToStay(transportOption.stay_id, cartItem.stayId, 'Le transport');
+        transportPriceCents = transportOption.amount_cents;
+        transportLabel = formatTransportLabel(
+          transportOption.departure_city,
+          transportOption.return_city
+        );
+      } else {
+        const [departureOption, returnOption] = await Promise.all([
+          cartItem.selection.departureTransportOptionId
+            ? fetchTransportOption(cartItem.selection.departureTransportOptionId)
+            : Promise.resolve(null),
+          cartItem.selection.returnTransportOptionId
+            ? fetchTransportOption(cartItem.selection.returnTransportOptionId)
+            : Promise.resolve(null)
+        ]);
+
+        if (departureOption) {
+          assertRowBelongsToSession(departureOption.session_id, sessionId, 'Le transport aller');
+          assertRowBelongsToStay(departureOption.stay_id, cartItem.stayId, 'Le transport aller');
+          transportPriceCents += computeDifferentiatedAmount(departureOption, 'outbound');
+        }
+        if (returnOption) {
+          assertRowBelongsToSession(returnOption.session_id, sessionId, 'Le transport retour');
+          assertRowBelongsToStay(returnOption.stay_id, cartItem.stayId, 'Le transport retour');
+          transportPriceCents += computeDifferentiatedAmount(returnOption, 'return');
+        }
+
+        transportLabel =
+          formatTransportLabel(
+            cartItem.selection.departureCity ?? departureOption?.departure_city ?? null,
+            cartItem.selection.returnCity ?? returnOption?.return_city ?? null
+          ) ??
+          formatTransportLabel(departureOption?.departure_city ?? null, returnOption?.return_city ?? null);
       }
-    }
 
-    let extraOptionPriceCents = 0;
-    let extraOptionLabel: string | null = null;
-    if (cartItem.selection.extraOptionId) {
-      const extraOption = await fetchExtraOption(cartItem.selection.extraOptionId);
-      assertRowBelongsToStay(extraOption.stay_id, cartItem.stayId, 'L’option supplémentaire');
-      extraOptionPriceCents = extraOption.amount_cents;
-      extraOptionLabel = extraOption.label;
-    }
+      let insurancePriceCents = 0;
+      let persistedInsuranceOptionId: string | null = null;
+      let insuranceLabel: string | null = null;
+      if (cartItem.selection.insuranceOptionId) {
+        const insuranceOption = await fetchInsuranceOption(cartItem.selection.insuranceOptionId);
+        assertRowBelongsToSession(insuranceOption.session_id, sessionId, 'L’assurance');
+        assertRowBelongsToStay(insuranceOption.stay_id, cartItem.stayId, 'L’assurance');
+        insuranceLabel = insuranceOption.label;
+        if (insuranceOption.source === 'INSURANCE_OPTION') {
+          persistedInsuranceOptionId = insuranceOption.id;
+        }
 
-    const optionsPriceCents = transportPriceCents + insurancePriceCents + extraOptionPriceCents;
-    const totalPriceCents = basePriceCents + optionsPriceCents;
+        if (insuranceOption.amount_cents != null) {
+          insurancePriceCents = insuranceOption.amount_cents;
+        } else if (insuranceOption.percent_value != null) {
+          insurancePriceCents = Math.round((basePriceCents * insuranceOption.percent_value) / 100);
+        }
+      }
 
-    pricedItems.push({
-      cartItemId: cartItem.id,
-      stayTitle: stay.title,
-      sessionId,
-      organizerId: stay.organizer_id,
-      sessionStartDate: session.start_date,
-      sessionEndDate: session.end_date,
-      basePriceCents,
-      transportPriceCents,
-      transportLabel,
-      insurancePriceCents,
-      insuranceLabel,
-      extraOptionPriceCents,
-      optionsPriceCents,
-      totalPriceCents,
-      transportOptionId: pickStoredTransportOptionId(cartItem),
-      insuranceOptionId: persistedInsuranceOptionId,
-      extraOptionId: cartItem.selection.extraOptionId,
-      extraOptionLabel
-    });
-  }
+      let extraOptionPriceCents = 0;
+      let extraOptionLabel: string | null = null;
+      if (cartItem.selection.extraOptionId) {
+        const extraOption = await fetchExtraOption(cartItem.selection.extraOptionId);
+        assertRowBelongsToStay(extraOption.stay_id, cartItem.stayId, 'L’option supplémentaire');
+        extraOptionPriceCents = extraOption.amount_cents;
+        extraOptionLabel = extraOption.label;
+      }
+
+      const optionsPriceCents = transportPriceCents + insurancePriceCents + extraOptionPriceCents;
+      const totalPriceCents = basePriceCents + optionsPriceCents;
+
+      return {
+        cartItemId: cartItem.id,
+        stayTitle: stay.title,
+        sessionId,
+        organizerId: stay.organizer_id,
+        sessionStartDate: session.start_date,
+        sessionEndDate: session.end_date,
+        basePriceCents,
+        transportPriceCents,
+        transportLabel,
+        insurancePriceCents,
+        insuranceLabel,
+        extraOptionPriceCents,
+        optionsPriceCents,
+        totalPriceCents,
+        transportOptionId: pickStoredTransportOptionId(cartItem),
+        insuranceOptionId: persistedInsuranceOptionId,
+        extraOptionId: cartItem.selection.extraOptionId,
+        extraOptionLabel
+      };
+    })
+  );
 
   const totalCents = pricedItems.reduce((sum, item) => sum + item.totalPriceCents, 0);
 

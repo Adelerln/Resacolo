@@ -24,6 +24,7 @@ import {
 import { mapToCanonicalStayRegion } from '@/lib/stay-regions';
 import { isPartnerTariffExtraOptionLabel } from '@/lib/stay-draft-extra-options-split';
 import { sanitizeSeoPrimaryKeyword } from '@/lib/stay-seo';
+import { tryCanonicalizeStaySourceUrl } from '@/lib/stay-source-url-canonical';
 import { normalizeStayTitle } from '@/lib/stay-title';
 import { maybeRecordPublicationFeeWhenStayPublished } from '@/lib/resacolo-fee-ledger.server';
 import type { Database, Json } from '@/types/supabase';
@@ -1182,6 +1183,12 @@ async function findExistingStayBySourceUrl(
   organizerId: string,
   sourceUrl: string
 ): Promise<string | null> {
+  const candidates = new Set<string>();
+  const trimmed = sourceUrl.trim();
+  if (trimmed) candidates.add(trimmed);
+  const canonical = tryCanonicalizeStaySourceUrl(trimmed);
+  if (canonical) candidates.add(canonical);
+
   const dynamicFrom = supabase.from('stays') as unknown as {
     select: (columns: string) => {
       eq: (column: string, value: string) => {
@@ -1195,21 +1202,27 @@ async function findExistingStayBySourceUrl(
   };
 
   try {
-    const { data, error } = await dynamicFrom
-      .select('id')
-      .eq('organizer_id', organizerId)
-      .eq('source_url', sourceUrl)
-      .limit(1)
-      .maybeSingle();
+    for (const candidate of candidates) {
+      const { data, error } = await dynamicFrom
+        .select('id')
+        .eq('organizer_id', organizerId)
+        .eq('source_url', candidate)
+        .limit(1)
+        .maybeSingle();
 
-    if (error) {
-      if (isMissingColumnError(error.message, 'source_url')) {
-        return null;
+      if (error) {
+        if (isMissingColumnError(error.message, 'source_url')) {
+          return null;
+        }
+        throw new PublishStayDraftError('find-stay-by-source-url', error.message ?? 'Erreur inconnue.');
       }
-      throw new PublishStayDraftError('find-stay-by-source-url', error.message ?? 'Erreur inconnue.');
+
+      if (data?.id) {
+        return data.id;
+      }
     }
 
-    return data?.id ?? null;
+    return null;
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Erreur inconnue.';
     if (isMissingColumnError(message, 'source_url')) {
@@ -1230,6 +1243,7 @@ async function updateOrInsertStay(
 ): Promise<string> {
   const now = new Date().toISOString();
   const draftRawPayload = asObject(draft.raw_payload);
+  const publishedSourceUrl = tryCanonicalizeStaySourceUrl(draft.source_url) ?? draft.source_url;
   const partnerDiscountPercent = readPartnerDiscountPercentFromRawPayload(draftRawPayload);
   const ageMin = ages.length > 0 ? ages[0] : draft.age_min;
   const ageMax = ages.length > 0 ? ages[ages.length - 1] : draft.age_max;
@@ -1287,7 +1301,7 @@ async function updateOrInsertStay(
   if (stayId) {
     const updateWithSourceUrl = {
       ...basePayload,
-      source_url: draft.source_url
+      source_url: publishedSourceUrl
     };
 
     const dynamicUpdate = supabase.from('stays') as unknown as {
@@ -1393,7 +1407,7 @@ async function updateOrInsertStay(
 
   const insertWithSourceUrl = {
     ...insertPayload,
-    source_url: draft.source_url
+    source_url: publishedSourceUrl
   };
 
   const firstTry = await dynamicInsert.insert(insertWithSourceUrl).select('id').single();

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useSyncExternalStore } from 'react';
 import { Heart } from 'lucide-react';
 import {
   isFavoriteStay,
@@ -16,48 +16,40 @@ type FavoriteStayButtonProps = {
   iconClassName?: string;
 };
 
+function subscribeToFavoriteStore(onStoreChange: () => void) {
+  const handleStorage = (event: StorageEvent) => {
+    if (event.key && event.key !== STAY_FAVORITES_STORAGE_KEY) return;
+    onStoreChange();
+  };
+  const handleFavoritesUpdated = () => onStoreChange();
+
+  window.addEventListener('storage', handleStorage);
+  window.addEventListener(STAY_FAVORITES_UPDATED_EVENT, handleFavoritesUpdated);
+
+  return () => {
+    window.removeEventListener('storage', handleStorage);
+    window.removeEventListener(STAY_FAVORITES_UPDATED_EVENT, handleFavoritesUpdated);
+  };
+}
+
 export function FavoriteStayButton({
   stayId,
   className,
   stopPropagation = false,
   iconClassName
 }: FavoriteStayButtonProps) {
-  const [isFavorite, setIsFavorite] = useState(false);
-
-  const refreshFavoriteState = useCallback(() => {
-    setIsFavorite(isFavoriteStay(stayId));
-  }, [stayId]);
-
-  useEffect(() => {
-    refreshFavoriteState();
-  }, [refreshFavoriteState]);
-
-  useEffect(() => {
-    const handleStorage = (event: StorageEvent) => {
-      if (event.key && event.key !== STAY_FAVORITES_STORAGE_KEY) return;
-      refreshFavoriteState();
-    };
-
-    const handleFavoritesUpdated = () => {
-      refreshFavoriteState();
-    };
-
-    window.addEventListener('storage', handleStorage);
-    window.addEventListener(STAY_FAVORITES_UPDATED_EVENT, handleFavoritesUpdated);
-
-    return () => {
-      window.removeEventListener('storage', handleStorage);
-      window.removeEventListener(STAY_FAVORITES_UPDATED_EVENT, handleFavoritesUpdated);
-    };
-  }, [refreshFavoriteState]);
+  const isFavorite = useSyncExternalStore(
+    subscribeToFavoriteStore,
+    () => isFavoriteStay(stayId),
+    () => false
+  );
 
   const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
     if (stopPropagation) {
       event.preventDefault();
       event.stopPropagation();
     }
-
-    setIsFavorite(toggleFavoriteStay(stayId));
+    toggleFavoriteStay(stayId);
   };
 
   return (

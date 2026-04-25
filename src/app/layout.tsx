@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import localFont from 'next/font/local';
 import './globals.css';
 import { CartProvider } from '@/context/CartContext';
+import { WebVitalsReporter } from '@/components/perf/WebVitalsReporter';
 import { SiteShell } from '@/components/layout/SiteShell';
 
 const raleway = localFont({
@@ -41,6 +42,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="fr" className="bg-slate-50 text-slate-900" data-scroll-behavior="smooth">
       <body className={`${raleway.variable} ${baloo.variable} font-sans bg-white`}>
         <CartProvider>
+          <WebVitalsReporter />
           <SiteShell>{children}</SiteShell>
         </CartProvider>
       </body>

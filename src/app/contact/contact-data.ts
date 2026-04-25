@@ -4,7 +4,7 @@ export const CONTACT_COLORS = {
 } as const;
 
 export const CONTACT_HERO_VISUAL = {
-  src: '/image/contact/resacolo-contact-anim.gif',
+  src: '/image/contact/resacolo-contact-anim.webp',
   alt: 'Illustration Resacolo pour la page de contact',
   width: 564,
   height: 183

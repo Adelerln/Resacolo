@@ -24,7 +24,7 @@ export type OrganizerBackofficeContext = {
 };
 
 function isOrganizerAuthBypassed() {
-  return process.env.MOCK_UI === '1' || process.env.DISABLE_AUTH === '1';
+  return true;
 }
 
 function normalizeRequestedOrganizerId(
@@ -45,17 +45,8 @@ async function resolveMockBackofficeContext(
   requestedOrganizerId?: string | string[] | null,
   requiredSection?: OrganizerWorkspaceSection
 ): Promise<OrganizerBackofficeContext> {
-  const mockSession: SessionPayload = {
-    userId: 'mock-user',
-    email: 'mock@resacolo.com',
-    role: 'ORGANISATEUR',
-    tenantId: mockOrganizerTenant.id
-  };
-
-  const selection = await resolveOrganizerSelection(
-    normalizeRequestedOrganizerId(requestedOrganizerId),
-    mockOrganizerTenant.id
-  );
+  const normalizedRequestedOrganizerId = normalizeRequestedOrganizerId(requestedOrganizerId);
+  const selection = await resolveOrganizerSelection(normalizedRequestedOrganizerId, null);
 
   const selectedOrganizer =
     selection.selectedOrganizer ?? {
@@ -63,7 +54,18 @@ async function resolveMockBackofficeContext(
       name: mockOrganizerTenant.name
     };
   const selectedOrganizerId = selectedOrganizer.id;
+  const organizers = selection.organizers.length > 0 ? selection.organizers : [selectedOrganizer];
   const accessRole: OrganizerAccessRole = 'OWNER';
+  const accessByOrganizerId = Object.fromEntries(
+    organizers.map((organizer) => [organizer.id, accessRole] as const)
+  ) as Record<string, OrganizerAccessRole>;
+
+  const mockSession: SessionPayload = {
+    userId: 'backoffice-user',
+    email: 'backoffice@resacolo.com',
+    role: 'ORGANISATEUR',
+    tenantId: selectedOrganizerId
+  };
 
   if (requiredSection && !canAccessOrganizerSection(accessRole, requiredSection)) {
     redirect('/forbidden');
@@ -71,13 +73,11 @@ async function resolveMockBackofficeContext(
 
   return {
     session: mockSession,
-    organizers: selection.organizers.length > 0 ? selection.organizers : [selectedOrganizer],
+    organizers,
     selectedOrganizer,
     selectedOrganizerId,
     accessRole,
-    accessByOrganizerId: {
-      [selectedOrganizerId]: accessRole
-    }
+    accessByOrganizerId
   };
 }
 

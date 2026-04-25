@@ -21,6 +21,8 @@ type AddressApiResponse = {
 const EARTH_RADIUS_METERS = 6371000;
 const CENTER_OFFSET_METERS = 1200;
 const PUBLIC_CIRCLE_RADIUS_METERS = 2000;
+const LEAFLET_STYLESHEET_ID = 'resacolo-leaflet-css';
+const LEAFLET_STYLESHEET_HREF = '/styles/leaflet.css';
 const FRENCH_TILE_URL = 'https://{s}.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png';
 const FALLBACK_TILE_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
 const FRENCH_TILE_ATTRIBUTION =
@@ -81,6 +83,16 @@ export default function StayLocationMap({
     [centerLocations]
   );
   const [isLoading, setIsLoading] = useState(!hasCenterLocations && Boolean(location));
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    if (document.getElementById(LEAFLET_STYLESHEET_ID)) return;
+    const link = document.createElement('link');
+    link.id = LEAFLET_STYLESHEET_ID;
+    link.rel = 'stylesheet';
+    link.href = LEAFLET_STYLESHEET_HREF;
+    document.head.appendChild(link);
+  }, []);
 
   useEffect(() => {
     if (hasCenterLocations) {

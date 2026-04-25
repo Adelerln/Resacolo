@@ -1,6 +1,7 @@
 /**
  * Détecte si un stay_draft a déjà été publié vers un séjour live (pour masquer la carte « Brouillons d'import »).
  */
+import { tryCanonicalizeStaySourceUrl } from '@/lib/stay-source-url-canonical';
 
 export function parseStayDraftRawPayload(rawPayload: unknown): Record<string, unknown> {
   if (rawPayload == null) return {};
@@ -79,7 +80,13 @@ export function stayDraftShouldAppearInImportList(
   }
 
   const url = draft.source_url?.trim();
-  if (url && publishedStaySourceUrls.has(url)) {
+  if (!url) return true;
+
+  const canonicalUrl = tryCanonicalizeStaySourceUrl(url);
+  if (
+    publishedStaySourceUrls.has(url) ||
+    (canonicalUrl ? publishedStaySourceUrls.has(canonicalUrl) : false)
+  ) {
     return false;
   }
 

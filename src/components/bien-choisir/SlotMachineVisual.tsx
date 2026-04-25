@@ -1,6 +1,6 @@
 import Image from 'next/image';
 
-const MACHINE_GIF_SRC = '/image/choisirsacolo/gif_choisirsacolo/machine%202.gif';
+const MACHINE_GIF_SRC = '/image/choisirsacolo/gif_choisirsacolo/machine%202.webp';
 
 export function SlotMachineVisual() {
   return (

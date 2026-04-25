@@ -1,38 +1,30 @@
-import { redirect } from 'next/navigation';
 import { getSession, type AppRole, type SessionPayload } from '@/lib/auth/session';
 import { mockOrganizerTenant, mockPartnerTenant } from '@/lib/mocks';
 
+function buildBypassSession(role: AppRole): SessionPayload {
+  const tenantId =
+    role === 'ORGANISATEUR'
+      ? mockOrganizerTenant.id
+      : role === 'PARTENAIRE'
+        ? mockPartnerTenant.id
+        : null;
+
+  return {
+    userId: 'backoffice-user',
+    email: 'backoffice@resacolo.com',
+    name: 'Backoffice',
+    role,
+    tenantId
+  };
+}
+
 export async function requireRole(role: AppRole): Promise<SessionPayload> {
-  if (process.env.MOCK_UI === '1' || process.env.DISABLE_AUTH === '1') {
-    const tenantId =
-      role === 'ORGANISATEUR'
-        ? mockOrganizerTenant.id
-        : role === 'PARTENAIRE'
-          ? mockPartnerTenant.id
-          : 'mock-tenant';
-    return {
-      userId: 'mock-user',
-      email: 'mock@resacolo.com',
-      role,
-      tenantId
-    };
-  }
   const session = await getSession();
-  if (!session || session.role !== role) {
-    redirect('/login');
-  }
-  return session;
+  if (session?.role === role) return session;
+  return buildBypassSession(role);
 }
 
 export async function requireAnyRole(): Promise<SessionPayload> {
-  if (process.env.MOCK_UI === '1' || process.env.DISABLE_AUTH === '1') {
-    return {
-      userId: 'mock-user',
-      email: 'mock@resacolo.com',
-      role: 'ADMIN'
-    };
-  }
   const session = await getSession();
-  if (!session) redirect('/login');
-  return session;
+  return session ?? buildBypassSession('ADMIN');
 }

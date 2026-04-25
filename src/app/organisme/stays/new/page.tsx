@@ -88,6 +88,30 @@ export default async function NewStayChoicePage({ searchParams }: PageProps) {
               </Link>
             </p>
           )}
+          {prefillParam === 'existing' && draftIdParam && (
+            <p className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+              Un brouillon existait déjà pour cette URL. Le brouillon existant a été réutilisé. ID du
+              draft : <span className="font-semibold">{draftIdParam}</span>.{' '}
+              <Link
+                href={withOrganizerQuery(`/organisme/sejours/drafts/${draftIdParam}`, organizerId)}
+                className="font-semibold underline"
+              >
+                Ouvrir ce brouillon
+              </Link>
+            </p>
+          )}
+          {prefillParam === 'restarted' && draftIdParam && (
+            <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              Un brouillon en échec existait déjà pour cette URL. L&apos;import a été relancé sur ce même
+              brouillon. ID du draft : <span className="font-semibold">{draftIdParam}</span>.{' '}
+              <Link
+                href={withOrganizerQuery(`/organisme/sejours/drafts/${draftIdParam}`, organizerId)}
+                className="font-semibold underline"
+              >
+                Ouvrir la review
+              </Link>
+            </p>
+          )}
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">

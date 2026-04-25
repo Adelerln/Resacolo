@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { requireApiAdmin } from '@/lib/auth/api';
 import { syncOrganizerProfileCompletenessPercent } from '@/lib/organizer-profile-completeness';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
@@ -14,13 +15,13 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
 
   let { data: organizer } = await supabase
     .from('organizers')
-    .select('id,logo_path')
+    .select('id,slug,logo_path')
     .eq('slug', slug)
     .maybeSingle();
   if (!organizer) {
     const { data: byId } = await supabase
       .from('organizers')
-      .select('id,logo_path')
+      .select('id,slug,logo_path')
       .eq('id', slug)
       .maybeSingle();
     organizer = byId ?? null;
@@ -67,6 +68,8 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
   }
 
   await syncOrganizerProfileCompletenessPercent(supabase, organizer.id);
+  revalidatePath('/organisateurs');
+  revalidatePath(`/organisateurs/${organizer.slug ?? slug}`);
 
   return NextResponse.redirect(new URL(`/admin/organizers/${slug}?success=1`, req.url), 303);
 }

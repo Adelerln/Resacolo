@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import Image from 'next/image';
 
 type OrganizerCard = {
   id: string;
@@ -27,10 +28,13 @@ export function OrganisateursGridWithModal({ organizers }: OrganisateursGridWith
           >
             <div className="flex min-h-[170px] flex-1 flex-col items-center justify-center px-4 py-8">
               {org.logoUrl ? (
-                <img
+                <Image
                   src={org.logoUrl}
                   alt={org.name}
+                  width={280}
+                  height={112}
                   className="max-h-28 w-auto object-contain"
+                  unoptimized
                 />
               ) : (
                 <div className="flex h-16 w-full items-center justify-center rounded-lg bg-slate-100">

@@ -110,6 +110,10 @@ export default function CheckoutInformationsPage() {
   const [hasPrefilledFromProfile, setHasPrefilledFromProfile] = useState(false);
 
   useEffect(() => {
+    router.prefetch('/checkout/recapitulatif');
+  }, [router]);
+
+  useEffect(() => {
     setForm(contact);
   }, [contact]);
 

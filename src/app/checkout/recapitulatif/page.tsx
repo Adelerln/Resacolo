@@ -68,6 +68,10 @@ export default function CheckoutRecapitulatifPage() {
   const [paymentSubmitError, setPaymentSubmitError] = useState<string | null>(null);
   const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
 
+  useEffect(() => {
+    router.prefetch('/checkout/paiement');
+  }, [router]);
+
   const isContactComplete = Boolean(
     contact.email &&
       contact.billingFirstName &&

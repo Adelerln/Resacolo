@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { getSession } from '@/lib/auth/session';
+import { getCurrentUser } from '@/lib/auth/session';
 import { getFamilyProfileSnapshot } from '@/lib/account-profile/server';
 import type { FamilyProfileSnapshot } from '@/types/family-profile';
 import MonCompteClient from './MonCompteClient';
@@ -9,12 +9,15 @@ export const metadata = {
 };
 
 export default async function MonComptePage() {
-  const session = await getSession();
+  const session = await getCurrentUser();
 
   if (!session) {
     redirect('/login/familles');
   }
 
+  if (session.role === 'MNEMOS') {
+    redirect('/mnemos');
+  }
   if (session.role === 'ADMIN') {
     redirect('/admin');
   }

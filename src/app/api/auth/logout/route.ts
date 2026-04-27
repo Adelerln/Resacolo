@@ -1,5 +1,7 @@
+import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
-import { clearSessionCookie } from '@/lib/auth/session';
+import type { Database } from '@/types/supabase';
 
 export const runtime = 'nodejs';
 
@@ -30,6 +32,15 @@ export async function POST(req: Request) {
     }
   }
 
-  await clearSessionCookie();
+  const cookieStore = await cookies();
+  const cookieAccess = (() => cookieStore) as unknown as typeof cookies;
+  const supabase = createRouteHandlerClient<Database>({
+    cookies: cookieAccess
+  });
+  await supabase.auth.signOut();
+  cookieStore.set('resacolo_session', '', {
+    path: '/',
+    expires: new Date(0)
+  });
   return NextResponse.redirect(new URL(redirectPath, req.url), { status: 303 });
 }

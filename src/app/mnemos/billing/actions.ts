@@ -28,7 +28,7 @@ function billingReturnQuery(fd: FormData): string {
 }
 
 export async function createPublicationPeriodInvoice(formData: FormData) {
-  const session = await requireRole('ADMIN');
+  const session = await requireRole('MNEMOS');
   const organizerId = String(formData.get('organizer_id') ?? '').trim();
   const startDate = String(formData.get('start_date') ?? '').trim();
   const endDate = String(formData.get('end_date') ?? '').trim();
@@ -106,7 +106,7 @@ export async function createPublicationPeriodInvoice(formData: FormData) {
 }
 
 export async function createCommissionPeriodInvoice(formData: FormData) {
-  const session = await requireRole('ADMIN');
+  const session = await requireRole('MNEMOS');
   const organizerId = String(formData.get('organizer_id') ?? '').trim();
   const startDate = String(formData.get('start_date') ?? '').trim();
   const endDate = String(formData.get('end_date') ?? '').trim();

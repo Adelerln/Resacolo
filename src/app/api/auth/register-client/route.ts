@@ -1,10 +1,11 @@
+import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { isPasswordPolicyValid, PASSWORD_POLICY_MESSAGE } from '@/lib/auth/password-policy';
-import { hashPassword } from '@/lib/auth/password';
-import { setSessionCookie } from '@/lib/auth/session';
 import { getApiErrorMessage } from '@/lib/checkout/api';
-import { prisma } from '@/lib/db';
+import { getServerSupabaseClient } from '@/lib/supabase/server';
+import type { Database } from '@/types/supabase';
 
 export const runtime = 'nodejs';
 
@@ -57,58 +58,70 @@ export async function POST(req: Request) {
     const input = registerClientSchema.parse(body);
     safeRedirectTo = sanitizeRelativePath(input.redirectTo, '/mon-compte');
     const email = input.email.toLowerCase();
-
-    const existingUser = await prisma.user.findUnique({
-      where: { email }
+    const name = `${input.firstName} ${input.lastName}`.trim();
+    const cookieStore = await cookies();
+    const cookieAccess = (() => cookieStore) as unknown as typeof cookies;
+    const supabase = createRouteHandlerClient<Database>({
+      cookies: cookieAccess
+    });
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password: input.password,
+      options: {
+        data: {
+          first_name: input.firstName,
+          last_name: input.lastName,
+          full_name: name,
+          name
+        }
+      }
     });
 
-    if (existingUser?.passwordHash) {
+    if (error || !data.user?.id) {
+      const isExistingAccount = error?.message?.toLowerCase().includes('already registered');
+      const message =
+        isExistingAccount
+          ? 'Un compte existe déjà avec cette adresse email.'
+          : error?.message ?? 'Impossible de créer le compte.';
       if (isFormRequest) {
-        return redirectFormError('Un compte existe déjà avec cette adresse email.', safeRedirectTo);
+        return redirectFormError(message, safeRedirectTo);
       }
-      return NextResponse.json({ error: 'Un compte existe déjà avec cette adresse email.' }, { status: 409 });
+      return NextResponse.json({ error: message }, { status: isExistingAccount ? 409 : 500 });
     }
 
-    const name = `${input.firstName} ${input.lastName}`.trim();
-    const passwordHash = hashPassword(input.password);
+    const serverSupabase = getServerSupabaseClient();
+    const { error: clientError } = await serverSupabase.from('clients').upsert(
+      {
+        user_id: data.user.id,
+        full_name: name || null,
+        phone: null,
+        collectivity_id: null
+      },
+      { onConflict: 'user_id' }
+    );
 
-    const user = existingUser
-      ? await prisma.user.update({
-          where: { id: existingUser.id },
-          data: {
-            name: name || existingUser.name,
-            passwordHash,
-            status: existingUser.status ?? 'ACTIVE'
-          }
-        })
-      : await prisma.user.create({
-          data: {
-            email,
-            name,
-            passwordHash,
-            status: 'ACTIVE'
-          }
-        });
-
-    await setSessionCookie({
-      userId: user.id,
-      email: user.email,
-      name: user.name,
-      role: 'CLIENT',
-      tenantId: null
-    });
+    if (clientError) {
+      if (isFormRequest) {
+        return redirectFormError(clientError.message, safeRedirectTo);
+      }
+      return NextResponse.json({ error: clientError.message }, { status: 500 });
+    }
 
     if (isFormRequest) {
-      return NextResponse.redirect(new URL(safeRedirectTo, req.url), { status: 303 });
+      const redirectUrl = data.session
+        ? new URL(safeRedirectTo, req.url)
+        : new URL(`/login/familles?registered=1&redirectTo=${encodeURIComponent(safeRedirectTo)}`, req.url);
+      return NextResponse.redirect(redirectUrl, { status: 303 });
     }
 
     return NextResponse.json({
       ok: true,
       user: {
-        id: user.id,
-        email: user.email,
-        name: user.name
-      }
+        id: data.user.id,
+        email: data.user.email,
+        name
+      },
+      requiresEmailConfirmation: !data.session
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -116,17 +129,6 @@ export async function POST(req: Request) {
         return redirectFormError(getApiErrorMessage(error), safeRedirectTo);
       }
       return NextResponse.json({ error: getApiErrorMessage(error) }, { status: 400 });
-    }
-    if (
-      typeof error === 'object' &&
-      error !== null &&
-      'code' in error &&
-      (error as { code: unknown }).code === 'P2002'
-    ) {
-      if (isFormRequest) {
-        return redirectFormError('Un compte existe déjà avec cette adresse email.', safeRedirectTo);
-      }
-      return NextResponse.json({ error: 'Un compte existe déjà avec cette adresse email.' }, { status: 409 });
     }
     console.error('[register-client]', error);
     if (isFormRequest) {

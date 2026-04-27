@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { BackOfficeShell } from '@/components/layout/BackOfficeShell';
+import { redirect } from 'next/navigation';
 
 export const metadata: Metadata = {
   title: 'Back Office partenaires | Resacolo',
@@ -12,5 +12,6 @@ export default function BackOfficeLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return <BackOfficeShell>{children}</BackOfficeShell>;
+  void children;
+  redirect('/organisme');
 }

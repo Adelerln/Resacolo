@@ -1,12 +1,8 @@
 import { redirect } from 'next/navigation';
-import { getSession } from '@/lib/auth/session';
+import { getCurrentUser } from '@/lib/auth/session';
 
 function mapLoginErrorMessage(code: string | undefined) {
   switch (code) {
-    case 'db-config':
-      return 'Configuration base de données invalide (DATABASE_URL). Vérifiez .env.local.';
-    case 'db-unreachable':
-      return 'Base de données injoignable. Vérifiez DATABASE_URL, réseau et statut Supabase.';
     case 'invalid-credentials':
       return 'Identifiants invalides.';
     case 'invalid-input':
@@ -29,11 +25,15 @@ function sanitizeRelativePath(value: string | undefined) {
   return trimmed;
 }
 
-function canUseRedirectForRole(role: 'ADMIN' | 'ORGANISATEUR' | 'PARTENAIRE' | 'CLIENT', path: string) {
-  if (role === 'ADMIN') return path.startsWith('/admin') || path.startsWith('/mnemos') || path.startsWith('/organisme');
+function canUseRedirectForRole(
+  role: 'MNEMOS' | 'ADMIN' | 'ORGANISATEUR' | 'PARTENAIRE' | 'CLIENT',
+  path: string
+) {
+  if (role === 'MNEMOS') return path.startsWith('/mnemos');
+  if (role === 'ADMIN') return path.startsWith('/admin');
   if (role === 'ORGANISATEUR') return path.startsWith('/organisme');
   if (role === 'PARTENAIRE') return path.startsWith('/partenaire');
-  return false;
+  return !path.startsWith('/admin') && !path.startsWith('/mnemos') && !path.startsWith('/organisme') && !path.startsWith('/partenaire');
 }
 
 export default async function LoginPage({
@@ -49,8 +49,11 @@ export default async function LoginPage({
   const safeRedirectTo = sanitizeRelativePath(redirectTo);
   const loginError = mapLoginErrorMessage(error);
 
-  const session = await getSession();
+  const session = await getCurrentUser();
   if (session) {
+    if (session.role === 'MNEMOS') {
+      redirect(canUseRedirectForRole('MNEMOS', safeRedirectTo) ? safeRedirectTo : '/mnemos');
+    }
     if (session.role === 'ADMIN') {
       redirect(canUseRedirectForRole('ADMIN', safeRedirectTo) ? safeRedirectTo : '/admin');
     }
@@ -60,7 +63,9 @@ export default async function LoginPage({
     if (session.role === 'PARTENAIRE') {
       redirect(canUseRedirectForRole('PARTENAIRE', safeRedirectTo) ? safeRedirectTo : '/partenaire');
     }
-    if (session.role === 'CLIENT') redirect('/');
+    if (session.role === 'CLIENT') {
+      redirect(canUseRedirectForRole('CLIENT', safeRedirectTo) ? safeRedirectTo : '/mon-compte');
+    }
   }
 
   return (

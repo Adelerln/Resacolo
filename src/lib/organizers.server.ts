@@ -57,13 +57,12 @@ async function loadOrganizerOptionsByIds(organizerIds: string[]): Promise<Organi
 async function loadOrganizerAccessByUserId(appUserId: string): Promise<Map<string, OrganizerAccessRole>> {
   const supabase = getServerSupabaseClient();
   const { data, error } = await supabase
-    .from('organizer_backoffice_access')
+    .from('organizer_members')
     .select('organizer_id,role')
-    .eq('app_user_id', appUserId)
-    .is('revoked_at', null);
+    .eq('user_id', appUserId);
 
   if (error) {
-    console.warn('Supabase (organizer_backoffice_access) indisponible :', error.message);
+    console.warn('Supabase (organizer_members) indisponible :', error.message);
     return new Map();
   }
 

@@ -1,8 +1,6 @@
 import 'server-only';
 
 import type { User } from '@supabase/supabase-js';
-import { hashPassword } from '@/lib/auth/password';
-import { prisma } from '@/lib/db';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import type { OrganizerAccessRole } from '@/lib/organizer-access';
 import type { Database } from '@/types/supabase';
@@ -20,14 +18,11 @@ type OrganizerAccessSyncIdentity = {
 
 const ACCESS_CODE_PREFIX = 'ORG-';
 
-function normalizeEmail(value: string): string {
+function normalizeEmail(value: string) {
   return value.trim().toLowerCase();
 }
 
-function splitDisplayName(name: string | null | undefined): {
-  firstName: string | null;
-  lastName: string | null;
-} {
+function splitDisplayName(name: string | null | undefined) {
   const normalized = String(name ?? '').trim();
   if (!normalized) {
     return { firstName: null, lastName: null };
@@ -42,6 +37,17 @@ function splitDisplayName(name: string | null | undefined): {
     firstName: parts[0],
     lastName: parts.slice(1).join(' ')
   };
+}
+
+function getDisplayNameFromUser(user: User | null) {
+  return (
+    String(user?.user_metadata?.full_name ?? '').trim() ||
+    String(user?.user_metadata?.name ?? '').trim() ||
+    [user?.user_metadata?.first_name, user?.user_metadata?.last_name]
+      .map((value) => String(value ?? '').trim())
+      .filter(Boolean)
+      .join(' ')
+  );
 }
 
 async function findSupabaseUserByEmail(email: string): Promise<User | null> {
@@ -74,40 +80,28 @@ export async function ensurePrismaUserForOrganizerAccess(input: {
   tempPassword?: string | null;
   displayName?: string | null;
 }): Promise<{ id: string; email: string; created: boolean }> {
+  void input.tempPassword;
+  void input.displayName;
+
   const normalizedEmail = normalizeEmail(input.email);
   if (!normalizedEmail) {
     throw new Error('Email utilisateur invalide.');
   }
 
-  const existing = await prisma.user.findUnique({
-    where: { email: normalizedEmail },
-    select: { id: true, email: true }
-  });
-  if (existing) {
-    return { id: existing.id, email: existing.email, created: false };
+  const supabaseUser = await findSupabaseUserByEmail(normalizedEmail);
+  if (!supabaseUser?.id || !supabaseUser.email) {
+    throw new Error("Utilisateur Supabase introuvable pour cet email.");
   }
 
-  const tempPassword = String(input.tempPassword ?? '').trim();
-  if (!tempPassword) {
-    throw new Error('Utilisateur applicatif introuvable (Prisma) et mot de passe temporaire absent.');
-  }
-
-  const created = await prisma.user.create({
-    data: {
-      email: normalizedEmail,
-      name: input.displayName?.trim() || null,
-      status: 'ACTIVE',
-      passwordHash: hashPassword(tempPassword)
-    },
-    select: { id: true, email: true }
-  });
-
-  return { id: created.id, email: created.email, created: true };
+  return {
+    id: supabaseUser.id,
+    email: normalizeEmail(supabaseUser.email),
+    created: false
+  };
 }
 
 export async function removePrismaUserIfExists(userId: string | null | undefined) {
-  if (!userId) return;
-  await prisma.user.delete({ where: { id: userId } }).catch(() => undefined);
+  void userId;
 }
 
 export async function resolveOrganizerAccessIdentityByEmail(
@@ -118,23 +112,15 @@ export async function resolveOrganizerAccessIdentityByEmail(
     throw new Error('Email utilisateur invalide.');
   }
 
-  const prismaUser = await prisma.user.findUnique({
-    where: { email: normalizedEmail },
-    select: { id: true, email: true, name: true }
-  });
-  if (!prismaUser) {
-    throw new Error("Utilisateur applicatif introuvable pour cet email.");
-  }
-
   const supabaseUser = await findSupabaseUserByEmail(normalizedEmail);
-  if (!supabaseUser) {
+  if (!supabaseUser?.id || !supabaseUser.email) {
     throw new Error("Utilisateur Supabase introuvable pour cet email.");
   }
 
-  const { firstName, lastName } = splitDisplayName(prismaUser.name);
+  const { firstName, lastName } = splitDisplayName(getDisplayNameFromUser(supabaseUser));
   return {
-    appUserId: prismaUser.id,
-    email: prismaUser.email,
+    appUserId: supabaseUser.id,
+    email: normalizeEmail(supabaseUser.email),
     supabaseUserId: supabaseUser.id,
     firstName,
     lastName
@@ -146,27 +132,20 @@ export async function resolveOrganizerAccessIdentityByAppUserId(
 ): Promise<OrganizerAccessSyncIdentity> {
   const normalizedAppUserId = appUserId.trim();
   if (!normalizedAppUserId) {
-    throw new Error('Identifiant applicatif invalide.');
+    throw new Error('Identifiant utilisateur Supabase invalide.');
   }
 
-  const prismaUser = await prisma.user.findUnique({
-    where: { id: normalizedAppUserId },
-    select: { id: true, email: true, name: true }
-  });
-  if (!prismaUser) {
-    throw new Error('Utilisateur applicatif introuvable.');
+  const supabase = getServerSupabaseClient();
+  const { data, error } = await supabase.auth.admin.getUserById(normalizedAppUserId);
+  if (error || !data.user?.id || !data.user.email) {
+    throw new Error('Utilisateur Supabase introuvable.');
   }
 
-  const supabaseUser = await findSupabaseUserByEmail(prismaUser.email);
-  if (!supabaseUser) {
-    throw new Error('Utilisateur Supabase introuvable pour cet utilisateur applicatif.');
-  }
-
-  const { firstName, lastName } = splitDisplayName(prismaUser.name);
+  const { firstName, lastName } = splitDisplayName(getDisplayNameFromUser(data.user));
   return {
-    appUserId: prismaUser.id,
-    email: prismaUser.email,
-    supabaseUserId: supabaseUser.id,
+    appUserId: data.user.id,
+    email: normalizeEmail(data.user.email),
+    supabaseUserId: data.user.id,
     firstName,
     lastName
   };
@@ -181,34 +160,22 @@ export async function resolveOrganizerAccessIdentityBySupabaseUserId(input: {
     throw new Error('Identifiant utilisateur Supabase invalide.');
   }
 
-  let email = normalizeEmail(input.emailHint ?? '');
-  if (!email) {
-    const supabase = getServerSupabaseClient();
-    const { data, error } = await supabase.auth.admin.getUserById(supabaseUserId);
-    if (error) {
-      throw new Error(`Impossible de charger l'utilisateur Supabase (${error.message}).`);
-    }
-
-    email = normalizeEmail(data.user?.email ?? '');
+  const supabase = getServerSupabaseClient();
+  const { data, error } = await supabase.auth.admin.getUserById(supabaseUserId);
+  if (error || !data.user?.id) {
+    throw new Error(`Impossible de charger l'utilisateur Supabase (${error?.message ?? 'unknown'}).`);
   }
 
-  if (!email) {
+  const resolvedEmail = normalizeEmail(data.user.email ?? input.emailHint ?? '');
+  if (!resolvedEmail) {
     throw new Error("Email utilisateur introuvable côté Supabase.");
   }
 
-  const prismaUser = await prisma.user.findUnique({
-    where: { email },
-    select: { id: true, email: true, name: true }
-  });
-  if (!prismaUser) {
-    throw new Error("Utilisateur applicatif introuvable pour cet email Supabase.");
-  }
-
-  const { firstName, lastName } = splitDisplayName(prismaUser.name);
+  const { firstName, lastName } = splitDisplayName(getDisplayNameFromUser(data.user));
   return {
-    appUserId: prismaUser.id,
-    email: prismaUser.email,
-    supabaseUserId,
+    appUserId: data.user.id,
+    email: resolvedEmail,
+    supabaseUserId: data.user.id,
     firstName,
     lastName
   };
@@ -235,10 +202,7 @@ async function restoreBackofficeAccessRow(
 ) {
   const supabase = getServerSupabaseClient();
   if (!previousRow) {
-    await supabase
-      .from('organizer_backoffice_access')
-      .delete()
-      .eq('app_user_id', appUserId);
+    await supabase.from('organizer_backoffice_access').delete().eq('app_user_id', appUserId);
     return;
   }
 
@@ -331,10 +295,7 @@ export async function upsertBackofficeAccessAndMirrorOrganizerMember(input: {
   };
 
   const memberMutation = previousMemberRow
-    ? await supabase
-        .from('organizer_members')
-        .update(memberPatch)
-        .eq('id', previousMemberRow.id)
+    ? await supabase.from('organizer_members').update(memberPatch).eq('id', previousMemberRow.id)
     : await supabase.from('organizer_members').insert({
         organizer_id: organizerId,
         user_id: input.identity.supabaseUserId,
@@ -344,9 +305,7 @@ export async function upsertBackofficeAccessAndMirrorOrganizerMember(input: {
       });
 
   if (memberMutation.error) {
-    await restoreBackofficeAccessRow(input.identity.appUserId, previousAccessRow).catch(
-      () => undefined
-    );
+    await restoreBackofficeAccessRow(input.identity.appUserId, previousAccessRow).catch(() => undefined);
     throw new Error(`Impossible de synchroniser organizer_members (${memberMutation.error.message}).`);
   }
 
@@ -392,9 +351,7 @@ export async function removeBackofficeAccessAndMirrorOrganizerMember(input: {
     .eq('user_id', input.identity.supabaseUserId);
 
   if (deleteMemberError) {
-    await restoreBackofficeAccessRow(input.identity.appUserId, previousAccessRow).catch(
-      () => undefined
-    );
+    await restoreBackofficeAccessRow(input.identity.appUserId, previousAccessRow).catch(() => undefined);
     throw new Error(`Impossible de synchroniser organizer_members (${deleteMemberError.message}).`);
   }
 }

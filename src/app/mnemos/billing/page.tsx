@@ -29,7 +29,7 @@ export default async function MnemosBillingPage({
 }: {
   searchParams?: Promise<Search>;
 }) {
-  await requireRole('ADMIN');
+  await requireRole('MNEMOS');
   const sp = searchParams ? await searchParams : {};
   const supabase = getServerSupabaseClient();
 

@@ -11,7 +11,7 @@ const mnemosNav = [
 ];
 
 export default async function MnemosLayout({ children }: { children: React.ReactNode }) {
-  await requireRole('ADMIN');
+  await requireRole('MNEMOS');
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">

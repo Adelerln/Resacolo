@@ -14,7 +14,7 @@ type Sp = {
 };
 
 export default async function MnemosInquiriesPage({ searchParams }: { searchParams?: Promise<Sp> }) {
-  await requireRole('ADMIN');
+  await requireRole('MNEMOS');
   const sp = searchParams ? await searchParams : {};
   const supabase = getServerSupabaseClient();
 

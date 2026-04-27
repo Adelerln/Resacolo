@@ -1,30 +1,72 @@
-import { getSession, type AppRole, type SessionPayload } from '@/lib/auth/session';
-import { mockOrganizerTenant, mockPartnerTenant } from '@/lib/mocks';
+import { redirect } from 'next/navigation';
+import { getCurrentUser, type SessionPayload } from '@/lib/auth/session';
+import {
+  getHomePathForRole,
+  hasRequiredRole,
+  type AppRole,
+  type AuthenticatedAppRole
+} from '@/lib/auth/roles';
 
-function buildBypassSession(role: AppRole): SessionPayload {
-  const tenantId =
-    role === 'ORGANISATEUR'
-      ? mockOrganizerTenant.id
-      : role === 'PARTENAIRE'
-        ? mockPartnerTenant.id
-        : null;
+type RequireOptions = {
+  loginPath?: string;
+};
 
-  return {
-    userId: 'backoffice-user',
-    email: 'backoffice@resacolo.com',
-    name: 'Backoffice',
-    role,
-    tenantId
-  };
+function redirectToLogin(loginPath: string): never {
+  redirect(loginPath);
 }
 
-export async function requireRole(role: AppRole): Promise<SessionPayload> {
-  const session = await getSession();
-  if (session?.role === role) return session;
-  return buildBypassSession(role);
+function redirectToAuthorizedHome(role: AppRole): never {
+  redirect(getHomePathForRole(role));
 }
 
-export async function requireAnyRole(): Promise<SessionPayload> {
-  const session = await getSession();
-  return session ?? buildBypassSession('ADMIN');
+export async function requireAuth(options?: RequireOptions): Promise<SessionPayload> {
+  const session = await getCurrentUser();
+  if (!session) {
+    redirectToLogin(options?.loginPath ?? '/login');
+  }
+  return session;
+}
+
+export async function requireRole(
+  role: AuthenticatedAppRole,
+  options?: RequireOptions
+): Promise<SessionPayload> {
+  const session = await getCurrentUser();
+  if (!session) {
+    redirectToLogin(options?.loginPath ?? (role === 'CLIENT' ? '/login/familles' : '/login'));
+  }
+  if (!hasRequiredRole(session.role, role)) {
+    redirectToAuthorizedHome(session.role);
+  }
+  return session;
+}
+
+export async function requireAnyRole(
+  roles: AuthenticatedAppRole[],
+  options?: RequireOptions
+): Promise<SessionPayload> {
+  const session = await getCurrentUser();
+  if (!session) {
+    redirectToLogin(options?.loginPath ?? '/login');
+  }
+  if (!roles.some((role) => hasRequiredRole(session.role, role))) {
+    redirectToAuthorizedHome(session.role);
+  }
+  return session;
+}
+
+export async function requireMnemos(options?: RequireOptions) {
+  return requireRole('MNEMOS', options);
+}
+
+export async function requireAdminOrMnemos(options?: RequireOptions) {
+  return requireAnyRole(['ADMIN', 'MNEMOS'], options);
+}
+
+export async function requireOrganizer(options?: RequireOptions) {
+  return requireRole('ORGANISATEUR', options);
+}
+
+export async function requirePartner(options?: RequireOptions) {
+  return requireRole('PARTENAIRE', options);
 }

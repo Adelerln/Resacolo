@@ -41,7 +41,7 @@ function ensureOrganizerAccessRole(organizerId: string, value: string) {
 }
 
 export async function addBackofficeAccess(formData: FormData) {
-  const session = await requireRole('ADMIN');
+  const session = await requireRole('MNEMOS');
   if (!canManageBackofficeAccess(session.email)) {
     redirectWithAccessError(ensureOrganizerId(formData), 'Vous ne pouvez pas gerer ces acces.');
   }
@@ -71,7 +71,7 @@ export async function addBackofficeAccess(formData: FormData) {
 }
 
 export async function updateBackofficeAccessRole(formData: FormData) {
-  const session = await requireRole('ADMIN');
+  const session = await requireRole('MNEMOS');
   if (!canManageBackofficeAccess(session.email)) {
     redirectWithAccessError(ensureOrganizerId(formData), 'Vous ne pouvez pas gerer ces acces.');
   }
@@ -101,7 +101,7 @@ export async function updateBackofficeAccessRole(formData: FormData) {
 }
 
 export async function removeBackofficeAccess(formData: FormData) {
-  const session = await requireRole('ADMIN');
+  const session = await requireRole('MNEMOS');
   if (!canManageBackofficeAccess(session.email)) {
     redirectWithAccessError(ensureOrganizerId(formData), 'Vous ne pouvez pas gerer ces acces.');
   }

@@ -6,7 +6,7 @@ import { requireRole } from '@/lib/auth/require';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 
 export async function updateInquiry(formData: FormData) {
-  await requireRole('ADMIN');
+  await requireRole('MNEMOS');
   const id = String(formData.get('id') ?? '').trim();
   if (!id) redirect('/mnemos/inquiries');
 

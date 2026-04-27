@@ -12,7 +12,7 @@ function euros(cents: number | null | undefined) {
 }
 
 export default async function MnemosOrganizersPage() {
-  await requireRole('ADMIN');
+  await requireRole('MNEMOS');
   const supabase = getServerSupabaseClient();
 
   const { data: rows, error } = await supabase

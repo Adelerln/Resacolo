@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { getSession } from '@/lib/auth/session';
+import { getCurrentUser } from '@/lib/auth/session';
 
 export const metadata = {
   title: 'Connexion familles | Resacolo'
@@ -18,18 +18,19 @@ function sanitizeRelativePath(value: string | undefined) {
 export default async function FamilyLoginPage({
   searchParams
 }: {
-  searchParams?: Promise<{ redirectTo?: string }>;
+  searchParams?: Promise<{ redirectTo?: string; registered?: string }>;
 }) {
   if (process.env.MOCK_UI === '1') {
     return null;
   }
 
-  const { redirectTo } = searchParams ? await searchParams : {};
+  const { redirectTo, registered } = searchParams ? await searchParams : {};
   const safeRedirectTo = sanitizeRelativePath(redirectTo);
   const createAccountHref = `/login/familles/creer-compte?redirectTo=${encodeURIComponent(safeRedirectTo)}`;
 
-  const session = await getSession();
+  const session = await getCurrentUser();
   if (session) {
+    if (session.role === 'MNEMOS') redirect('/mnemos');
     if (session.role === 'ADMIN') redirect('/admin');
     if (session.role === 'ORGANISATEUR') redirect('/organisme');
     if (session.role === 'PARTENAIRE') redirect('/partenaire');
@@ -43,6 +44,11 @@ export default async function FamilyLoginPage({
         <p className="mt-2 text-sm text-slate-600">
           Connectez-vous pour accéder à votre espace famille.
         </p>
+        {registered === '1' ? (
+          <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+            Compte créé. Connectez-vous pour accéder à votre espace.
+          </div>
+        ) : null}
         <form className="mt-6 space-y-4" action="/api/auth/login" method="post">
           <input type="hidden" name="redirectTo" value={safeRedirectTo} />
           <label className="block text-sm font-medium text-slate-700">

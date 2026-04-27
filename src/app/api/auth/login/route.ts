@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
+import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { cookies } from 'next/headers';
 import { z } from 'zod';
-import { setSessionCookie, type AppRole } from '@/lib/auth/session';
+import { getHomePathForRole, resolveRoleContextForUserId, type AppRole } from '@/lib/auth/roles';
+import type { Database } from '@/types/supabase';
 
 export const runtime = 'nodejs';
 
@@ -12,21 +15,9 @@ const loginSchema = z.object({
 });
 
 function mapRole(
-  memberships: { role: string; tenantId: string | null }[],
-  organizerAccessIds: string[]
-): {
-  role: AppRole;
-  tenantId?: string | null;
-} {
-  const admin = memberships.find((m) => m.role === 'PLATFORM_ADMIN' || m.role === 'SUPPORT');
-  if (admin) return { role: 'ADMIN', tenantId: null };
-
-  if (organizerAccessIds.length > 0) return { role: 'ORGANISATEUR', tenantId: organizerAccessIds[0] };
-
-  const partner = memberships.find((m) => m.role === 'PARTNER_ADMIN' || m.role === 'PARTNER_AGENT');
-  if (partner) return { role: 'PARTENAIRE', tenantId: partner.tenantId };
-
-  return { role: 'CLIENT', tenantId: null };
+  role: AppRole
+) {
+  return role;
 }
 
 function sanitizeRelativePath(value: string | undefined) {
@@ -37,9 +28,8 @@ function sanitizeRelativePath(value: string | undefined) {
 }
 
 function canUseRedirectForRole(role: AppRole, path: string) {
-  if (role === 'ADMIN') {
-    return path.startsWith('/admin') || path.startsWith('/mnemos') || path.startsWith('/organisme');
-  }
+  if (role === 'MNEMOS') return path.startsWith('/mnemos');
+  if (role === 'ADMIN') return path.startsWith('/admin');
   if (role === 'ORGANISATEUR') return path.startsWith('/organisme');
   if (role === 'PARTENAIRE') return path.startsWith('/partenaire');
   return (
@@ -48,16 +38,6 @@ function canUseRedirectForRole(role: AppRole, path: string) {
     !path.startsWith('/partenaire') &&
     !path.startsWith('/mnemos')
   );
-}
-
-function assertDatabaseUrlConfigured() {
-  const value = (process.env.DATABASE_URL ?? '').trim();
-  if (!value) {
-    throw new Error('DATABASE_URL is missing');
-  }
-  if (value.includes('<') || value.includes('>')) {
-    throw new Error('DATABASE_URL contains placeholder values');
-  }
 }
 
 function requestExpectsJson(req: Request) {
@@ -70,17 +50,6 @@ function classifyLoginError(error: unknown): string {
   const message =
     error instanceof Error ? error.message.toLowerCase() : String(error ?? '').toLowerCase();
 
-  if (message.includes('database_url') || message.includes('placeholder')) return 'db-config';
-  if (
-    message.includes("can't reach database server") ||
-    message.includes('econnrefused') ||
-    message.includes('econnreset') ||
-    message.includes('etimedout') ||
-    message.includes('connection')
-  ) {
-    return 'db-unreachable';
-  }
-  if (message.includes('prisma')) return 'db';
   if (message.includes('supabase')) return 'supabase';
   return 'server';
 }
@@ -90,8 +59,6 @@ export async function POST(req: Request) {
   const expectsJson = requestExpectsJson(req);
 
   try {
-    assertDatabaseUrlConfigured();
-
     const contentType = req.headers.get('content-type') ?? '';
     const data =
       contentType.includes('application/json')
@@ -105,21 +72,18 @@ export async function POST(req: Request) {
       return NextResponse.redirect(new URL('/login?error=invalid-input', req.url), { status: 303 });
     }
     const input = parsed.data;
-    const normalizedEmail = input.email.trim().toLowerCase();
-    const rememberMe =
-      input.rememberMe === true ||
-      input.rememberMe === 'on' ||
-      input.rememberMe === '1' ||
-      input.rememberMe === 'true';
-
-    const { prisma } = await import('@/lib/db');
-    const { verifyPassword } = await import('@/lib/auth/password');
-    const user = await prisma.user.findFirst({
-      where: { email: { equals: normalizedEmail, mode: 'insensitive' } },
-      include: { memberships: true }
+    const cookieStore = await cookies();
+    const cookieAccess = (() => cookieStore) as unknown as typeof cookies;
+    const supabase = createRouteHandlerClient<Database>({
+      cookies: cookieAccess
     });
 
-    if (!user || !user.passwordHash || !verifyPassword(input.password, user.passwordHash)) {
+    const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+      email: input.email.trim().toLowerCase(),
+      password: input.password
+    });
+
+    if (signInError || !signInData.user) {
       if (expectsJson) {
         return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
       }
@@ -128,54 +92,10 @@ export async function POST(req: Request) {
       });
     }
 
-    let organizerAccessIds: string[] = [];
-    try {
-      const { getServerSupabaseClient } = await import('@/lib/supabase/server');
-      const supabase = getServerSupabaseClient();
-      const { data: organizerAccessRows, error: organizerAccessError } = await supabase
-        .from('organizer_backoffice_access')
-        .select('organizer_id')
-        .eq('app_user_id', user.id)
-        .is('revoked_at', null);
+    const roleContext = await resolveRoleContextForUserId(signInData.user.id);
+    const role = mapRole(roleContext.role);
 
-      if (organizerAccessError) {
-        console.warn('[auth/login] organizer_backoffice_access lookup failed:', organizerAccessError.message);
-      }
-
-      organizerAccessIds = Array.from(
-        new Set((organizerAccessRows ?? []).map((row) => row.organizer_id).filter(Boolean))
-      );
-    } catch (supabaseError) {
-      console.warn(
-        '[auth/login] organizer_backoffice_access lookup unexpected failure:',
-        supabaseError instanceof Error ? supabaseError.message : String(supabaseError)
-      );
-    }
-
-    const { role, tenantId } = mapRole(
-      user.memberships.map((m: { role: string; tenantId: string | null }) => ({
-        role: m.role,
-        tenantId: m.tenantId ?? null
-      })),
-      organizerAccessIds
-    );
-
-    await setSessionCookie({
-      userId: user.id,
-      email: user.email,
-      name: user.name,
-      role,
-      tenantId
-    }, { rememberMe });
-
-    const defaultRedirect =
-      role === 'ADMIN'
-        ? '/admin'
-        : role === 'ORGANISATEUR'
-          ? '/organisme'
-          : role === 'PARTENAIRE'
-            ? '/partenaire'
-            : '/';
+    const defaultRedirect = getHomePathForRole(role);
     const requestedRedirect = sanitizeRelativePath(input.redirectTo);
     const redirectPath =
       requestedRedirect && canUseRedirectForRole(role, requestedRedirect)

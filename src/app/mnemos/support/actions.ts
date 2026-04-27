@@ -6,7 +6,7 @@ import { requireRole } from '@/lib/auth/require';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 
 export async function updateSupportTicket(formData: FormData) {
-  await requireRole('ADMIN');
+  await requireRole('MNEMOS');
   const id = String(formData.get('id') ?? '').trim();
   if (!id) redirect('/mnemos/support');
 
@@ -40,7 +40,7 @@ export async function updateSupportTicket(formData: FormData) {
 }
 
 export async function addSupportMessage(formData: FormData) {
-  const session = await requireRole('ADMIN');
+  const session = await requireRole('MNEMOS');
   const id = String(formData.get('id') ?? '').trim();
   const body = String(formData.get('body') ?? '').trim();
   const isInternal = String(formData.get('is_internal') ?? '') === '1';

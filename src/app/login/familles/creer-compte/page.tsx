@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { getSession } from '@/lib/auth/session';
+import { getCurrentUser } from '@/lib/auth/session';
 import {
   PASSWORD_POLICY_HTML_PATTERN,
   PASSWORD_POLICY_MESSAGE,
@@ -36,8 +36,9 @@ export default async function FamilyRegisterPage({
   const safeRedirectTo = sanitizeRelativePath(params.redirectTo);
   const loginHref = `/login/familles?redirectTo=${encodeURIComponent(safeRedirectTo)}`;
 
-  const session = await getSession();
+  const session = await getCurrentUser();
   if (session) {
+    if (session.role === 'MNEMOS') redirect('/mnemos');
     if (session.role === 'ADMIN') redirect('/admin');
     if (session.role === 'ORGANISATEUR') redirect('/organisme');
     if (session.role === 'PARTENAIRE') redirect('/partenaire');

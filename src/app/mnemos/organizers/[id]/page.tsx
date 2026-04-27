@@ -1,6 +1,5 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { prisma } from '@/lib/db';
 import { requireRole } from '@/lib/auth/require';
 import { canManageBackofficeAccess } from '@/lib/mnemos-backoffice-access-admins';
 import { ORGANIZER_ACCESS_LABELS, ORGANIZER_ACCESS_ROLE_VALUES } from '@/lib/organizer-access';
@@ -25,7 +24,7 @@ type PageProps = {
 };
 
 export default async function MnemosOrganizerDetailPage({ params, searchParams }: PageProps) {
-  const session = await requireRole('ADMIN');
+  const session = await requireRole('MNEMOS');
   const { id } = await params;
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const canManageAccess = canManageBackofficeAccess(session.email);
@@ -63,13 +62,19 @@ export default async function MnemosOrganizerDetailPage({ params, searchParams }
   const searchTerm = String(resolvedSearchParams?.q ?? '').trim().toLowerCase();
 
   const appUserIds = Array.from(new Set((accessRows ?? []).map((row) => row.app_user_id).filter(Boolean)));
-  const appUsers =
-    appUserIds.length > 0
-      ? await prisma.user.findMany({
-          where: { id: { in: appUserIds } },
-          select: { id: true, email: true, name: true }
-        })
-      : [];
+  const appUsers = await Promise.all(
+    appUserIds.map(async (userId) => {
+      const { data } = await supabase.auth.admin.getUserById(userId);
+      return {
+        id: userId,
+        email: data.user?.email ?? null,
+        name:
+          String(data.user?.user_metadata?.full_name ?? '').trim() ||
+          String(data.user?.user_metadata?.name ?? '').trim() ||
+          null
+      };
+    })
+  );
   const appUserById = new Map(appUsers.map((user) => [user.id, user]));
   const filteredAccessRows = (accessRows ?? []).filter((row) => {
     if (!searchTerm) return true;

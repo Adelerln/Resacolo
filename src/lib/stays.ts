@@ -236,6 +236,24 @@ function buildAccommodationText(accommodations: AccommodationRow[]) {
     .join('\n\n');
 }
 
+function buildStayDisplayLocation(accommodations: AccommodationRow[]) {
+  const locationMetas = accommodations.map((accommodation) =>
+    extractAccommodationLocationMeta(accommodation.description)
+  );
+
+  if (locationMetas.some((meta) => meta.locationMode === 'itinerant')) {
+    return 'Séjour Itinérant';
+  }
+
+  return Array.from(
+    new Set(
+      locationMetas
+        .map((meta) => meta.locationLabel)
+        .filter((label): label is string => Boolean(label))
+    )
+  )[0] ?? '';
+}
+
 function isInsuranceLikeLabel(label: string | null | undefined) {
   if (!label) return false;
   return /(assur|annulation|rapatriement|multirisque)/i.test(label);
@@ -705,6 +723,7 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
       const transport = mapTransport(stay.transport_mode);
       const categories = normalizeStayCategories(stay.categories ?? []);
       const sharedTransportOptions = transportOptionsByStayId.get(stay.id) ?? [];
+      const displayLocation = buildStayDisplayLocation(stayAccommodations);
       const visibleBookingSessionItems = sessionItems.filter(
         (sessionItem) => sessionItem.status !== 'COMPLETED' && sessionItem.status !== 'ARCHIVED'
       );
@@ -806,6 +825,7 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
           logoUrl: logoUrlByOrganizerId.get(stay.organizer_id) ?? undefined
         },
         location: stay.location_text ?? '',
+        displayLocation,
         region: stay.region_text ?? '',
         country: '',
         ageMin: stay.age_min,

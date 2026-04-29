@@ -32,13 +32,13 @@ const backOfficeLinks = [
 ];
 
 const headerLinkClass =
-  'whitespace-nowrap text-[15px] font-bold tracking-[0.03em] !text-[color:var(--color-primary)] transition-opacity hover:opacity-80 xl:text-base';
+  'whitespace-nowrap text-[15px] font-bold tracking-[0.03em] !text-[color:var(--color-primary)] transition-colors hover:!text-[color:var(--resacolo-orange)] focus-visible:!text-[color:var(--resacolo-orange)] xl:text-base';
 const headerDropdownItemClass =
-  'block px-4 py-2 text-[15px] font-bold tracking-[0.03em] !text-[color:var(--color-primary)] hover:bg-slate-50 hover:opacity-80';
+  'block px-4 py-2 text-[15px] font-bold tracking-[0.03em] !text-[color:var(--color-primary)] transition-colors hover:bg-slate-50 hover:!text-[color:var(--resacolo-orange)] focus-visible:!text-[color:var(--resacolo-orange)]';
 const headerIconButtonClass =
   'flex h-9 w-9 items-center justify-center rounded-full bg-transparent transition hover:bg-slate-50 hover:opacity-80';
 const mobileHeaderLinkClass =
-  'block text-base font-semibold leading-snug !text-[color:var(--color-primary)]';
+  'block text-base font-semibold leading-snug !text-[color:var(--color-primary)] transition-colors hover:!text-[color:var(--resacolo-orange)] focus-visible:!text-[color:var(--resacolo-orange)]';
 
 function isLinkItem(
   item: (typeof links)[number]
@@ -170,7 +170,7 @@ function MainNavigationContent({ pathname }: { pathname: string }) {
                         aria-hidden
                         strokeWidth={2.5}
                         className={clsx(
-                          'h-4 w-4 shrink-0 text-[color:var(--color-primary)] transition',
+                          'h-4 w-4 shrink-0 text-current transition',
                           dropdownOpen && 'rotate-180'
                         )}
                       />
@@ -223,7 +223,7 @@ function MainNavigationContent({ pathname }: { pathname: string }) {
                 aria-expanded={backOfficeOpen}
                 aria-haspopup="menu"
                 title="Back Office"
-                className="btn btn-sm btn-accent-outline whitespace-nowrap text-[15px] font-bold tracking-[0.03em] !text-[color:var(--color-primary)] xl:text-base"
+                className="btn btn-sm btn-accent-outline whitespace-nowrap text-[15px] font-bold tracking-[0.03em] !border-accent-400 !bg-transparent !text-[color:var(--color-primary)] hover:!bg-accent-50 hover:!text-[color:var(--resacolo-orange)] focus-visible:!bg-accent-50 focus-visible:!text-[color:var(--resacolo-orange)] xl:text-base"
               >
                 Back Office
                 <ChevronDown className={clsx('h-4 w-4 transition', backOfficeOpen && 'rotate-180')} />
@@ -237,8 +237,8 @@ function MainNavigationContent({ pathname }: { pathname: string }) {
                         href={item.href}
                         title={item.label}
                         className={clsx(
-                          'block px-4 py-2 text-slate-700 hover:bg-slate-50 hover:text-brand-500',
-                          pathname === item.href && 'bg-brand-50 text-brand-600'
+                          'block px-4 py-2 font-bold tracking-[0.03em] text-[color:var(--color-primary)] transition-colors hover:bg-slate-50 hover:text-[color:var(--resacolo-orange)] focus-visible:text-[color:var(--resacolo-orange)]',
+                          pathname === item.href && 'bg-brand-50'
                         )}
                       >
                         {item.label}

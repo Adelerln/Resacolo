@@ -112,6 +112,7 @@ export interface Stay {
   organizerId: string;
   organizer: OrganizerInfo;
   location: string;
+  displayLocation?: string;
   region: string;
   country: string;
   ageMin: number | null;

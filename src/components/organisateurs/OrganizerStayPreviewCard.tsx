@@ -48,16 +48,14 @@ export function OrganizerStayPreviewCard({
   const articleClass = hoverEnabled
     ? 'group flex h-full w-full max-w-[320px] flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_18px_40px_-28px_rgba(15,23,42,0.35)]'
     : 'flex h-full w-full max-w-[320px] flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_18px_40px_-28px_rgba(15,23,42,0.35)]';
-  const topRowClass = hoverEnabled
-    ? 'flex items-center justify-between gap-2 border-b border-slate-100 px-4 py-2.5 transition-colors group-hover:border-white/30'
-    : 'flex items-center justify-between gap-2 border-b border-slate-100 px-4 py-2.5';
+  const ageBadgeClass = 'absolute bottom-0 left-0 z-10 inline-flex min-h-9 items-center rounded-tr-xl bg-[#FA8500] px-4 py-2 text-xs font-bold text-white shadow-md';
   const seasonBadgeClass = hoverEnabled
-    ? 'inline-flex items-center gap-1.5 rounded-full bg-white px-2.5 py-1 text-xs font-bold uppercase tracking-wide text-[#FA8500] shadow-sm transition-colors group-hover:bg-white/90 group-hover:text-[#37B5F5]'
-    : 'inline-flex items-center gap-1.5 rounded-full bg-white px-2.5 py-1 text-xs font-bold uppercase tracking-wide text-[#FA8500] shadow-sm';
+    ? 'absolute bottom-0 right-0 z-10 inline-flex min-h-9 items-center gap-1.5 rounded-tl-xl bg-white px-3 py-2 text-xs font-bold uppercase tracking-wide text-[#FA8500] shadow-md transition-colors group-hover:bg-white/90 group-hover:text-[#37B5F5]'
+    : 'absolute bottom-0 right-0 z-10 inline-flex min-h-9 items-center gap-1.5 rounded-tl-xl bg-white px-3 py-2 text-xs font-bold uppercase tracking-wide text-[#FA8500] shadow-md';
   const contentClass = hoverEnabled ? 'card-blue-vertical-sweep flex min-h-0 flex-1 flex-col' : 'flex min-h-0 flex-1 flex-col';
   const metaTextClass = hoverEnabled
-    ? 'text-xs font-semibold leading-snug text-black transition-colors group-hover:text-white'
-    : 'text-xs font-semibold leading-snug text-black';
+    ? 'text-xs font-normal leading-snug text-slate-600 transition-colors group-hover:text-white'
+    : 'text-xs font-normal leading-snug text-slate-600';
   const headingClass = hoverEnabled
     ? 'text-lg font-bold leading-snug text-[#505050] transition-colors group-hover:text-white'
     : 'text-lg font-bold leading-snug text-[#505050]';
@@ -97,45 +95,42 @@ export function OrganizerStayPreviewCard({
             </div>
           )}
           {organizerLogoUrl ? (
-            <div className="absolute right-3 top-3 h-11 w-11 overflow-hidden rounded-full border-2 border-white bg-white shadow-md">
+            <div className="absolute right-3 top-3 h-16 w-16 overflow-hidden rounded-full border-2 border-white bg-white shadow-md">
               <Image
                 src={organizerLogoUrl}
                 alt={organizerName}
-                width={44}
-                height={44}
-                sizes="44px"
+                width={64}
+                height={64}
+                sizes="64px"
                 className="h-full w-full object-contain p-1"
               />
             </div>
           ) : null}
+          <span className={ageBadgeClass}>
+            {ageRangeLabel}
+          </span>
+          <span className={seasonBadgeClass}>
+            <Image
+              src={seasonIconSrc}
+              alt=""
+              width={20}
+              height={20}
+              className="h-5 w-5 shrink-0 object-contain"
+            />
+            <span>{seasonBadge}</span>
+          </span>
         </Link>
       </div>
 
-      <div className={topRowClass}>
-        <span className="inline-flex items-center rounded-full bg-[#FA8500] px-3 py-1 text-xs font-bold text-white shadow-sm">
-          {ageRangeLabel}
-        </span>
-        <span className={seasonBadgeClass}>
-          <Image
-            src={seasonIconSrc}
-            alt=""
-            width={20}
-            height={20}
-            className="h-5 w-5 shrink-0 object-contain"
-          />
-          <span>{seasonBadge}</span>
-        </span>
-      </div>
-
       <Link href={href} className={`${contentClass} no-underline`} aria-label={`Découvrir le séjour ${title}`}>
-        <div className="grid grid-cols-2 gap-2 px-4 py-2">
-          <span className={`flex min-w-0 items-start gap-2 ${metaTextClass}`}>
+        <div className="grid grid-cols-2 items-center gap-2 px-4 py-2">
+          <span className={`flex min-w-0 items-center gap-2 ${metaTextClass}`}>
             <Image
               src={MAP_BLEU}
               alt=""
               width={24}
               height={24}
-              className="mt-0.5 h-5 w-5 shrink-0 object-contain"
+              className="h-5 w-5 shrink-0 object-contain"
             />
             <span className="min-w-0 break-words line-clamp-3">{locationLabel}</span>
           </span>

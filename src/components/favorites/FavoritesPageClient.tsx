@@ -62,7 +62,7 @@ export function FavoritesPageClient({ stays }: { stays: Stay[] }) {
                   title={stay.title}
                   summary={stay.summary}
                   description={stay.description}
-                  locationLabel={stay.location || stay.region || 'Lieu à préciser'}
+                  locationLabel={stay.displayLocation || stay.location || stay.region || 'Lieu à préciser'}
                   ageRangeLabel={stay.ageRange || 'Tous âges'}
                   seasonIconSrc={season.iconPath}
                   seasonBadge={season.badgeText}

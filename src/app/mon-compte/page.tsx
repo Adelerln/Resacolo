@@ -1,7 +1,10 @@
 import { redirect } from 'next/navigation';
 import { getCurrentUser } from '@/lib/auth/session';
 import { getFamilyProfileSnapshot } from '@/lib/account-profile/server';
+import { getFavoriteStayIdsForUserId } from '@/lib/favorites.server';
+import { getStays } from '@/lib/stays';
 import type { FamilyProfileSnapshot } from '@/types/family-profile';
+import type { Stay } from '@/types/stay';
 import MonCompteClient from './MonCompteClient';
 
 export const metadata = {
@@ -67,6 +70,7 @@ export default async function MonComptePage() {
     profile: fallbackProfile,
     upcomingReservations: []
   };
+  let favoriteStays: Stay[] = [];
   try {
     snapshot = await getFamilyProfileSnapshot({
       userId: session.userId,
@@ -79,11 +83,24 @@ export default async function MonComptePage() {
       upcomingReservations: []
     };
   }
+  try {
+    const favoriteIds = await getFavoriteStayIdsForUserId(session.userId);
+    if (favoriteIds.length > 0) {
+      const favoriteIdSet = new Set(favoriteIds);
+      const favoriteOrder = new Map(favoriteIds.map((id, index) => [id, index]));
+      favoriteStays = (await getStays())
+        .filter((stay) => favoriteIdSet.has(stay.id))
+        .sort((left, right) => (favoriteOrder.get(left.id) ?? 0) - (favoriteOrder.get(right.id) ?? 0));
+    }
+  } catch {
+    favoriteStays = [];
+  }
 
   return (
     <MonCompteClient
       initialProfile={snapshot.profile}
       upcomingReservations={snapshot.upcomingReservations}
+      favoriteStays={favoriteStays}
     />
   );
 }

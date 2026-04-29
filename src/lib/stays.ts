@@ -219,8 +219,12 @@ function buildAccommodationText(accommodations: AccommodationRow[]) {
   return accommodations
     .map((accommodation) => {
       const locationMeta = extractAccommodationLocationMeta(accommodation.description);
+      const accommodationType =
+        accommodation.accommodation_type?.trim().toLowerCase() === 'centre'
+          ? null
+          : formatAccommodationType(accommodation.accommodation_type);
       const details = [
-        formatAccommodationType(accommodation.accommodation_type),
+        accommodationType,
         locationMeta.locationLabel,
         locationMeta.description,
         accommodation.bed_info,
@@ -241,8 +245,10 @@ function buildStayDisplayLocation(accommodations: AccommodationRow[]) {
     extractAccommodationLocationMeta(accommodation.description)
   );
 
-  if (locationMetas.some((meta) => meta.locationMode === 'itinerant')) {
-    return 'Séjour Itinérant';
+  const itinerant = locationMetas.find((meta) => meta.locationMode === 'itinerant');
+  if (itinerant) {
+    const zone = itinerant.itinerantZone?.trim();
+    return zone ? `Séjour itinérant (${zone})` : 'Séjour itinérant';
   }
 
   return Array.from(

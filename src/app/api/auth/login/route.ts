@@ -11,6 +11,7 @@ const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(6),
   redirectTo: z.string().optional(),
+  loginPath: z.string().optional(),
   rememberMe: z.union([z.boolean(), z.string()]).optional()
 });
 
@@ -27,8 +28,24 @@ function sanitizeRelativePath(value: string | undefined) {
   return trimmed;
 }
 
+function sanitizeLoginPath(value: string | undefined) {
+  const path = sanitizeRelativePath(value);
+  if (!path) return '/login';
+  if (path === '/login' || path === '/login/familles' || path === '/login/organisateur') {
+    return path;
+  }
+  return '/login';
+}
+
 function canUseRedirectForRole(role: AppRole, path: string) {
-  if (role === 'MNEMOS') return path.startsWith('/mnemos');
+  if (role === 'MNEMOS') {
+    return (
+      path.startsWith('/mnemos') ||
+      path.startsWith('/admin') ||
+      path.startsWith('/organisme') ||
+      path.startsWith('/partenaire')
+    );
+  }
   if (role === 'ADMIN') return path.startsWith('/admin');
   if (role === 'ORGANISATEUR') return path.startsWith('/organisme');
   if (role === 'PARTENAIRE') return path.startsWith('/partenaire');
@@ -54,9 +71,36 @@ function classifyLoginError(error: unknown): string {
   return 'server';
 }
 
+function buildLoginErrorUrl({
+  req,
+  loginPath,
+  errorCode,
+  redirectTo
+}: {
+  req: Request;
+  loginPath: string;
+  errorCode: string;
+  redirectTo?: string;
+}) {
+  const url = new URL(loginPath, req.url);
+  url.searchParams.set('error', errorCode);
+  const safeRedirectTo = sanitizeRelativePath(redirectTo);
+  if (safeRedirectTo) {
+    url.searchParams.set('redirectTo', safeRedirectTo);
+  }
+  return url;
+}
+
+function getOptionalField(input: unknown, key: string) {
+  if (!input || typeof input !== 'object') return undefined;
+  const value = (input as Record<string, unknown>)[key];
+  return typeof value === 'string' ? value : undefined;
+}
 
 export async function POST(req: Request) {
   const expectsJson = requestExpectsJson(req);
+  let loginPath = '/login';
+  let redirectTo: string | undefined;
 
   try {
     const contentType = req.headers.get('content-type') ?? '';
@@ -64,12 +108,22 @@ export async function POST(req: Request) {
       contentType.includes('application/json')
         ? await req.json()
         : Object.fromEntries(await req.formData());
+    loginPath = sanitizeLoginPath(getOptionalField(data, 'loginPath'));
+    redirectTo = getOptionalField(data, 'redirectTo');
     const parsed = loginSchema.safeParse(data);
     if (!parsed.success) {
       if (expectsJson) {
         return NextResponse.json({ error: 'Invalid input' }, { status: 400 });
       }
-      return NextResponse.redirect(new URL('/login?error=invalid-input', req.url), { status: 303 });
+      return NextResponse.redirect(
+        buildLoginErrorUrl({
+          req,
+          loginPath,
+          errorCode: 'invalid-input',
+          redirectTo
+        }),
+        { status: 303 }
+      );
     }
     const input = parsed.data;
     const cookieStore = await cookies();
@@ -87,9 +141,15 @@ export async function POST(req: Request) {
       if (expectsJson) {
         return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
       }
-      return NextResponse.redirect(new URL('/login?error=invalid-credentials', req.url), {
-        status: 303
-      });
+      return NextResponse.redirect(
+        buildLoginErrorUrl({
+          req,
+          loginPath,
+          errorCode: 'invalid-credentials',
+          redirectTo: input.redirectTo
+        }),
+        { status: 303 }
+      );
     }
 
     const roleContext = await resolveRoleContextForUserId(signInData.user.id);
@@ -109,8 +169,14 @@ export async function POST(req: Request) {
     if (expectsJson) {
       return NextResponse.json({ error: 'Authentication error', code: errorCode }, { status: 500 });
     }
-    return NextResponse.redirect(new URL(`/login?error=${encodeURIComponent(errorCode)}`, req.url), {
-      status: 303
-    });
+    return NextResponse.redirect(
+      buildLoginErrorUrl({
+        req,
+        loginPath,
+        errorCode,
+        redirectTo
+      }),
+      { status: 303 }
+    );
   }
 }

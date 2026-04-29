@@ -516,8 +516,12 @@ async function handleUpdate(req: Request, params: { id: string }, mode: 'save' |
 
   if (error || !updatedDraft) {
     return NextResponse.json(
-      { error: error?.message ?? 'Impossible de mettre à jour le brouillon.' },
-      { status: 500 }
+      {
+        error:
+          error?.message ??
+          "Brouillon introuvable. L'édition d'un séjour publié doit passer par la route dédiée au live."
+      },
+      { status: updatedDraft ? 500 : 404 }
     );
   }
 
@@ -561,8 +565,9 @@ async function handleUpdate(req: Request, params: { id: string }, mode: 'save' |
       }
     | null = null;
 
-  const shouldAttemptPublish =
-    normalizeStatus(workingDraft.status) === 'validated' || Boolean(workingDraft.validated_at);
+  // Important: ne republie pas automatiquement sur une simple sauvegarde.
+  // Un draft déjà validé/publié peut être ré-enregistré (PATCH) sans déclencher de publication live.
+  const shouldAttemptPublish = mode === 'validate';
 
   console.info('[stay-drafts/review] décision publication', {
     draftId: workingDraft.id,

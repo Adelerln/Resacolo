@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { requireRole } from '@/lib/auth/require';
 import { ORGANIZER_ACCESS_ROLE_VALUES } from '@/lib/organizer-access';
+import { PASSWORD_POLICY_HTML_PATTERN, PASSWORD_POLICY_MESSAGE } from '@/lib/auth/password-policy';
 import { extractOrganizerDurationMeta } from '@/lib/organizer-rich-text';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import type { Database } from '@/types/supabase';
@@ -222,13 +223,17 @@ export default async function AdminOrganizerDetailPage({ params: paramsPromise, 
           </span>
         </label>
         <label className="block text-sm font-medium text-slate-700">
-          Description
+          Description (lecture seule)
           <textarea
             name="description"
             rows={4}
             defaultValue={organizerDescriptionMeta.description ?? ''}
-            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+            disabled
+            className="mt-1 w-full cursor-not-allowed rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-slate-600"
           />
+          <span className="mt-1 block text-xs font-normal text-slate-500">
+            La description est éditable par l’organisateur (pas par l’ADMIN).
+          </span>
         </label>
 
         <div className="border-t border-slate-100 pt-6">
@@ -364,7 +369,7 @@ export default async function AdminOrganizerDetailPage({ params: paramsPromise, 
                   )}
                 </div>
                 <button
-                  type="button"
+                  type="submit"
                   formAction={`/api/admin/organizers/${organizerSlug}/project/delete`}
                   formMethod="post"
                   className="ml-2 text-xs font-semibold text-red-600"
@@ -471,6 +476,7 @@ export default async function AdminOrganizerDetailPage({ params: paramsPromise, 
                 <th className="px-4 py-3">Prénom</th>
                 <th className="px-4 py-3">Nom</th>
                 <th className="px-4 py-3">Rôle</th>
+                <th className="px-4 py-3">Mot de passe</th>
                 <th className="px-4 py-3">Ajouté le</th>
                 <th className="px-4 py-3"></th>
               </tr>
@@ -517,6 +523,27 @@ export default async function AdminOrganizerDetailPage({ params: paramsPromise, 
                     </select>
                   </td>
                   <td className="px-4 py-3 text-slate-600">
+                    <form
+                      action={`/api/admin/organizer-members/${member.id}/password`}
+                      method="post"
+                      className="flex min-w-[18rem] items-center gap-2"
+                    >
+                      <input type="hidden" name="redirect_to" value={`/admin/organizers/${organizerSlug}`} />
+                      <input
+                        name="password"
+                        type="password"
+                        required
+                        pattern={PASSWORD_POLICY_HTML_PATTERN}
+                        title={PASSWORD_POLICY_MESSAGE}
+                        placeholder="Nouveau mot de passe"
+                        className="min-h-[42px] w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                      />
+                      <button className="shrink-0 rounded bg-slate-900 px-2 py-1 text-xs font-semibold text-white">
+                        MAJ
+                      </button>
+                    </form>
+                  </td>
+                  <td className="px-4 py-3 text-slate-600">
                     {new Date(member.created_at).toLocaleDateString('fr-FR')}
                   </td>
                   <td className="px-4 py-3 text-right">
@@ -536,7 +563,7 @@ export default async function AdminOrganizerDetailPage({ params: paramsPromise, 
               ))}
               {(members ?? []).length === 0 && (
                 <tr>
-                  <td className="px-4 py-6 text-slate-500" colSpan={6}>
+                  <td className="px-4 py-6 text-slate-500" colSpan={7}>
                     Aucun membre.
                   </td>
                 </tr>

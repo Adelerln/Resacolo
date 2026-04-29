@@ -1,5 +1,8 @@
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getCurrentUser } from '@/lib/auth/session';
+
+type LoginMode = 'family' | 'pro';
 
 function mapLoginErrorMessage(code: string | undefined) {
   switch (code) {
@@ -16,11 +19,11 @@ function mapLoginErrorMessage(code: string | undefined) {
   }
 }
 
-function sanitizeRelativePath(value: string | undefined) {
-  if (!value) return '/admin';
+function sanitizeRelativePath(value: string | undefined, fallback: string) {
+  if (!value) return fallback;
   const trimmed = value.trim();
   if (!trimmed.startsWith('/') || trimmed.startsWith('//')) {
-    return '/admin';
+    return fallback;
   }
   return trimmed;
 }
@@ -29,24 +32,42 @@ function canUseRedirectForRole(
   role: 'MNEMOS' | 'ADMIN' | 'ORGANISATEUR' | 'PARTENAIRE' | 'CLIENT',
   path: string
 ) {
-  if (role === 'MNEMOS') return path.startsWith('/mnemos');
+  if (role === 'MNEMOS') {
+    return (
+      path.startsWith('/mnemos') ||
+      path.startsWith('/admin') ||
+      path.startsWith('/organisme') ||
+      path.startsWith('/partenaire')
+    );
+  }
   if (role === 'ADMIN') return path.startsWith('/admin');
   if (role === 'ORGANISATEUR') return path.startsWith('/organisme');
   if (role === 'PARTENAIRE') return path.startsWith('/partenaire');
   return !path.startsWith('/admin') && !path.startsWith('/mnemos') && !path.startsWith('/organisme') && !path.startsWith('/partenaire');
 }
 
+function normalizeMode(mode: string | undefined): LoginMode {
+  const normalized = (mode ?? '').trim().toLowerCase();
+  if (normalized === 'family' || normalized === 'famille' || normalized === 'familles') return 'family';
+  if (normalized === 'pro' || normalized === 'organisateur' || normalized === 'partenaire') return 'pro';
+  return 'family';
+}
+
 export default async function LoginPage({
   searchParams
 }: {
-  searchParams?: Promise<{ redirectTo?: string; error?: string }>;
+  searchParams?: Promise<{ redirectTo?: string; error?: string; mode?: string; registered?: string }>;
 }) {
   if (process.env.MOCK_UI === '1') {
     return null;
   }
 
-  const { redirectTo, error } = searchParams ? await searchParams : {};
-  const safeRedirectTo = sanitizeRelativePath(redirectTo);
+  const { redirectTo, error, mode, registered } = searchParams ? await searchParams : {};
+  const effectiveMode = normalizeMode(mode);
+  const safeRedirectTo = sanitizeRelativePath(
+    redirectTo,
+    effectiveMode === 'family' ? '/mon-compte' : '/admin'
+  );
   const loginError = mapLoginErrorMessage(error);
 
   const session = await getCurrentUser();
@@ -68,13 +89,55 @@ export default async function LoginPage({
     }
   }
 
+  const familyHref = `/login?mode=family&redirectTo=${encodeURIComponent(safeRedirectTo)}`;
+  const proHref = `/login?mode=pro&redirectTo=${encodeURIComponent(safeRedirectTo)}`;
+  const createAccountHref = `/login/familles/creer-compte?redirectTo=${encodeURIComponent(safeRedirectTo)}`;
+
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-12 sm:px-6 sm:py-16">
       <div className="mx-auto max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-8">
         <h1 className="text-2xl font-semibold text-slate-900">Connexion</h1>
-        <p className="mt-2 text-sm text-slate-600">
-          Accédez aux espaces Resacolo.
-        </p>
+        <p className="mt-2 text-sm text-slate-600">Choisissez votre espace puis connectez-vous.</p>
+
+        <div className="mt-5 grid grid-cols-2 overflow-hidden rounded-xl border border-slate-200 bg-slate-50 p-1 text-sm font-semibold">
+          <Link
+            href={familyHref}
+            className={`flex items-center justify-center text-center rounded-lg px-3 py-2 transition ${
+              effectiveMode === 'family'
+                ? 'bg-[#FA8500] text-white shadow-sm'
+                : 'text-slate-600'
+            }`}
+          >
+            Famille
+          </Link>
+          <Link
+            href={proHref}
+            className={`flex items-center justify-center text-center rounded-lg px-3 py-2 transition ${
+              effectiveMode === 'pro'
+                ? 'bg-[var(--color-primary)] text-white shadow-sm'
+                : 'text-slate-600'
+            }`}
+          >
+            Organisateur / Partenaire
+          </Link>
+        </div>
+
+        {effectiveMode === 'family' ? (
+          <p className="mt-4 text-sm text-slate-600">
+            Accédez à votre espace
+          </p>
+        ) : (
+          <p className="mt-4 text-sm text-slate-600">
+            Accédez à votre espace
+          </p>
+        )}
+
+        {effectiveMode === 'family' && registered === '1' ? (
+          <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+            Compte créé. Connectez-vous pour accéder à votre espace.
+          </div>
+        ) : null}
+
         {loginError ? (
           <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
             {loginError}
@@ -82,6 +145,7 @@ export default async function LoginPage({
         ) : null}
         <form className="mt-6 space-y-4" action="/api/auth/login" method="post">
           <input type="hidden" name="redirectTo" value={safeRedirectTo} />
+          <input type="hidden" name="loginPath" value="/login" />
           <label className="block text-sm font-medium text-slate-700">
             Email
             <input
@@ -107,15 +171,28 @@ export default async function LoginPage({
               value="1"
               className="h-4 w-4 rounded border-slate-300 text-emerald-600"
             />
-            Se souvenir de moi (7 jours)
+            Se souvenir de moi
           </label>
           <button
             type="submit"
-            className="w-full rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white"
+            className={`w-full rounded-lg px-4 py-2 text-sm font-semibold text-white ${
+              effectiveMode === 'family'
+                ? 'bg-[#FA8500] hover:bg-[#ef7d00]'
+                : 'bg-[var(--color-primary)] hover:bg-[#2b8fcb]'
+            }`}
           >
             Se connecter
           </button>
         </form>
+
+        {effectiveMode === 'family' ? (
+          <Link
+            href={createAccountHref}
+            className="mt-3 inline-flex w-full items-center justify-center rounded-lg border border-accent-500 px-4 py-2 text-sm font-semibold text-accent-600 hover:bg-accent-50"
+          >
+            Créer un compte
+          </Link>
+        ) : null}
       </div>
     </div>
   );

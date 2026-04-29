@@ -107,6 +107,28 @@ export default async function FamilyRegisterPage({
                 <input name="email" type="email" className={INPUT_CLASS} required />
               </label>
               <label className="block text-sm font-medium text-slate-700">
+                Téléphone
+                <input name="phone" type="tel" className={INPUT_CLASS} required />
+              </label>
+              <label className="block text-sm font-medium text-slate-700">
+                Adresse postale
+                <input name="addressLine1" type="text" className={INPUT_CLASS} required />
+              </label>
+              <label className="block text-sm font-medium text-slate-700">
+                Complément d&apos;adresse
+                <input name="addressLine2" type="text" className={INPUT_CLASS} />
+              </label>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="block text-sm font-medium text-slate-700">
+                  Code postal
+                  <input name="postalCode" type="text" className={INPUT_CLASS} required />
+                </label>
+                <label className="block text-sm font-medium text-slate-700">
+                  Ville
+                  <input name="city" type="text" className={INPUT_CLASS} required />
+                </label>
+              </div>
+              <label className="block text-sm font-medium text-slate-700">
                 Mot de passe
                 <input
                   name="password"
@@ -119,6 +141,45 @@ export default async function FamilyRegisterPage({
                 />
               </label>
               <p className="text-xs text-slate-500">{PASSWORD_POLICY_MESSAGE}</p>
+
+              <details className="rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3">
+                <summary className="cursor-pointer list-none text-sm font-semibold text-slate-900">
+                  Ajouter un parent 2 (facultatif)
+                </summary>
+                <div className="mt-4 space-y-4">
+                  <label className="block text-sm font-medium text-slate-700">
+                    Nom complet
+                    <input name="parent2Name" type="text" className={INPUT_CLASS} />
+                  </label>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <label className="block text-sm font-medium text-slate-700">
+                      Statut
+                      <select name="parent2Status" className={INPUT_CLASS} defaultValue="">
+                        <option value="">Sélectionner</option>
+                        <option value="pere">Père</option>
+                        <option value="mere">Mère</option>
+                        <option value="grand-parent">Grand-parent</option>
+                        <option value="autre">Autre</option>
+                      </select>
+                    </label>
+                    <label className="block text-sm font-medium text-slate-700">
+                      Précision si “Autre”
+                      <input name="parent2StatusOther" type="text" className={INPUT_CLASS} />
+                    </label>
+                  </div>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <label className="block text-sm font-medium text-slate-700">
+                      Téléphone
+                      <input name="parent2Phone" type="tel" className={INPUT_CLASS} />
+                    </label>
+                    <label className="block text-sm font-medium text-slate-700">
+                      Email
+                      <input name="parent2Email" type="email" className={INPUT_CLASS} />
+                    </label>
+                  </div>
+                </div>
+              </details>
+
               <button
                 type="submit"
                 className="inline-flex min-h-[44px] w-full items-center justify-center rounded-xl bg-accent-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-accent-600"

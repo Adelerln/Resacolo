@@ -6,7 +6,8 @@ import { getApiErrorMessage } from '@/lib/checkout/api';
 import {
   getFamilyProfileSnapshot,
   patchFamilyProfileParent2,
-  upsertFamilyProfileFromCheckout
+  upsertFamilyProfileFromCheckout,
+  patchFamilyProfilePreferences
 } from '@/lib/account-profile/server';
 
 export const runtime = 'nodejs';
@@ -128,6 +129,36 @@ const patchSchema = z.discriminatedUnion('source', [
   z.object({
     source: z.literal('mon-compte'),
     parent2: parent2UpdateSchema
+  }),
+  z.object({
+    source: z.literal('preferences'),
+    profile: z.object({
+      parent1Name: z.string().trim().min(2, 'Nom parent 1 requis.'),
+      parent1Email: z.string().trim().email('Email parent 1 invalide.'),
+      parent1Phone: z.string().trim().min(8, 'Téléphone parent 1 invalide.'),
+      addressLine1: z.string().trim().min(3, 'Adresse requise.'),
+      addressLine2: z.string().trim().optional().default(''),
+      postalCode: z.string().trim().min(4, 'Code postal requis.'),
+      city: z.string().trim().min(2, 'Ville requise.'),
+      country: z.string().trim().optional().default('France'),
+      parent2Name: z.string().trim().optional().default(''),
+      parent2Status: z.enum(['pere', 'mere', 'grand-parent', 'autre']).optional().default('pere'),
+      parent2StatusOther: z.string().trim().optional().default(''),
+      parent2Phone: z.string().trim().optional().default(''),
+      parent2Email: z
+        .string()
+        .trim()
+        .optional()
+        .default('')
+        .refine((value) => !value || /.+@.+\..+/.test(value), {
+          message: 'Email parent 2 invalide.'
+        }),
+      parent2HasDifferentAddress: z.boolean().optional().default(false),
+      parent2AddressLine1: z.string().trim().optional().default(''),
+      parent2AddressLine2: z.string().trim().optional().default(''),
+      parent2PostalCode: z.string().trim().optional().default(''),
+      parent2City: z.string().trim().optional().default('')
+    })
   })
 ]);
 
@@ -169,9 +200,19 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ profile });
     }
 
-    const profile = await patchFamilyProfileParent2({
+    if (body.source === 'mon-compte') {
+      const profile = await patchFamilyProfileParent2({
+        userId: session.userId,
+        patch: body.parent2,
+        sessionName: session.name,
+        sessionEmail: session.email
+      });
+      return NextResponse.json({ profile });
+    }
+
+    const profile = await patchFamilyProfilePreferences({
       userId: session.userId,
-      patch: body.parent2,
+      patch: body.profile,
       sessionName: session.name,
       sessionEmail: session.email
     });

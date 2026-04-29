@@ -1250,6 +1250,7 @@ async function updateOrInsertStay(
   const normalizedTitle = normalizeStayTitle(draft.title);
   const normalizedRegion = mapToCanonicalStayRegion(draft.region_text);
   const seasonId = await resolveSeasonIdFromSessions(supabase, sessions);
+  const isForeignStay = mappedCategories.includes('etranger');
 
   let previousStatus: string | null | undefined;
   if (stayId) {
@@ -1296,6 +1297,13 @@ async function updateOrInsertStay(
 
   if (!basePayload.title) {
     throw new PublishStayDraftError('validate-title', 'Le titre est requis pour publier.');
+  }
+
+  if (!isForeignStay && (!normalizedRegion || normalizedRegion === 'Étranger')) {
+    throw new PublishStayDraftError(
+      'validate-region',
+      'La région est obligatoire pour publier un séjour en France (sélectionnez une région, pas "Étranger").'
+    );
   }
 
   if (stayId) {

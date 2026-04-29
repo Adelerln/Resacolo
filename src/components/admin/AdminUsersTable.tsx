@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { ChevronDown, ChevronUp, Pencil } from 'lucide-react';
 import { ORGANIZER_ACCESS_ROLE_VALUES, type OrganizerAccessRole } from '@/lib/organizer-access';
+import { PASSWORD_POLICY_HTML_PATTERN, PASSWORD_POLICY_MESSAGE } from '@/lib/auth/password-policy';
 
 type MemberRow = {
   id: string;
@@ -206,6 +207,33 @@ export function AdminUsersTable({ members }: { members: MemberRow[] }) {
                   Enregistrer
                 </button>
               </div>
+            </form>
+
+            <form
+              className="mt-6 space-y-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-4"
+              action={`/api/admin/organizer-members/${editing.id}/password`}
+              method="post"
+            >
+              <input type="hidden" name="redirect_to" value="/admin/utilisateurs" />
+              <div className="text-sm font-semibold text-slate-900">Modifier le mot de passe</div>
+              <label className="block text-sm font-medium text-slate-700">
+                Nouveau mot de passe
+                <input
+                  name="password"
+                  type="password"
+                  required
+                  pattern={PASSWORD_POLICY_HTML_PATTERN}
+                  title={PASSWORD_POLICY_MESSAGE}
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+                  placeholder="Mot de passe conforme à la politique"
+                />
+              </label>
+              <div className="flex items-center justify-end">
+                <button className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white">
+                  Mettre à jour
+                </button>
+              </div>
+              <p className="text-xs text-slate-500">{PASSWORD_POLICY_MESSAGE}</p>
             </form>
           </div>
         </div>

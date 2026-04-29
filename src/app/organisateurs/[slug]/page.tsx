@@ -4,6 +4,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { cache } from 'react';
+import { FavoriteToggleButton } from '@/components/favorites/FavoriteToggleButton';
 import { OrganizerStayPreviewCard } from '@/components/organisateurs/OrganizerStayPreviewCard';
 import { HorizontalCardsCarousel } from '@/components/organisateurs/HorizontalCardsCarousel';
 import { ExternalLink, MapPin } from 'lucide-react';
@@ -57,8 +58,6 @@ const DARK_HERO_TEXT_KEYS = new Set([
   'zigo',
   'zigotours'
 ]);
-
-const passthroughImageLoader = ({ src }: { src: string }) => src;
 
 function compactKey(value: string) {
   return slugify(value).replace(/-/g, '');
@@ -683,7 +682,6 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
                     alt={organizerDisplayName}
                     width={480}
                     height={240}
-                    loader={passthroughImageLoader}
                     unoptimized
                     className={resolveHeroLogoImageClass(organizerSlug)}
                   />
@@ -917,7 +915,6 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
                               alt={accommodation.name}
                               fill
                               sizes="280px"
-                              loader={passthroughImageLoader}
                               unoptimized
                               className="object-cover transition duration-500 group-hover:scale-[1.03]"
                             />
@@ -958,7 +955,7 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
         </div>
 
         {featuredPublishedStays.length > 0 ? (
-          <div className="mt-6 grid grid-cols-1 items-stretch justify-items-center gap-8 sm:grid-cols-2 sm:justify-items-stretch lg:grid-cols-3">
+          <div className="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3">
             {featuredPublishedStays.map((stay) => {
               const stayRow = stay as {
                 seasons?: unknown;
@@ -973,7 +970,7 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
                 coverImageByStayId.get(stay.id) ??
                 null;
               return (
-                <div key={stay.id} className="flex h-full min-h-[520px] justify-center">
+                <div key={stay.id} className="flex justify-center">
                   <OrganizerStayPreviewCard
                     title={stay.title}
                     summary={stay.summary ?? null}
@@ -988,7 +985,10 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
                     href={stayCanonicalPathById.get(stay.id) ?? '/sejours'}
                     organizerLogoUrl={logoUrl}
                     organizerName={organizerDisplayName}
+                    overlayAction={<FavoriteToggleButton stayId={stay.id} />}
                     disableBlueHoverEffect
+                    compact
+                    liftOnHover
                   />
                 </div>
               );

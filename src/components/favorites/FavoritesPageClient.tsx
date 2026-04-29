@@ -53,7 +53,7 @@ export function FavoritesPageClient({ stays }: { stays: Stay[] }) {
           </div>
         </div>
       ) : (
-        <div className="mt-8 grid grid-cols-1 gap-8 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
           {favoriteStays.map((stay) => {
             const season = resolveStaySeasonPicto(stay.seasonName || stay.period[0] || null);
             return (
@@ -72,7 +72,10 @@ export function FavoritesPageClient({ stays }: { stays: Stay[] }) {
                   href={`/sejours/${stay.canonicalSlug}`}
                   organizerLogoUrl={stay.organizer.logoUrl ?? null}
                   organizerName={stay.organizer.name}
-                  overlayAction={<FavoriteToggleButton stayId={stay.id} />}
+                  overlayAction={<FavoriteToggleButton stayId={stay.id} variant="overlay" />}
+                  disableBlueHoverEffect
+                  compact
+                  liftOnHover
                 />
               </div>
             );

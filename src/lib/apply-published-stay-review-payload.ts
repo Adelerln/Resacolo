@@ -70,6 +70,15 @@ export async function applyPublishedStayReviewPayload(
   const ageMax = ages.length > 0 ? ages[ages.length - 1]! : null;
 
   const region = normalizeStayRegion(payload.region_text);
+  const isForeignStay = categoryValues.includes('etranger');
+
+  if (!isForeignStay && (!region || region === 'Étranger')) {
+    return {
+      ok: false,
+      message:
+        'La région est obligatoire pour publier un séjour en France (sélectionnez une région, pas "Étranger").'
+    };
+  }
 
   const requestedTransportMode =
     normalizeStayTransportLogisticsMode(payload.transport_mode) || stay.transport_mode || 'Sans transport';

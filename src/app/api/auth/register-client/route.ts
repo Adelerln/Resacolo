@@ -3,21 +3,82 @@ import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { isPasswordPolicyValid, PASSWORD_POLICY_MESSAGE } from '@/lib/auth/password-policy';
+import { upsertFamilyProfileFromRegistration } from '@/lib/account-profile/server';
 import { getApiErrorMessage } from '@/lib/checkout/api';
-import { getServerSupabaseClient } from '@/lib/supabase/server';
 import type { Database } from '@/types/supabase';
 
 export const runtime = 'nodejs';
 
-const registerClientSchema = z.object({
-  firstName: z.string().trim().min(2, 'Prénom requis.'),
-  lastName: z.string().trim().min(2, 'Nom requis.'),
-  email: z.string().trim().email('Adresse email invalide.'),
-  password: z
-    .string()
-    .min(8, PASSWORD_POLICY_MESSAGE)
-    .refine((value) => isPasswordPolicyValid(value), PASSWORD_POLICY_MESSAGE),
-  redirectTo: z.string().optional()
+const stringFromUnknown = z.preprocess((value) => (value == null ? '' : value), z.string());
+const trimmedString = () => stringFromUnknown.pipe(z.string().trim());
+const trimmedStringMin = (min: number, message: string) =>
+  stringFromUnknown.pipe(z.string().trim().min(min, message));
+const trimmedEmail = (message: string) => stringFromUnknown.pipe(z.string().trim().email(message));
+
+const registerClientFullSchema = z
+  .object({
+    firstName: trimmedStringMin(2, 'Prénom requis.'),
+    lastName: trimmedStringMin(2, 'Nom requis.'),
+    email: trimmedEmail('Adresse email invalide.'),
+    phone: trimmedStringMin(8, 'Numéro de téléphone invalide.'),
+    addressLine1: trimmedStringMin(3, 'Adresse postale requise.'),
+    addressLine2: trimmedString().optional().default(''),
+    postalCode: trimmedStringMin(4, 'Code postal requis.'),
+    city: trimmedStringMin(2, 'Ville requise.'),
+    password: trimmedStringMin(8, PASSWORD_POLICY_MESSAGE).refine(
+      (value) => isPasswordPolicyValid(value),
+      PASSWORD_POLICY_MESSAGE
+    ),
+    parent2Name: trimmedString().optional().default(''),
+    parent2Status: z.enum(['pere', 'mere', 'grand-parent', 'autre']).optional().or(z.literal('')).default(''),
+    parent2StatusOther: trimmedString().optional().default(''),
+    parent2Phone: trimmedString().optional().default(''),
+    parent2Email: trimmedString()
+      .optional()
+      .default('')
+      .refine((value) => !value || /.+@.+\..+/.test(value), 'Email parent 2 invalide.'),
+    redirectTo: trimmedString().optional()
+  })
+  .superRefine((data, ctx) => {
+  const hasParent2 =
+    Boolean(data.parent2Name) ||
+    Boolean(data.parent2Phone) ||
+    Boolean(data.parent2Email) ||
+    Boolean(data.parent2Status) ||
+    Boolean(data.parent2StatusOther);
+
+  if (!hasParent2) {
+    return;
+  }
+
+  if (!data.parent2Name) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['parent2Name'],
+      message: 'Nom du parent 2 requis.'
+    });
+  }
+
+  if (data.parent2Status === 'autre' && !data.parent2StatusOther) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['parent2StatusOther'],
+      message: 'Précisez le statut du parent 2.'
+    });
+  }
+  });
+
+// Inscription "light" (checkout) : on ne demande que les identifiants.
+// Les infos de contact peuvent être complétées ensuite (checkout / préférences).
+const registerClientCheckoutSchema = z.object({
+  firstName: trimmedStringMin(2, 'Prénom requis.'),
+  lastName: trimmedStringMin(2, 'Nom requis.'),
+  email: trimmedEmail('Adresse email invalide.'),
+  password: trimmedStringMin(8, PASSWORD_POLICY_MESSAGE).refine(
+    (value) => isPasswordPolicyValid(value),
+    PASSWORD_POLICY_MESSAGE
+  ),
+  redirectTo: trimmedString().optional()
 });
 
 export async function POST(req: Request) {
@@ -47,7 +108,9 @@ export async function POST(req: Request) {
     try {
       body = contentType.includes('application/json')
         ? await req.json()
-        : Object.fromEntries(await req.formData());
+        : Object.fromEntries(
+            Array.from((await req.formData()).entries()).map(([key, value]) => [key, String(value ?? '')])
+          );
     } catch {
       if (isFormRequest) {
         return redirectFormError('Corps de requête invalide.', safeRedirectTo);
@@ -55,7 +118,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Corps de requête invalide.' }, { status: 400 });
     }
 
-    const input = registerClientSchema.parse(body);
+    const fullParsed = registerClientFullSchema.safeParse(body);
+    const input = fullParsed.success ? fullParsed.data : registerClientCheckoutSchema.parse(body);
     safeRedirectTo = sanitizeRelativePath(input.redirectTo, '/mon-compte');
     const email = input.email.toLowerCase();
     const name = `${input.firstName} ${input.lastName}`.trim();
@@ -89,22 +153,29 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: message }, { status: isExistingAccount ? 409 : 500 });
     }
 
-    const serverSupabase = getServerSupabaseClient();
-    const { error: clientError } = await serverSupabase.from('clients').upsert(
-      {
-        user_id: data.user.id,
-        full_name: name || null,
-        phone: null,
-        collectivity_id: null
-      },
-      { onConflict: 'user_id' }
-    );
-
-    if (clientError) {
+    try {
+      await upsertFamilyProfileFromRegistration({
+        userId: data.user.id,
+        firstName: input.firstName,
+        lastName: input.lastName,
+        email,
+        phone: fullParsed.success ? fullParsed.data.phone : '',
+        addressLine1: fullParsed.success ? fullParsed.data.addressLine1 : '',
+        addressLine2: fullParsed.success ? fullParsed.data.addressLine2 : '',
+        postalCode: fullParsed.success ? fullParsed.data.postalCode : '',
+        city: fullParsed.success ? fullParsed.data.city : '',
+        parent2Name: fullParsed.success ? fullParsed.data.parent2Name : '',
+        parent2Status:
+          fullParsed.success && fullParsed.data.parent2Status !== '' ? fullParsed.data.parent2Status : undefined,
+        parent2StatusOther: fullParsed.success ? fullParsed.data.parent2StatusOther : '',
+        parent2Phone: fullParsed.success ? fullParsed.data.parent2Phone : '',
+        parent2Email: fullParsed.success ? fullParsed.data.parent2Email : ''
+      });
+    } catch (profileError) {
       if (isFormRequest) {
-        return redirectFormError(clientError.message, safeRedirectTo);
+        return redirectFormError(getApiErrorMessage(profileError), safeRedirectTo);
       }
-      return NextResponse.json({ error: clientError.message }, { status: 500 });
+      return NextResponse.json({ error: getApiErrorMessage(profileError) }, { status: 500 });
     }
 
     if (isFormRequest) {

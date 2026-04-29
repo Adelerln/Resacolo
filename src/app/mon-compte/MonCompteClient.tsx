@@ -12,29 +12,17 @@ import {
   X
 } from 'lucide-react';
 import Link from 'next/link';
+import { useFavorites } from '@/components/favorites/FavoritesProvider';
 import { patchFamilyProfileParent2 } from '@/lib/account-profile/client';
 import { formatFrenchPhone, parentStatusLabel } from '@/lib/account-preferences';
 import type { FamilyProfile, FamilyUpcomingReservation, ParentStatus } from '@/types/family-profile';
+import type { Stay } from '@/types/stay';
 
 type MonCompteClientProps = {
   initialProfile: FamilyProfile;
   upcomingReservations: FamilyUpcomingReservation[];
+  favoriteStays: Stay[];
 };
-
-const mockFavorites = [
-  {
-    id: 'fav-1',
-    title: 'Séjour surf & océan',
-    age: '14-17 ans',
-    location: 'Landes, France'
-  },
-  {
-    id: 'fav-2',
-    title: 'Stage théâtre & cirque',
-    age: '8-12 ans',
-    location: 'Provence, France'
-  }
-];
 
 type Parent2Draft = {
   parent2Name: string;
@@ -78,12 +66,17 @@ function mapProfileToParent1Name(profile: FamilyProfile) {
   return fullName || 'Non renseigné';
 }
 
-export default function MonCompteClient({ initialProfile, upcomingReservations }: MonCompteClientProps) {
+export default function MonCompteClient({
+  initialProfile,
+  upcomingReservations,
+  favoriteStays
+}: MonCompteClientProps) {
   const [profile, setProfile] = useState<FamilyProfile>(initialProfile);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [draft, setDraft] = useState<Parent2Draft>(() => buildParent2Draft(initialProfile));
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const { favoriteIdsArray, isLoaded } = useFavorites();
 
   const parent1Name = useMemo(() => mapProfileToParent1Name(profile), [profile]);
   const fullAddress = useMemo(
@@ -103,6 +96,11 @@ export default function MonCompteClient({ initialProfile, upcomingReservations }
       ) || 'Non renseignée'
     );
   }, [profile]);
+  const visibleFavoriteStays = useMemo(() => {
+    if (!isLoaded) return favoriteStays;
+    const ids = new Set(favoriteIdsArray);
+    return favoriteStays.filter((stay) => ids.has(stay.id));
+  }, [favoriteIdsArray, favoriteStays, isLoaded]);
 
   function openEditModal() {
     setSaveError(null);
@@ -247,39 +245,6 @@ export default function MonCompteClient({ initialProfile, upcomingReservations }
             <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <h2 className="font-display text-lg font-semibold text-slate-900">Enfants renseignés</h2>
-                  <p className="mt-1 text-sm text-slate-500">
-                    Informations récupérées depuis le checkout.
-                  </p>
-                </div>
-                <UserRound className="h-7 w-7 text-accent-500" />
-              </div>
-
-              {profile.children.length === 0 ? (
-                <p className="mt-6 text-sm text-slate-500">Aucun enfant renseigné pour le moment.</p>
-              ) : (
-                <ul className="mt-6 grid gap-4 sm:grid-cols-2">
-                  {profile.children.map((child, index) => (
-                    <li
-                      key={`${child.firstName}-${child.lastName}-${index}`}
-                      className="rounded-xl border border-slate-100 bg-slate-50/80 p-4 text-sm text-slate-700"
-                    >
-                      <p className="font-display text-base font-semibold text-slate-900">
-                        {[child.firstName, child.lastName.toUpperCase()].filter(Boolean).join(' ') || 'Participant'}
-                      </p>
-                      <p className="mt-1 text-xs text-slate-500">
-                        Date de naissance: {child.birthdate || 'Non renseignée'}
-                      </p>
-                      <p className="mt-1 text-xs text-slate-500">Genre: {child.gender || 'Non renseigné'}</p>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
-
-            <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <div className="flex items-center justify-between gap-3">
-                <div>
                   <h2 className="font-display text-lg font-semibold text-slate-900">Séjours favoris</h2>
                   <p className="mt-1 text-sm text-slate-500">
                     Les séjours que vous avez ajoutés en favoris depuis la page catalogue.
@@ -288,33 +253,55 @@ export default function MonCompteClient({ initialProfile, upcomingReservations }
                 <Heart className="h-7 w-7 text-accent-500" />
               </div>
 
-              {mockFavorites.length === 0 ? (
+              {visibleFavoriteStays.length === 0 ? (
                 <p className="mt-6 text-sm text-slate-500">
                   Vous n&apos;avez pas encore de favoris. Cliquez sur le cœur depuis une fiche séjour pour l&apos;ajouter.
                 </p>
               ) : (
-                <ul className="mt-6 grid gap-4 sm:grid-cols-2">
-                  {mockFavorites.map((fav) => (
-                    <li
-                      key={fav.id}
-                      className="rounded-xl border border-slate-100 bg-slate-50/80 p-4 text-sm text-slate-700"
-                    >
-                      <p className="font-display text-base font-semibold text-slate-900">{fav.title}</p>
-                      <p className="mt-1 text-xs text-slate-500">{fav.age}</p>
-                      <p className="mt-1 flex items-center gap-1 text-xs text-slate-500">
-                        <MapPin className="h-3.5 w-3.5" />
-                        {fav.location}
-                      </p>
-                      <Link
-                        href="/sejours"
-                        className="mt-3 inline-flex text-xs font-semibold text-brand-600 hover:text-brand-700"
-                      >
-                        Voir le séjour
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
+                <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200">
+                  <div className="grid grid-cols-[minmax(0,2fr)_0.9fr_0.9fr_1.2fr] gap-3 bg-slate-100 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+                    <span>Séjour</span>
+                    <span className="text-center">Saison</span>
+                    <span className="text-center">Âge</span>
+                    <span className="text-right">Lieu</span>
+                  </div>
+                  <div className="max-h-[18.5rem] overflow-y-auto">
+                    {visibleFavoriteStays.map((stay) => {
+                      const locationLabel =
+                        stay.displayLocation || stay.location || stay.region || 'Lieu à préciser';
+                      const seasonLabel = stay.seasonName || stay.period[0] || 'Saison à préciser';
+                      return (
+                        <Link
+                          key={stay.id}
+                          href={`/sejours/${stay.canonicalSlug}`}
+                          className="grid grid-cols-[minmax(0,2fr)_0.9fr_0.9fr_1.2fr] items-center gap-3 border-t border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 transition hover:bg-slate-50"
+                        >
+                          <span className="line-clamp-2 font-display text-base font-semibold text-slate-900">
+                            {stay.title}
+                          </span>
+                          <span className="text-center text-xs font-semibold uppercase tracking-[0.04em] text-slate-700">
+                            {seasonLabel}
+                          </span>
+                          <span className="text-center font-medium text-slate-900">
+                            {stay.ageRange || 'Tous âges'}
+                          </span>
+                          <span className="text-right font-medium text-slate-900">
+                            {locationLabel}
+                          </span>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </div>
               )}
+
+              {visibleFavoriteStays.length > 0 ? (
+                <div className="mt-5 flex justify-end">
+                  <Link href="/account/favorites" className="text-sm font-semibold text-brand-600 hover:text-brand-700">
+                    Voir tous les favoris
+                  </Link>
+                </div>
+              ) : null}
             </section>
           </div>
 

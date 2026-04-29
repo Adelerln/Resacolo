@@ -218,18 +218,18 @@ const DRAFT_REVIEW_STEPS: {
   { id: 'seo', label: 'SEO', Icon: Search }
 ];
 
-function draftReviewStepIndex(step: DraftReviewStepId): number {
-  return DRAFT_REVIEW_STEP_ORDER.indexOf(step);
+function draftReviewStepIndex(step: DraftReviewStepId, steps: DraftReviewStepId[]): number {
+  return steps.indexOf(step);
 }
 
-function draftReviewPrevStep(step: DraftReviewStepId): DraftReviewStepId | null {
-  const i = draftReviewStepIndex(step);
-  return i > 0 ? DRAFT_REVIEW_STEP_ORDER[i - 1]! : null;
+function draftReviewPrevStep(step: DraftReviewStepId, steps: DraftReviewStepId[]): DraftReviewStepId | null {
+  const i = draftReviewStepIndex(step, steps);
+  return i > 0 ? steps[i - 1]! : null;
 }
 
-function draftReviewNextStep(step: DraftReviewStepId): DraftReviewStepId | null {
-  const i = draftReviewStepIndex(step);
-  return i >= 0 && i < DRAFT_REVIEW_STEP_ORDER.length - 1 ? DRAFT_REVIEW_STEP_ORDER[i + 1]! : null;
+function draftReviewNextStep(step: DraftReviewStepId, steps: DraftReviewStepId[]): DraftReviewStepId | null {
+  const i = draftReviewStepIndex(step, steps);
+  return i >= 0 && i < steps.length - 1 ? steps[i + 1]! : null;
 }
 
 export default function StayDraftReviewForm({
@@ -247,18 +247,30 @@ export default function StayDraftReviewForm({
   publishedSessionsStep = null
 }: StayDraftReviewFormProps) {
   const router = useRouter();
+  const isPublishedVariant = variant === 'published';
+  const reviewSteps = useMemo(
+    () =>
+      isPublishedVariant
+        ? DRAFT_REVIEW_STEP_ORDER.filter((step) => step !== 'hebergement' && step !== 'sessions')
+        : DRAFT_REVIEW_STEP_ORDER,
+    [isPublishedVariant]
+  );
+  const visibleReviewSteps = useMemo(
+    () => DRAFT_REVIEW_STEPS.filter((step) => reviewSteps.includes(step.id)),
+    [reviewSteps]
+  );
   const [activeStep, setActiveStep] = useState<DraftReviewStepId>(() =>
-    linkedAccommodation ? 'sejour' : 'hebergement'
+    isPublishedVariant ? 'sejour' : linkedAccommodation ? 'sejour' : 'hebergement'
   );
   const [hasCompletedAccommodationGate, setHasCompletedAccommodationGate] = useState(
-    () => Boolean(linkedAccommodation)
+    () => isPublishedVariant || Boolean(linkedAccommodation)
   );
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [title, setTitle] = useState(initialPayload.title);
   const [summary, setSummary] = useState(initialPayload.summary);
   const [locationText, setLocationText] = useState(initialPayload.location_text);
   const [regionText, setRegionText] = useState(initialPayload.region_text);
-  const [selectedSeasonIds, setSelectedSeasonIds] = useState<string[]>(() => initialPayload.season_ids ?? []);
+  const [, setSelectedSeasonIds] = useState<string[]>(() => initialPayload.season_ids ?? []);
   const [selectedSeasonNames, setSelectedSeasonNames] = useState<string[]>(
     () => initialPayload.season_names ?? []
   );
@@ -346,8 +358,8 @@ export default function StayDraftReviewForm({
   const [seoSlugCandidate, setSeoSlugCandidate] = useState(initialPayload.seo_slug_candidate);
   const [seoScore, setSeoScore] = useState<number | null>(initialPayload.seo_score);
   const [seoChecks, setSeoChecks] = useState<SeoCheck[]>(initialPayload.seo_checks);
-  const [seoGeneratedAt, setSeoGeneratedAt] = useState<string | null>(initialPayload.seo_generated_at ?? null);
-  const [seoGenerationSource, setSeoGenerationSource] = useState<string | null>(
+  const [, setSeoGeneratedAt] = useState<string | null>(initialPayload.seo_generated_at ?? null);
+  const [, setSeoGenerationSource] = useState<string | null>(
     initialPayload.seo_generation_source ?? null
   );
   const [seoActionState, setSeoActionState] = useState<SeoActionState | null>(null);
@@ -846,17 +858,29 @@ export default function StayDraftReviewForm({
     setSuccessMessage(null);
 
     try {
-      const response = await fetch(`/api/stay-drafts/${draftId}`, {
-        method: mode === 'validate' ? 'POST' : 'PATCH',
-        headers: {
-          'content-type': 'application/json',
-          accept: 'application/json'
-        },
-        body: JSON.stringify({
-          organizerId,
-          ...result.payload
-        })
-      });
+      const response = isPublishedVariant
+        ? await fetch(`/api/organizer/stays/${draftId}/review-bundle`, {
+            method: 'PATCH',
+            headers: {
+              'content-type': 'application/json',
+              accept: 'application/json'
+            },
+            body: JSON.stringify({
+              organizerId,
+              payload: result.payload
+            })
+          })
+        : await fetch(`/api/stay-drafts/${draftId}`, {
+            method: mode === 'validate' ? 'POST' : 'PATCH',
+            headers: {
+              'content-type': 'application/json',
+              accept: 'application/json'
+            },
+            body: JSON.stringify({
+              organizerId,
+              ...result.payload
+            })
+          });
 
       const data = (await response.json().catch(() => null)) as
         | {
@@ -865,6 +889,7 @@ export default function StayDraftReviewForm({
             published?: boolean;
             liveStayId?: string | null;
             fieldErrors?: StayDraftReviewFieldErrors;
+            saved?: boolean;
             draft?: {
               organizer_id?: string | null;
               status?: string;
@@ -876,7 +901,12 @@ export default function StayDraftReviewForm({
 
       if (!response.ok) {
         setFieldErrors(data?.fieldErrors ?? {});
-        setGlobalError(data?.error ?? 'Impossible de sauvegarder le brouillon.');
+        setGlobalError(
+          data?.error ??
+            (isPublishedVariant
+              ? 'Impossible d’enregistrer les modifications du séjour.'
+              : 'Impossible de sauvegarder le brouillon.')
+        );
         if (data?.draftSaved) {
           setSuccessMessage('Brouillon enregistré, mais publication live échouée.');
           setStatus(data?.draft?.status ?? status);
@@ -888,15 +918,19 @@ export default function StayDraftReviewForm({
       }
 
       setSuccessMessage(
-        mode === 'validate'
+        isPublishedVariant
+          ? 'Modifications enregistrées.'
+          : mode === 'validate'
           ? 'Brouillon validé avec succès.'
           : data?.published
             ? 'Séjour enregistré et publié.'
             : 'Brouillon enregistré avec succès.'
       );
-      setStatus(data?.draft?.status ?? status);
-      setValidatedAt(data?.draft?.validated_at ?? validatedAt);
-      setValidatedByUserId(data?.draft?.validated_by_user_id ?? validatedByUserId);
+      if (!isPublishedVariant) {
+        setStatus(data?.draft?.status ?? status);
+        setValidatedAt(data?.draft?.validated_at ?? validatedAt);
+        setValidatedByUserId(data?.draft?.validated_by_user_id ?? validatedByUserId);
+      }
 
       if (mode === 'save' && variant === 'draft') {
         router.push(backHref);
@@ -928,24 +962,29 @@ export default function StayDraftReviewForm({
 
       router.refresh();
     } catch {
-      setGlobalError("Une erreur réseau est survenue pendant l'enregistrement.");
+      setGlobalError(
+        isPublishedVariant
+          ? "Une erreur réseau est survenue pendant l'enregistrement du séjour."
+          : "Une erreur réseau est survenue pendant l'enregistrement."
+      );
     } finally {
       setIsSubmitting(false);
     }
   }
 
-  const accommodationGateClosed = !linkedAccommodation && !hasCompletedAccommodationGate;
+  const accommodationGateClosed = !isPublishedVariant && !linkedAccommodation && !hasCompletedAccommodationGate;
   const effectiveStep: DraftReviewStepId = accommodationGateClosed ? 'hebergement' : activeStep;
-  const effectiveStepIndex = draftReviewStepIndex(effectiveStep);
+  const effectiveStepIndex = draftReviewStepIndex(effectiveStep, reviewSteps);
 
   function goToDraftStep(step: DraftReviewStepId) {
     if (accommodationGateClosed && step !== 'hebergement') return;
+    if (!reviewSteps.includes(step)) return;
     setActiveStep(step);
   }
 
   function goDraftPrev() {
     if (accommodationGateClosed) return;
-    const prev = draftReviewPrevStep(activeStep);
+    const prev = draftReviewPrevStep(activeStep, reviewSteps);
     if (prev) setActiveStep(prev);
   }
 
@@ -955,7 +994,7 @@ export default function StayDraftReviewForm({
       setActiveStep('sejour');
       return;
     }
-    const next = draftReviewNextStep(activeStep);
+    const next = draftReviewNextStep(activeStep, reviewSteps);
     if (next) setActiveStep(next);
   }
 
@@ -1002,7 +1041,7 @@ export default function StayDraftReviewForm({
       <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
         <nav aria-label="Étapes de relecture du brouillon">
           <ul className="flex snap-x snap-mandatory gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:justify-between sm:gap-3 sm:overflow-visible">
-            {DRAFT_REVIEW_STEPS.map(({ id, label, Icon }) => {
+            {visibleReviewSteps.map(({ id, label, Icon }) => {
               const isActive = effectiveStep === id;
               const stepDisabled = accommodationGateClosed && id !== 'hebergement';
               return (
@@ -1035,6 +1074,36 @@ export default function StayDraftReviewForm({
         </nav>
 
         <div className="space-y-4 border-t border-slate-100 pt-5">
+          {isPublishedVariant ? (
+            <div
+              className={cn(
+                'rounded-2xl px-4 py-3 text-sm',
+                linkedAccommodation
+                  ? 'border border-sky-200 bg-sky-50 text-sky-900'
+                  : 'border border-amber-200 bg-amber-50/70 text-amber-950'
+              )}
+            >
+              {linkedAccommodation ? (
+                <>
+                  <p className="font-semibold">Hébergement actuellement lié</p>
+                  <p className="mt-1">
+                    <span className="font-semibold">{linkedAccommodation.name}</span>
+                    {linkedAccommodation.accommodationType
+                      ? ` (${formatAccommodationType(linkedAccommodation.accommodationType)})`
+                      : ''}.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="font-semibold">Aucun hébergement lié détecté</p>
+                  <p className="mt-1">
+                    Le séjour reste modifiable, mais aucun lien d’hébergement n’a été retrouvé pour cette fiche.
+                  </p>
+                </>
+              )}
+            </div>
+          ) : null}
+
           {effectiveStep === 'hebergement' && !linkedAccommodation && (
             <AccommodationImportReviewFields
               value={accommodationImport}
@@ -1989,19 +2058,13 @@ export default function StayDraftReviewForm({
             <div className="flex flex-wrap items-center gap-3">
               <button
                 type="button"
-                onClick={() => submit('save')}
-                disabled={isSubmitting}
-                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-              >
-                Enregistrer le brouillon
-              </button>
-              <button
-                type="button"
-                onClick={() => submit('validate')}
+                onClick={() => submit(isPublishedVariant ? 'save' : 'validate')}
                 disabled={isSubmitting}
                 className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
               >
-                Valider et publier le séjour
+                {variant === 'published'
+                  ? 'Enregistrer les modifications'
+                  : 'Valider et publier le séjour'}
               </button>
               <Link
                 href={backHref}

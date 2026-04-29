@@ -4,22 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import {
-  Palette,
-  MapPin,
-  Users,
-  Clock,
-  User,
-  Waves,
-  Mountain,
-  Trees,
-  Flag,
-  Languages,
-  FlaskConical,
-  Dumbbell,
-  Route,
-  Globe2
-} from 'lucide-react';
+import { User } from 'lucide-react';
 import { FavoriteToggleButton } from '@/components/favorites/FavoriteToggleButton';
 import type { Stay, StayInsuranceOption, StaySessionOption, StayTransportOption } from '@/types/stay';
 import { useCart } from '@/context/CartContext';
@@ -28,8 +13,7 @@ import { createCartItemFromStay } from '@/lib/cart/normalizeCartItem';
 import { FILTER_LABELS } from '@/lib/constants';
 import { getMockImageUrl, mockImages } from '@/lib/mockImages';
 import StayLocationMap from '@/components/sejours/StayLocationMap';
-import { FavoriteStayButton } from '@/components/sejours/FavoriteStayButton';
-import { buildStayH1Title, buildStayIntroText } from '@/lib/stay-seo';
+import { buildStayIntroText } from '@/lib/stay-seo';
 import { slugify } from '@/lib/utils';
 
 type TabId = 'sejour' | 'programme' | 'hebergement' | 'encadrement' | 'infos';
@@ -81,30 +65,28 @@ function getUniqueStrings(values: string[]) {
   return Array.from(new Set(values.filter(Boolean)));
 }
 
-function getCategoryIcon(category: Stay['categories'][number]) {
+function getCategoryPictoSrc(category: Stay['categories'][number]) {
   switch (category) {
     case 'mer':
-      return Waves;
+      return '/image/sejours/pictos_sejours/mer.png';
     case 'montagne':
-      return Mountain;
+      return '/image/sejours/pictos_sejours/montagnes.png';
     case 'campagne':
-      return Trees;
+      return '/image/sejours/pictos_sejours/campagne.png';
     case 'artistique':
-      return Palette;
+      return '/image/sejours/pictos_sejours/artistique.png';
     case 'equestre':
-      return Flag;
+      return '/image/sejours/pictos_sejours/equestre.png';
     case 'linguistique':
-      return Languages;
+      return '/image/sejours/pictos_sejours/linguistique.png';
     case 'scientifique':
-      return FlaskConical;
+      return '/image/sejours/pictos_sejours/scientifique.png';
     case 'sportif':
-      return Dumbbell;
+      return '/image/sejours/pictos_sejours/sport.png';
     case 'itinerant':
-      return Route;
+      return '/image/sejours/pictos_sejours/itinerant.png';
     case 'etranger':
-      return Globe2;
-    default:
-      return Palette;
+      return '/image/sejours/pictos_sejours/etranger.png';
   }
 }
 
@@ -179,6 +161,75 @@ function pickFirstEditorialText(values: unknown[]) {
     if (normalized) return normalized;
   }
   return '';
+}
+
+function splitEditorialParagraphs(value: string): string[] {
+  const normalized = normalizeEditorialText(value);
+  if (!normalized) return [];
+
+  const explicitParagraphs = normalized
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean);
+
+  const sourceParagraphs =
+    explicitParagraphs.length > 1
+      ? explicitParagraphs
+      : normalized
+          .split(/\n+/)
+          .map((paragraph) => paragraph.trim())
+          .filter(Boolean);
+
+  return sourceParagraphs.flatMap((paragraph) => {
+    if (paragraph.length <= 280) return [paragraph];
+
+    const sentences =
+      paragraph.match(/[^.!?]+[.!?]+|[^.!?]+$/g)?.map((sentence) => sentence.trim()).filter(Boolean) ?? [];
+
+    if (sentences.length <= 1) return [paragraph];
+
+    const chunks: string[] = [];
+    let current = '';
+
+    for (const sentence of sentences) {
+      const next = current ? `${current} ${sentence}` : sentence;
+      if (current && next.length > 280) {
+        chunks.push(current);
+        current = sentence;
+      } else {
+        current = next;
+      }
+    }
+
+    if (current) chunks.push(current);
+    return chunks;
+  });
+}
+
+function EditorialParagraphs({
+  text,
+  emptyText = 'Informations à venir.',
+  className = 'text-sm leading-relaxed text-slate-600'
+}: {
+  text: string;
+  emptyText?: string;
+  className?: string;
+}) {
+  const paragraphs = splitEditorialParagraphs(text);
+
+  if (paragraphs.length === 0) {
+    return <p className={className}>{emptyText}</p>;
+  }
+
+  return (
+    <div className="space-y-4">
+      {paragraphs.map((paragraph, index) => (
+        <p key={`${index}-${paragraph.slice(0, 24)}`} className={className}>
+          {paragraph}
+        </p>
+      ))}
+    </div>
+  );
 }
 
 function capitalizeFirstLetter(value: string) {
@@ -541,9 +592,7 @@ export function StayDetailView({ stay }: { stay: Stay }) {
   const documentsText = pickFirstEditorialText([rawDocumentsText]);
   const transportText = pickFirstEditorialText([stay.transportText, rawTransportText]);
   const programmeBlocks = useMemo(() => getProgrammeBlocks(programmeText), [programmeText]);
-  const firstCategory = stay.filters.categories[0];
-  const themeLabel = firstCategory ? formatLabel('categories', firstCategory) : stay.title;
-  const ThemeIcon = firstCategory ? getCategoryIcon(firstCategory) : Palette;
+  const categories = stay.filters.categories;
   const organizerHref = getOrganizerHref(stay);
   const seoInput = {
     title: stay.title,
@@ -558,8 +607,7 @@ export function StayDetailView({ stay }: { stay: Stay }) {
     categories: stay.categories,
     seo: stay.seo
   };
-  const h1Title = buildStayH1Title(seoInput);
-  const displayH1Title = capitalizeHeadingSegments(h1Title);
+  const displayH1Title = capitalizeHeadingSegments(stay.title);
   const introText = buildStayIntroText(seoInput);
   const seoPrimaryKeyword = stay.seo?.primaryKeyword?.trim();
   const seoInternalAnchors = useMemo(
@@ -567,6 +615,7 @@ export function StayDetailView({ stay }: { stay: Stay }) {
     [stay.seo?.internalLinkAnchorSuggestions]
   );
   const heroImageAlt = `Photo du séjour ${stay.title}${stay.location ? ` à ${stay.location}` : ''}`;
+  const locationLabel = stay.displayLocation || stay.location || stay.region || 'Lieu à préciser';
 
   return (
     <div className="min-h-screen bg-white">
@@ -615,48 +664,62 @@ export function StayDetailView({ stay }: { stay: Stay }) {
             {/* Meta line */}
             <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
               <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-slate-600">
-                <span className="flex items-center gap-1.5">
-                  <ThemeIcon className="h-4 w-4 text-accent-500" aria-hidden />
-                  {themeLabel}
+                {categories.length > 0 ? (
+                  <span className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                    {categories.map((category) => (
+                      <span key={category} className="flex items-center gap-2">
+                        <Image
+                          src={getCategoryPictoSrc(category)}
+                          alt=""
+                          width={18}
+                          height={18}
+                          className="h-[18px] w-[18px]"
+                        />
+                        <span>{formatLabel('categories', category)}</span>
+                      </span>
+                    ))}
+                  </span>
+                ) : null}
+
+                <span className="flex items-center gap-2">
+                  <Image
+                    src="/image/sejours/pictos_fichesejour/map-bleu.png"
+                    alt=""
+                    width={18}
+                    height={18}
+                    className="h-[18px] w-[18px]"
+                  />
+                  {locationLabel}
                 </span>
-                <span className="flex items-center gap-1.5">
-                  <MapPin className="h-4 w-4 text-accent-500" aria-hidden />
-                  {stay.location}
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <Users className="h-4 w-4 text-accent-500" aria-hidden />
+
+                <span className="flex items-center gap-2">
+                  <Image
+                    src="/image/sejours/pictos_age/age.png"
+                    alt=""
+                    width={18}
+                    height={18}
+                    className="h-[18px] w-[18px]"
+                  />
                   {stay.ageRange}
                 </span>
-                <span className="flex items-center gap-1.5">
-                  <Clock className="h-4 w-4 text-accent-500" aria-hidden />
+
+                <span className="flex items-center gap-2">
+                  <Image
+                    src="/image/sejours/pictos_duree/duree.png"
+                    alt=""
+                    width={18}
+                    height={18}
+                    className="h-[18px] w-[18px]"
+                  />
                   {stay.duration}
                 </span>
               </div>
-              <FavoriteStayButton stayId={stay.id} className="shrink-0" />
+              <FavoriteToggleButton stayId={stay.id} className="shrink-0" />
             </div>
 
-            <div className="mb-6">
-              <FavoriteToggleButton stayId={stay.id} showLabel />
+            <div className="mb-8 max-w-3xl">
+              <EditorialParagraphs text={introText} className="text-base leading-relaxed text-slate-600" />
             </div>
-
-            <p className="mb-8 max-w-3xl text-base leading-relaxed text-slate-600">{introText}</p>
-
-            {stay.filters.categories.length > 0 && (
-              <div className="mb-8 flex flex-wrap gap-3">
-                {stay.filters.categories.map((category) => {
-                  const Icon = getCategoryIcon(category);
-                  return (
-                    <span
-                      key={category}
-                      className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-medium text-slate-700"
-                    >
-                      <Icon className="h-4 w-4 text-accent-500" aria-hidden />
-                      {formatLabel('categories', category)}
-                    </span>
-                  );
-                })}
-              </div>
-            )}
 
             {/* Gallery */}
             <div className="mb-10 grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3">
@@ -705,17 +768,15 @@ export function StayDetailView({ stay }: { stay: Stay }) {
               {activeTab === 'sejour' && (
                 <section className="space-y-4">
                   <h2 className="font-display text-xl font-semibold text-slate-900">
-                    {seoPrimaryKeyword ? `Séjour: ${seoPrimaryKeyword}` : 'Séjour'}
+                    {seoPrimaryKeyword || 'Séjour'}
                   </h2>
-                  <p className="text-sm leading-relaxed text-slate-600 whitespace-pre-line">
-                    {sejourText || 'Informations à venir.'}
-                  </p>
+                  <EditorialParagraphs text={sejourText} />
                   {activitiesText && (
                     <div className="pt-2">
                       <h3 className="text-sm font-semibold text-slate-900">Activités</h3>
-                      <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-slate-600">
-                        {activitiesText}
-                      </p>
+                      <div className="mt-2">
+                        <EditorialParagraphs text={activitiesText} />
+                      </div>
                     </div>
                   )}
                   {stay.highlights.length > 0 && (
@@ -743,7 +804,7 @@ export function StayDetailView({ stay }: { stay: Stay }) {
                           {block.title && (
                             <h3 className="mb-1 font-semibold text-slate-800">{block.title}</h3>
                           )}
-                          <p className="whitespace-pre-line text-sm leading-relaxed">{block.text}</p>
+                          <EditorialParagraphs text={block.text} className="text-sm leading-relaxed text-slate-600" />
                         </div>
                       ))
                     ) : (
@@ -756,19 +817,19 @@ export function StayDetailView({ stay }: { stay: Stay }) {
               {activeTab === 'hebergement' && (
                 <section className="space-y-4">
                   <h2 className="font-display text-xl font-semibold text-slate-900">Hébergement</h2>
-                  <p className="text-sm leading-relaxed text-slate-600 whitespace-pre-line">
-                    {hebergementText || 'Informations à venir.'}
-                  </p>
+                  <EditorialParagraphs text={hebergementText} />
                 </section>
               )}
 
               {activeTab === 'encadrement' && (
                 <section className="space-y-4">
                   <h2 className="font-display text-xl font-semibold text-slate-900">Encadrement</h2>
-                  <p className="text-sm leading-relaxed text-slate-600 whitespace-pre-line">
-                    {encadrementText ||
-                      "L'équipe d'encadrement est composée de professionnels qualifiés et diplômés. Pour toute question, contactez l'organisateur du séjour."}
-                  </p>
+                  <EditorialParagraphs
+                    text={
+                      encadrementText ||
+                      "L'équipe d'encadrement est composée de professionnels qualifiés et diplômés. Pour toute question, contactez l'organisateur du séjour."
+                    }
+                  />
                 </section>
               )}
 
@@ -778,16 +839,16 @@ export function StayDetailView({ stay }: { stay: Stay }) {
                   <div className="space-y-4">
                     <div>
                       <h3 className="text-sm font-semibold text-slate-900">Documents obligatoires</h3>
-                      <p className="mt-2 text-sm leading-relaxed text-slate-600 whitespace-pre-line">
-                        {documentsText || 'Informations à venir.'}
-                      </p>
+                      <div className="mt-2">
+                        <EditorialParagraphs text={documentsText} />
+                      </div>
                     </div>
                     <div>
                       <h3 className="text-sm font-semibold text-slate-900">Transport</h3>
                       {transportText ? (
-                        <p className="mt-2 text-sm leading-relaxed text-slate-600 whitespace-pre-line">
-                          {transportText}
-                        </p>
+                        <div className="mt-2">
+                          <EditorialParagraphs text={transportText} />
+                        </div>
                       ) : (
                         <p className="mt-2 text-sm leading-relaxed text-slate-600">
                           Informations à venir.

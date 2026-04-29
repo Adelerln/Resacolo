@@ -5,26 +5,103 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { Home, Save, UserRound } from 'lucide-react';
 import {
-  DEFAULT_ACCOUNT_PREFERENCES,
   formatFrenchPhone,
-  readAccountPreferences,
-  saveAccountPreferences,
   type AccountInfo,
   type AccountPreferences,
   type ParentStatus
 } from '@/lib/account-preferences';
+import { fetchFamilyProfileSnapshot, patchFamilyProfilePreferences } from '@/lib/account-profile/client';
+import type { FamilyProfile } from '@/types/family-profile';
 
 function inputClass() {
   return 'mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm';
 }
 
+const EMPTY_FORM: AccountPreferences = {
+  userName: '',
+  userEmail: '',
+  userCity: '',
+  accountInfo: {
+    addressLine1: '',
+    addressLine2: '',
+    postalCode: '',
+    city: '',
+    parent1Name: '',
+    parent2Name: '',
+    parent1Phone: '',
+    parent2Phone: '',
+    parent1Email: '',
+    parent2Email: '',
+    parent1Status: 'mere',
+    parent2Status: 'pere',
+    parent1StatusOther: '',
+    parent2StatusOther: '',
+    parent2HasDifferentAddress: false,
+    parent2AddressLine1: '',
+    parent2AddressLine2: '',
+    parent2PostalCode: '',
+    parent2City: ''
+  }
+};
+
+function profileToForm(profile: FamilyProfile): AccountPreferences {
+  const parent1Name = [profile.billingFirstName, profile.billingLastName].filter(Boolean).join(' ').trim();
+  return {
+    userName: parent1Name,
+    userEmail: profile.email,
+    userCity: profile.city,
+    accountInfo: {
+      addressLine1: profile.addressLine1,
+      addressLine2: profile.addressLine2,
+      postalCode: profile.postalCode,
+      city: profile.city,
+      parent1Name,
+      parent2Name: profile.parent2Name,
+      parent1Phone: profile.phone,
+      parent2Phone: profile.parent2Phone,
+      parent1Email: profile.email,
+      parent2Email: profile.parent2Email,
+      parent1Status: 'mere',
+      parent2Status: profile.parent2Status as ParentStatus,
+      parent1StatusOther: '',
+      parent2StatusOther: profile.parent2StatusOther,
+      parent2HasDifferentAddress: profile.parent2HasDifferentAddress,
+      parent2AddressLine1: profile.parent2AddressLine1,
+      parent2AddressLine2: profile.parent2AddressLine2,
+      parent2PostalCode: profile.parent2PostalCode,
+      parent2City: profile.parent2City
+    }
+  };
+}
+
 export default function ContactPreferencesPage() {
   const router = useRouter();
-  const [form, setForm] = useState<AccountPreferences>(DEFAULT_ACCOUNT_PREFERENCES);
+  const [form, setForm] = useState<AccountPreferences>(EMPTY_FORM);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saved'>('idle');
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    setForm(readAccountPreferences());
+    let isActive = true;
+    setIsLoading(true);
+    setError(null);
+    fetchFamilyProfileSnapshot()
+      .then((snapshot) => {
+        if (!isActive) return;
+        setForm(profileToForm(snapshot.profile));
+      })
+      .catch((err) => {
+        if (!isActive) return;
+        setError(err instanceof Error ? err.message : 'Impossible de charger le profil.');
+      })
+      .finally(() => {
+        if (!isActive) return;
+        setIsLoading(false);
+      });
+
+    return () => {
+      isActive = false;
+    };
   }, []);
 
   function updateProfileField<K extends 'userName' | 'userEmail' | 'userCity'>(
@@ -73,11 +150,37 @@ export default function ContactPreferencesPage() {
     });
   }
 
-  function onSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    saveAccountPreferences(form);
-    setSaveStatus('saved');
-    router.push('/mon-compte');
+    setSaveStatus('idle');
+    setError(null);
+    try {
+      await patchFamilyProfilePreferences({
+        parent1Name: form.accountInfo.parent1Name,
+        parent1Email: form.accountInfo.parent1Email || form.userEmail,
+        parent1Phone: form.accountInfo.parent1Phone,
+        addressLine1: form.accountInfo.addressLine1,
+        addressLine2: form.accountInfo.addressLine2,
+        postalCode: form.accountInfo.postalCode,
+        city: form.accountInfo.city,
+        country: 'France',
+        parent2Name: form.accountInfo.parent2Name,
+        parent2Status: form.accountInfo.parent2Status,
+        parent2StatusOther: form.accountInfo.parent2StatusOther,
+        parent2Phone: form.accountInfo.parent2Phone,
+        parent2Email: form.accountInfo.parent2Email,
+        parent2HasDifferentAddress: form.accountInfo.parent2HasDifferentAddress,
+        parent2AddressLine1: form.accountInfo.parent2AddressLine1,
+        parent2AddressLine2: form.accountInfo.parent2AddressLine2,
+        parent2PostalCode: form.accountInfo.parent2PostalCode,
+        parent2City: form.accountInfo.parent2City
+      });
+      setSaveStatus('saved');
+      router.push('/mon-compte');
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Impossible de sauvegarder vos informations.');
+    }
   }
 
   return (
@@ -101,6 +204,16 @@ export default function ContactPreferencesPage() {
         </header>
 
         <form className="mt-8 space-y-6" onSubmit={onSubmit}>
+          {error ? (
+            <p className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+              {error}
+            </p>
+          ) : null}
+
+          {isLoading ? (
+            <p className="text-sm text-slate-600">Chargement du profil…</p>
+          ) : null}
+
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
             <h2 className="flex items-center gap-2 text-base font-semibold text-slate-900">
               <UserRound className="h-4 w-4" />

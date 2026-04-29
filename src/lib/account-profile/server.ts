@@ -378,6 +378,63 @@ export async function getFamilyProfileSnapshot(input: {
   return { profile, upcomingReservations };
 }
 
+export async function upsertFamilyProfileFromRegistration(input: {
+  userId: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  addressLine1: string;
+  addressLine2?: string;
+  postalCode: string;
+  city: string;
+  country?: string;
+  parent2Name?: string;
+  parent2Status?: FamilyProfile['parent2Status'];
+  parent2StatusOther?: string;
+  parent2Phone?: string;
+  parent2Email?: string;
+}) {
+  const existing =
+    (await getFamilyProfile(input.userId)) ??
+    createDefaultProfile({
+      userId: input.userId,
+      sessionName: `${input.firstName} ${input.lastName}`.trim(),
+      sessionEmail: input.email
+    });
+
+  const nextProfile: FamilyProfile = {
+    ...existing,
+    billingFirstName: normalizeText(input.firstName),
+    billingLastName: normalizeText(input.lastName),
+    email: normalizeText(input.email).toLowerCase(),
+    phone: normalizeText(input.phone),
+    addressLine1: normalizeText(input.addressLine1),
+    addressLine2: normalizeText(input.addressLine2),
+    postalCode: normalizeText(input.postalCode),
+    city: normalizeText(input.city),
+    country: normalizeText(input.country) || DEFAULT_COUNTRY,
+    hasSeparateBillingAddress: false,
+    billingAddressLine1: '',
+    billingAddressLine2: '',
+    billingPostalCode: '',
+    billingCity: '',
+    billingCountry: DEFAULT_COUNTRY,
+    parent2Name: normalizeText(input.parent2Name),
+    parent2Status: normalizeParentStatus(input.parent2Status),
+    parent2StatusOther: normalizeText(input.parent2StatusOther),
+    parent2Phone: normalizeText(input.parent2Phone),
+    parent2Email: normalizeText(input.parent2Email).toLowerCase(),
+    parent2HasDifferentAddress: false,
+    parent2AddressLine1: '',
+    parent2AddressLine2: '',
+    parent2PostalCode: '',
+    parent2City: ''
+  };
+
+  return upsertProfile(nextProfile);
+}
+
 export async function upsertFamilyProfileFromCheckout(input: {
   userId: string;
   contact: FamilyCheckoutSyncInput['contact'];
@@ -483,6 +540,74 @@ export async function patchFamilyProfileParent2(input: {
       input.patch.parent2City === undefined
         ? existing.parent2City
         : normalizeText(input.patch.parent2City)
+  };
+
+  if (!nextProfile.parent2HasDifferentAddress) {
+    nextProfile.parent2AddressLine1 = '';
+    nextProfile.parent2AddressLine2 = '';
+    nextProfile.parent2PostalCode = '';
+    nextProfile.parent2City = '';
+  }
+
+  return upsertProfile(nextProfile);
+}
+
+export async function patchFamilyProfilePreferences(input: {
+  userId: string;
+  patch: {
+    parent1Name: string;
+    parent1Email: string;
+    parent1Phone: string;
+    addressLine1: string;
+    addressLine2?: string;
+    postalCode: string;
+    city: string;
+    country?: string;
+    parent2Name?: string;
+    parent2Status?: FamilyProfile['parent2Status'];
+    parent2StatusOther?: string;
+    parent2Phone?: string;
+    parent2Email?: string;
+    parent2HasDifferentAddress?: boolean;
+    parent2AddressLine1?: string;
+    parent2AddressLine2?: string;
+    parent2PostalCode?: string;
+    parent2City?: string;
+  };
+  sessionName?: string | null;
+  sessionEmail?: string | null;
+}) {
+  const existing =
+    (await getFamilyProfile(input.userId)) ??
+    createDefaultProfile({
+      userId: input.userId,
+      sessionName: input.sessionName,
+      sessionEmail: input.sessionEmail
+    });
+
+  const parent1Split = splitName(input.patch.parent1Name);
+
+  const nextProfile: FamilyProfile = {
+    ...existing,
+    billingFirstName: normalizeText(parent1Split.firstName),
+    billingLastName: normalizeText(parent1Split.lastName),
+    email: normalizeText(input.patch.parent1Email).toLowerCase(),
+    phone: normalizeText(input.patch.parent1Phone),
+    addressLine1: normalizeText(input.patch.addressLine1),
+    addressLine2: normalizeText(input.patch.addressLine2),
+    postalCode: normalizeText(input.patch.postalCode),
+    city: normalizeText(input.patch.city),
+    country: normalizeText(input.patch.country) || DEFAULT_COUNTRY,
+    parent2Name: normalizeText(input.patch.parent2Name),
+    parent2Status: normalizeParentStatus(input.patch.parent2Status),
+    parent2StatusOther: normalizeText(input.patch.parent2StatusOther),
+    parent2Phone: normalizeText(input.patch.parent2Phone),
+    parent2Email: normalizeText(input.patch.parent2Email).toLowerCase(),
+    parent2HasDifferentAddress: Boolean(input.patch.parent2HasDifferentAddress),
+    parent2AddressLine1: normalizeText(input.patch.parent2AddressLine1),
+    parent2AddressLine2: normalizeText(input.patch.parent2AddressLine2),
+    parent2PostalCode: normalizeText(input.patch.parent2PostalCode),
+    parent2City: normalizeText(input.patch.parent2City)
   };
 
   if (!nextProfile.parent2HasDifferentAddress) {

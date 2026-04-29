@@ -394,10 +394,13 @@ function optionFromRecord(record: Record<string, unknown>): OptionRow {
 }
 
 function optionToRecord(row: OptionRow): Record<string, unknown> {
+  // Ne pas `.trim()` le libellé à chaque frappe, sinon les espaces intermédiaires disparaissent
+  // tant que l'utilisateur n'a pas commencé le mot suivant.
+  const labelTrimmed = row.label.trim();
   const priceTrim = row.price.trim().replace(',', '.');
   const priceNum = priceTrim === '' ? null : Number(priceTrim);
   return {
-    label: row.label.trim() || null,
+    label: labelTrimmed === '' ? null : row.label,
     price: priceNum !== null && Number.isFinite(priceNum) ? priceNum : null,
     currency: normalizeDraftCurrency(row.currency),
     description: null
@@ -442,12 +445,14 @@ function transportOptionFromRecord(record: Record<string, unknown>): TransportOp
 }
 
 function transportOptionToRecord(row: TransportOptionRow): Record<string, unknown> {
+  // Même contrainte ici : conserver les espaces saisis dans le libellé pendant l'édition.
+  const labelTrimmed = row.label.trim();
   const priceTrim = row.price.trim().replace(',', '.');
   const priceNum = priceTrim === '' ? null : Number(priceTrim);
   const amountCents =
     priceNum !== null && Number.isFinite(priceNum) ? Math.round(priceNum * 100) : null;
   return {
-    label: row.label.trim() || null,
+    label: labelTrimmed === '' ? null : row.label,
     price: priceNum !== null && Number.isFinite(priceNum) ? priceNum : null,
     amount_cents: amountCents,
     currency: normalizeDraftCurrency(row.currency),

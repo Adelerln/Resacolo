@@ -1,6 +1,5 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import PublishedStaySessionsStep from '@/components/organisme/PublishedStaySessionsStep';
 import StayDraftReviewForm from '@/components/organisme/StayDraftReviewForm';
 import { requireOrganizerPageAccess } from '@/lib/organizer-backoffice-access.server';
 import { mapPublishedStayToReviewPayload } from '@/lib/map-published-stay-to-review-payload';
@@ -144,7 +143,7 @@ export default async function OrganizerStayEditTunnelPage({ params: paramsPromis
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Modifier le séjour</h1>
           <p className="text-sm text-slate-600">
-            Tunnel d&apos;édition — mêmes étapes que la relecture d&apos;un brouillon.
+            Modifiez directement la fiche publiée. Les sessions se gèrent séparément pour éviter les doublons et préserver les réservations.
           </p>
         </div>
         <Link
@@ -174,15 +173,6 @@ export default async function OrganizerStayEditTunnelPage({ params: paramsPromis
                 accommodationType: linkedAccommodation.accommodation_type
               }
             : null
-        }
-        publishedSessionsStep={
-          <PublishedStaySessionsStep
-            stayId={stay.id}
-            organizerId={selectedOrganizerId}
-            returnTo="edit"
-            sessions={sessions}
-            reservedSessionCounts={reservedSessionCounts}
-          />
         }
       />
     </div>

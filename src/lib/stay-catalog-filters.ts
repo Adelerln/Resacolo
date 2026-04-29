@@ -31,6 +31,10 @@ export type StayCatalogFilterState = {
   ageBands: StayAgeBandValue[];
   destinations: string[];
   organizerIds: string[];
+  ageMin: number | null;
+  ageMax: number | null;
+  priceMin: number | null;
+  priceMax: number | null;
 };
 
 export const STAY_CATALOG_SORT_OPTIONS = [
@@ -83,7 +87,11 @@ export const EMPTY_STAY_CATALOG_FILTERS: StayCatalogFilterState = {
   categories: [],
   ageBands: [],
   destinations: [],
-  organizerIds: []
+  organizerIds: [],
+  ageMin: null,
+  ageMax: null,
+  priceMin: null,
+  priceMax: null
 };
 
 function cleanText(value: string | null | undefined) {
@@ -294,6 +302,16 @@ function buildStateKeyValues(values: string[]) {
   return [...values].sort(compareLabel).join('|');
 }
 
+function clampNumber(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function parseRangeNumber(raw: string | null): number | null {
+  if (!raw) return null;
+  const parsed = Number.parseFloat(raw.replace(',', '.'));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 export function normalizeCatalogText(value: string) {
   return normalizeSpaces(
     value
@@ -311,19 +329,25 @@ export function stayCatalogFilterStateKey(state: StayCatalogFilterState) {
     buildStateKeyValues(state.categories),
     buildStateKeyValues(state.ageBands),
     buildStateKeyValues(state.destinations),
-    buildStateKeyValues(state.organizerIds)
+    buildStateKeyValues(state.organizerIds),
+    `${state.ageMin ?? ''}-${state.ageMax ?? ''}`,
+    `${state.priceMin ?? ''}-${state.priceMax ?? ''}`
   ].join('::');
 }
 
 export function countActiveStayCatalogFilters(state: StayCatalogFilterState) {
   const hasQuery = normalizeCatalogText(state.q).length > 0 ? 1 : 0;
+  const hasAgeRange = state.ageMin != null || state.ageMax != null ? 1 : 0;
+  const hasPriceRange = state.priceMin != null || state.priceMax != null ? 1 : 0;
   return (
     hasQuery +
     state.seasonIds.length +
     state.categories.length +
     state.ageBands.length +
     state.destinations.length +
-    state.organizerIds.length
+    state.organizerIds.length +
+    hasAgeRange +
+    hasPriceRange
   );
 }
 
@@ -487,13 +511,22 @@ export function parseStayCatalogFiltersFromSearchParams(
     options.organizers
   );
 
+  const ageMinRaw = parseRangeNumber(searchParams.get('ageMin') ?? searchParams.get('age_min'));
+  const ageMaxRaw = parseRangeNumber(searchParams.get('ageMax') ?? searchParams.get('age_max'));
+  const priceMinRaw = parseRangeNumber(searchParams.get('priceMin') ?? searchParams.get('price_min'));
+  const priceMaxRaw = parseRangeNumber(searchParams.get('priceMax') ?? searchParams.get('price_max'));
+
   return {
     q,
     seasonIds: seasons,
     categories,
     ageBands,
     destinations,
-    organizerIds
+    organizerIds,
+    ageMin: ageMinRaw != null ? clampNumber(ageMinRaw, 0, 99) : null,
+    ageMax: ageMaxRaw != null ? clampNumber(ageMaxRaw, 0, 99) : null,
+    priceMin: priceMinRaw != null ? Math.max(0, priceMinRaw) : null,
+    priceMax: priceMaxRaw != null ? Math.max(0, priceMaxRaw) : null
   };
 }
 
@@ -507,6 +540,10 @@ export function serializeStayCatalogFiltersToSearchParams(state: StayCatalogFilt
   if (state.ageBands.length > 0) params.set('ages', uniq(state.ageBands).join(','));
   if (state.destinations.length > 0) params.set('destinations', uniq(state.destinations).join(','));
   if (state.organizerIds.length > 0) params.set('organizers', uniq(state.organizerIds).join(','));
+  if (state.ageMin != null) params.set('ageMin', String(state.ageMin));
+  if (state.ageMax != null) params.set('ageMax', String(state.ageMax));
+  if (state.priceMin != null) params.set('priceMin', String(state.priceMin));
+  if (state.priceMax != null) params.set('priceMax', String(state.priceMax));
 
   return params;
 }
@@ -602,6 +639,25 @@ export function applyStayCatalogFilters(stays: Stay[], state: StayCatalogFilterS
       if (!matchesAgeBand) {
         return false;
       }
+    }
+
+    if (state.ageMin != null || state.ageMax != null) {
+      const ageBounds = extractStayAgeBounds(stay);
+      if (!ageBounds) return false;
+      const range: AgeBounds = {
+        min: state.ageMin != null ? state.ageMin : 0,
+        max: state.ageMax != null ? state.ageMax : 99
+      };
+      if (!agesOverlap(ageBounds, range)) {
+        return false;
+      }
+    }
+
+    if (state.priceMin != null || state.priceMax != null) {
+      const price = stayPriceForSort(stay);
+      if (price == null) return false;
+      if (state.priceMin != null && price < state.priceMin) return false;
+      if (state.priceMax != null && price > state.priceMax) return false;
     }
 
     if (state.destinations.length > 0) {

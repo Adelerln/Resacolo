@@ -64,7 +64,10 @@ export async function requireAdminOrMnemos(options?: RequireOptions) {
 }
 
 export async function requireOrganizer(options?: RequireOptions) {
-  return requireRole('ORGANISATEUR', options);
+  return requireRole('ORGANISATEUR', {
+    ...options,
+    loginPath: options?.loginPath ?? '/login/organisateur'
+  });
 }
 
 export async function requirePartner(options?: RequireOptions) {

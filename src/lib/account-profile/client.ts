@@ -1,6 +1,7 @@
 import type {
   FamilyCheckoutSyncInput,
   FamilyParent2Patch,
+  ParentStatus,
   FamilyProfile,
   FamilyProfileSnapshot
 } from '@/types/family-profile';
@@ -70,6 +71,35 @@ export async function patchFamilyProfileParent2(input: FamilyParent2Patch) {
     body: JSON.stringify({
       source: 'mon-compte',
       parent2: input
+    })
+  });
+}
+
+export async function patchFamilyProfilePreferences(input: {
+  parent1Name: string;
+  parent1Email: string;
+  parent1Phone: string;
+  addressLine1: string;
+  addressLine2: string;
+  postalCode: string;
+  city: string;
+  country?: string;
+  parent2Name: string;
+  parent2Status: ParentStatus;
+  parent2StatusOther: string;
+  parent2Phone: string;
+  parent2Email: string;
+  parent2HasDifferentAddress: boolean;
+  parent2AddressLine1: string;
+  parent2AddressLine2: string;
+  parent2PostalCode: string;
+  parent2City: string;
+}) {
+  return fetchJson<{ profile: FamilyProfile }>('/api/account/profile', {
+    method: 'PATCH',
+    body: JSON.stringify({
+      source: 'preferences',
+      profile: input
     })
   });
 }

@@ -116,8 +116,8 @@ export const AccordionContent = React.forwardRef<HTMLDivElement, React.HTMLAttri
       <div
         ref={ref}
         className={cn(
-          'overflow-hidden text-sm text-slate-600 transition-all duration-200',
-          isOpen ? 'max-h-96 pb-4 opacity-100' : 'max-h-0 opacity-0',
+          'text-sm text-slate-600 transition-all duration-200',
+          isOpen ? 'max-h-96 overflow-visible pb-4 opacity-100' : 'max-h-0 overflow-hidden opacity-0',
           className
         )}
         {...props}

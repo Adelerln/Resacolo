@@ -32,6 +32,7 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
     pathname.startsWith('/partenaire');
   const disablePageTransition =
     pathname.startsWith('/login/familles') ||
+    pathname.startsWith('/login/organisateur') ||
     pathname.startsWith('/checkout') ||
     isMobileViewport;
   const hideFooterHelpAndLegal = pathname.startsWith('/contact');

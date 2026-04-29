@@ -59,9 +59,9 @@ function isOrganizerBackofficeRole(role: SessionPayload['role']) {
 
 function organizerLoginUrl(requestedOrganizerId?: string) {
   const base = '/organisme';
-  if (!requestedOrganizerId) return '/login?redirectTo=/organisme';
+  if (!requestedOrganizerId) return '/login/organisateur?redirectTo=/organisme';
   const redirectTo = `${base}?organizerId=${encodeURIComponent(requestedOrganizerId)}`;
-  return `/login?redirectTo=${encodeURIComponent(redirectTo)}`;
+  return `/login/organisateur?redirectTo=${encodeURIComponent(redirectTo)}`;
 }
 
 export async function requireOrganizerPageAccess(options?: {

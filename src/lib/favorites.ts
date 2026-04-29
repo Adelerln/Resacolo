@@ -1,33 +1,8 @@
 'use client';
 
-import { tryGetBrowserSupabaseClient } from '@/lib/supabase/browser';
-
-async function getFavoritesAuthHeaders() {
-  const supabase = tryGetBrowserSupabaseClient();
-  if (!supabase) return null;
-  const {
-    data: { session }
-  } = await supabase.auth.getSession();
-
-  if (!session?.access_token) return null;
-
-  return {
-    Authorization: `Bearer ${session.access_token}`,
-    'Content-Type': 'application/json'
-  };
-}
-
 export async function getFavorites() {
-  const headers = await getFavoritesAuthHeaders();
-  if (!headers) {
-    return { isAuthenticated: false, stayIds: [] as string[] };
-  }
-
   const response = await fetch('/api/favorites', {
     method: 'GET',
-    headers: {
-      Authorization: headers.Authorization
-    },
     cache: 'no-store'
   });
 
@@ -47,14 +22,9 @@ export async function getFavorites() {
 }
 
 export async function addFavorite(stayId: string) {
-  const headers = await getFavoritesAuthHeaders();
-  if (!headers) {
-    return { ok: false, isAuthenticated: false };
-  }
-
   const response = await fetch('/api/favorites', {
     method: 'POST',
-    headers,
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ stay_id: stayId })
   });
 
@@ -70,14 +40,9 @@ export async function addFavorite(stayId: string) {
 }
 
 export async function removeFavorite(stayId: string) {
-  const headers = await getFavoritesAuthHeaders();
-  if (!headers) {
-    return { ok: false, isAuthenticated: false };
-  }
-
   const response = await fetch('/api/favorites', {
     method: 'DELETE',
-    headers,
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ stay_id: stayId })
   });
 

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, ChevronRight, User, X } from 'lucide-react';
+import { User } from 'lucide-react';
 import { FavoriteToggleButton } from '@/components/favorites/FavoriteToggleButton';
 import type { Stay, StayInsuranceOption, StaySessionOption, StayTransportOption } from '@/types/stay';
 import { formatAccommodationType } from '@/lib/accommodation-types';
@@ -19,11 +19,57 @@ import { slugify } from '@/lib/utils';
 
 type TabId = 'sejour' | 'hebergement' | 'infos';
 
-type LightboxState = {
-  imageUrls: string[];
-  index: number;
-  title: string;
-};
+const STAY_IMAGE_DISPLAY_QUALITY = 92;
+const STAY_IMAGE_REQUEST_WIDTH = 2200;
+
+function getHighQualityImageUrl(imageUrl: string, targetWidth = STAY_IMAGE_REQUEST_WIDTH) {
+  const trimmed = imageUrl.trim();
+  if (!trimmed || trimmed.startsWith('/')) return trimmed;
+
+  try {
+    const url = new URL(trimmed);
+    const isUnsplash = url.hostname === 'images.unsplash.com';
+    const widthKeys = ['w', 'width'] as const;
+    const qualityKeys = ['q', 'quality'] as const;
+    let hasWidthParam = false;
+    let hasQualityParam = false;
+
+    for (const key of widthKeys) {
+      if (!url.searchParams.has(key)) continue;
+      hasWidthParam = true;
+      const currentWidth = Number(url.searchParams.get(key));
+      if (!Number.isFinite(currentWidth) || currentWidth < targetWidth) {
+        url.searchParams.set(key, String(targetWidth));
+      }
+    }
+
+    for (const key of qualityKeys) {
+      if (!url.searchParams.has(key)) continue;
+      hasQualityParam = true;
+      const currentQuality = Number(url.searchParams.get(key));
+      if (!Number.isFinite(currentQuality) || currentQuality < STAY_IMAGE_DISPLAY_QUALITY) {
+        url.searchParams.set(key, String(STAY_IMAGE_DISPLAY_QUALITY));
+      }
+    }
+
+    if (isUnsplash) {
+      if (!hasWidthParam) {
+        url.searchParams.set('w', String(targetWidth));
+      }
+      if (!hasQualityParam) {
+        url.searchParams.set('q', String(STAY_IMAGE_DISPLAY_QUALITY));
+      }
+      url.searchParams.set('auto', 'format');
+      if (!url.searchParams.has('fit')) {
+        url.searchParams.set('fit', 'max');
+      }
+    }
+
+    return url.toString();
+  } catch {
+    return trimmed;
+  }
+}
 
 function formatLabel(group: keyof typeof FILTER_LABELS, value: string) {
   return FILTER_LABELS[group][value as keyof (typeof FILTER_LABELS)[typeof group]] ?? value;
@@ -170,35 +216,32 @@ function getVideoEmbedConfig(url: string) {
 
 function ScrollablePhotoGallery({
   title,
-  imageUrls,
-  onImageClick
+  imageUrls
 }: {
   title: string;
   imageUrls: string[];
-  onImageClick: (index: number) => void;
 }) {
   if (imageUrls.length === 0) return null;
+  const displayImageUrls = imageUrls.map((src) => getHighQualityImageUrl(src));
 
   return (
     <div className="-mx-1 flex snap-x gap-4 overflow-x-auto px-1 pb-2">
-      {imageUrls.map((src, index) => (
-        <button
+      {displayImageUrls.map((src, index) => (
+        <div
           key={`${src}-${index}`}
-          type="button"
-          onClick={() => onImageClick(index)}
-          className="group relative block aspect-[4/3] w-[14rem] shrink-0 snap-start overflow-hidden rounded-[20px] bg-slate-100 shadow-[0_18px_40px_-28px_rgba(15,23,42,0.35)] cursor-pointer sm:w-[16rem] lg:w-[18rem]"
-          aria-label={`Voir la photo ${index + 1} en grand`}
+          className="group relative block aspect-[4/3] w-[11rem] shrink-0 snap-start overflow-hidden rounded-[20px] bg-slate-100 shadow-[0_18px_40px_-28px_rgba(15,23,42,0.35)] sm:w-[13rem] lg:w-[15rem]"
         >
           <Image
             src={src}
             alt={`${title} ${index + 1}`}
             fill
-            loading="eager"
+            loading={index === 0 ? 'eager' : 'lazy'}
             className="object-cover transition-transform duration-300 group-hover:scale-[1.02]"
-            sizes="(max-width: 640px) 18rem, (max-width: 1024px) 22rem, 24rem"
+            sizes="(max-width: 640px) 11rem, (max-width: 1024px) 13rem, 15rem"
+            quality={STAY_IMAGE_DISPLAY_QUALITY}
           />
           <div className="absolute inset-0 bg-gradient-to-t from-slate-950/22 via-transparent to-transparent" />
-        </button>
+        </div>
       ))}
     </div>
   );
@@ -360,9 +403,9 @@ function capitalizeHeadingSegments(value: string) {
 }
 
 const DEFAULT_GALLERY = [
-  getMockImageUrl(mockImages.sejours.gallery[0], 600, 80),
-  getMockImageUrl(mockImages.sejours.gallery[1], 600, 80),
-  getMockImageUrl(mockImages.sejours.gallery[2], 600, 80)
+  getMockImageUrl(mockImages.sejours.gallery[0], 1600, 90),
+  getMockImageUrl(mockImages.sejours.gallery[1], 1600, 90),
+  getMockImageUrl(mockImages.sejours.gallery[2], 1600, 90)
 ];
 const VISIT_TRACKING_DEDUP_MS = 60_000;
 
@@ -370,7 +413,6 @@ export function StayDetailView({ stay }: { stay: Stay }) {
   const router = useRouter();
   const { addItem } = useCart();
   const [activeTab, setActiveTab] = useState<TabId>('sejour');
-  const [lightboxState, setLightboxState] = useState<LightboxState | null>(null);
   const [selectedSessionId, setSelectedSessionId] = useState('');
   const [selectedTransportId, setSelectedTransportId] = useState('');
   const [selectedDepartureCity, setSelectedDepartureCity] = useState('');
@@ -668,7 +710,7 @@ export function StayDetailView({ stay }: { stay: Stay }) {
     const fromStay = (stay.galleryImages ?? []).filter((url) => typeof url === 'string' && url.trim().length > 0);
     const prioritized = stay.coverImage ? [stay.coverImage, ...fromStay] : fromStay;
     const unique = Array.from(new Set(prioritized));
-    if (unique.length >= 3) return unique.slice(0, 3);
+    if (unique.length >= 3) return unique;
     const fallback = DEFAULT_GALLERY.filter((url) => !unique.includes(url));
     return [...unique, ...fallback].slice(0, 3);
   }, [stay.coverImage, stay.galleryImages]);
@@ -770,75 +812,18 @@ export function StayDetailView({ stay }: { stay: Stay }) {
   const heroImageAlt = `Photo du séjour ${stay.title}${stay.location ? ` à ${stay.location}` : ''}`;
   const locationLabel = stay.displayLocation || stay.location || stay.region || 'Lieu à préciser';
 
-  useEffect(() => {
-    if (!lightboxState) return;
-
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        setLightboxState(null);
-        return;
-      }
-
-      if (lightboxState.imageUrls.length <= 1) return;
-
-      if (event.key === 'ArrowLeft') {
-        setLightboxState((current) => {
-          if (!current) return current;
-          return {
-            ...current,
-            index: current.index === 0 ? current.imageUrls.length - 1 : current.index - 1
-          };
-        });
-      }
-
-      if (event.key === 'ArrowRight') {
-        setLightboxState((current) => {
-          if (!current) return current;
-          return {
-            ...current,
-            index: current.index === current.imageUrls.length - 1 ? 0 : current.index + 1
-          };
-        });
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [lightboxState]);
-
-  function showPreviousLightboxImage() {
-    if (!lightboxState || lightboxState.imageUrls.length <= 1) return;
-    setLightboxState((current) => {
-      if (!current) return current;
-      return {
-        ...current,
-        index: current.index === 0 ? current.imageUrls.length - 1 : current.index - 1
-      };
-    });
-  }
-
-  function showNextLightboxImage() {
-    if (!lightboxState || lightboxState.imageUrls.length <= 1) return;
-    setLightboxState((current) => {
-      if (!current) return current;
-      return {
-        ...current,
-        index: current.index === current.imageUrls.length - 1 ? 0 : current.index + 1
-      };
-    });
-  }
-
   return (
     <div className="min-h-screen bg-white">
       {/* Banner */}
       <section className="relative h-[240px] w-full overflow-hidden sm:h-[300px] md:h-[360px]">
         <Image
-          src={stay.coverImage || galleryImages[0]}
+          src={getHighQualityImageUrl(stay.coverImage || galleryImages[0])}
           alt={heroImageAlt}
           fill
           className="object-cover"
           sizes="100vw"
           priority
+          quality={STAY_IMAGE_DISPLAY_QUALITY}
         />
         <div className="absolute inset-0 bg-slate-900/40" />
         <div className="absolute inset-0 flex items-center justify-center">
@@ -968,13 +953,6 @@ export function StayDetailView({ stay }: { stay: Stay }) {
                       <ScrollablePhotoGallery
                         title={stay.title}
                         imageUrls={galleryImages}
-                        onImageClick={(index) =>
-                          setLightboxState({
-                            imageUrls: galleryImages,
-                            index,
-                            title: stay.title
-                          })
-                        }
                       />
                     </div>
                   ) : null}
@@ -1149,13 +1127,6 @@ export function StayDetailView({ stay }: { stay: Stay }) {
                                 <ScrollablePhotoGallery
                                   title={accommodation.name}
                                   imageUrls={accommodation.imageUrls}
-                                  onImageClick={(index) =>
-                                    setLightboxState({
-                                      imageUrls: accommodation.imageUrls,
-                                      index,
-                                      title: accommodation.name
-                                    })
-                                  }
                                 />
                               </div>
                             ) : null}
@@ -1495,70 +1466,6 @@ export function StayDetailView({ stay }: { stay: Stay }) {
         </div>
       </div>
 
-      {lightboxState ? (
-        <div
-          className="fixed inset-0 z-[220] flex items-center justify-center bg-slate-950/92 p-4 sm:p-6"
-          onClick={() => setLightboxState(null)}
-        >
-          <button
-            type="button"
-            onClick={() => setLightboxState(null)}
-            className="absolute right-4 top-4 flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
-            aria-label="Fermer la galerie"
-          >
-            <X className="h-5 w-5" />
-          </button>
-
-          {lightboxState.imageUrls.length > 1 ? (
-            <>
-              <button
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  showPreviousLightboxImage();
-                }}
-                className="absolute left-4 top-1/2 flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
-                aria-label="Image précédente"
-              >
-                <ChevronLeft className="h-6 w-6" />
-              </button>
-              <button
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  showNextLightboxImage();
-                }}
-                className="absolute right-4 top-1/2 flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
-                aria-label="Image suivante"
-              >
-                <ChevronRight className="h-6 w-6" />
-              </button>
-            </>
-          ) : null}
-
-          <div
-            className="relative w-full max-w-6xl"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="relative aspect-[4/3] overflow-hidden rounded-[28px] bg-slate-900 sm:aspect-[16/10]">
-              <Image
-                src={lightboxState.imageUrls[lightboxState.index]}
-                alt={`Vue ${lightboxState.index + 1} de ${lightboxState.title}`}
-                fill
-                className="object-contain"
-                sizes="100vw"
-                priority
-              />
-            </div>
-            <div className="mt-4 flex items-center justify-between text-sm font-medium text-white/90">
-              <span>{lightboxState.title}</span>
-              <span>
-                {lightboxState.index + 1} / {lightboxState.imageUrls.length}
-              </span>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }

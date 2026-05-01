@@ -1,97 +1,12 @@
+import { redirect } from 'next/navigation';
 import { requireRole } from '@/lib/auth/require';
-import {
-  PASSWORD_POLICY_HTML_PATTERN,
-  PASSWORD_POLICY_MESSAGE,
-  PASSWORD_POLICY_MIN_LENGTH
-} from '@/lib/auth/password-policy';
-import { ORGANIZER_ACCESS_ROLE_VALUES } from '@/lib/organizer-access';
 
 type PageProps = {
   params: Promise<{ id: string }>;
-  searchParams?: Promise<{ error?: string }>;
 };
 
-export default async function AdminOrganizerMemberNewPage({ params: paramsPromise, searchParams }: PageProps) {
+export default async function AdminOrganizerMemberNewPage({ params: paramsPromise }: PageProps) {
   const params = await paramsPromise;
-  const resolvedSearchParams = searchParams ? await searchParams : undefined;
   await requireRole('ADMIN');
-
-  return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-slate-900">Ajouter un membre</h1>
-        <p className="text-sm text-slate-600">Créer ou lier un utilisateur à cet organisme.</p>
-      </div>
-
-      {resolvedSearchParams?.error && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {resolvedSearchParams.error}
-        </div>
-      )}
-
-      <form
-        action={`/api/admin/organizers/${params.id}/members`}
-        method="post"
-        className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6"
-      >
-        <div className="grid gap-4 md:grid-cols-2">
-          <label className="block text-sm font-medium text-slate-700">
-            Prénom
-            <input
-              name="first_name"
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-              required
-            />
-          </label>
-          <label className="block text-sm font-medium text-slate-700">
-            Nom
-            <input
-              name="last_name"
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-              required
-            />
-          </label>
-        </div>
-        <label className="block text-sm font-medium text-slate-700">
-          Email
-          <input
-            name="email"
-            type="email"
-            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-            required
-          />
-        </label>
-        <label className="block text-sm font-medium text-slate-700">
-          Mot de passe temporaire (si création)
-          <input
-            name="temp_password"
-            type="password"
-            minLength={PASSWORD_POLICY_MIN_LENGTH}
-            pattern={PASSWORD_POLICY_HTML_PATTERN}
-            title={PASSWORD_POLICY_MESSAGE}
-            autoComplete="new-password"
-            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-          />
-          <span className="mt-1 block text-xs font-normal text-slate-500">{PASSWORD_POLICY_MESSAGE}</span>
-        </label>
-        <label className="block text-sm font-medium text-slate-700">
-          Rôle
-          <select
-            name="role"
-            defaultValue="EDITOR"
-            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-          >
-            {ORGANIZER_ACCESS_ROLE_VALUES.map((value) => (
-              <option key={value} value={value}>
-                {value}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">
-          Ajouter
-        </button>
-      </form>
-    </div>
-  );
+  redirect(`/admin/organizers/${params.id}?openMemberModal=add`);
 }

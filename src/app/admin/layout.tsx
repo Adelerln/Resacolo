@@ -5,7 +5,6 @@ import { requireRole } from '@/lib/auth/require';
 
 const adminNavLinks = [
   { href: '/admin/sejours', label: 'Séjours' },
-  { href: '/admin/dashboard', label: 'Dashboard' },
   { href: '/admin/finances', label: 'Recettes' },
   { href: '/admin/reservations', label: 'Réservations' },
   { href: '/admin/utilisateurs', label: 'Utilisateurs' },
@@ -16,7 +15,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   await requireRole('ADMIN');
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-slate-50 lg:h-screen lg:overflow-hidden">
       <div className="border-b border-slate-200 bg-white px-4 py-3 lg:hidden">
         <div className="flex items-center justify-between gap-3">
           <Link
@@ -35,15 +34,15 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             <Link
               key={item.href}
               href={item.href}
-              className="inline-flex shrink-0 rounded-full border border-slate-200 px-3 py-1.5 transition hover:border-slate-300 hover:text-slate-900"
+              className="inline-flex shrink-0 rounded-full border border-slate-200 px-3 py-1.5 font-semibold transition hover:border-slate-300 hover:text-slate-900"
             >
               {item.label}
             </Link>
           ))}
         </nav>
       </div>
-      <div className="flex min-h-screen">
-        <aside className="hidden w-64 flex-col border-r border-slate-200 bg-white lg:flex">
+      <div className="flex min-h-screen lg:h-screen">
+        <aside className="hidden w-64 shrink-0 flex-col border-r border-slate-200 bg-white lg:flex lg:h-screen lg:overflow-y-auto">
           <div className="px-6 py-6">
             <div className="mb-3">
               <Link
@@ -66,7 +65,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
               <Link
                 key={item.href}
                 href={item.href}
-                className="mb-1 block rounded-lg px-3 py-2 transition hover:bg-slate-100"
+                className="mb-1 block rounded-lg px-3 py-2 font-semibold transition hover:bg-slate-100"
               >
                 {item.label}
               </Link>
@@ -89,7 +88,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             </div>
           </div>
         </aside>
-        <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-10">{children}</main>
+        <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:overflow-y-auto lg:px-8 lg:py-10">
+          {children}
+        </main>
       </div>
     </div>
   );

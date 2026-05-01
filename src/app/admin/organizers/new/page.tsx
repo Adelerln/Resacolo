@@ -14,8 +14,8 @@ export default async function AdminOrganizerNewPage({ searchParams }: PageProps)
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-slate-900">Créer un organisateur</h1>
-        <p className="text-sm text-slate-600">Créer un organisme et son compte principal.</p>
+        <h1 className="admin-page-title">Créer un organisateur</h1>
+        <p className="admin-page-subtitle mt-1">Créer un organisme et son compte principal.</p>
       </div>
 
       {resolvedSearchParams?.error && (
@@ -31,7 +31,7 @@ export default async function AdminOrganizerNewPage({ searchParams }: PageProps)
         className="space-y-6 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6"
       >
         <div className="space-y-4">
-          <h2 className="text-sm font-semibold text-slate-700">Organisme</h2>
+          <h2 className="admin-section-title text-base">Organisme</h2>
           <label className="block text-sm font-medium text-slate-700">
             Nom de l’organisateur
             <input
@@ -116,7 +116,7 @@ export default async function AdminOrganizerNewPage({ searchParams }: PageProps)
         </div>
 
         <div className="space-y-4">
-          <h2 className="text-sm font-semibold text-slate-700">Compte principal</h2>
+          <h2 className="admin-section-title text-base">Compte principal</h2>
           <div className="grid gap-4 md:grid-cols-2">
             <label className="block text-sm font-medium text-slate-700">
               Prénom

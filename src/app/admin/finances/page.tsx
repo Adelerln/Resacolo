@@ -46,8 +46,8 @@ export default async function AdminFinancesPage({ searchParams }: PageProps) {
     <div className="space-y-6">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Recettes ResaColo</h1>
-          <p className="text-sm text-slate-600">
+          <h1 className="admin-page-title">Recettes ResaColo</h1>
+          <p className="admin-page-subtitle mt-1">
             Frais constatés dans le journal : commissions au paiement des commandes, forfaits publication à la mise en
             ligne.
           </p>

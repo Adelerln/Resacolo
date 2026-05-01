@@ -19,12 +19,21 @@ export async function POST(
   const firstName = String(formData.get('first_name') ?? '').trim();
   const lastName = String(formData.get('last_name') ?? '').trim();
   const email = String(formData.get('email') ?? '').trim();
+  const redirectToRaw = String(formData.get('redirect_to') ?? '').trim();
+  const defaultRedirectTo = `/admin/organizers/${id}?openMemberModal=edit&memberId=${memberId}`;
+  const redirectTo = redirectToRaw.startsWith('/admin/organizers/') ? redirectToRaw : defaultRedirectTo;
+
+  const redirectUrl = (path: string, search: Record<string, string | null>) => {
+    const url = new URL(path, req.url);
+    for (const [key, value] of Object.entries(search)) {
+      if (value == null || value.length === 0) continue;
+      url.searchParams.set(key, value);
+    }
+    return NextResponse.redirect(url, 303);
+  };
 
   if (!isOrganizerAccessRole(role)) {
-    return NextResponse.redirect(
-      new URL(`/admin/organizers/${id}?error=${encodeURIComponent('Role invalide')}`, req.url),
-      303
-    );
+    return redirectUrl(redirectTo, { error: 'Role invalide', openMemberModal: 'edit', memberId });
   }
 
   const supabase = getServerSupabaseClient();
@@ -35,10 +44,7 @@ export async function POST(
     .maybeSingle();
 
   if (!previousMember) {
-    return NextResponse.redirect(
-      new URL(`/admin/organizers/${id}?error=${encodeURIComponent('Membre introuvable')}`, req.url),
-      303
-    );
+    return redirectUrl(redirectTo, { error: 'Membre introuvable', openMemberModal: 'edit', memberId });
   }
 
   const { data: previousUserData } = await supabase.auth.admin.getUserById(previousMember.user_id);
@@ -49,10 +55,11 @@ export async function POST(
     .eq('id', memberId);
 
   if (memberError) {
-    return NextResponse.redirect(
-      new URL(`/admin/organizers/${id}?error=${encodeURIComponent(memberError.message)}`, req.url),
-      303
-    );
+    return redirectUrl(redirectTo, {
+      error: memberError.message,
+      openMemberModal: 'edit',
+      memberId
+    });
   }
 
   if (email) {
@@ -66,10 +73,7 @@ export async function POST(
           last_name: previousMember.last_name
         })
         .eq('id', memberId);
-      return NextResponse.redirect(
-        new URL(`/admin/organizers/${id}?error=${encodeURIComponent(userError.message)}`, req.url),
-        303
-      );
+      return redirectUrl(redirectTo, { error: userError.message, openMemberModal: 'edit', memberId });
     }
   }
   try {
@@ -94,16 +98,15 @@ export async function POST(
         .updateUserById(previousMember.user_id, { email: previousEmail })
         .catch(() => undefined);
     }
-    return NextResponse.redirect(
-      new URL(
-        `/admin/organizers/${id}?error=${encodeURIComponent(
-          syncError instanceof Error ? syncError.message : 'Impossible de synchroniser les accès back-office'
-        )}`,
-        req.url
-      ),
-      303
-    );
+    return redirectUrl(redirectTo, {
+      error:
+        syncError instanceof Error
+          ? syncError.message
+          : 'Impossible de synchroniser les accès back-office',
+      openMemberModal: 'edit',
+      memberId
+    });
   }
 
-  return NextResponse.redirect(new URL(`/admin/organizers/${id}?success=1`, req.url), 303);
+  return redirectUrl(`/admin/organizers/${id}`, { success: 'member-updated' });
 }

@@ -8,7 +8,6 @@ import {
   Megaphone,
   TrendingUp
 } from 'lucide-react';
-import { ORGANIZER_ACCESS_LABELS } from '@/lib/organizer-access';
 import { requireOrganizerPageAccess } from '@/lib/organizer-backoffice-access.server';
 import { buildOrganizerDashboardModel } from '@/lib/organisme/dashboard-metrics';
 import { withOrganizerQuery } from '@/lib/organizers.server';
@@ -192,9 +191,6 @@ export default async function OrganizerDashboardPage({ searchParams }: PageProps
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <h1 className="text-2xl font-semibold text-slate-900">Dashboard</h1>
-            <p className="mt-1 text-sm text-slate-600">
-              Vue d&apos;ensemble de {organizerLabel}. Mode actuel : {ORGANIZER_ACCESS_LABELS[accessRole]}.
-            </p>
             <p className="mt-3 text-sm text-slate-700">
               {metrics.totalStays} séjours suivis, {metrics.totalReservations} réservations,{' '}
               {formatPercent(metrics.occupancyRate)} de remplissage global.

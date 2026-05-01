@@ -277,6 +277,7 @@ export default function StayDraftReviewForm({
   const [description, setDescription] = useState(initialPayload.description);
   const [programText, setProgramText] = useState(initialPayload.program_text);
   const [supervisionText, setSupervisionText] = useState(initialPayload.supervision_text);
+  const [requiredDocumentsText, setRequiredDocumentsText] = useState(initialPayload.required_documents_text);
   const [transportText, setTransportText] = useState(initialPayload.transport_text);
   const [transportMode, setTransportMode] = useState(initialPayload.transport_mode);
   const [partnerDiscountPercent, setPartnerDiscountPercent] = useState(() =>
@@ -811,7 +812,7 @@ export default function StayDraftReviewForm({
       region_text: regionText,
       description,
       activities_text: initialPayload.activities_text,
-      required_documents_text: initialPayload.required_documents_text,
+      required_documents_text: requiredDocumentsText,
       program_text: programText,
       supervision_text: supervisionText,
       transport_text: transportText,
@@ -1267,6 +1268,19 @@ export default function StayDraftReviewForm({
             className={draftReviewControlClass({
               required: false,
               filled: Boolean(supervisionText.trim())
+            })}
+          />
+        </label>
+
+        <label className="block text-sm font-medium text-slate-700">
+          Documents obligatoires
+          <textarea
+            value={requiredDocumentsText}
+            onChange={(event) => setRequiredDocumentsText(event.target.value)}
+            rows={5}
+            className={draftReviewControlClass({
+              required: false,
+              filled: Boolean(requiredDocumentsText.trim())
             })}
           />
         </label>

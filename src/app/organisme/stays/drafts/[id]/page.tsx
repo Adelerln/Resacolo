@@ -531,7 +531,7 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
     video_urls: normalizeImportedVideoUrlList(fallbackVideoUrls),
     partner_discount_percent: readPartnerDiscountPercentFromRaw(rawPayload),
     activities_text: '',
-    required_documents_text: ''
+    required_documents_text: normalizeString(draft.required_documents_text)
   };
   const backHref = withOrganizerQuery('/organisme/sejours', selectedOrganizerId);
 

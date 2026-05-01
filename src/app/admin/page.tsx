@@ -103,16 +103,13 @@ export default async function AdminHome() {
         <h2 className="admin-section-title">Points d&apos;attention</h2>
         <div className="mt-4 grid gap-3 md:grid-cols-2">
           <div className="rounded-xl border border-slate-100 p-4 text-sm text-slate-600">
-            {requestedOrders} réservation(s) au statut <span className="font-semibold">REQUESTED</span>.
+            {requestedOrders} réservation(s) en attente de traitement.
           </div>
           <div className="rounded-xl border border-slate-100 p-4 text-sm text-slate-600">
             {lowProfileOrganizers} organisme(s) avec une complétude profil inférieure à 70%.
           </div>
         </div>
       </section>
-      <p className="admin-page-subtitle">
-        Accès rapide aux séjours, réservations et utilisateurs.
-      </p>
     </div>
   );
 }

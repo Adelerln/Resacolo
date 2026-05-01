@@ -42,6 +42,12 @@ function boolOuiNon(value: boolean | null | undefined) {
   return value ? 'Oui' : 'Non';
 }
 
+function OuiNonColored({ value }: { value: boolean | null | undefined }) {
+  const label = boolOuiNon(value);
+  const toneClass = value ? 'text-emerald-600' : 'text-rose-600';
+  return <span className={`font-semibold ${toneClass}`}>{label}</span>;
+}
+
 function getSortValue(row: OrganizerOverviewRow, key: SortKey): string {
   switch (key) {
     case 'name':
@@ -156,8 +162,12 @@ export function AdminOrganizersTable({ rows }: { rows: OrganizerOverviewRow[] })
                 <tr key={row.id} className="border-t border-slate-100">
                   <td className="px-3 py-3 font-medium text-slate-900">{row.name}</td>
                   <td className="max-w-[10rem] truncate px-3 py-3 text-slate-600">{row.contact_email ?? '—'}</td>
-                  <td className="px-3 py-3 text-slate-600">{boolOuiNon(row.is_founding_member)}</td>
-                  <td className="px-3 py-3 text-slate-600">{boolOuiNon(row.is_resacolo_member)}</td>
+                  <td className="px-3 py-3 text-slate-600">
+                    <OuiNonColored value={row.is_founding_member} />
+                  </td>
+                  <td className="px-3 py-3 text-slate-600">
+                    <OuiNonColored value={row.is_resacolo_member} />
+                  </td>
                   <td className="px-3 py-3 text-slate-600 tabular-nums">
                     {num(row.profile_completeness_percent).toFixed(0)} %
                   </td>

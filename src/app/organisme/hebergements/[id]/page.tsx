@@ -11,7 +11,7 @@ import {
   validateAndParseAccommodationCenterCoordinates,
   validateAccommodationLocation
 } from '@/lib/accommodation-location';
-import { deleteAccommodationForOrganizer } from '@/lib/accommodations';
+import { deleteAccommodationForOrganizer, parseAccommodationMediaUrls, replaceAccommodationMedia } from '@/lib/accommodations';
 import { requireOrganizerPageAccess } from '@/lib/organizer-backoffice-access.server';
 import { withOrganizerQuery } from '@/lib/organizers.server';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
@@ -77,6 +77,11 @@ export default async function AccommodationDetailPage({ params: paramsPromise, s
     )
     .eq('id', params.id)
     .maybeSingle();
+  const { data: accommodationMedia } = await supabase
+    .from('accommodation_media')
+    .select('url,position')
+    .eq('accommodation_id', params.id)
+    .order('position', { ascending: true });
 
   if (!accommodation || accommodation.organizer_id !== selectedOrganizerId) {
     redirect(withOrganizerQuery('/organisme/hebergements', selectedOrganizerId));
@@ -91,7 +96,8 @@ export default async function AccommodationDetailPage({ params: paramsPromise, s
     location_country: currentAccommodationLocation.locationCountry,
     itinerant_zone: currentAccommodationLocation.itinerantZone,
     center_latitude: accommodation.center_latitude,
-    center_longitude: accommodation.center_longitude
+    center_longitude: accommodation.center_longitude,
+    media_urls: (accommodationMedia ?? []).map((item) => item.url)
   };
 
   const showImportRelectureBanner =
@@ -130,6 +136,7 @@ export default async function AccommodationDetailPage({ params: paramsPromise, s
         ? 'VALIDATED'
         : rowBeforeSave.status;
     const validatedByUserId = isUuid(session.userId) ? session.userId : null;
+    const mediaUrls = parseAccommodationMediaUrls(formData.get('media_urls'));
 
     if (!name || !accommodationType) {
       redirect(
@@ -195,10 +202,26 @@ export default async function AccommodationDetailPage({ params: paramsPromise, s
       );
     }
 
+    const mediaResult = await replaceAccommodationMedia({
+      accommodationId: params.id,
+      urls: mediaUrls
+    });
+
+    if (mediaResult.error) {
+      redirect(
+        withOrganizerQuery(
+          `/organisme/hebergements/${params.id}?error=${encodeURIComponent(mediaResult.error)}`,
+          selectedOrganizerId
+        )
+      );
+    }
+
     revalidatePath('/organisme/hebergements');
     revalidatePath('/organisme/sejours');
     revalidatePath('/organisme/stays');
     revalidatePath(`/organisme/hebergements/${params.id}`);
+    revalidatePath('/sejours');
+    revalidatePath('/sejours/[slug]', 'page');
     redirect(withOrganizerQuery(`/organisme/hebergements/${params.id}?saved=1`, selectedOrganizerId));
   }
 
@@ -221,6 +244,8 @@ export default async function AccommodationDetailPage({ params: paramsPromise, s
     revalidatePath('/organisme/hebergements');
     revalidatePath('/organisme/sejours');
     revalidatePath('/organisme/stays');
+    revalidatePath('/sejours');
+    revalidatePath('/sejours/[slug]', 'page');
     redirect(withOrganizerQuery('/organisme/hebergements?deleted=1', selectedOrganizerId));
   }
 
@@ -256,6 +281,8 @@ export default async function AccommodationDetailPage({ params: paramsPromise, s
     revalidatePath('/organisme/sejours');
     revalidatePath('/organisme/stays');
     revalidatePath(`/organisme/hebergements/${params.id}`);
+    revalidatePath('/sejours');
+    revalidatePath('/sejours/[slug]', 'page');
     redirect(
       withOrganizerQuery(
         `/organisme/hebergements/${params.id}?${

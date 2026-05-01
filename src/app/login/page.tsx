@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getCurrentUser } from '@/lib/auth/session';
+import { PasswordInput } from '@/components/auth/PasswordInput';
 
 type LoginMode = 'family' | 'pro';
 
@@ -8,6 +9,10 @@ function mapLoginErrorMessage(code: string | undefined) {
   switch (code) {
     case 'invalid-credentials':
       return 'Identifiants invalides.';
+    case 'wrong-login-space-family':
+      return 'Ce compte n’appartient pas à l’espace Famille. Sélectionnez l’espace Organisateur / Partenaire.';
+    case 'wrong-login-space-pro':
+      return 'Ce compte n’appartient pas à l’espace Organisateur / Partenaire. Sélectionnez l’espace Famille.';
     case 'invalid-input':
       return 'Formulaire invalide.';
     case 'supabase':
@@ -146,6 +151,7 @@ export default async function LoginPage({
         <form className="mt-6 space-y-4" action="/api/auth/login" method="post">
           <input type="hidden" name="redirectTo" value={safeRedirectTo} />
           <input type="hidden" name="loginPath" value="/login" />
+          <input type="hidden" name="loginMode" value={effectiveMode} />
           <label className="block text-sm font-medium text-slate-700">
             Email
             <input
@@ -157,11 +163,10 @@ export default async function LoginPage({
           </label>
           <label className="block text-sm font-medium text-slate-700">
             Mot de passe
-            <input
+            <PasswordInput
               name="password"
-              type="password"
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
               required
+              inputClassName="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 pr-11 text-sm"
             />
           </label>
           <label className="flex items-center gap-2 text-sm text-slate-700">

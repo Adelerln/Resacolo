@@ -4,6 +4,50 @@ type DeleteAccommodationResult = {
   error?: string;
 };
 
+const HTTP_URL_PATTERN = /^https?:\/\//i;
+
+export function parseAccommodationMediaUrls(value: FormDataEntryValue | null): string[] {
+  return String(value ?? '')
+    .split(/\r?\n/)
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0 && HTTP_URL_PATTERN.test(item))
+    .filter((item, index, array) => array.indexOf(item) === index);
+}
+
+export async function replaceAccommodationMedia(input: {
+  accommodationId: string;
+  urls: string[];
+}) {
+  const supabase = getServerSupabaseClient();
+
+  const { error: deleteError } = await supabase
+    .from('accommodation_media')
+    .delete()
+    .eq('accommodation_id', input.accommodationId);
+
+  if (deleteError) {
+    return { error: deleteError.message };
+  }
+
+  if (input.urls.length === 0) {
+    return {};
+  }
+
+  const { error: insertError } = await supabase.from('accommodation_media').insert(
+    input.urls.map((url, index) => ({
+      accommodation_id: input.accommodationId,
+      url,
+      position: index
+    }))
+  );
+
+  if (insertError) {
+    return { error: insertError.message };
+  }
+
+  return {};
+}
+
 export async function deleteAccommodationForOrganizer(input: {
   accommodationId: string;
   organizerId: string;

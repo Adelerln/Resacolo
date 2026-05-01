@@ -25,6 +25,7 @@ type AccommodationFormValues = {
   itinerant_zone?: string | null;
   center_latitude?: number | string | null;
   center_longitude?: number | string | null;
+  media_urls?: string[] | null;
 };
 
 type AccommodationFormFieldsProps = {
@@ -255,8 +256,18 @@ export default function AccommodationFormFields({
       <div className="rounded-xl border border-slate-100 p-4">
         <h3 className="text-sm font-semibold text-slate-900">Médias</h3>
         <p className="mt-2 text-sm text-slate-500">
-          Les photos seront rattachées à la fiche une fois l&apos;hébergement créé.
+          Renseigne une URL d&apos;image par ligne pour alimenter le carrousel public de l&apos;hébergement.
         </p>
+        <label className="mt-3 block text-sm font-medium text-slate-700">
+          URLs des photos
+          <textarea
+            name="media_urls"
+            rows={5}
+            defaultValue={(values.media_urls ?? []).join('\n')}
+            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+            placeholder={'https://...\nhttps://...'}
+          />
+        </label>
       </div>
 
       <div className="flex justify-end">

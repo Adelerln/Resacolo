@@ -4,9 +4,10 @@ import { useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { User } from 'lucide-react';
+import { ChevronLeft, ChevronRight, User, X } from 'lucide-react';
 import { FavoriteToggleButton } from '@/components/favorites/FavoriteToggleButton';
 import type { Stay, StayInsuranceOption, StaySessionOption, StayTransportOption } from '@/types/stay';
+import { formatAccommodationType } from '@/lib/accommodation-types';
 import { useCart } from '@/context/CartContext';
 import { formatSessionDateRangeFr } from '@/lib/cart/formatSessionRange';
 import { createCartItemFromStay } from '@/lib/cart/normalizeCartItem';
@@ -16,7 +17,7 @@ import StayLocationMap from '@/components/sejours/StayLocationMap';
 import { buildStayIntroText } from '@/lib/stay-seo';
 import { slugify } from '@/lib/utils';
 
-type TabId = 'sejour' | 'programme' | 'hebergement' | 'encadrement' | 'infos';
+type TabId = 'sejour' | 'hebergement' | 'encadrement' | 'infos';
 
 function formatLabel(group: keyof typeof FILTER_LABELS, value: string) {
   return FILTER_LABELS[group][value as keyof (typeof FILTER_LABELS)[typeof group]] ?? value;
@@ -93,6 +94,111 @@ function getCategoryPictoSrc(category: Stay['categories'][number]) {
 function getOrganizerHref(stay: Stay) {
   const organizerSlug = stay.organizer.slug?.trim() || slugify(stay.organizer.name);
   return organizerSlug ? `/organisateurs/${organizerSlug}` : '/organisateurs';
+}
+
+function getVideoEmbedConfig(url: string) {
+  const normalized = url.trim();
+  if (!normalized) return null;
+
+  if (/\.(mp4|webm|mov|m4v)(?:$|\?)/i.test(normalized)) {
+    return { type: 'native' as const, src: normalized };
+  }
+
+  const youtubeMatch =
+    normalized.match(/youtu\.be\/([A-Za-z0-9_-]{6,})/i) ??
+    normalized.match(/[?&]v=([A-Za-z0-9_-]{6,})/i) ??
+    normalized.match(/youtube\.com\/embed\/([A-Za-z0-9_-]{6,})/i);
+  if (youtubeMatch?.[1]) {
+    return {
+      type: 'iframe' as const,
+      src: `https://www.youtube.com/embed/${youtubeMatch[1]}`
+    };
+  }
+
+  const vimeoMatch =
+    normalized.match(/vimeo\.com\/(?:video\/)?(\d+)/i);
+  if (vimeoMatch?.[1]) {
+    return {
+      type: 'iframe' as const,
+      src: `https://player.vimeo.com/video/${vimeoMatch[1]}`
+    };
+  }
+
+  return { type: 'link' as const, src: normalized };
+}
+
+function AccommodationPhotoCarousel({
+  title,
+  imageUrls
+}: {
+  title: string;
+  imageUrls: string[];
+}) {
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const safeIndex = currentIndex >= imageUrls.length ? 0 : currentIndex;
+  const currentImage = imageUrls[safeIndex] ?? imageUrls[0];
+
+  if (imageUrls.length === 0) return null;
+
+  return (
+    <div className="space-y-3">
+      <div className="relative overflow-hidden rounded-[24px] bg-slate-100">
+        <div className="relative aspect-[4/3] w-full sm:aspect-[16/10]">
+          <Image
+            src={currentImage}
+            alt={title}
+            fill
+            className="object-cover"
+            sizes="(max-width: 1024px) 100vw, 760px"
+          />
+        </div>
+        {imageUrls.length > 1 ? (
+          <>
+            <button
+              type="button"
+              onClick={() => setCurrentIndex((value) => (value === 0 ? imageUrls.length - 1 : value - 1))}
+              className="absolute left-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/92 text-slate-800 shadow-md transition hover:bg-white"
+              aria-label="Photo d'hébergement précédente"
+            >
+              <ChevronLeft className="h-5 w-5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setCurrentIndex((value) => (value === imageUrls.length - 1 ? 0 : value + 1))}
+              className="absolute right-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/92 text-slate-800 shadow-md transition hover:bg-white"
+              aria-label="Photo d'hébergement suivante"
+            >
+              <ChevronRight className="h-5 w-5" />
+            </button>
+          </>
+        ) : null}
+      </div>
+
+      {imageUrls.length > 1 ? (
+        <div className="-mx-1 flex snap-x gap-3 overflow-x-auto px-1 pb-2">
+          {imageUrls.map((src, index) => (
+            <button
+              key={`${src}-${index}`}
+              type="button"
+              onClick={() => setCurrentIndex(index)}
+              className={`relative block h-20 w-28 shrink-0 snap-start overflow-hidden rounded-2xl border-2 transition sm:h-24 sm:w-32 ${
+                index === safeIndex ? 'border-brand-500' : 'border-transparent hover:border-slate-300'
+              }`}
+              aria-label={`Afficher la photo d'hébergement ${index + 1}`}
+            >
+              <Image
+                src={src}
+                alt={`${title} ${index + 1}`}
+                fill
+                className="object-cover"
+                sizes="128px"
+              />
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 // Build a simple programme from description (split by double newline or "Jour")
@@ -261,6 +367,7 @@ export function StayDetailView({ stay }: { stay: Stay }) {
   const router = useRouter();
   const { addItem } = useCart();
   const [activeTab, setActiveTab] = useState<TabId>('sejour');
+  const [lightboxImageIndex, setLightboxImageIndex] = useState<number | null>(null);
   const [selectedSessionId, setSelectedSessionId] = useState('');
   const [selectedTransportId, setSelectedTransportId] = useState('');
   const [selectedDepartureCity, setSelectedDepartureCity] = useState('');
@@ -592,7 +699,7 @@ export function StayDetailView({ stay }: { stay: Stay }) {
   const documentsText = pickFirstEditorialText([rawDocumentsText]);
   const transportText = pickFirstEditorialText([stay.transportText, rawTransportText]);
   const programmeBlocks = useMemo(() => getProgrammeBlocks(programmeText), [programmeText]);
-  const categories = stay.filters.categories;
+  const categories = stay.categories.length > 0 ? stay.categories : stay.filters.categories;
   const organizerHref = getOrganizerHref(stay);
   const seoInput = {
     title: stay.title,
@@ -616,6 +723,58 @@ export function StayDetailView({ stay }: { stay: Stay }) {
   );
   const heroImageAlt = `Photo du séjour ${stay.title}${stay.location ? ` à ${stay.location}` : ''}`;
   const locationLabel = stay.displayLocation || stay.location || stay.region || 'Lieu à préciser';
+
+  useEffect(() => {
+    if (lightboxImageIndex != null && lightboxImageIndex >= galleryImages.length) {
+      setLightboxImageIndex(0);
+    }
+  }, [galleryImages.length, lightboxImageIndex]);
+
+  useEffect(() => {
+    if (lightboxImageIndex == null) return;
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setLightboxImageIndex(null);
+        return;
+      }
+
+      if (galleryImages.length <= 1) return;
+
+      if (event.key === 'ArrowLeft') {
+        setLightboxImageIndex((current) => {
+          if (current == null) return current;
+          return current === 0 ? galleryImages.length - 1 : current - 1;
+        });
+      }
+
+      if (event.key === 'ArrowRight') {
+        setLightboxImageIndex((current) => {
+          if (current == null) return current;
+          return current === galleryImages.length - 1 ? 0 : current + 1;
+        });
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [galleryImages.length, lightboxImageIndex]);
+
+  function showPreviousLightboxImage() {
+    if (galleryImages.length <= 1) return;
+    setLightboxImageIndex((current) => {
+      if (current == null) return current;
+      return current === 0 ? galleryImages.length - 1 : current - 1;
+    });
+  }
+
+  function showNextLightboxImage() {
+    if (galleryImages.length <= 1) return;
+    setLightboxImageIndex((current) => {
+      if (current == null) return current;
+      return current === galleryImages.length - 1 ? 0 : current + 1;
+    });
+  }
 
   return (
     <div className="min-h-screen bg-white">
@@ -663,7 +822,7 @@ export function StayDetailView({ stay }: { stay: Stay }) {
           <article className="min-w-0">
             {/* Meta line */}
             <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
-              <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-slate-600">
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm font-semibold text-slate-700">
                 {categories.length > 0 ? (
                   <span className="flex flex-wrap items-center gap-x-4 gap-y-2">
                     {categories.map((category) => (
@@ -683,7 +842,7 @@ export function StayDetailView({ stay }: { stay: Stay }) {
 
                 <span className="flex items-center gap-2">
                   <Image
-                    src="/image/sejours/pictos_fichesejour/map-bleu.png"
+                    src="/image/sejours/pictos_fichesejour/map.png"
                     alt=""
                     width={18}
                     height={18}
@@ -714,7 +873,6 @@ export function StayDetailView({ stay }: { stay: Stay }) {
                   {stay.duration}
                 </span>
               </div>
-              <FavoriteToggleButton stayId={stay.id} className="shrink-0" />
             </div>
 
             <div className="mb-8 max-w-3xl">
@@ -722,27 +880,35 @@ export function StayDetailView({ stay }: { stay: Stay }) {
             </div>
 
             {/* Gallery */}
-            <div className="mb-10 grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3">
-              {galleryImages.slice(0, 3).map((src, i) => (
-                <div key={i} className="relative aspect-[4/3] overflow-hidden rounded-xl bg-slate-100">
-                  <Image
-                    src={src}
-                    alt={`Vue ${i + 1} du séjour ${stay.title}`}
-                    fill
-                    loading="eager"
-                    className="object-cover"
-                    sizes="(max-width: 768px) 33vw, 280px"
-                  />
-                </div>
-              ))}
-            </div>
+            <section className="mb-10">
+              <div className="-mx-1 flex snap-x gap-4 overflow-x-auto px-1 pb-2">
+                {galleryImages.map((src, index) => (
+                  <button
+                    key={`${src}-${index}`}
+                    type="button"
+                    onClick={() => setLightboxImageIndex(index)}
+                    className="group relative block aspect-[4/3] w-[14rem] shrink-0 snap-start overflow-hidden rounded-[20px] bg-slate-100 shadow-[0_18px_40px_-28px_rgba(15,23,42,0.35)] cursor-pointer sm:w-[16rem] lg:w-[18rem]"
+                    aria-label={`Voir la photo ${index + 1} en grand`}
+                  >
+                    <Image
+                      src={src}
+                      alt={`Vue ${index + 1} du séjour ${stay.title}`}
+                      fill
+                      loading="eager"
+                      className="object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+                      sizes="(max-width: 640px) 18rem, (max-width: 1024px) 22rem, 24rem"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950/22 via-transparent to-transparent" />
+                  </button>
+                ))}
+              </div>
+            </section>
 
             {/* Tabs */}
             <div className="mb-6 flex flex-wrap gap-2 border-b border-slate-200 pb-2">
               {(
                 [
                   { id: 'sejour' as TabId, label: 'Séjour' },
-                  { id: 'programme' as TabId, label: 'Programme' },
                   { id: 'hebergement' as TabId, label: 'Hébergement' },
                   { id: 'encadrement' as TabId, label: 'Encadrement' },
                   { id: 'infos' as TabId, label: 'Infos pratiques' }
@@ -752,7 +918,7 @@ export function StayDetailView({ stay }: { stay: Stay }) {
                   key={id}
                   type="button"
                   onClick={() => setActiveTab(id)}
-                  className={`rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors ${
+                  className={`rounded-lg px-4 py-2.5 text-base font-semibold transition-colors ${
                     activeTab === id
                       ? 'bg-brand-100 text-brand-700'
                       : 'bg-white text-slate-600 hover:bg-slate-50'
@@ -766,147 +932,262 @@ export function StayDetailView({ stay }: { stay: Stay }) {
             {/* Tab content */}
             <div className="prose prose-slate max-w-none">
               {activeTab === 'sejour' && (
-                <section className="space-y-4">
-                  <h2 className="font-display text-xl font-semibold text-slate-900">
+                <section className="space-y-6">
+                  <h2 className="font-display text-2xl font-semibold text-slate-900">
                     {seoPrimaryKeyword || 'Séjour'}
                   </h2>
-                  <EditorialParagraphs text={sejourText} />
+                  <EditorialParagraphs text={sejourText} className="text-base leading-relaxed text-slate-600" />
                   {activitiesText && (
                     <div className="pt-2">
-                      <h3 className="text-sm font-semibold text-slate-900">Activités</h3>
+                      <h3 className="text-lg font-semibold text-slate-900">Activités</h3>
                       <div className="mt-2">
-                        <EditorialParagraphs text={activitiesText} />
+                        <EditorialParagraphs text={activitiesText} className="text-base leading-relaxed text-slate-600" />
                       </div>
                     </div>
                   )}
                   {stay.highlights.length > 0 && (
                     <div className="pt-2">
-                      <h3 className="text-sm font-semibold text-slate-900">Points forts</h3>
-                      <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-600">
+                      <h3 className="text-lg font-semibold text-slate-900">Points forts</h3>
+                      <ul className="mt-2 list-disc space-y-1 pl-5 text-base text-slate-600">
                         {stay.highlights.map((item, i) => (
                           <li key={i}>{item}</li>
                         ))}
                       </ul>
                     </div>
                   )}
-                </section>
-              )}
-
-              {activeTab === 'programme' && (
-                <section className="space-y-6">
-                  <h2 className="font-display text-xl font-semibold text-slate-900">
-                    Programme
-                  </h2>
-                  <div className="space-y-4 text-slate-600">
-                    {programmeBlocks.length > 0 ? (
-                      programmeBlocks.map((block, i) => (
-                        <div key={i}>
-                          {block.title && (
-                            <h3 className="mb-1 font-semibold text-slate-800">{block.title}</h3>
-                          )}
-                          <EditorialParagraphs text={block.text} className="text-sm leading-relaxed text-slate-600" />
-                        </div>
-                      ))
-                    ) : (
-                      <p className="text-sm leading-relaxed">Informations à venir.</p>
-                    )}
+                  <div className="pt-2">
+                    <h3 className="font-display text-2xl font-semibold text-slate-900">Programme</h3>
+                    <div className="mt-2 space-y-4 text-slate-600">
+                      {programmeBlocks.length > 0 ? (
+                        programmeBlocks.map((block, i) => (
+                          <div key={i}>
+                            {block.title && (
+                              <h4 className="mb-1 text-lg font-semibold text-slate-800">{block.title}</h4>
+                            )}
+                            <EditorialParagraphs text={block.text} className="text-base leading-relaxed text-slate-600" />
+                          </div>
+                        ))
+                      ) : (
+                        <p className="text-base leading-relaxed">Informations à venir.</p>
+                      )}
+                    </div>
                   </div>
+                  {videoUrls.length > 0 ? (
+                    <div className="pt-2">
+                      <h3 className="text-lg font-semibold text-slate-900">Vidéos du séjour</h3>
+                      <div className="mt-3 grid gap-4">
+                        {videoUrls.map((url, index) => {
+                          const config = getVideoEmbedConfig(url);
+                          if (!config) return null;
+
+                          return (
+                            <div key={`${url}-${index}`} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                              {config.type === 'native' ? (
+                                <video
+                                  controls
+                                  preload="metadata"
+                                  className="aspect-video w-full bg-slate-950"
+                                  src={config.src}
+                                />
+                              ) : config.type === 'iframe' ? (
+                                <div className="relative aspect-video w-full">
+                                  <iframe
+                                    src={config.src}
+                                    title={`Vidéo ${index + 1} du séjour ${stay.title}`}
+                                    className="absolute inset-0 h-full w-full"
+                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                                    referrerPolicy="strict-origin-when-cross-origin"
+                                    allowFullScreen
+                                  />
+                                </div>
+                              ) : (
+                                <div className="p-4">
+                                  <a
+                                    href={config.src}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="text-base font-semibold text-sky-900 underline-offset-2 hover:underline"
+                                  >
+                                    Voir la vidéo {index + 1}
+                                  </a>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
                 </section>
               )}
 
               {activeTab === 'hebergement' && (
-                <section className="space-y-4">
-                  <h2 className="font-display text-xl font-semibold text-slate-900">Hébergement</h2>
-                  <EditorialParagraphs text={hebergementText} />
+                <section className="space-y-6">
+                  <h2 className="font-display text-2xl font-semibold text-slate-900">Hébergement</h2>
+                  {stay.accommodations?.length ? (
+                    <div className="space-y-6">
+                      {stay.accommodations.map((accommodation) => {
+                        const metaLine = [
+                          accommodation.accommodationType ? formatAccommodationType(accommodation.accommodationType) : '',
+                          accommodation.locationLabel ?? ''
+                        ]
+                          .filter(Boolean)
+                          .join(' · ');
+
+                        return (
+                          <article
+                            key={accommodation.id}
+                            className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6"
+                          >
+                            <div className="space-y-1">
+                              <h3 className="text-xl font-semibold text-slate-900">{accommodation.name}</h3>
+                              {metaLine ? <p className="text-sm font-medium text-slate-500">{metaLine}</p> : null}
+                            </div>
+
+                            {accommodation.imageUrls.length > 0 ? (
+                              <div className="mt-4">
+                                <AccommodationPhotoCarousel
+                                  title={accommodation.name}
+                                  imageUrls={accommodation.imageUrls}
+                                />
+                              </div>
+                            ) : null}
+
+                            <div className="mt-5 space-y-4">
+                              {accommodation.description ? (
+                                <div>
+                                  <h4 className="text-lg font-semibold text-slate-900">Description</h4>
+                                  <div className="mt-2">
+                                    <EditorialParagraphs
+                                      text={accommodation.description}
+                                      className="text-base leading-relaxed text-slate-600"
+                                    />
+                                  </div>
+                                </div>
+                              ) : null}
+
+                              {accommodation.bedInfo ? (
+                                <div>
+                                  <h4 className="text-lg font-semibold text-slate-900">Couchage</h4>
+                                  <div className="mt-2">
+                                    <EditorialParagraphs
+                                      text={accommodation.bedInfo}
+                                      className="text-base leading-relaxed text-slate-600"
+                                    />
+                                  </div>
+                                </div>
+                              ) : null}
+
+                              {accommodation.bathroomInfo ? (
+                                <div>
+                                  <h4 className="text-lg font-semibold text-slate-900">Sanitaires</h4>
+                                  <div className="mt-2">
+                                    <EditorialParagraphs
+                                      text={accommodation.bathroomInfo}
+                                      className="text-base leading-relaxed text-slate-600"
+                                    />
+                                  </div>
+                                </div>
+                              ) : null}
+
+                              {accommodation.cateringInfo ? (
+                                <div>
+                                  <h4 className="text-lg font-semibold text-slate-900">Restauration</h4>
+                                  <div className="mt-2">
+                                    <EditorialParagraphs
+                                      text={accommodation.cateringInfo}
+                                      className="text-base leading-relaxed text-slate-600"
+                                    />
+                                  </div>
+                                </div>
+                              ) : null}
+
+                              {accommodation.accessibilityInfo ? (
+                                <div>
+                                  <h4 className="text-lg font-semibold text-slate-900">Accessibilité</h4>
+                                  <div className="mt-2">
+                                    <EditorialParagraphs
+                                      text={accommodation.accessibilityInfo}
+                                      className="text-base leading-relaxed text-slate-600"
+                                    />
+                                  </div>
+                                </div>
+                              ) : null}
+                            </div>
+                          </article>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <EditorialParagraphs text={hebergementText} className="text-base leading-relaxed text-slate-600" />
+                  )}
                 </section>
               )}
 
               {activeTab === 'encadrement' && (
                 <section className="space-y-4">
-                  <h2 className="font-display text-xl font-semibold text-slate-900">Encadrement</h2>
+                  <h2 className="font-display text-2xl font-semibold text-slate-900">Encadrement</h2>
                   <EditorialParagraphs
                     text={
                       encadrementText ||
                       "L'équipe d'encadrement est composée de professionnels qualifiés et diplômés. Pour toute question, contactez l'organisateur du séjour."
                     }
+                    className="text-base leading-relaxed text-slate-600"
                   />
                 </section>
               )}
 
               {activeTab === 'infos' && (
                 <section className="space-y-6">
-                  <h2 className="font-display text-xl font-semibold text-slate-900">Infos pratiques</h2>
+                  <h2 className="font-display text-2xl font-semibold text-slate-900">Infos pratiques</h2>
                   <div className="space-y-4">
                     <div>
-                      <h3 className="text-sm font-semibold text-slate-900">Documents obligatoires</h3>
+                      <h3 className="text-lg font-semibold text-slate-900">Documents obligatoires</h3>
                       <div className="mt-2">
-                        <EditorialParagraphs text={documentsText} />
+                        <EditorialParagraphs text={documentsText} className="text-base leading-relaxed text-slate-600" />
                       </div>
                     </div>
                     <div>
-                      <h3 className="text-sm font-semibold text-slate-900">Transport</h3>
+                      <h3 className="text-lg font-semibold text-slate-900">Transport</h3>
                       {transportText ? (
                         <div className="mt-2">
-                          <EditorialParagraphs text={transportText} />
+                          <EditorialParagraphs text={transportText} className="text-base leading-relaxed text-slate-600" />
                         </div>
                       ) : (
-                        <p className="mt-2 text-sm leading-relaxed text-slate-600">
+                        <p className="mt-2 text-base leading-relaxed text-slate-600">
                           Informations à venir.
                         </p>
                       )}
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-semibold text-slate-900">Localisation du centre</h3>
+                      {!stay.centerLocations?.length && !stay.location ? (
+                        <p className="mt-2 text-base leading-relaxed text-slate-600">
+                          Aucune donnée de localisation disponible pour ce séjour.
+                        </p>
+                      ) : null}
+                      <div className="mt-4">
+                        <StayLocationMap
+                          location={stay.location}
+                          centerLocations={stay.centerLocations}
+                          className="h-[380px] overflow-hidden rounded-xl border border-slate-200"
+                        />
+                      </div>
                     </div>
                   </div>
                 </section>
               )}
             </div>
 
-            {videoUrls.length > 0 ? (
-              <section className="mt-12 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-                <h2 className="font-display text-lg font-semibold text-slate-900">Vidéo du séjour</h2>
-                <ul className="mt-3 space-y-2 text-sm text-slate-700">
-                  {videoUrls.map((url, index) => (
-                    <li key={`${url}-${index}`}>
-                      <a
-                        href={url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-brand-700 underline-offset-2 hover:underline"
-                      >
-                        Voir la vidéo {index + 1}
-                      </a>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            ) : null}
-
-            <section className="mt-10 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-              <h2 className="font-display text-lg font-semibold text-slate-900">Localisation du centre</h2>
-              <p className="mt-2 text-sm text-slate-600">
-                {stay.centerLocations?.length
-                  ? `Zones approximatives affichées sur ${stay.centerLocations.length > 1 ? 'les centres' : 'le centre'} du séjour.`
-                  : stay.location
-                    ? `Aucune coordonnée centre n’est disponible: affichage par ville (${stay.location}).`
-                    : 'Aucune donnée de localisation disponible pour ce séjour.'}
-              </p>
-              <div className="mt-4">
-                <StayLocationMap
-                  location={stay.location}
-                  centerLocations={stay.centerLocations}
-                  className="h-[380px] overflow-hidden rounded-xl border border-slate-200"
-                />
-              </div>
-            </section>
-
             {seoInternalAnchors.length > 0 ? (
-              <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-5">
+              <section className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-5 shadow-sm">
                 <h2 className="font-display text-lg font-semibold text-slate-900">Explorer par thème</h2>
-                <ul className="mt-3 space-y-2 text-sm text-slate-700">
+                <ul className="mt-4 flex flex-wrap gap-3 text-sm text-slate-900">
                   {seoInternalAnchors.map((anchor) => (
                     <li key={anchor}>
                       <Link
                         href={`/sejours?q=${encodeURIComponent(anchor)}`}
-                        className="hover:text-brand-700 hover:underline"
+                        className="inline-flex items-center rounded-full border border-sky-200 bg-white px-4 py-2 font-semibold text-sky-900 shadow-sm transition hover:border-sky-300 hover:bg-sky-50"
                       >
                         {capitalizeFirstLetter(anchor)}
                       </Link>
@@ -1115,6 +1396,13 @@ export function StayDetailView({ stay }: { stay: Stay }) {
                     {isCheckingAvailability ? 'Vérification...' : 'Réserver maintenant'}
                   </button>
                 )}
+                <FavoriteToggleButton
+                  stayId={stay.id}
+                  showLabel
+                  inactiveLabel="Ajouter aux favoris"
+                  activeLabel="Déjà en favori"
+                  className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl px-6 py-3 text-base"
+                />
               </form>
 
             </div>
@@ -1155,6 +1443,71 @@ export function StayDetailView({ stay }: { stay: Stay }) {
           </aside>
         </div>
       </div>
+
+      {lightboxImageIndex != null ? (
+        <div
+          className="fixed inset-0 z-[220] flex items-center justify-center bg-slate-950/92 p-4 sm:p-6"
+          onClick={() => setLightboxImageIndex(null)}
+        >
+          <button
+            type="button"
+            onClick={() => setLightboxImageIndex(null)}
+            className="absolute right-4 top-4 flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
+            aria-label="Fermer la galerie"
+          >
+            <X className="h-5 w-5" />
+          </button>
+
+          {galleryImages.length > 1 ? (
+            <>
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  showPreviousLightboxImage();
+                }}
+                className="absolute left-4 top-1/2 flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
+                aria-label="Image précédente"
+              >
+                <ChevronLeft className="h-6 w-6" />
+              </button>
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  showNextLightboxImage();
+                }}
+                className="absolute right-4 top-1/2 flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
+                aria-label="Image suivante"
+              >
+                <ChevronRight className="h-6 w-6" />
+              </button>
+            </>
+          ) : null}
+
+          <div
+            className="relative w-full max-w-6xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="relative aspect-[4/3] overflow-hidden rounded-[28px] bg-slate-900 sm:aspect-[16/10]">
+              <Image
+                src={galleryImages[lightboxImageIndex]}
+                alt={`Vue ${lightboxImageIndex + 1} du séjour ${stay.title}`}
+                fill
+                className="object-contain"
+                sizes="100vw"
+                priority
+              />
+            </div>
+            <div className="mt-4 flex items-center justify-between text-sm font-medium text-white/90">
+              <span>{stay.title}</span>
+              <span>
+                {lightboxImageIndex + 1} / {galleryImages.length}
+              </span>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

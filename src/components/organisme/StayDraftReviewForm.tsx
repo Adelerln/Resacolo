@@ -73,6 +73,7 @@ type StayDraftReviewFormProps = {
   /** Saisie manuelle : masque la carte Statut / validé en tête du tunnel. */
   hideTopStatusCard?: boolean;
   variant?: 'draft' | 'published';
+  publishedReviewEndpoint?: string;
   linkedAccommodation?: {
     id: string;
     name: string;
@@ -243,6 +244,7 @@ export default function StayDraftReviewForm({
   initialValidatedByUserId,
   hideTopStatusCard = false,
   variant = 'draft',
+  publishedReviewEndpoint,
   linkedAccommodation = null,
   publishedSessionsStep = null
 }: StayDraftReviewFormProps) {
@@ -259,6 +261,8 @@ export default function StayDraftReviewForm({
     () => DRAFT_REVIEW_STEPS.filter((step) => reviewSteps.includes(step.id)),
     [reviewSteps]
   );
+  const resolvedPublishedReviewEndpoint =
+    publishedReviewEndpoint ?? `/api/organizer/stays/${draftId}/review-bundle`;
   const [activeStep, setActiveStep] = useState<DraftReviewStepId>(() =>
     isPublishedVariant ? 'sejour' : linkedAccommodation ? 'sejour' : 'hebergement'
   );
@@ -859,7 +863,7 @@ export default function StayDraftReviewForm({
 
     try {
       const response = isPublishedVariant
-        ? await fetch(`/api/organizer/stays/${draftId}/review-bundle`, {
+        ? await fetch(resolvedPublishedReviewEndpoint, {
             method: 'PATCH',
             headers: {
               'content-type': 'application/json',

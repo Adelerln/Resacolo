@@ -40,7 +40,10 @@ export default async function AdminUsersPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold text-slate-900">Utilisateurs</h1>
+      <div>
+        <h1 className="admin-page-title">Utilisateurs</h1>
+        <p className="admin-page-subtitle mt-1">Gestion des accès membres organisateurs.</p>
+      </div>
 
       <AdminUsersTable members={members} />
     </div>

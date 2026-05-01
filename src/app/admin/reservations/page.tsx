@@ -23,7 +23,10 @@ export default async function AdminRequestsPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold text-slate-900">Toutes les réservations</h1>
+      <div>
+        <h1 className="admin-page-title">Toutes les réservations</h1>
+        <p className="admin-page-subtitle mt-1">Pilotage des demandes et de leurs statuts.</p>
+      </div>
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
         <div className="overflow-x-auto">
           <table className="min-w-[760px] w-full text-left text-sm">

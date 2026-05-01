@@ -2,8 +2,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { requireRole } from '@/lib/auth/require';
-import { ORGANIZER_ACCESS_ROLE_VALUES } from '@/lib/organizer-access';
-import { PASSWORD_POLICY_HTML_PATTERN, PASSWORD_POLICY_MESSAGE } from '@/lib/auth/password-policy';
+import { AdminOrganizerMembersSection } from '@/components/admin/AdminOrganizerMembersSection';
 import { extractOrganizerDurationMeta } from '@/lib/organizer-rich-text';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import type { Database } from '@/types/supabase';
@@ -20,7 +19,14 @@ type BillingRow = Database['public']['Tables']['organizer_billing_settings']['Ro
 
 type PageProps = {
   params: Promise<{ id: string }>;
-  searchParams?: Promise<{ error?: string; success?: string; billingSuccess?: string }>;
+  searchParams?: Promise<{
+    error?: string | string[];
+    success?: string | string[];
+    billingSuccess?: string | string[];
+    password_updated?: string | string[];
+    openMemberModal?: string | string[];
+    memberId?: string | string[];
+  }>;
 };
 
 function num(value: unknown): number {
@@ -33,6 +39,25 @@ function num(value: unknown): number {
 export default async function AdminOrganizerDetailPage({ params: paramsPromise, searchParams }: PageProps) {
   const params = await paramsPromise;
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const errorParam = Array.isArray(resolvedSearchParams?.error)
+    ? resolvedSearchParams?.error[0]
+    : resolvedSearchParams?.error;
+  const openMemberModalParam = Array.isArray(resolvedSearchParams?.openMemberModal)
+    ? resolvedSearchParams?.openMemberModal[0]
+    : resolvedSearchParams?.openMemberModal;
+  const selectedMemberIdParam = Array.isArray(resolvedSearchParams?.memberId)
+    ? resolvedSearchParams?.memberId[0]
+    : resolvedSearchParams?.memberId;
+  const successParam = Array.isArray(resolvedSearchParams?.success)
+    ? resolvedSearchParams?.success[0]
+    : resolvedSearchParams?.success;
+  const billingSuccessParam = Array.isArray(resolvedSearchParams?.billingSuccess)
+    ? resolvedSearchParams?.billingSuccess[0]
+    : resolvedSearchParams?.billingSuccess;
+  const passwordUpdatedParam = Array.isArray(resolvedSearchParams?.password_updated)
+    ? resolvedSearchParams?.password_updated[0]
+    : resolvedSearchParams?.password_updated;
+
   await requireRole('ADMIN');
   const supabase = getServerSupabaseClient();
 
@@ -109,29 +134,35 @@ export default async function AdminOrganizerDetailPage({ params: paramsPromise, 
           >
             ← Liste des organismes
           </Link>
-          <h1 className="mt-1 text-2xl font-semibold text-slate-900">{row.name}</h1>
-          <p className="text-sm text-slate-600">{row.contact_email ?? '—'}</p>
+          <h1 className="admin-page-title mt-1">{row.name}</h1>
+          <p className="admin-page-subtitle">{row.contact_email ?? '—'}</p>
         </div>
       </div>
 
-      {resolvedSearchParams?.error && (
+      {errorParam && (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {resolvedSearchParams.error}
+          {errorParam}
         </div>
       )}
-      {resolvedSearchParams?.success && (
+      {(successParam || passwordUpdatedParam === '1') && (
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-          Fiche organisme enregistrée.
+          {passwordUpdatedParam === '1'
+            ? 'Mot de passe mis à jour.'
+            : successParam === 'member-added'
+              ? 'Membre ajouté.'
+              : successParam === 'member-updated'
+                ? 'Membre mis à jour.'
+                : 'Fiche organisme enregistrée.'}
         </div>
       )}
-      {resolvedSearchParams?.billingSuccess && (
+      {billingSuccessParam && (
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
           Paramètres de facturation enregistrés.
         </div>
       )}
 
       <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
-        <h2 className="text-lg font-semibold text-slate-900">Indicateurs</h2>
+        <h2 className="admin-section-title">Indicateurs</h2>
         <dl className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div className="rounded-xl border border-slate-100 bg-slate-50/80 px-4 py-3">
             <dt className="text-xs font-medium uppercase text-slate-500">Complétude profil</dt>
@@ -167,8 +198,8 @@ export default async function AdminOrganizerDetailPage({ params: paramsPromise, 
         className="space-y-6 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-600 sm:p-6"
       >
         <div>
-          <h2 className="text-lg font-semibold text-slate-900">Informations générales</h2>
-          <p className="mt-1 text-xs text-slate-500">
+          <h2 className="admin-section-title">Informations générales</h2>
+          <p className="admin-page-subtitle mt-1 text-xs">
             Données visibles côté ResaColo ; le logo fichier reste dans le stockage si téléversé.
           </p>
         </div>
@@ -210,20 +241,7 @@ export default async function AdminOrganizerDetailPage({ params: paramsPromise, 
           />
         </label>
         <label className="block text-sm font-medium text-slate-700">
-          URL logo public (optionnel)
-          <input
-            name="logo_url"
-            type="url"
-            placeholder="https://…"
-            defaultValue={row.logo_url ?? ''}
-            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-          />
-          <span className="mt-1 block text-xs text-slate-500">
-            Si renseignée, cette URL est utilisée en priorité pour l’aperçu ci-dessous.
-          </span>
-        </label>
-        <label className="block text-sm font-medium text-slate-700">
-          Description (lecture seule)
+          Description
           <textarea
             name="description"
             rows={4}
@@ -231,13 +249,10 @@ export default async function AdminOrganizerDetailPage({ params: paramsPromise, 
             disabled
             className="mt-1 w-full cursor-not-allowed rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-slate-600"
           />
-          <span className="mt-1 block text-xs font-normal text-slate-500">
-            La description est éditable par l’organisateur (pas par l’ADMIN).
-          </span>
         </label>
 
         <div className="border-t border-slate-100 pt-6">
-          <h2 className="text-lg font-semibold text-slate-900">Statut organisme</h2>
+          <h2 className="admin-section-title">Statut organisme</h2>
           <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:gap-8">
             <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-700">
               <input
@@ -261,7 +276,7 @@ export default async function AdminOrganizerDetailPage({ params: paramsPromise, 
         </div>
 
         <div className="border-t border-slate-100 pt-6">
-          <h2 className="text-base font-semibold text-slate-900">Complément catalogue</h2>
+          <h2 className="admin-section-title text-base">Complément catalogue</h2>
           <div className="mt-4 grid gap-4 md:grid-cols-3">
             <label className="block text-sm font-medium text-slate-700">
               Année de création
@@ -401,7 +416,7 @@ export default async function AdminOrganizerDetailPage({ params: paramsPromise, 
         method="post"
         className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-600 sm:p-6"
       >
-        <h2 className="text-lg font-semibold text-slate-900">Paramètres de facturation (admin)</h2>
+        <h2 className="admin-section-title">Paramètres de facturation (admin)</h2>
         <p className="text-xs text-slate-500">
           Commission sur les ventes et forfait de publication par séjour, pilotés par ResaColo.
         </p>
@@ -458,120 +473,20 @@ export default async function AdminOrganizerDetailPage({ params: paramsPromise, 
         method="post"
       />
 
-      <div className="flex justify-start sm:justify-end">
-        <Link
-          href={`/admin/organizers/${organizerSlug}/members/new`}
-          className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700"
-        >
-          Ajouter un membre
-        </Link>
-      </div>
-
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-        <div className="overflow-x-auto">
-          <table className="min-w-[860px] w-full text-left text-sm">
-            <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-              <tr>
-                <th className="px-4 py-3">Email</th>
-                <th className="px-4 py-3">Prénom</th>
-                <th className="px-4 py-3">Nom</th>
-                <th className="px-4 py-3">Rôle</th>
-                <th className="px-4 py-3">Mot de passe</th>
-                <th className="px-4 py-3">Ajouté le</th>
-                <th className="px-4 py-3"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {(members ?? []).map((member) => (
-                <tr key={member.id} className="border-t border-slate-100">
-                  <td className="px-4 py-3 text-slate-600">
-                    <input
-                      form={`member-${member.id}`}
-                      name="email"
-                      defaultValue={member.email ?? ''}
-                      className="min-h-[42px] w-full min-w-[20rem] rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                    />
-                  </td>
-                  <td className="px-4 py-3 text-slate-600">
-                    <input
-                      form={`member-${member.id}`}
-                      name="first_name"
-                      defaultValue={member.first_name ?? ''}
-                      className="min-h-[42px] w-full min-w-[9rem] rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                    />
-                  </td>
-                  <td className="px-4 py-3 text-slate-600">
-                    <input
-                      form={`member-${member.id}`}
-                      name="last_name"
-                      defaultValue={member.last_name ?? ''}
-                      className="min-h-[42px] w-full min-w-[9rem] rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                    />
-                  </td>
-                  <td className="px-4 py-3 text-slate-600">
-                    <select
-                      form={`member-${member.id}`}
-                      name="role"
-                      defaultValue={member.role}
-                      className="min-h-[42px] rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                    >
-                      {ORGANIZER_ACCESS_ROLE_VALUES.map((value) => (
-                        <option key={value} value={value}>
-                          {value}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className="px-4 py-3 text-slate-600">
-                    <form
-                      action={`/api/admin/organizer-members/${member.id}/password`}
-                      method="post"
-                      className="flex min-w-[18rem] items-center gap-2"
-                    >
-                      <input type="hidden" name="redirect_to" value={`/admin/organizers/${organizerSlug}`} />
-                      <input
-                        name="password"
-                        type="password"
-                        required
-                        pattern={PASSWORD_POLICY_HTML_PATTERN}
-                        title={PASSWORD_POLICY_MESSAGE}
-                        placeholder="Nouveau mot de passe"
-                        className="min-h-[42px] w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                      />
-                      <button className="shrink-0 rounded bg-slate-900 px-2 py-1 text-xs font-semibold text-white">
-                        MAJ
-                      </button>
-                    </form>
-                  </td>
-                  <td className="px-4 py-3 text-slate-600">
-                    {new Date(member.created_at).toLocaleDateString('fr-FR')}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <form
-                      id={`member-${member.id}`}
-                      action={`/api/admin/organizers/${organizerSlug}/members/${member.id}`}
-                      method="post"
-                    >
-                      <input type="hidden" name="member_id" value={member.id} />
-                      <input type="hidden" name="user_id" value={member.user_id} />
-                      <button className="rounded bg-emerald-600 px-2 py-1 text-xs font-semibold text-white">
-                        OK
-                      </button>
-                    </form>
-                  </td>
-                </tr>
-              ))}
-              {(members ?? []).length === 0 && (
-                <tr>
-                  <td className="px-4 py-6 text-slate-500" colSpan={7}>
-                    Aucun membre.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <AdminOrganizerMembersSection
+        organizerSlug={organizerSlug}
+        members={members.map((member) => ({
+          id: member.id,
+          user_id: member.user_id,
+          created_at: member.created_at,
+          first_name: member.first_name,
+          last_name: member.last_name,
+          email: member.email,
+          role: member.role
+        }))}
+        initialMode={openMemberModalParam === 'add' || openMemberModalParam === 'edit' ? openMemberModalParam : null}
+        initialMemberId={selectedMemberIdParam ?? null}
+      />
     </div>
   );
 }

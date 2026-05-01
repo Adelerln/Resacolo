@@ -22,46 +22,47 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
   const firstName = String(formData.get('first_name') ?? '').trim();
   const lastName = String(formData.get('last_name') ?? '').trim();
   const role = String(formData.get('role') ?? 'EDITOR').trim();
+  const redirectToRaw = String(formData.get('redirect_to') ?? '').trim();
+  const redirectToBase = redirectToRaw.startsWith('/admin/organizers/')
+    ? redirectToRaw
+    : `/admin/organizers/${idOrSlug}?openMemberModal=add`;
+  const redirectUrl = (path: string, search: Record<string, string | null>) => {
+    const url = new URL(path, req.url);
+    for (const [key, value] of Object.entries(search)) {
+      if (value == null || value.length === 0) continue;
+      url.searchParams.set(key, value);
+    }
+    return NextResponse.redirect(url, 303);
+  };
 
   if (!email || !firstName || !lastName) {
-    return NextResponse.redirect(
-      new URL(
-        `/admin/organizers/${idOrSlug}/members/new?error=Tous%20les%20champs%20sont%20requis`,
-        req.url
-      ),
-      303
-    );
+    return redirectUrl(redirectToBase, {
+      openMemberModal: 'add',
+      error: 'Tous les champs sont requis'
+    });
   }
   if (!isOrganizerAccessRole(role)) {
-    return NextResponse.redirect(
-      new URL(
-        `/admin/organizers/${idOrSlug}/members/new?error=${encodeURIComponent('Role invalide')}`,
-        req.url
-      ),
-      303
-    );
+    return redirectUrl(redirectToBase, { openMemberModal: 'add', error: 'Role invalide' });
   }
 
   const supabase = getServerSupabaseClient();
   let { data: organizer } = await supabase
     .from('organizers')
-    .select('id')
+    .select('id,slug')
     .eq('slug', idOrSlug)
     .maybeSingle();
   if (!organizer) {
     const { data: byId } = await supabase
       .from('organizers')
-      .select('id')
+      .select('id,slug')
       .eq('id', idOrSlug)
       .maybeSingle();
     organizer = byId ?? null;
   }
   if (!organizer) {
-    return NextResponse.redirect(
-      new URL(`/admin/organizers/${idOrSlug}?error=Organisateur%20introuvable`, req.url),
-      303
-    );
+    return redirectUrl(`/admin/organizers/${idOrSlug}`, { error: 'Organisateur introuvable' });
   }
+  const organizerRedirectBase = `/admin/organizers/${organizer.slug ?? organizer.id}`;
   let userId: string | null = null;
   let createdSupabaseUserId: string | null = null;
   let createdPrismaUserId: string | null = null;
@@ -72,22 +73,16 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
     userId = existingUser.id;
   } else {
     if (!tempPassword) {
-      return NextResponse.redirect(
-        new URL(
-          `/admin/organizers/${idOrSlug}/members/new?error=Mot%20de%20passe%20temporaire%20requis`,
-          req.url
-        ),
-        303
-      );
+      return redirectUrl(organizerRedirectBase, {
+        openMemberModal: 'add',
+        error: 'Mot de passe temporaire requis'
+      });
     }
     if (!isPasswordPolicyValid(tempPassword)) {
-      return NextResponse.redirect(
-        new URL(
-          `/admin/organizers/${idOrSlug}/members/new?error=${encodeURIComponent(PASSWORD_POLICY_MESSAGE)}`,
-          req.url
-        ),
-        303
-      );
+      return redirectUrl(organizerRedirectBase, {
+        openMemberModal: 'add',
+        error: PASSWORD_POLICY_MESSAGE
+      });
     }
     const { data: userData, error: userError } = await supabase.auth.admin.createUser({
       email,
@@ -95,15 +90,10 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
       email_confirm: true
     });
     if (userError || !userData?.user) {
-      return NextResponse.redirect(
-        new URL(
-          `/admin/organizers/${idOrSlug}/members/new?error=${encodeURIComponent(
-            userError?.message ?? "Impossible de créer l'utilisateur"
-          )}`,
-          req.url
-        ),
-        303
-      );
+      return redirectUrl(organizerRedirectBase, {
+        openMemberModal: 'add',
+        error: userError?.message ?? "Impossible de créer l'utilisateur"
+      });
     }
     userId = userData.user.id;
     createdSupabaseUserId = userData.user.id;
@@ -122,30 +112,23 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
     if (createdSupabaseUserId) {
       await supabase.auth.admin.deleteUser(createdSupabaseUserId);
     }
-    return NextResponse.redirect(
-      new URL(
-        `/admin/organizers/${idOrSlug}/members/new?error=${encodeURIComponent(
-          prismaError instanceof Error ? prismaError.message : 'Impossible de synchroniser le compte applicatif'
-        )}`,
-        req.url
-      ),
-      303
-    );
+    return redirectUrl(organizerRedirectBase, {
+      openMemberModal: 'add',
+      error:
+        prismaError instanceof Error
+          ? prismaError.message
+          : 'Impossible de synchroniser le compte applicatif'
+    });
   }
   if (!userId) {
     if (createdSupabaseUserId) {
       await supabase.auth.admin.deleteUser(createdSupabaseUserId);
     }
     await removePrismaUserIfExists(createdPrismaUserId);
-    return NextResponse.redirect(
-      new URL(
-        `/admin/organizers/${idOrSlug}/members/new?error=${encodeURIComponent(
-          'Utilisateur introuvable après création.'
-        )}`,
-        req.url
-      ),
-      303
-    );
+    return redirectUrl(organizerRedirectBase, {
+      openMemberModal: 'add',
+      error: 'Utilisateur introuvable après création.'
+    });
   }
 
   const { error: memberError } = await supabase.from('organizer_members').insert({
@@ -161,15 +144,10 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
       await supabase.auth.admin.deleteUser(createdSupabaseUserId);
     }
     await removePrismaUserIfExists(createdPrismaUserId);
-    return NextResponse.redirect(
-      new URL(
-        `/admin/organizers/${idOrSlug}/members/new?error=${encodeURIComponent(
-          memberError.message ?? "Impossible d'ajouter le membre"
-        )}`,
-        req.url
-      ),
-      303
-    );
+    return redirectUrl(organizerRedirectBase, {
+      openMemberModal: 'add',
+      error: memberError.message ?? "Impossible d'ajouter le membre"
+    });
   }
   try {
     await syncBackofficeAccessFromOrganizerMember({
@@ -190,7 +168,7 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
     await removePrismaUserIfExists(createdPrismaUserId);
     return NextResponse.redirect(
       new URL(
-        `/admin/organizers/${idOrSlug}/members/new?error=${encodeURIComponent(
+        `${organizerRedirectBase}?openMemberModal=add&error=${encodeURIComponent(
           syncError instanceof Error ? syncError.message : 'Impossible de synchroniser les accès back-office'
         )}`,
         req.url
@@ -199,8 +177,5 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
     );
   }
 
-  return NextResponse.redirect(
-    new URL(`/admin/organizers/${idOrSlug}?success=1`, req.url),
-    303
-  );
+  return redirectUrl(organizerRedirectBase, { success: 'member-added' });
 }

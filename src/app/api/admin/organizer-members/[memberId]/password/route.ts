@@ -13,19 +13,21 @@ export async function POST(req: Request, context: { params: Promise<{ memberId: 
   const formData = await req.formData();
   const nextPassword = String(formData.get('password') ?? '').trim();
   const redirectTo = String(formData.get('redirect_to') ?? '/admin/utilisateurs').trim() || '/admin/utilisateurs';
+  const redirectUrl = (path: string, search: Record<string, string | null>) => {
+    const url = new URL(path, req.url);
+    for (const [key, value] of Object.entries(search)) {
+      if (value == null || value.length === 0) continue;
+      url.searchParams.set(key, value);
+    }
+    return NextResponse.redirect(url, 303);
+  };
 
   if (!nextPassword) {
-    return NextResponse.redirect(
-      new URL(`${redirectTo}?error=${encodeURIComponent('Mot de passe requis.')}`, req.url),
-      303
-    );
+    return redirectUrl(redirectTo, { error: 'Mot de passe requis.' });
   }
 
   if (!isPasswordPolicyValid(nextPassword)) {
-    return NextResponse.redirect(
-      new URL(`${redirectTo}?error=${encodeURIComponent(PASSWORD_POLICY_MESSAGE)}`, req.url),
-      303
-    );
+    return redirectUrl(redirectTo, { error: PASSWORD_POLICY_MESSAGE });
   }
 
   const supabase = getServerSupabaseClient();
@@ -36,20 +38,13 @@ export async function POST(req: Request, context: { params: Promise<{ memberId: 
     .maybeSingle();
 
   if (!member?.user_id) {
-    return NextResponse.redirect(
-      new URL(`${redirectTo}?error=${encodeURIComponent('Membre introuvable.')}`, req.url),
-      303
-    );
+    return redirectUrl(redirectTo, { error: 'Membre introuvable.' });
   }
 
   const { error } = await supabase.auth.admin.updateUserById(member.user_id, { password: nextPassword });
   if (error) {
-    return NextResponse.redirect(
-      new URL(`${redirectTo}?error=${encodeURIComponent(error.message)}`, req.url),
-      303
-    );
+    return redirectUrl(redirectTo, { error: error.message });
   }
 
-  return NextResponse.redirect(new URL(`${redirectTo}?password_updated=1`, req.url), 303);
+  return redirectUrl(redirectTo, { password_updated: '1' });
 }
-

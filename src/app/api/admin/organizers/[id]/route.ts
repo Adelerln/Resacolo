@@ -20,7 +20,8 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
   const name = String(formData.get('name') ?? '').trim();
   const contactEmail = String(formData.get('contact_email') ?? '').trim();
   const websiteUrl = String(formData.get('website_url') ?? '').trim();
-  const logoUrlField = String(formData.get('logo_url') ?? '').trim();
+  const hasLogoUrlField = formData.has('logo_url');
+  const logoUrlField = hasLogoUrlField ? String(formData.get('logo_url') ?? '').trim() : null;
   const isFoundingMember = formData.get('is_founding_member') === 'on';
   const isResacoloMember = formData.get('is_resacolo_member') === 'on';
   const heroIntroText = String(formData.get('hero_intro_text') ?? '').trim();
@@ -73,7 +74,7 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
       name,
       contact_email: contactEmail,
       website_url: websiteUrl || null,
-      logo_url: logoUrlField || null,
+      logo_url: hasLogoUrlField ? logoUrlField || null : undefined,
       is_founding_member: isFoundingMember,
       is_resacolo_member: isResacoloMember,
       hero_intro_text: heroIntroText || null,

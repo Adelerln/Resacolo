@@ -17,7 +17,13 @@ import StayLocationMap from '@/components/sejours/StayLocationMap';
 import { buildStayIntroText } from '@/lib/stay-seo';
 import { slugify } from '@/lib/utils';
 
-type TabId = 'sejour' | 'hebergement' | 'encadrement' | 'infos';
+type TabId = 'sejour' | 'hebergement' | 'infos';
+
+type LightboxState = {
+  imageUrls: string[];
+  index: number;
+  title: string;
+};
 
 function formatLabel(group: keyof typeof FILTER_LABELS, value: string) {
   return FILTER_LABELS[group][value as keyof (typeof FILTER_LABELS)[typeof group]] ?? value;
@@ -64,6 +70,41 @@ function formatInsuranceLabel(option: StayInsuranceOption) {
 
 function getUniqueStrings(values: string[]) {
   return Array.from(new Set(values.filter(Boolean)));
+}
+
+function formatFrenchList(values: string[]) {
+  if (values.length === 0) return '';
+  if (values.length === 1) return values[0];
+  if (values.length === 2) return `${values[0]} et ${values[1]}`;
+  return `${values.slice(0, -1).join(', ')} et ${values[values.length - 1]}`;
+}
+
+function isCenterTransportLabel(value: string | null | undefined) {
+  const normalized = String(value ?? '')
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+
+  if (!normalized) return false;
+  return (
+    normalized.includes('centre') ||
+    normalized.includes('sur place') ||
+    normalized.includes('rdv sur place') ||
+    normalized.includes('rendez vous sur place') ||
+    normalized.includes('sans transport') ||
+    normalized.includes('sans acheminement')
+  );
+}
+
+function sanitizeTransportDisplayText(value: string) {
+  if (!value) return '';
+  return value
+    .replace(/Le séjour propose un départ et un retour depuis plusieurs villes[^.]*\.\s*/i, '')
+    .replace(/Le séjour propose un départ depuis plusieurs villes[^.]*\.\s*/i, '')
+    .replace(/Les modalités de retour sont différenciées selon les villes proposées\.\s*/i, '')
+    .replace(/Il est aussi possible d'arriver directement sur le centre\.\s*/i, '')
+    .trim();
 }
 
 function getCategoryPictoSrc(category: Stay['categories'][number]) {
@@ -127,76 +168,38 @@ function getVideoEmbedConfig(url: string) {
   return { type: 'link' as const, src: normalized };
 }
 
-function AccommodationPhotoCarousel({
+function ScrollablePhotoGallery({
   title,
-  imageUrls
+  imageUrls,
+  onImageClick
 }: {
   title: string;
   imageUrls: string[];
+  onImageClick: (index: number) => void;
 }) {
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const safeIndex = currentIndex >= imageUrls.length ? 0 : currentIndex;
-  const currentImage = imageUrls[safeIndex] ?? imageUrls[0];
-
   if (imageUrls.length === 0) return null;
 
   return (
-    <div className="space-y-3">
-      <div className="relative overflow-hidden rounded-[24px] bg-slate-100">
-        <div className="relative aspect-[4/3] w-full sm:aspect-[16/10]">
+    <div className="-mx-1 flex snap-x gap-4 overflow-x-auto px-1 pb-2">
+      {imageUrls.map((src, index) => (
+        <button
+          key={`${src}-${index}`}
+          type="button"
+          onClick={() => onImageClick(index)}
+          className="group relative block aspect-[4/3] w-[14rem] shrink-0 snap-start overflow-hidden rounded-[20px] bg-slate-100 shadow-[0_18px_40px_-28px_rgba(15,23,42,0.35)] cursor-pointer sm:w-[16rem] lg:w-[18rem]"
+          aria-label={`Voir la photo ${index + 1} en grand`}
+        >
           <Image
-            src={currentImage}
-            alt={title}
+            src={src}
+            alt={`${title} ${index + 1}`}
             fill
-            className="object-cover"
-            sizes="(max-width: 1024px) 100vw, 760px"
+            loading="eager"
+            className="object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+            sizes="(max-width: 640px) 18rem, (max-width: 1024px) 22rem, 24rem"
           />
-        </div>
-        {imageUrls.length > 1 ? (
-          <>
-            <button
-              type="button"
-              onClick={() => setCurrentIndex((value) => (value === 0 ? imageUrls.length - 1 : value - 1))}
-              className="absolute left-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/92 text-slate-800 shadow-md transition hover:bg-white"
-              aria-label="Photo d'hébergement précédente"
-            >
-              <ChevronLeft className="h-5 w-5" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setCurrentIndex((value) => (value === imageUrls.length - 1 ? 0 : value + 1))}
-              className="absolute right-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/92 text-slate-800 shadow-md transition hover:bg-white"
-              aria-label="Photo d'hébergement suivante"
-            >
-              <ChevronRight className="h-5 w-5" />
-            </button>
-          </>
-        ) : null}
-      </div>
-
-      {imageUrls.length > 1 ? (
-        <div className="-mx-1 flex snap-x gap-3 overflow-x-auto px-1 pb-2">
-          {imageUrls.map((src, index) => (
-            <button
-              key={`${src}-${index}`}
-              type="button"
-              onClick={() => setCurrentIndex(index)}
-              className={`relative block h-20 w-28 shrink-0 snap-start overflow-hidden rounded-2xl border-2 transition sm:h-24 sm:w-32 ${
-                index === safeIndex ? 'border-brand-500' : 'border-transparent hover:border-slate-300'
-              }`}
-              aria-label={`Afficher la photo d'hébergement ${index + 1}`}
-            >
-              <Image
-                src={src}
-                alt={`${title} ${index + 1}`}
-                fill
-                className="object-cover"
-                sizes="128px"
-              />
-            </button>
-          ))}
-        </div>
-      ) : null}
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/22 via-transparent to-transparent" />
+        </button>
+      ))}
     </div>
   );
 }
@@ -367,7 +370,7 @@ export function StayDetailView({ stay }: { stay: Stay }) {
   const router = useRouter();
   const { addItem } = useCart();
   const [activeTab, setActiveTab] = useState<TabId>('sejour');
-  const [lightboxImageIndex, setLightboxImageIndex] = useState<number | null>(null);
+  const [lightboxState, setLightboxState] = useState<LightboxState | null>(null);
   const [selectedSessionId, setSelectedSessionId] = useState('');
   const [selectedTransportId, setSelectedTransportId] = useState('');
   const [selectedDepartureCity, setSelectedDepartureCity] = useState('');
@@ -698,8 +701,51 @@ export function StayDetailView({ stay }: { stay: Stay }) {
   const encadrementText = pickFirstEditorialText([rawEncadrementText]);
   const documentsText = pickFirstEditorialText([rawDocumentsText]);
   const transportText = pickFirstEditorialText([stay.transportText, rawTransportText]);
+  const cleanedTransportText = useMemo(() => sanitizeTransportDisplayText(transportText), [transportText]);
   const programmeBlocks = useMemo(() => getProgrammeBlocks(programmeText), [programmeText]);
   const categories = stay.categories.length > 0 ? stay.categories : stay.filters.categories;
+  const transportSummaryText = useMemo(() => {
+    if (transportMode === 'Sans transport') {
+      return '';
+    }
+
+    const allTransportOptions = availableSessions.flatMap((sessionItem) => sessionItem.transportOptions ?? []);
+    const cityLabels = Array.from(
+      new Set(
+        allTransportOptions
+          .flatMap((option) => [option.departureCity, option.returnCity])
+          .map((value) => value.trim())
+          .filter((value) => value && !isCenterTransportLabel(value))
+      )
+    );
+    const hasDirectCenterArrival = allTransportOptions.some(
+      (option) => isCenterTransportLabel(option.departureCity) || isCenterTransportLabel(option.returnCity)
+    );
+
+    const sentences: string[] = [];
+    if (cityLabels.length > 0) {
+      const cityList = formatFrenchList(cityLabels);
+      if (transportMode === 'Aller/Retour différencié') {
+        sentences.push(`Le séjour propose un départ et un retour depuis plusieurs villes, dont ${cityList}.`);
+      } else {
+        sentences.push(`Le séjour propose un départ depuis plusieurs villes, dont ${cityList}.`);
+      }
+    }
+
+    if (transportMode === 'Aller/Retour différencié') {
+      sentences.push('Le lieu de départ peut être différent du lieu de retour.');
+    }
+
+    if (hasDirectCenterArrival) {
+      sentences.push("Il est aussi possible d'arriver directement sur le centre.");
+    }
+
+    return sentences.join(' ');
+  }, [availableSessions, transportMode]);
+  const displayedTransportText = useMemo(
+    () => [transportSummaryText, cleanedTransportText].filter(Boolean).join('\n\n'),
+    [cleanedTransportText, transportSummaryText]
+  );
   const organizerHref = getOrganizerHref(stay);
   const seoInput = {
     title: stay.title,
@@ -725,54 +771,60 @@ export function StayDetailView({ stay }: { stay: Stay }) {
   const locationLabel = stay.displayLocation || stay.location || stay.region || 'Lieu à préciser';
 
   useEffect(() => {
-    if (lightboxImageIndex != null && lightboxImageIndex >= galleryImages.length) {
-      setLightboxImageIndex(0);
-    }
-  }, [galleryImages.length, lightboxImageIndex]);
-
-  useEffect(() => {
-    if (lightboxImageIndex == null) return;
+    if (!lightboxState) return;
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
-        setLightboxImageIndex(null);
+        setLightboxState(null);
         return;
       }
 
-      if (galleryImages.length <= 1) return;
+      if (lightboxState.imageUrls.length <= 1) return;
 
       if (event.key === 'ArrowLeft') {
-        setLightboxImageIndex((current) => {
-          if (current == null) return current;
-          return current === 0 ? galleryImages.length - 1 : current - 1;
+        setLightboxState((current) => {
+          if (!current) return current;
+          return {
+            ...current,
+            index: current.index === 0 ? current.imageUrls.length - 1 : current.index - 1
+          };
         });
       }
 
       if (event.key === 'ArrowRight') {
-        setLightboxImageIndex((current) => {
-          if (current == null) return current;
-          return current === galleryImages.length - 1 ? 0 : current + 1;
+        setLightboxState((current) => {
+          if (!current) return current;
+          return {
+            ...current,
+            index: current.index === current.imageUrls.length - 1 ? 0 : current.index + 1
+          };
         });
       }
     }
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [galleryImages.length, lightboxImageIndex]);
+  }, [lightboxState]);
 
   function showPreviousLightboxImage() {
-    if (galleryImages.length <= 1) return;
-    setLightboxImageIndex((current) => {
-      if (current == null) return current;
-      return current === 0 ? galleryImages.length - 1 : current - 1;
+    if (!lightboxState || lightboxState.imageUrls.length <= 1) return;
+    setLightboxState((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        index: current.index === 0 ? current.imageUrls.length - 1 : current.index - 1
+      };
     });
   }
 
   function showNextLightboxImage() {
-    if (galleryImages.length <= 1) return;
-    setLightboxImageIndex((current) => {
-      if (current == null) return current;
-      return current === galleryImages.length - 1 ? 0 : current + 1;
+    if (!lightboxState || lightboxState.imageUrls.length <= 1) return;
+    setLightboxState((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        index: current.index === current.imageUrls.length - 1 ? 0 : current.index + 1
+      };
     });
   }
 
@@ -879,38 +931,12 @@ export function StayDetailView({ stay }: { stay: Stay }) {
               <EditorialParagraphs text={introText} className="text-base leading-relaxed text-slate-600" />
             </div>
 
-            {/* Gallery */}
-            <section className="mb-10">
-              <div className="-mx-1 flex snap-x gap-4 overflow-x-auto px-1 pb-2">
-                {galleryImages.map((src, index) => (
-                  <button
-                    key={`${src}-${index}`}
-                    type="button"
-                    onClick={() => setLightboxImageIndex(index)}
-                    className="group relative block aspect-[4/3] w-[14rem] shrink-0 snap-start overflow-hidden rounded-[20px] bg-slate-100 shadow-[0_18px_40px_-28px_rgba(15,23,42,0.35)] cursor-pointer sm:w-[16rem] lg:w-[18rem]"
-                    aria-label={`Voir la photo ${index + 1} en grand`}
-                  >
-                    <Image
-                      src={src}
-                      alt={`Vue ${index + 1} du séjour ${stay.title}`}
-                      fill
-                      loading="eager"
-                      className="object-cover transition-transform duration-300 group-hover:scale-[1.02]"
-                      sizes="(max-width: 640px) 18rem, (max-width: 1024px) 22rem, 24rem"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950/22 via-transparent to-transparent" />
-                  </button>
-                ))}
-              </div>
-            </section>
-
             {/* Tabs */}
             <div className="mb-6 flex flex-wrap gap-2 border-b border-slate-200 pb-2">
               {(
                 [
                   { id: 'sejour' as TabId, label: 'Séjour' },
                   { id: 'hebergement' as TabId, label: 'Hébergement' },
-                  { id: 'encadrement' as TabId, label: 'Encadrement' },
                   { id: 'infos' as TabId, label: 'Infos pratiques' }
                 ] as const
               ).map(({ id, label }) => (
@@ -930,13 +956,28 @@ export function StayDetailView({ stay }: { stay: Stay }) {
             </div>
 
             {/* Tab content */}
-            <div className="prose prose-slate max-w-none">
+            <div className="prose prose-slate max-w-none [&_li]:[text-align:justify] [&_p]:[text-align:justify]">
               {activeTab === 'sejour' && (
                 <section className="space-y-6">
                   <h2 className="font-display text-2xl font-semibold text-slate-900">
                     {seoPrimaryKeyword || 'Séjour'}
                   </h2>
                   <EditorialParagraphs text={sejourText} className="text-base leading-relaxed text-slate-600" />
+                  {galleryImages.length > 0 ? (
+                    <div className="pt-2">
+                      <ScrollablePhotoGallery
+                        title={stay.title}
+                        imageUrls={galleryImages}
+                        onImageClick={(index) =>
+                          setLightboxState({
+                            imageUrls: galleryImages,
+                            index,
+                            title: stay.title
+                          })
+                        }
+                      />
+                    </div>
+                  ) : null}
                   {activitiesText && (
                     <div className="pt-2">
                       <h3 className="text-lg font-semibold text-slate-900">Activités</h3>
@@ -1035,23 +1076,11 @@ export function StayDetailView({ stay }: { stay: Stay }) {
                           .join(' · ');
 
                         return (
-                          <article
-                            key={accommodation.id}
-                            className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6"
-                          >
+                          <article key={accommodation.id} className="py-1">
                             <div className="space-y-1">
                               <h3 className="text-xl font-semibold text-slate-900">{accommodation.name}</h3>
                               {metaLine ? <p className="text-sm font-medium text-slate-500">{metaLine}</p> : null}
                             </div>
-
-                            {accommodation.imageUrls.length > 0 ? (
-                              <div className="mt-4">
-                                <AccommodationPhotoCarousel
-                                  title={accommodation.name}
-                                  imageUrls={accommodation.imageUrls}
-                                />
-                              </div>
-                            ) : null}
 
                             <div className="mt-5 space-y-4">
                               {accommodation.description ? (
@@ -1114,6 +1143,22 @@ export function StayDetailView({ stay }: { stay: Stay }) {
                                 </div>
                               ) : null}
                             </div>
+
+                            {accommodation.imageUrls.length > 0 ? (
+                              <div className="mt-5">
+                                <ScrollablePhotoGallery
+                                  title={accommodation.name}
+                                  imageUrls={accommodation.imageUrls}
+                                  onImageClick={(index) =>
+                                    setLightboxState({
+                                      imageUrls: accommodation.imageUrls,
+                                      index,
+                                      title: accommodation.name
+                                    })
+                                  }
+                                />
+                              </div>
+                            ) : null}
                           </article>
                         );
                       })}
@@ -1124,19 +1169,6 @@ export function StayDetailView({ stay }: { stay: Stay }) {
                 </section>
               )}
 
-              {activeTab === 'encadrement' && (
-                <section className="space-y-4">
-                  <h2 className="font-display text-2xl font-semibold text-slate-900">Encadrement</h2>
-                  <EditorialParagraphs
-                    text={
-                      encadrementText ||
-                      "L'équipe d'encadrement est composée de professionnels qualifiés et diplômés. Pour toute question, contactez l'organisateur du séjour."
-                    }
-                    className="text-base leading-relaxed text-slate-600"
-                  />
-                </section>
-              )}
-
               {activeTab === 'infos' && (
                 <section className="space-y-6">
                   <h2 className="font-display text-2xl font-semibold text-slate-900">Infos pratiques</h2>
@@ -1144,20 +1176,39 @@ export function StayDetailView({ stay }: { stay: Stay }) {
                     <div>
                       <h3 className="text-lg font-semibold text-slate-900">Documents obligatoires</h3>
                       <div className="mt-2">
-                        <EditorialParagraphs text={documentsText} className="text-base leading-relaxed text-slate-600" />
+                        <EditorialParagraphs
+                          text={documentsText}
+                          emptyText="Les documents obligatoires vous seront précisés après la réservation."
+                          className="text-base leading-relaxed text-slate-600"
+                        />
                       </div>
                     </div>
                     <div>
                       <h3 className="text-lg font-semibold text-slate-900">Transport</h3>
-                      {transportText ? (
+                      {displayedTransportText ? (
                         <div className="mt-2">
-                          <EditorialParagraphs text={transportText} className="text-base leading-relaxed text-slate-600" />
+                          <EditorialParagraphs
+                            text={displayedTransportText}
+                            className="text-base leading-relaxed text-slate-600"
+                          />
                         </div>
                       ) : (
                         <p className="mt-2 text-base leading-relaxed text-slate-600">
                           Informations à venir.
                         </p>
                       )}
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-semibold text-slate-900">Encadrement</h3>
+                      <div className="mt-2">
+                        <EditorialParagraphs
+                          text={
+                            encadrementText ||
+                            "L'équipe d'encadrement est composée de professionnels qualifiés et diplômés. Pour toute question, contactez l'organisateur du séjour."
+                          }
+                          className="text-base leading-relaxed text-slate-600"
+                        />
+                      </div>
                     </div>
                     <div>
                       <h3 className="text-lg font-semibold text-slate-900">Localisation du centre</h3>
@@ -1181,7 +1232,7 @@ export function StayDetailView({ stay }: { stay: Stay }) {
 
             {seoInternalAnchors.length > 0 ? (
               <section className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-5 shadow-sm">
-                <h2 className="font-display text-lg font-semibold text-slate-900">Explorer par thème</h2>
+                <h2 className="font-display text-lg font-semibold text-slate-900">Découvrir d&apos;autres séjours</h2>
                 <ul className="mt-4 flex flex-wrap gap-3 text-sm text-slate-900">
                   {seoInternalAnchors.map((anchor) => (
                     <li key={anchor}>
@@ -1444,21 +1495,21 @@ export function StayDetailView({ stay }: { stay: Stay }) {
         </div>
       </div>
 
-      {lightboxImageIndex != null ? (
+      {lightboxState ? (
         <div
           className="fixed inset-0 z-[220] flex items-center justify-center bg-slate-950/92 p-4 sm:p-6"
-          onClick={() => setLightboxImageIndex(null)}
+          onClick={() => setLightboxState(null)}
         >
           <button
             type="button"
-            onClick={() => setLightboxImageIndex(null)}
+            onClick={() => setLightboxState(null)}
             className="absolute right-4 top-4 flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
             aria-label="Fermer la galerie"
           >
             <X className="h-5 w-5" />
           </button>
 
-          {galleryImages.length > 1 ? (
+          {lightboxState.imageUrls.length > 1 ? (
             <>
               <button
                 type="button"
@@ -1491,8 +1542,8 @@ export function StayDetailView({ stay }: { stay: Stay }) {
           >
             <div className="relative aspect-[4/3] overflow-hidden rounded-[28px] bg-slate-900 sm:aspect-[16/10]">
               <Image
-                src={galleryImages[lightboxImageIndex]}
-                alt={`Vue ${lightboxImageIndex + 1} du séjour ${stay.title}`}
+                src={lightboxState.imageUrls[lightboxState.index]}
+                alt={`Vue ${lightboxState.index + 1} de ${lightboxState.title}`}
                 fill
                 className="object-contain"
                 sizes="100vw"
@@ -1500,9 +1551,9 @@ export function StayDetailView({ stay }: { stay: Stay }) {
               />
             </div>
             <div className="mt-4 flex items-center justify-between text-sm font-medium text-white/90">
-              <span>{stay.title}</span>
+              <span>{lightboxState.title}</span>
               <span>
-                {lightboxImageIndex + 1} / {galleryImages.length}
+                {lightboxState.index + 1} / {lightboxState.imageUrls.length}
               </span>
             </div>
           </div>

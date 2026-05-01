@@ -15,6 +15,8 @@ type FavoriteToggleButtonProps = {
   iconClassName?: string;
   showLabel?: boolean;
   variant?: 'default' | 'overlay';
+  inactiveLabel?: string;
+  activeLabel?: string;
 };
 
 const FAVORITE_ICON_SRC = '/image/header/pictos_header/icon-favoris.png';
@@ -24,7 +26,9 @@ export function FavoriteToggleButton({
   className,
   iconClassName,
   showLabel = false,
-  variant = 'default'
+  variant = 'default',
+  inactiveLabel = 'Ajouter aux favoris',
+  activeLabel = 'Retirer des favoris'
 }: FavoriteToggleButtonProps) {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [isTransitionPending, startTransition] = useTransition();
@@ -97,7 +101,7 @@ export function FavoriteToggleButton({
             )}
           />
         )}
-        {showLabel ? <span>{favorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}</span> : null}
+        {showLabel ? <span>{favorite ? activeLabel : inactiveLabel}</span> : null}
       </button>
 
       {showAuthModal && typeof document !== 'undefined'

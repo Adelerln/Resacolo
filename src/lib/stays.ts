@@ -10,6 +10,7 @@ import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { slugify } from '@/lib/utils';
 import type {
   Stay,
+  StayAccommodation,
   StayCenterLocation,
   StayDuration,
   StaySearchParams,
@@ -67,6 +68,10 @@ type AccommodationRow = Pick<
 type StayAccommodationRow = Pick<
   Database['public']['Tables']['stay_accommodations']['Row'],
   'stay_id' | 'accommodation_id'
+>;
+type AccommodationMediaRow = Pick<
+  Database['public']['Tables']['accommodation_media']['Row'],
+  'accommodation_id' | 'url' | 'position'
 >;
 type StayWithoutCanonical = Omit<Stay, 'canonicalSlug' | 'legacySlugs'>;
 type StaySlugResolution = {
@@ -598,6 +603,15 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
       : Promise.resolve({ data: [] as TransportOptionRow[] | null })
   ]);
 
+  const accommodationIds = Array.from(new Set((stayAccommodationRows ?? []).map((item) => item.accommodation_id)));
+  const { data: accommodationMediaRaw } = accommodationIds.length
+    ? await supabase
+        .from('accommodation_media')
+        .select('accommodation_id,url,position')
+        .in('accommodation_id', accommodationIds)
+        .order('position', { ascending: true })
+    : { data: [] as AccommodationMediaRow[] | null };
+
   const organizersById = new Map((organizersRaw ?? []).map((organizer) => [organizer.id, organizer]));
   const seasonsById = new Map((seasonsRaw ?? []).map((season) => [season.id, season]));
   const mediaByStayId = new Map<string, Array<StayMediaRow & { stay_id: string }>>();
@@ -607,6 +621,7 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
   const insuranceOptionsByStayId = new Map<string, InsuranceOptionRow[]>();
   const transportOptionsByStayId = new Map<string, StayTransportOption[]>();
   const accommodationsById = new Map((accommodationsRaw ?? []).map((accommodation) => [accommodation.id, accommodation]));
+  const accommodationMediaByAccommodationId = new Map<string, AccommodationMediaRow[]>();
 
   for (const item of mediaRaw ?? []) {
     const group = mediaByStayId.get(item.stay_id) ?? [];
@@ -650,6 +665,12 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
     const group = accommodationIdsByStayId.get(item.stay_id) ?? [];
     group.push(item.accommodation_id);
     accommodationIdsByStayId.set(item.stay_id, group);
+  }
+
+  for (const item of accommodationMediaRaw ?? []) {
+    const group = accommodationMediaByAccommodationId.get(item.accommodation_id) ?? [];
+    group.push(item);
+    accommodationMediaByAccommodationId.set(item.accommodation_id, group);
   }
 
   const logoUrlByOrganizerId = new Map<string, string | null>();
@@ -697,6 +718,29 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
       const stayAccommodations = [...(accommodationIdsByStayId.get(stay.id) ?? [])]
         .map((accommodationId) => accommodationsById.get(accommodationId))
         .filter((item): item is AccommodationRow => Boolean(item));
+      const structuredAccommodations: StayAccommodation[] = stayAccommodations.map((accommodation) => {
+        const locationMeta = extractAccommodationLocationMeta(accommodation.description);
+        const imageUrls = Array.from(
+          new Set(
+            (accommodationMediaByAccommodationId.get(accommodation.id) ?? [])
+              .map((item) => item.url?.trim())
+              .filter((url): url is string => Boolean(url))
+          )
+        );
+
+        return {
+          id: accommodation.id,
+          name: accommodation.name,
+          accommodationType: accommodation.accommodation_type,
+          locationLabel: locationMeta.locationLabel,
+          description: locationMeta.description ?? '',
+          bedInfo: accommodation.bed_info?.trim() ?? '',
+          bathroomInfo: accommodation.bathroom_info?.trim() ?? '',
+          cateringInfo: accommodation.catering_info?.trim() ?? '',
+          accessibilityInfo: accommodation.accessibility_info?.trim() ?? '',
+          imageUrls
+        };
+      });
       const centerLocations = Array.from(
         new Map(
           stayAccommodations
@@ -854,6 +898,7 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
           insuranceOptions,
           extraOptions
         },
+        accommodations: structuredAccommodations.length > 0 ? structuredAccommodations : undefined,
         centerLocations: centerLocations.length > 0 ? centerLocations : undefined,
         seo: {
           primaryKeyword: seoPrimaryKeyword,

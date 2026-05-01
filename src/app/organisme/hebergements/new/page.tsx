@@ -2,6 +2,7 @@ import { revalidatePath } from 'next/cache';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import AccommodationFormFields from '@/components/organisme/AccommodationFormFields';
+import { parseAccommodationMediaUrls, replaceAccommodationMedia } from '@/lib/accommodations';
 import {
   buildAccessibilityInfoFromForm,
   embedAccommodationLocationMeta,
@@ -79,31 +80,51 @@ export default async function NewAccommodationPage({ searchParams }: PageProps) 
     }
 
     const now = new Date().toISOString();
-    const { error } = await supabase.from('accommodations').insert({
-      organizer_id: selectedOrganizerId,
-      name,
-      accommodation_type: accommodationType,
-      description: embedAccommodationLocationMeta(description, locationInput),
-      bed_info: String(formData.get('bed_info') ?? '').trim() || null,
-      bathroom_info: String(formData.get('bathroom_info') ?? '').trim() || null,
-      catering_info: String(formData.get('catering_info') ?? '').trim() || null,
-      accessibility_info: buildAccessibilityInfoFromForm(formData),
-      slug: slugify(name),
-      ai_extracted_data: null,
-      status: 'DRAFT',
-      validated_at: null,
-      validated_by_user_id: null,
-      center_latitude: centerCoordinatesResult.value.centerLatitude,
-      center_longitude: centerCoordinatesResult.value.centerLongitude,
-      created_at: now,
-      updated_at: now
-    });
+    const mediaUrls = parseAccommodationMediaUrls(formData.get('media_urls'));
 
-    if (error) {
-      console.error('Erreur Supabase (create accommodation)', error.message);
+    const { data: insertedAccommodation, error } = await supabase
+      .from('accommodations')
+      .insert({
+        organizer_id: selectedOrganizerId,
+        name,
+        accommodation_type: accommodationType,
+        description: embedAccommodationLocationMeta(description, locationInput),
+        bed_info: String(formData.get('bed_info') ?? '').trim() || null,
+        bathroom_info: String(formData.get('bathroom_info') ?? '').trim() || null,
+        catering_info: String(formData.get('catering_info') ?? '').trim() || null,
+        accessibility_info: buildAccessibilityInfoFromForm(formData),
+        slug: slugify(name),
+        ai_extracted_data: null,
+        status: 'DRAFT',
+        validated_at: null,
+        validated_by_user_id: null,
+        center_latitude: centerCoordinatesResult.value.centerLatitude,
+        center_longitude: centerCoordinatesResult.value.centerLongitude,
+        created_at: now,
+        updated_at: now
+      })
+      .select('id')
+      .single();
+
+    if (error || !insertedAccommodation) {
+      console.error('Erreur Supabase (create accommodation)', error?.message);
       redirect(
         withOrganizerQuery(
-          `/organisme/hebergements/new?error=${encodeURIComponent(error.message)}`,
+          `/organisme/hebergements/new?error=${encodeURIComponent(error?.message ?? "Insertion de l'hébergement impossible")}`,
+          selectedOrganizerId
+        )
+      );
+    }
+
+    const mediaResult = await replaceAccommodationMedia({
+      accommodationId: insertedAccommodation.id,
+      urls: mediaUrls
+    });
+
+    if (mediaResult.error) {
+      redirect(
+        withOrganizerQuery(
+          `/organisme/hebergements/new?error=${encodeURIComponent(mediaResult.error)}`,
           selectedOrganizerId
         )
       );
@@ -112,6 +133,8 @@ export default async function NewAccommodationPage({ searchParams }: PageProps) 
     revalidatePath('/organisme/hebergements');
     revalidatePath('/organisme/sejours');
     revalidatePath('/organisme/stays');
+    revalidatePath('/sejours');
+    revalidatePath('/sejours/[slug]', 'page');
     redirect(withOrganizerQuery('/organisme/hebergements?saved=1', selectedOrganizerId));
   }
 

@@ -12,6 +12,7 @@ const loginSchema = z.object({
   password: z.string().min(6),
   redirectTo: z.string().optional(),
   loginPath: z.string().optional(),
+  loginMode: z.enum(['family', 'pro']).optional(),
   rememberMe: z.union([z.boolean(), z.string()]).optional()
 });
 
@@ -75,18 +76,23 @@ function buildLoginErrorUrl({
   req,
   loginPath,
   errorCode,
-  redirectTo
+  redirectTo,
+  loginMode
 }: {
   req: Request;
   loginPath: string;
   errorCode: string;
   redirectTo?: string;
+  loginMode?: 'family' | 'pro';
 }) {
   const url = new URL(loginPath, req.url);
   url.searchParams.set('error', errorCode);
   const safeRedirectTo = sanitizeRelativePath(redirectTo);
   if (safeRedirectTo) {
     url.searchParams.set('redirectTo', safeRedirectTo);
+  }
+  if (loginMode) {
+    url.searchParams.set('mode', loginMode);
   }
   return url;
 }
@@ -97,10 +103,17 @@ function getOptionalField(input: unknown, key: string) {
   return typeof value === 'string' ? value : undefined;
 }
 
+function isRoleAllowedForLoginMode(role: AppRole, loginMode: 'family' | 'pro' | undefined) {
+  if (!loginMode) return true;
+  if (loginMode === 'family') return role === 'CLIENT';
+  return role === 'ORGANISATEUR' || role === 'PARTENAIRE' || role === 'ADMIN' || role === 'MNEMOS';
+}
+
 export async function POST(req: Request) {
   const expectsJson = requestExpectsJson(req);
   let loginPath = '/login';
   let redirectTo: string | undefined;
+  let loginMode: 'family' | 'pro' | undefined;
 
   try {
     const contentType = req.headers.get('content-type') ?? '';
@@ -110,6 +123,7 @@ export async function POST(req: Request) {
         : Object.fromEntries(await req.formData());
     loginPath = sanitizeLoginPath(getOptionalField(data, 'loginPath'));
     redirectTo = getOptionalField(data, 'redirectTo');
+    loginMode = getOptionalField(data, 'loginMode') === 'pro' ? 'pro' : getOptionalField(data, 'loginMode') === 'family' ? 'family' : undefined;
     const parsed = loginSchema.safeParse(data);
     if (!parsed.success) {
       if (expectsJson) {
@@ -120,7 +134,8 @@ export async function POST(req: Request) {
           req,
           loginPath,
           errorCode: 'invalid-input',
-          redirectTo
+          redirectTo,
+          loginMode
         }),
         { status: 303 }
       );
@@ -146,7 +161,8 @@ export async function POST(req: Request) {
           req,
           loginPath,
           errorCode: 'invalid-credentials',
-          redirectTo: input.redirectTo
+          redirectTo: input.redirectTo,
+          loginMode: input.loginMode
         }),
         { status: 303 }
       );
@@ -154,6 +170,24 @@ export async function POST(req: Request) {
 
     const roleContext = await resolveRoleContextForUserId(signInData.user.id);
     const role = mapRole(roleContext.role);
+
+    if (!isRoleAllowedForLoginMode(role, input.loginMode)) {
+      await supabase.auth.signOut();
+      const errorCode = input.loginMode === 'pro' ? 'wrong-login-space-pro' : 'wrong-login-space-family';
+      if (expectsJson) {
+        return NextResponse.json({ error: 'Login mode mismatch', code: errorCode }, { status: 403 });
+      }
+      return NextResponse.redirect(
+        buildLoginErrorUrl({
+          req,
+          loginPath,
+          errorCode,
+          redirectTo: input.redirectTo,
+          loginMode: input.loginMode
+        }),
+        { status: 303 }
+      );
+    }
 
     const defaultRedirect = getHomePathForRole(role);
     const requestedRedirect = sanitizeRelativePath(input.redirectTo);
@@ -174,7 +208,8 @@ export async function POST(req: Request) {
         req,
         loginPath,
         errorCode,
-        redirectTo
+        redirectTo,
+        loginMode
       }),
       { status: 303 }
     );

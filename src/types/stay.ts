@@ -99,6 +99,19 @@ export interface StayCenterLocation {
   longitude: number;
 }
 
+export interface StayAccommodation {
+  id: string;
+  name: string;
+  accommodationType: string | null;
+  locationLabel: string | null;
+  description: string;
+  bedInfo: string;
+  bathroomInfo: string;
+  cateringInfo: string;
+  accessibilityInfo: string;
+  imageUrls: string[];
+}
+
 export interface Stay {
   id: string;
   title: string;
@@ -132,6 +145,7 @@ export interface Stay {
   filters: StayFilters;
   bookingOptions?: StayBookingOptions;
   centerLocations?: StayCenterLocation[];
+  accommodations?: StayAccommodation[];
   seo?: StaySeo;
   sourceUrl?: string;
   rawContext?: Record<string, unknown>;

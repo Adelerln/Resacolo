@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import ErrorToast from '@/components/common/ErrorToast';
+import OrganizerPageHeader from '@/components/organisme/OrganizerPageHeader';
 import SavedToast from '@/components/common/SavedToast';
 import PublishedStaySessionsStep from '@/components/organisme/PublishedStaySessionsStep';
 import { requireOrganizerPageAccess } from '@/lib/organizer-backoffice-access.server';
@@ -76,25 +77,20 @@ export default async function OrganizerStayDetailPage({ params: paramsPromise, s
     <div className="space-y-6">
       {showSavedBanner && <SavedToast message="La fiche séjour a bien été enregistrée." />}
       {errorParam && <ErrorToast message={decodeURIComponent(errorParam)} />}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-900">{currentStay.title}</h1>
-          <p className="text-sm text-slate-600">
-            Saison: {seasons.find((season) => season.id === currentStay.season_id)?.name ?? '-'}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Link
-            href={editHref}
-            className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700"
-          >
-            Modifier le séjour (tunnel)
-          </Link>
-          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-            {stayStatusLabel(currentStay.status)}
-          </span>
-        </div>
-      </div>
+      <OrganizerPageHeader
+        title={currentStay.title}
+        subtitle={`Saison : ${seasons.find((season) => season.id === currentStay.season_id)?.name ?? '-'}`}
+        actions={(
+          <>
+            <Link href={editHref} className="organizer-btn-primary">
+              Modifier le séjour
+            </Link>
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+              {stayStatusLabel(currentStay.status)}
+            </span>
+          </>
+        )}
+      />
 
       <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
         <PublishedStaySessionsStep

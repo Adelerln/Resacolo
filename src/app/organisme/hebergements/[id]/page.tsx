@@ -2,6 +2,7 @@ import { revalidatePath } from 'next/cache';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import AccommodationFormFields from '@/components/organisme/AccommodationFormFields';
+import OrganizerPageHeader from '@/components/organisme/OrganizerPageHeader';
 import { formatAccommodationType } from '@/lib/accommodation-types';
 import SavedToast from '@/components/common/SavedToast';
 import {
@@ -304,25 +305,25 @@ export default async function AccommodationDetailPage({ params: paramsPromise, s
         </div>
       )}
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-900">{currentAccommodation.name}</h1>
-          <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-slate-600">
-            <span>Type : {formatAccommodationType(currentAccommodation.accommodation_type)}</span>
+      <OrganizerPageHeader
+        title={currentAccommodation.name}
+        subtitle={`Type : ${formatAccommodationType(currentAccommodation.accommodation_type)}`}
+        actions={(
+          <>
             <span
               className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${accommodationStatusBadgeClassName(currentAccommodation.status)}`}
             >
               {accommodationStatusLabel(currentAccommodation.status)}
             </span>
-          </div>
-        </div>
-        <Link
-          href={withOrganizerQuery('/organisme/hebergements', selectedOrganizerId)}
-          className="inline-flex min-h-[44px] items-center justify-center rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700"
-        >
-          Retour à la liste
-        </Link>
-      </div>
+            <Link
+              href={withOrganizerQuery('/organisme/hebergements', selectedOrganizerId)}
+              className="organizer-btn-secondary"
+            >
+              Retour à la liste
+            </Link>
+          </>
+        )}
+      />
 
       {showImportRelectureBanner && (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
@@ -338,17 +339,17 @@ export default async function AccommodationDetailPage({ params: paramsPromise, s
       <div className="flex flex-wrap justify-start gap-3 sm:justify-end">
         <form action={toggleAccommodationArchive}>
           <button
-            className={`rounded-lg px-4 py-2 text-sm font-semibold ${
+            className={`organizer-btn ${
               currentAccommodation.status === 'ARCHIVED'
-                ? 'border border-emerald-200 text-emerald-700'
-                : 'border border-amber-200 text-amber-700'
+                ? 'border border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50'
+                : 'border border-amber-200 bg-white text-amber-700 hover:bg-amber-50'
             }`}
           >
             {currentAccommodation.status === 'ARCHIVED' ? 'Désarchiver la fiche' : 'Archiver la fiche'}
           </button>
         </form>
         <form action={deleteAccommodation}>
-          <button className="rounded-lg border border-rose-200 px-4 py-2 text-sm font-semibold text-rose-700">
+          <button className="organizer-btn-danger">
             Supprimer la fiche
           </button>
         </form>

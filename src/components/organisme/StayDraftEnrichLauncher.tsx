@@ -66,7 +66,7 @@ export default function StayDraftEnrichLauncher({
             placeholder="UUID du stay_draft"
             value={draftId}
             onChange={(event) => setDraftId(event.target.value)}
-            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+            className="organizer-input"
             required
           />
         </label>
@@ -77,7 +77,7 @@ export default function StayDraftEnrichLauncher({
             type="submit"
             disabled={isSubmitting}
             aria-busy={isSubmitting}
-            className="h-10 w-full rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white disabled:cursor-wait disabled:opacity-80"
+            className="organizer-btn-secondary min-h-[40px] w-full border-slate-300 bg-slate-900 text-white hover:bg-slate-800 disabled:cursor-wait disabled:opacity-80"
           >
             {isSubmitting ? 'Enrichissement...' : 'Enrichir avec IA'}
           </button>
@@ -102,7 +102,7 @@ export default function StayDraftEnrichLauncher({
           </p>
           <Link
             href={withOrganizerQuery(`/organisme/sejours/drafts/${aiDraftId}`, organizerId)}
-            className="mt-3 inline-flex min-h-[44px] items-center justify-center rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-800"
+            className="organizer-btn-primary mt-3"
           >
             Voir le résultat
           </Link>

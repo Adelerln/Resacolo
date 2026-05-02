@@ -20,9 +20,9 @@ export default function OrganizerRichTextEditor({
   label,
   initialValue
 }: OrganizerRichTextEditorProps) {
+  const initialSanitizedValue = sanitizeOrganizerRichText(initialValue);
   const editorRef = useRef<HTMLDivElement | null>(null);
   const hiddenInputRef = useRef<HTMLInputElement | null>(null);
-  const [html, setHtml] = useState(() => sanitizeOrganizerRichText(initialValue));
   const [activeCommands, setActiveCommands] = useState<Record<string, boolean>>({
     bold: false,
     italic: false,
@@ -30,15 +30,14 @@ export default function OrganizerRichTextEditor({
   });
 
   useEffect(() => {
-    const nextHtml = sanitizeOrganizerRichText(initialValue);
-    setHtml(nextHtml);
+    const nextHtml = initialSanitizedValue;
     if (editorRef.current && editorRef.current.innerHTML !== nextHtml) {
       editorRef.current.innerHTML = nextHtml;
     }
     if (hiddenInputRef.current && hiddenInputRef.current.value !== nextHtml) {
       hiddenInputRef.current.value = nextHtml;
     }
-  }, [initialValue]);
+  }, [initialSanitizedValue]);
 
   function syncFromEditor() {
     const nextHtml = sanitizeOrganizerRichText(editorRef.current?.innerHTML ?? '');
@@ -47,7 +46,6 @@ export default function OrganizerRichTextEditor({
       hiddenInputRef.current.dispatchEvent(new Event('input', { bubbles: true }));
       hiddenInputRef.current.dispatchEvent(new Event('change', { bubbles: true }));
     }
-    setHtml(nextHtml);
     syncToolbarState();
   }
 
@@ -109,7 +107,7 @@ export default function OrganizerRichTextEditor({
         ref={hiddenInputRef}
         type="hidden"
         name={name}
-        value={html}
+        defaultValue={initialSanitizedValue}
         data-track-dirty="true"
         data-dirty-target={`${name}-editor`}
         readOnly

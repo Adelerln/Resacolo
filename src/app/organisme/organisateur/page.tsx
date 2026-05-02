@@ -3,6 +3,7 @@ import Image from 'next/image';
 import ErrorToast from '@/components/common/ErrorToast';
 import SavedToast from '@/components/common/SavedToast';
 import OrganizerCatalogTabs from '@/components/organisme/OrganizerCatalogTabs';
+import OrganizerPageHeader from '@/components/organisme/OrganizerPageHeader';
 import OrganizerProfileFormEnhancer from '@/components/organisme/OrganizerProfileFormEnhancer';
 import OrganizerRichTextEditor from '@/components/organisme/OrganizerRichTextEditor';
 import { requireOrganizerPageAccess } from '@/lib/organizer-backoffice-access.server';
@@ -249,15 +250,9 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
     <div className="space-y-6">
       {errorParam && <ErrorToast message={decodeURIComponent(errorParam)} />}
       {showSavedBanner && <SavedToast message="La fiche organisme a bien été enregistrée." />}
-      {showSavedBanner && (
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">
-          La fiche organisme a bien été enregistrée.
-        </div>
-      )}
-      <div>
-        <h1 className="text-2xl font-semibold text-slate-900">Fiche organisateur</h1>
-        <p className="text-sm text-slate-600">Mets à jour les informations publiques de ton organisme.</p>
-      </div>
+      <OrganizerPageHeader
+        title="Fiche organisateur"
+      />
 
       <form
         key={organizer.id}
@@ -266,14 +261,14 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
         className="space-y-4"
       >
         <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
-          <h2 className="text-lg font-semibold text-slate-900">{organizer.name}</h2>
+          <h2 className="organizer-section-title">{organizer.name}</h2>
           <div className="mt-4 grid gap-4 md:grid-cols-2">
             <label className="block text-sm font-medium text-slate-700">
               Nom
               <input
                 name="name"
                 defaultValue={organizer.name}
-                className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 transition-colors"
+                className="organizer-input bg-slate-50"
               />
             </label>
             <label className="block text-sm font-medium text-slate-700">
@@ -282,7 +277,7 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
                 name="contact_email"
                 type="email"
                 defaultValue={organizer.contact_email ?? ''}
-                className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 transition-colors"
+                className="organizer-input bg-slate-50"
               />
             </label>
           </div>
@@ -295,7 +290,7 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
                 min="1900"
                 max="2100"
                 defaultValue={organizer.founded_year ?? ''}
-                className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 transition-colors"
+                className="organizer-input bg-slate-50"
               />
             </label>
             <label className="block text-sm font-medium text-slate-700">
@@ -305,7 +300,7 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
                 type="number"
                 min="0"
                 defaultValue={organizer.age_min ?? ''}
-                className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 transition-colors"
+                className="organizer-input bg-slate-50"
               />
             </label>
             <label className="block text-sm font-medium text-slate-700">
@@ -315,7 +310,7 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
                 type="number"
                 min="0"
                 defaultValue={organizer.age_max ?? ''}
-                className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 transition-colors"
+                className="organizer-input bg-slate-50"
               />
             </label>
           </div>
@@ -325,7 +320,7 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
               name="hero_intro_text"
               rows={3}
               defaultValue={organizer.hero_intro_text ?? ''}
-              className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 transition-colors"
+              className="organizer-input min-h-[7rem] bg-slate-50"
             />
           </label>
           <div className="mt-4">
@@ -342,7 +337,7 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
                 name="logo"
                 type="file"
                 accept="image/*"
-                className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 transition-colors"
+                className="organizer-input bg-slate-50"
               />
               {logoUrl ? (
                 <div className="mt-2 space-y-1" suppressHydrationWarning>
@@ -371,7 +366,7 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
                   <button
                     formAction={`/api/organizers/${organizerSlug}/project/delete`}
                     formMethod="post"
-                    className="block text-left text-xs font-semibold text-red-600"
+                    className="block text-left text-xs font-semibold text-rose-700"
                   >
                     Supprimer le PDF
                   </button>
@@ -381,7 +376,7 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
                   name="education_project"
                   type="file"
                   accept="application/pdf"
-                  className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 transition-colors"
+                  className="organizer-input bg-slate-50"
                 />
               )}
             </label>

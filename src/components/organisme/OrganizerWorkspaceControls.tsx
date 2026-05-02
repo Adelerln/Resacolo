@@ -69,8 +69,10 @@ export function OrganizerWorkspaceNav({
           <Link
             key={link.href}
             href={href}
-            className={`mb-1 block rounded-lg px-3 py-2 transition hover:bg-slate-100 ${
-              isActive ? 'bg-slate-100 text-slate-900' : ''
+            className={`mb-1 block rounded-lg border-l-2 px-3 py-2 text-[15px] font-semibold transition ${
+              isActive
+                ? 'border-emerald-500 bg-emerald-50 text-emerald-900'
+                : 'border-transparent text-slate-700 hover:bg-slate-100 hover:text-slate-900'
             }`}
           >
             {link.label}
@@ -111,12 +113,12 @@ export function OrganizerWorkspaceSelector({
   }, [initialSelectedOrganizerId, organizerIdFromUrl, organizers, pathname, router, searchParams]);
 
   return (
-    <div className="mb-6 rounded-2xl border border-slate-200 bg-white px-4 py-4">
+    <div className="mb-6 rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
         <label className="block text-sm font-medium text-slate-700">
           Organisateur affiché
           <select
-            className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+            className="organizer-input mt-2"
             value={selectedOrganizerId}
             onChange={(event) => {
               const nextOrganizerId = event.target.value;
@@ -139,7 +141,7 @@ export function OrganizerWorkspaceSelector({
         </label>
         <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Niveau d&apos;accès</p>
-          <p className="mt-1 text-sm font-medium text-slate-800">
+          <p className="mt-1 text-sm font-semibold text-slate-800">
             {selectedAccessRole ? ORGANIZER_ACCESS_LABELS[selectedAccessRole] : 'Aucun accès'}
           </p>
         </div>

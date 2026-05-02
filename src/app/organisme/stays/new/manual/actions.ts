@@ -26,17 +26,11 @@ function isMissingCanonicalColumnError(
   return message.includes('source_url_canonical') && message.includes('column');
 }
 
-export async function startManualDraft(formData: FormData) {
-  const requestedOrganizerId = String(formData.get('organizerId') ?? '').trim();
-  const { selectedOrganizerId: actionOrganizerId } = await requireOrganizerPageAccess({
-    requestedOrganizerId: requestedOrganizerId || undefined,
-    requiredSection: 'stays'
-  });
+async function createManualDraftForOrganizer(actionOrganizerId: string): Promise<{
+  draftId: string | null;
+  errorMessage: string | null;
+}> {
   const supabaseInner = getServerSupabaseClient();
-
-  if (!actionOrganizerId) {
-    redirect('/organisme/sejours?error=Aucun%20organisateur%20disponible.');
-  }
 
   const manualSourceUrl = `https://resacolo.com/creation-manuelle/${crypto.randomUUID()}`;
   const manualCanonicalSourceUrl = canonicalizeStaySourceUrl(manualSourceUrl);
@@ -64,7 +58,8 @@ export async function startManualDraft(formData: FormData) {
     : null;
 
   if (isMissingCanonicalColumnError(insertError)) {
-    const dynamicInsertWithoutCanonical = supabaseInner.from('stay_drafts') as unknown as DynamicStayDraftInsertIdBuilder;
+    const dynamicInsertWithoutCanonical =
+      supabaseInner.from('stay_drafts') as unknown as DynamicStayDraftInsertIdBuilder;
     const retryWithoutCanonicalColumn = await dynamicInsertWithoutCanonical
       .insert(manualInsertPayload)
       .select('id')
@@ -74,15 +69,44 @@ export async function startManualDraft(formData: FormData) {
   }
 
   if (insertError || !insertedDraft) {
+    return {
+      draftId: null,
+      errorMessage: insertError?.message ?? 'Impossible de créer le brouillon manuel.'
+    };
+  }
+
+  return {
+    draftId: insertedDraft.id,
+    errorMessage: null
+  };
+}
+
+export async function createManualDraftAndRedirect(actionOrganizerId: string) {
+  if (!actionOrganizerId) {
+    redirect('/organisme/sejours?error=Aucun%20organisateur%20disponible.');
+  }
+
+  const { draftId, errorMessage } = await createManualDraftForOrganizer(actionOrganizerId);
+  if (!draftId) {
     redirect(
       withOrganizerQuery(
-        `/organisme/sejours/new/manual?error=${encodeURIComponent(
-          insertError?.message ?? 'Impossible de créer le brouillon manuel.'
+        `/organisme/sejours/new?error=${encodeURIComponent(
+          errorMessage ?? 'Impossible de créer le brouillon manuel.'
         )}`,
         actionOrganizerId
       )
     );
   }
 
-  redirect(withOrganizerQuery(`/organisme/sejours/drafts/${insertedDraft.id}`, actionOrganizerId));
+  redirect(withOrganizerQuery(`/organisme/sejours/drafts/${draftId}`, actionOrganizerId));
+}
+
+export async function startManualDraft(formData: FormData) {
+  const requestedOrganizerId = String(formData.get('organizerId') ?? '').trim();
+  const { selectedOrganizerId: actionOrganizerId } = await requireOrganizerPageAccess({
+    requestedOrganizerId: requestedOrganizerId || undefined,
+    requiredSection: 'stays'
+  });
+
+  await createManualDraftAndRedirect(actionOrganizerId ?? '');
 }

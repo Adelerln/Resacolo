@@ -8,6 +8,7 @@ import {
   Megaphone,
   TrendingUp
 } from 'lucide-react';
+import OrganizerPageHeader from '@/components/organisme/OrganizerPageHeader';
 import { requireOrganizerPageAccess } from '@/lib/organizer-backoffice-access.server';
 import { buildOrganizerDashboardModel } from '@/lib/organisme/dashboard-metrics';
 import { withOrganizerQuery } from '@/lib/organizers.server';
@@ -33,13 +34,6 @@ type PageProps = {
 
 function formatPercent(value: number) {
   return `${Math.round(value)}%`;
-}
-
-function formatDecimal(value: number) {
-  return new Intl.NumberFormat('fr-FR', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 1
-  }).format(value);
 }
 
 function formatVisibilityLabel(isPublished: boolean, mediaCount: number) {
@@ -105,11 +99,7 @@ function formatStayDisplayTitle(title: string) {
 
 export default async function OrganizerDashboardPage({ searchParams }: PageProps) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
-  const {
-    accessRole,
-    selectedOrganizer,
-    selectedOrganizerId
-  } = await requireOrganizerPageAccess({
+  const { selectedOrganizerId } = await requireOrganizerPageAccess({
     requestedOrganizerId: resolvedSearchParams?.organizerId,
     requiredSection: 'dashboard'
   });
@@ -119,14 +109,14 @@ export default async function OrganizerDashboardPage({ searchParams }: PageProps
   if (!organizerId) {
     return (
       <div className="rounded-2xl border border-slate-200 bg-white p-6">
-        <h1 className="text-2xl font-semibold text-slate-900">Dashboard</h1>
+        <h1 className="organizer-page-title">Dashboard</h1>
         <p className="mt-2 text-sm text-slate-600">
           Aucun organisateur n&apos;est disponible pour afficher les statistiques.
         </p>
         <div className="mt-5">
           <Link
             href="/organisme/sejours"
-            className="inline-flex min-h-[44px] items-center justify-center rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:border-slate-300"
+            className="organizer-btn-secondary"
           >
             Gérer les séjours
           </Link>
@@ -146,9 +136,11 @@ export default async function OrganizerDashboardPage({ searchParams }: PageProps
 
   const stays = staysRaw ?? [];
   const stayIds = stays.map((stay) => stay.id);
-  const visitsLookbackDate = new Date(
-    Date.now() - STAY_VISIT_LOOKBACK_DAYS * 24 * 60 * 60 * 1000
-  ).toISOString();
+  const visitsLookbackDate = (() => {
+    const referenceDate = new Date();
+    referenceDate.setUTCDate(referenceDate.getUTCDate() - STAY_VISIT_LOOKBACK_DAYS);
+    return referenceDate.toISOString();
+  })();
   const [{ data: sessionsRaw }, { data: stayMediaRaw }, { data: stayVisitsRaw }] =
     stayIds.length > 0
       ? await Promise.all([
@@ -182,35 +174,33 @@ export default async function OrganizerDashboardPage({ searchParams }: PageProps
     vigilanceOccupancyThreshold: 25
   });
   const { metrics, stayRows, lists } = dashboardModel;
-  const organizerLabel = selectedOrganizer?.name ?? 'Organisateur';
   const teamCount = metrics.ownerCount + metrics.editorCount + metrics.reservationManagerCount;
 
   return (
     <div className="space-y-6">
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold text-slate-900">Dashboard</h1>
-            <p className="mt-3 text-sm text-slate-700">
-              {metrics.totalStays} séjours suivis, {metrics.totalReservations} réservations,{' '}
-              {formatPercent(metrics.occupancyRate)} de remplissage global.
-            </p>
-            <p className="mt-1 text-xs text-slate-500">Équipe active : {teamCount} membre(s).</p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Link
-              href={withOrganizerQuery('/organisme/sejours', organizerId)}
-              className="inline-flex min-h-[44px] items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
-            >
+      <OrganizerPageHeader
+        title="Dashboard"
+        subtitle={`${metrics.totalStays} séjours suivis · ${metrics.totalReservations} réservations · ${formatPercent(metrics.occupancyRate)} de remplissage`}
+        actions={(
+          <>
+            <Link href={withOrganizerQuery('/organisme/sejours', organizerId)} className="organizer-btn-primary">
               Gérer les séjours
             </Link>
-            <Link
-              href={withOrganizerQuery('/organisme/reservations', organizerId)}
-              className="inline-flex min-h-[44px] items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:border-slate-300"
-            >
+            <Link href={withOrganizerQuery('/organisme/reservations', organizerId)} className="organizer-btn-secondary">
               Gérer les réservations
             </Link>
-          </div>
+          </>
+        )}
+      />
+
+      <section className="organizer-card p-5 sm:p-6">
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 font-semibold text-slate-700">
+            Équipe active : {teamCount} membre(s)
+          </span>
+          <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 font-semibold text-slate-700">
+            {metrics.totalStayVisits} visites des pages séjour ({STAY_VISIT_LOOKBACK_DAYS}j)
+          </span>
         </div>
       </section>
 
@@ -262,40 +252,12 @@ export default async function OrganizerDashboardPage({ searchParams }: PageProps
         </article>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        <article className="min-h-[140px] rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <p className="inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Visites des pages séjour ({STAY_VISIT_LOOKBACK_DAYS}j)
-            <KpiInfo text="Nombre total d'ouvertures des pages de séjour." />
-          </p>
-          <p className="mt-3 text-3xl font-semibold text-slate-900">{metrics.totalStayVisits}</p>
-        </article>
-
-        <article className="min-h-[140px] rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <p className="inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Pages de séjour visitées ({STAY_VISIT_LOOKBACK_DAYS}j)
-            <KpiInfo text="Pages de séjour ayant reçu au moins une visite sur la période." />
-          </p>
-          <p className="mt-3 text-3xl font-semibold text-slate-900">{metrics.visitedStaysCount}</p>
-        </article>
-
-        <article className="min-h-[140px] rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <p className="inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Visites moyennes / page séjour ({STAY_VISIT_LOOKBACK_DAYS}j)
-            <KpiInfo text="Moyenne de visites par page de séjour sur la période." />
-          </p>
-          <p className="mt-3 text-3xl font-semibold text-slate-900">
-            {formatDecimal(metrics.avgVisitsPerStay)}
-          </p>
-        </article>
-      </section>
-
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-slate-900">Pilotage commercial</h2>
+            <h2 className="organizer-section-title">Actions prioritaires</h2>
             <p className="text-sm text-slate-600">
-              Priorisez les actions grâce aux séjours qui performent, stagnent ou nécessitent une intervention rapide.
+              Passez rapidement des indicateurs aux séjours qui nécessitent une action.
             </p>
           </div>
           <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
@@ -385,7 +347,7 @@ export default async function OrganizerDashboardPage({ searchParams }: PageProps
 
       <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 px-5 py-4">
-          <h2 className="text-lg font-semibold text-slate-900">Suivi des séjours</h2>
+          <h2 className="organizer-section-title">Suivi des séjours</h2>
           <p className="mt-1 text-sm text-slate-600">
             Détail des performances pour repérer rapidement les fiches à optimiser.
           </p>
@@ -393,8 +355,8 @@ export default async function OrganizerDashboardPage({ searchParams }: PageProps
 
         {stayRows.length > 0 ? (
           <div className="overflow-x-auto">
-            <table className="min-w-[860px] w-full text-left text-sm">
-              <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+            <table className="organizer-table min-w-[860px]">
+              <thead>
                 <tr>
                   <th className="px-5 py-3">Séjour</th>
                   <th className="px-5 py-3">Statut</th>
@@ -448,7 +410,7 @@ export default async function OrganizerDashboardPage({ searchParams }: PageProps
             <div className="mt-4">
               <Link
                 href={withOrganizerQuery('/organisme/sejours', organizerId)}
-                className="inline-flex min-h-[44px] items-center justify-center rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:border-slate-300"
+                className="organizer-btn-secondary"
               >
                 Gérer les séjours
               </Link>

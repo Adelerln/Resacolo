@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import DraftImportStatusBanner from '@/components/organisme/DraftImportStatusBanner';
+import OrganizerPageHeader from '@/components/organisme/OrganizerPageHeader';
 import StayDraftReviewForm from '@/components/organisme/StayDraftReviewForm';
 import { requireOrganizerPageAccess } from '@/lib/organizer-backoffice-access.server';
 import { withOrganizerQuery } from '@/lib/organizers.server';
@@ -329,7 +330,7 @@ function draftStatusBadgeClass(status: string | null): string {
 export default async function StayDraftReviewPage({ params: paramsPromise, searchParams }: PageProps) {
   const params = await paramsPromise;
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
-  const { selectedOrganizer, selectedOrganizerId } = await requireOrganizerPageAccess({
+  const { selectedOrganizerId } = await requireOrganizerPageAccess({
     requestedOrganizerId: resolvedSearchParams?.organizerId,
     requiredSection: 'stays'
   });
@@ -405,15 +406,8 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
     return indexA - indexB;
   });
   const importReviewDebrief = asObject((rawPayload.import_review_debrief as Json | null) ?? null);
-  const sourceHost = normalizeString(String(importReviewDebrief.source_host ?? ''));
   const sessionPriceExtraction = asObject(
     (importReviewDebrief.session_price_extraction as Json | null) ?? null
-  );
-  const paginatedDepartureTableDebug = asObject(
-    (importReviewDebrief.paginated_departure_table as Json | null) ?? null
-  );
-  const datatableTransportDebugRows = asRecordArray(rawPayload.transport_price_debug).filter((row) =>
-    normalizeString(String(row.reason ?? '')).includes('datatable-')
   );
   const ceslStructuredDebug = asObject(
     (sessionPriceExtraction.cesl_structured_booking as Json | null) ?? null
@@ -537,22 +531,15 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Relecture du brouillon séjour</h1>
-          <p className="text-sm text-slate-600">
-            {selectedOrganizer
-              ? `Relecture et validation manuelle pour ${selectedOrganizer.name}.`
-              : 'Relecture et validation manuelle du brouillon.'}
-          </p>
-        </div>
-        <Link
-          href={backHref}
-          className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700"
-        >
-          Retour à la liste
-        </Link>
-      </div>
+      <OrganizerPageHeader
+        title="Relecture du brouillon séjour"
+        subtitle="Finalisez les informations puis validez la publication."
+        actions={(
+          <Link href={backHref} className="organizer-btn-secondary">
+            Retour à la liste
+          </Link>
+        )}
+      />
 
       <DraftImportStatusBanner
         pollWhilePending={pollWhilePending}

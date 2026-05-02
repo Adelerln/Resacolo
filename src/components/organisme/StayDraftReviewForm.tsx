@@ -1,12 +1,15 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import {
+  AlertTriangle,
   Building2,
   Bus,
   CalendarDays,
+  CheckCircle2,
+  Circle,
   FileText,
   Images,
   Package,
@@ -92,6 +95,8 @@ type SeoActionState = {
   level: 'info' | 'success' | 'error';
   message: string;
 };
+
+type AutosaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
 function parseCommaSeparatedList(value: string): string[] {
   return value
@@ -233,6 +238,22 @@ function draftReviewNextStep(step: DraftReviewStepId, steps: DraftReviewStepId[]
   return i >= 0 && i < steps.length - 1 ? steps[i + 1]! : null;
 }
 
+function firstIncompleteStepFromInitialPayload(
+  steps: DraftReviewStepId[],
+  initialPayload: StayDraftReviewPayload,
+  linkedAccommodation: StayDraftReviewFormProps['linkedAccommodation'],
+  isPublishedVariant: boolean
+): DraftReviewStepId {
+  if (isPublishedVariant) return 'sejour';
+  if (!linkedAccommodation && !String(initialPayload.accommodations_json?.title ?? '').trim()) {
+    return 'hebergement';
+  }
+  if (!initialPayload.title.trim()) return 'sejour';
+  if ((initialPayload.sessions_json ?? []).length === 0 && steps.includes('sessions')) return 'sessions';
+  if ((initialPayload.images ?? []).length === 0 && steps.includes('photos')) return 'photos';
+  return linkedAccommodation ? 'sejour' : 'hebergement';
+}
+
 export default function StayDraftReviewForm({
   draftId,
   organizerId,
@@ -264,10 +285,23 @@ export default function StayDraftReviewForm({
   const resolvedPublishedReviewEndpoint =
     publishedReviewEndpoint ?? `/api/organizer/stays/${draftId}/review-bundle`;
   const [activeStep, setActiveStep] = useState<DraftReviewStepId>(() =>
-    isPublishedVariant ? 'sejour' : linkedAccommodation ? 'sejour' : 'hebergement'
+    firstIncompleteStepFromInitialPayload(
+      reviewSteps,
+      initialPayload,
+      linkedAccommodation,
+      isPublishedVariant
+    )
   );
   const [hasCompletedAccommodationGate, setHasCompletedAccommodationGate] = useState(
-    () => isPublishedVariant || Boolean(linkedAccommodation)
+    () =>
+      isPublishedVariant ||
+      Boolean(linkedAccommodation) ||
+      firstIncompleteStepFromInitialPayload(
+        reviewSteps,
+        initialPayload,
+        linkedAccommodation,
+        isPublishedVariant
+      ) !== 'hebergement'
   );
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [title, setTitle] = useState(initialPayload.title);
@@ -338,6 +372,13 @@ export default function StayDraftReviewForm({
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGeneratingSeo, setIsGeneratingSeo] = useState(false);
+  const [autosaveStatus, setAutosaveStatus] = useState<AutosaveStatus>('idle');
+  const [autosaveError, setAutosaveError] = useState<string | null>(null);
+  const [lastAutosaveAt, setLastAutosaveAt] = useState<string | null>(null);
+  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autosavePayloadSignatureRef = useRef<string>('');
+  const initialAutosaveSnapshotRef = useRef<string>('');
+  const lastAutosaveStepRef = useRef<DraftReviewStepId | null>(null);
 
   const [seoPrimaryKeyword, setSeoPrimaryKeyword] = useState(
     sanitizeSeoPrimaryKeyword(initialPayload.seo_primary_keyword)
@@ -523,6 +564,82 @@ export default function StayDraftReviewForm({
       seoInternalAnchors
     ]
   );
+
+  const persistAutosave = useCallback(async (nextPayload: StayDraftReviewPayload) => {
+    if (isPublishedVariant || isSubmitting) return;
+    const signature = JSON.stringify(nextPayload);
+    if (signature === autosavePayloadSignatureRef.current) return;
+
+    setAutosaveStatus('saving');
+    setAutosaveError(null);
+
+    try {
+      const response = await fetch(`/api/stay-drafts/${draftId}/autosave`, {
+        method: 'PATCH',
+        headers: {
+          'content-type': 'application/json',
+          accept: 'application/json'
+        },
+        body: JSON.stringify({
+          organizerId,
+          payload: nextPayload
+        })
+      });
+
+      const data = (await response.json().catch(() => null)) as
+        | { success?: boolean; updatedAt?: string; error?: string }
+        | null;
+
+      if (!response.ok || !data?.success) {
+        setAutosaveStatus('error');
+        setAutosaveError(data?.error ?? 'Autosave impossible.');
+        return;
+      }
+
+      autosavePayloadSignatureRef.current = signature;
+      setLastAutosaveAt(data.updatedAt ?? new Date().toISOString());
+      setAutosaveStatus('saved');
+    } catch {
+      setAutosaveStatus('error');
+      setAutosaveError('Autosave impossible.');
+    }
+  }, [draftId, isPublishedVariant, isSubmitting, organizerId]);
+
+  const autosaveDraftPayload = buildAutosavePayload();
+
+  useEffect(() => {
+    if (isPublishedVariant) return;
+    const signature = JSON.stringify(autosaveDraftPayload);
+    if (!initialAutosaveSnapshotRef.current) {
+      initialAutosaveSnapshotRef.current = signature;
+      autosavePayloadSignatureRef.current = signature;
+    }
+  }, [autosaveDraftPayload, isPublishedVariant]);
+
+  useEffect(() => {
+    if (isPublishedVariant || isSubmitting || isGeneratingSeo) return;
+    const signature = JSON.stringify(autosaveDraftPayload);
+    if (!initialAutosaveSnapshotRef.current) {
+      initialAutosaveSnapshotRef.current = signature;
+      autosavePayloadSignatureRef.current = signature;
+      return;
+    }
+    if (signature === autosavePayloadSignatureRef.current) return;
+
+    setAutosaveStatus((current) => (current === 'saving' ? current : 'idle'));
+    if (autosaveTimerRef.current) {
+      clearTimeout(autosaveTimerRef.current);
+    }
+    autosaveTimerRef.current = setTimeout(() => {
+      void persistAutosave(autosaveDraftPayload);
+    }, 10000);
+
+    return () => {
+      if (autosaveTimerRef.current) {
+        clearTimeout(autosaveTimerRef.current);
+      }
+    };
+  }, [autosaveDraftPayload, isGeneratingSeo, isPublishedVariant, isSubmitting, persistAutosave]);
 
   function addImageFromPrompt() {
     const raw = window.prompt("Collez l'URL complète de l'image (https://…)");
@@ -848,6 +965,92 @@ export default function StayDraftReviewForm({
     return { payload };
   }
 
+  function buildAutosavePayload(): StayDraftReviewPayload {
+    const categories = normalizeStayDraftCategories(selectedCategories).categories;
+    const ages = parseCommaSeparatedList(agesText)
+      .map((item) => Number(item))
+      .filter((value) => Number.isFinite(value) && value >= 0)
+      .map((value) => Math.round(value));
+    const sessionsPayload = sessionsList.filter((row) => {
+      const hasStart = String(row.start_date ?? '').trim().length > 0;
+      const hasEnd = String(row.end_date ?? '').trim().length > 0;
+      const hasLabel = String(row.label ?? '').trim().length > 0;
+      const p = row.price;
+      const hasPrice =
+        (typeof p === 'number' && Number.isFinite(p)) ||
+        (p != null && String(p).trim() !== '' && String(p).trim() !== 'null');
+      return hasStart || hasEnd || hasLabel || hasPrice;
+    });
+    const extraOptionsPayload = extraOptionsList.filter(
+      (row) => String(row.label ?? '').trim().length > 0
+    );
+    const insuranceOptionsPayload = insuranceOptionsList.filter(
+      (row) => String(row.label ?? '').trim().length > 0
+    );
+    const mergedExtraOptions = mergeDraftExtraOptionsJson(extraOptionsPayload, insuranceOptionsPayload);
+    const transportOptionsPayload = transportOptionsList.filter(
+      (row) => String(row.label ?? '').trim().length > 0
+    );
+    const accommodationsParsed = linkedAccommodation
+      ? { value: null as Record<string, unknown> | null }
+      : { value: JSON.parse(JSON.stringify(accommodationImport)) as Record<string, unknown> };
+    const imagesPayload = normalizeImportedImageUrlList(
+      imageUrls.map((u) => u.trim()).filter(Boolean)
+    );
+    const videosPayload = normalizeImportedVideoUrlList(
+      videoUrls.map((u) => u.trim()).filter(Boolean)
+    );
+    const resolvedSeasonNames = normalizedSeasonOptions
+      .filter((option) => selectedSeasonKeySet.has(normalizeSeasonKey(option.name)))
+      .map((option) => option.name);
+    const resolvedSeasonIds = normalizedSeasonOptions
+      .filter((option) => selectedSeasonKeySet.has(normalizeSeasonKey(option.name)))
+      .map((option) => option.id);
+    const partnerRaw = partnerDiscountPercent.trim().replace(',', '.');
+    const partnerParsed = partnerRaw.length > 0 && Number.isFinite(Number(partnerRaw))
+      ? Number(partnerRaw)
+      : null;
+
+    return {
+      title: title.trim(),
+      season_ids: resolvedSeasonIds,
+      season_names: resolvedSeasonNames,
+      season_name: resolvedSeasonNames[0] ?? resolvedSeasonNames.join(', '),
+      summary,
+      location_text: locationText,
+      region_text: regionText,
+      description,
+      activities_text: initialPayload.activities_text,
+      required_documents_text: requiredDocumentsText,
+      program_text: programText,
+      supervision_text: supervisionText,
+      transport_text: transportText,
+      transport_mode: transportMode,
+      categories,
+      ages,
+      sessions_json: sessionsPayload,
+      extra_options_json: mergedExtraOptions,
+      transport_options_json: transportOptionsPayload,
+      accommodations_json: accommodationsParsed.value ?? null,
+      images: imagesPayload,
+      video_urls: videosPayload,
+      seo_primary_keyword: sanitizeSeoPrimaryKeyword(seoPrimaryKeyword),
+      seo_secondary_keywords: sanitizeSeoTags(seoSecondaryKeywords),
+      seo_target_city: sanitizeSeoText(seoTargetCity),
+      seo_target_region: sanitizeSeoText(seoTargetRegion),
+      seo_search_intents: sanitizeSeoTags(seoSearchIntents),
+      seo_title: sanitizeSeoText(seoTitle),
+      seo_meta_description: sanitizeSeoText(seoMetaDescription),
+      seo_intro_text: sanitizeSeoText(seoIntroText),
+      seo_h1_variant: sanitizeSeoText(seoH1Variant),
+      seo_internal_link_anchor_suggestions: sanitizeSeoTags(seoInternalAnchors),
+      seo_slug_candidate: sanitizeSeoText(seoSlugCandidate),
+      seo_score: Number.isFinite(seoScore) ? seoScore : null,
+      seo_checks: seoChecks,
+      partner_discount_percent: partnerParsed
+    };
+  }
+
   async function submit(mode: 'save' | 'validate') {
     const result = buildPayload();
     if (!result.payload) {
@@ -935,11 +1138,11 @@ export default function StayDraftReviewForm({
         setStatus(data?.draft?.status ?? status);
         setValidatedAt(data?.draft?.validated_at ?? validatedAt);
         setValidatedByUserId(data?.draft?.validated_by_user_id ?? validatedByUserId);
-      }
-
-      if (mode === 'save' && variant === 'draft') {
-        router.push(backHref);
-        return;
+        const signature = JSON.stringify(result.payload);
+        autosavePayloadSignatureRef.current = signature;
+        initialAutosaveSnapshotRef.current = signature;
+        setAutosaveStatus('saved');
+        setLastAutosaveAt(new Date().toISOString());
       }
 
       if (mode === 'validate') {
@@ -980,6 +1183,97 @@ export default function StayDraftReviewForm({
   const accommodationGateClosed = !isPublishedVariant && !linkedAccommodation && !hasCompletedAccommodationGate;
   const effectiveStep: DraftReviewStepId = accommodationGateClosed ? 'hebergement' : activeStep;
   const effectiveStepIndex = draftReviewStepIndex(effectiveStep, reviewSteps);
+  const publishAllowed =
+    isPublishedVariant || (!accommodationGateClosed && title.trim().length > 0);
+
+  const stepHasError = useMemo(() => {
+    const byStep: Record<DraftReviewStepId, boolean> = {
+      hebergement: Boolean(fieldErrors.accommodations_json),
+      sejour: Boolean(
+        fieldErrors.title ||
+          fieldErrors.season_ids ||
+          fieldErrors.summary ||
+          fieldErrors.location_text ||
+          fieldErrors.region_text ||
+          fieldErrors.description ||
+          fieldErrors.program_text ||
+          fieldErrors.supervision_text ||
+          fieldErrors.required_documents_text ||
+          fieldErrors.transport_text ||
+          fieldErrors.categories ||
+          fieldErrors.ages
+      ),
+      photos: Boolean(fieldErrors.images || fieldErrors.video_urls),
+      sessions: Boolean(fieldErrors.sessions_json),
+      options: Boolean(fieldErrors.extra_options_json),
+      transports: Boolean(fieldErrors.transport_options_json || fieldErrors.transport_mode),
+      partenaires: Boolean(fieldErrors.partner_discount_percent),
+      seo: Boolean(
+        fieldErrors.seo_primary_keyword ||
+          fieldErrors.seo_secondary_keywords ||
+          fieldErrors.seo_target_city ||
+          fieldErrors.seo_target_region ||
+          fieldErrors.seo_search_intents ||
+          fieldErrors.seo_title ||
+          fieldErrors.seo_meta_description ||
+          fieldErrors.seo_intro_text ||
+          fieldErrors.seo_h1_variant ||
+          fieldErrors.seo_internal_link_anchor_suggestions ||
+          fieldErrors.seo_slug_candidate ||
+          fieldErrors.seo_score ||
+          fieldErrors.seo_checks
+      )
+    };
+    return byStep;
+  }, [fieldErrors]);
+
+  const stepIsCompleted = useMemo(() => {
+    const completed: Record<DraftReviewStepId, boolean> = {
+      hebergement: linkedAccommodation
+        ? true
+        : Boolean(String(accommodationImport.title ?? '').trim()),
+      sejour: Boolean(title.trim()),
+      photos: imagePreviewUrls.length > 0 || videoUrls.some((value) => value.trim().length > 0),
+      sessions: sessionsList.length > 0 || isPublishedVariant,
+      options: extraOptionsList.length > 0 || insuranceOptionsList.length > 0,
+      transports:
+        transportOptionsList.length > 0 ||
+        Boolean(transportMode && transportMode !== 'À préciser'),
+      partenaires: Boolean(partnerDiscountPercent.trim()),
+      seo: hasGeneratedSeo
+    };
+    return completed;
+  }, [
+    accommodationImport.title,
+    extraOptionsList.length,
+    hasGeneratedSeo,
+    imagePreviewUrls.length,
+    insuranceOptionsList.length,
+    isPublishedVariant,
+    linkedAccommodation,
+    partnerDiscountPercent,
+    sessionsList.length,
+    title,
+    transportMode,
+    transportOptionsList.length,
+    videoUrls
+  ]);
+
+  const completedVisibleStepsCount = useMemo(
+    () => visibleReviewSteps.filter((step) => stepIsCompleted[step.id]).length,
+    [stepIsCompleted, visibleReviewSteps]
+  );
+
+  useEffect(() => {
+    if (isPublishedVariant) return;
+    if (lastAutosaveStepRef.current === null) {
+      lastAutosaveStepRef.current = effectiveStep;
+      return;
+    }
+    if (lastAutosaveStepRef.current === effectiveStep) return;
+    lastAutosaveStepRef.current = effectiveStep;
+    void persistAutosave(autosaveDraftPayload);
+  }, [autosaveDraftPayload, effectiveStep, isPublishedVariant, persistAutosave]);
 
   function goToDraftStep(step: DraftReviewStepId) {
     if (accommodationGateClosed && step !== 'hebergement') return;
@@ -1034,6 +1328,30 @@ export default function StayDraftReviewForm({
           {successMessage}
         </div>
       )}
+      {!isPublishedVariant && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs text-slate-600">
+          <div className="flex items-center gap-2">
+            <span className="font-semibold text-slate-700">Autosave</span>
+            {autosaveStatus === 'saving' ? <span>Sauvegarde…</span> : null}
+            {autosaveStatus === 'saved' && lastAutosaveAt ? (
+              <span>Enregistré à {new Date(lastAutosaveAt).toLocaleTimeString('fr-FR')}</span>
+            ) : null}
+            {autosaveStatus === 'error' ? (
+              <span className="text-rose-700">{autosaveError ?? 'Erreur autosave'}</span>
+            ) : null}
+            {autosaveStatus === 'idle' ? <span>Modifications non sauvegardées</span> : null}
+          </div>
+          {autosaveStatus === 'error' ? (
+            <button
+              type="button"
+              onClick={() => void persistAutosave(buildAutosavePayload())}
+              className="rounded-md border border-rose-200 px-2.5 py-1 font-semibold text-rose-700"
+            >
+              Réessayer
+            </button>
+          ) : null}
+        </div>
+      )}
 
       {!linkedAccommodation && accommodationGateClosed && (
         <div className="rounded-2xl border border-amber-200 bg-amber-50/60 px-4 py-3 text-sm text-amber-950">
@@ -1045,10 +1363,20 @@ export default function StayDraftReviewForm({
 
       <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
         <nav aria-label="Étapes de relecture du brouillon">
+          <div className="mb-3 flex items-center justify-between gap-3 text-xs text-slate-600">
+            <p className="font-semibold text-slate-700">
+              Étape {Math.max(1, effectiveStepIndex + 1)} / {visibleReviewSteps.length}
+            </p>
+            <p>
+              {completedVisibleStepsCount} étape(s) complétée(s)
+            </p>
+          </div>
           <ul className="flex snap-x snap-mandatory gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:justify-between sm:gap-3 sm:overflow-visible">
-            {visibleReviewSteps.map(({ id, label, Icon }) => {
+            {visibleReviewSteps.map(({ id, label, Icon }, index) => {
               const isActive = effectiveStep === id;
               const stepDisabled = accommodationGateClosed && id !== 'hebergement';
+              const isError = stepHasError[id];
+              const isCompleted = stepIsCompleted[id];
               return (
                 <li key={id} className="snap-start shrink-0 sm:flex-1 sm:min-w-0">
                   <button
@@ -1057,19 +1385,39 @@ export default function StayDraftReviewForm({
                     aria-current={isActive ? 'step' : undefined}
                     onClick={() => goToDraftStep(id)}
                     className={cn(
-                      'flex h-full min-h-[88px] w-[100px] flex-col items-center justify-center gap-1.5 rounded-xl border px-2 py-2.5 text-center transition sm:w-full',
+                      'flex h-full min-h-[92px] w-[126px] flex-col items-start justify-between rounded-xl border px-3 py-3 text-left transition sm:w-full',
                       isActive
                         ? 'border-orange-400 bg-orange-50/90 ring-2 ring-orange-200/80'
                         : 'border-slate-200 bg-slate-50/80 hover:border-slate-300 hover:bg-white',
                       stepDisabled && 'cursor-not-allowed opacity-40 hover:border-slate-200 hover:bg-slate-50/80'
                     )}
                   >
-                    <Icon
-                      className={cn('h-5 w-5 shrink-0', isActive ? 'text-orange-700' : 'text-slate-500')}
-                      aria-hidden
-                    />
-                    <span className="text-[10px] font-semibold leading-tight text-slate-800 sm:text-[11px]">
-                      {label}
+                    <span className="flex w-full items-center justify-between gap-2">
+                      <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                        <span>{index + 1}</span>
+                        <span>{label}</span>
+                      </span>
+                      {isError ? (
+                        <AlertTriangle className="h-4 w-4 text-amber-600" />
+                      ) : isCompleted ? (
+                        <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                      ) : (
+                        <Circle className="h-4 w-4 text-slate-400" />
+                      )}
+                    </span>
+                    <span className="flex w-full items-center justify-between gap-2">
+                      <Icon
+                        className={cn('h-5 w-5 shrink-0', isActive ? 'text-orange-700' : 'text-slate-500')}
+                        aria-hidden
+                      />
+                      <span
+                        className={cn(
+                          'text-[11px] font-semibold',
+                          isError ? 'text-amber-700' : isCompleted ? 'text-emerald-700' : 'text-slate-600'
+                        )}
+                      >
+                        {isError ? 'À corriger' : isCompleted ? 'Complétée' : 'À compléter'}
+                      </span>
                     </span>
                   </button>
                 </li>
@@ -2045,60 +2393,64 @@ export default function StayDraftReviewForm({
 
         </div>
 
-        <div className="flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={goDraftPrev}
-              disabled={accommodationGateClosed || effectiveStepIndex === 0}
-              className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              Précédent
-            </button>
-            {effectiveStep !== 'seo' && (
+        <div className="sticky bottom-2 z-20 -mx-1 mt-2 rounded-xl border border-slate-200/90 bg-white/95 p-3 shadow-md backdrop-blur-sm">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                onClick={() => {
-                  if (accommodationGateClosed) {
-                    setFieldErrors({});
-                    setGlobalError(null);
-                  }
-                  goDraftNext();
-                }}
-                className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
+                onClick={goDraftPrev}
+                disabled={accommodationGateClosed || effectiveStepIndex === 0}
+                className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
               >
-                {accommodationGateClosed ? 'Continuer' : 'Suivant'}
+                Précédent
               </button>
-            )}
-          </div>
+              {effectiveStep !== 'seo' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (accommodationGateClosed) {
+                      setFieldErrors({});
+                      setGlobalError(null);
+                    }
+                    goDraftNext();
+                  }}
+                  className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
+                >
+                  {accommodationGateClosed ? 'Continuer' : 'Suivant'}
+                </button>
+              )}
+              <span className="text-xs font-medium text-slate-500">
+                Étape {Math.max(1, effectiveStepIndex + 1)} / {visibleReviewSteps.length}
+              </span>
+            </div>
 
-          {effectiveStep === 'seo' ? (
-            <div className="flex flex-wrap items-center gap-3">
-              <button
-                type="button"
-                onClick={() => submit(isPublishedVariant ? 'save' : 'validate')}
-                disabled={isSubmitting}
-                className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-              >
-                {variant === 'published'
-                  ? 'Enregistrer les modifications'
-                  : 'Valider et publier le séjour'}
-              </button>
+            <div className="flex flex-wrap items-center gap-2">
               <Link
                 href={backHref}
                 className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700"
               >
                 Annuler
               </Link>
+              <button
+                type="button"
+                onClick={() => submit('save')}
+                disabled={isSubmitting || isGeneratingSeo}
+                className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 disabled:opacity-60"
+              >
+                {isPublishedVariant ? 'Enregistrer' : 'Enregistrer le brouillon'}
+              </button>
+              {!isPublishedVariant ? (
+                <button
+                  type="button"
+                  onClick={() => submit('validate')}
+                  disabled={!publishAllowed || isSubmitting || isGeneratingSeo}
+                  className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Valider et publier
+                </button>
+              ) : null}
             </div>
-          ) : (
-            <Link
-              href={backHref}
-              className="self-start rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 sm:self-auto"
-            >
-              Annuler
-            </Link>
-          )}
+          </div>
         </div>
       </div>
 

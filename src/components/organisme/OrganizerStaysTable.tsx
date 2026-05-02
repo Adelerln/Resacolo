@@ -93,6 +93,7 @@ export default function OrganizerStaysTable({
   const [openStayIds, setOpenStayIds] = useState<string[]>(defaultOpenStayIds);
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [dirtySessionIds, setDirtySessionIds] = useState<Record<string, boolean>>({});
+  const [statusFilter, setStatusFilter] = useState('all');
   const [completionFilter, setCompletionFilter] = useState<'all' | 'full' | 'available'>('all');
   const [locationFilter, setLocationFilter] = useState('all');
   const submittersRef = useRef<Record<string, ((nextEditSessionId?: string) => void) | undefined>>({});
@@ -113,8 +114,16 @@ export default function OrganizerStaysTable({
         .sort((a, b) => a.localeCompare(b, 'fr'))
     )
   );
+  const statusOptions = Array.from(
+    new Set(
+      stays
+        .map((stay) => stay.status)
+        .filter((status): status is string => typeof status === 'string' && status.trim().length > 0)
+    )
+  );
 
   const filteredStays = stays.filter((stay) => {
+    if (statusFilter !== 'all' && (stay.status ?? '') !== statusFilter) return false;
     if (completionFilter === 'full' && stay.availability !== 'FULL') return false;
     if (completionFilter === 'available' && stay.availability === 'FULL') return false;
     if (locationFilter !== 'all' && stay.locationText.trim() !== locationFilter) return false;
@@ -126,7 +135,7 @@ export default function OrganizerStaysTable({
       {importDrafts.length > 0 && (
         <div className="overflow-hidden rounded-2xl border border-amber-200 bg-amber-50/40">
           <div className="border-b border-amber-200/80 bg-amber-100/50 px-4 py-3">
-            <h2 className="text-sm font-semibold text-amber-950">Brouillons d&apos;import (IA)</h2>
+            <h2 className="text-sm font-semibold text-amber-950">Brouillons d&apos;import</h2>
           </div>
           <ul className="divide-y divide-amber-200/60">
             {importDrafts.map((draft) => (
@@ -144,7 +153,7 @@ export default function OrganizerStaysTable({
                     </span>
                     <Link
                       href={withOrganizerQuery(`/organisme/sejours/drafts/${draft.id}`, organizerId)}
-                      className="inline-flex rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white"
+                      className="organizer-btn-secondary min-h-[36px] px-3 py-1.5 text-xs"
                     >
                       Ouvrir la relecture
                     </Link>
@@ -183,9 +192,24 @@ export default function OrganizerStaysTable({
         </div>
       )}
 
-    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+    <div className="organizer-table-shell">
       <div className="border-b border-slate-200 bg-slate-50/70 px-4 py-4">
-        <div className="grid gap-3 md:grid-cols-2">
+        <div className="grid gap-3 md:grid-cols-3">
+          <label className="block text-sm font-medium text-slate-700">
+            Statut
+            <select
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value)}
+              className="organizer-input"
+            >
+              <option value="all">Tous les statuts</option>
+              {statusOptions.map((status) => (
+                <option key={status} value={status}>
+                  {stayStatusLabel(status)}
+                </option>
+              ))}
+            </select>
+          </label>
           <label className="block text-sm font-medium text-slate-700">
             Disponibilité
             <select
@@ -193,7 +217,7 @@ export default function OrganizerStaysTable({
               onChange={(event) =>
                 setCompletionFilter(event.target.value as 'all' | 'full' | 'available')
               }
-              className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+              className="organizer-input"
             >
               <option value="all">Tous les séjours</option>
               <option value="full">Séjours complets</option>
@@ -205,7 +229,7 @@ export default function OrganizerStaysTable({
             <select
               value={locationFilter}
               onChange={(event) => setLocationFilter(event.target.value)}
-              className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+              className="organizer-input"
             >
               <option value="all">Tous les lieux</option>
               {locationOptions.map((location) => (
@@ -218,8 +242,8 @@ export default function OrganizerStaysTable({
         </div>
       </div>
       <div className="overflow-x-auto">
-        <table className="min-w-[1040px] w-full text-left text-sm">
-          <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+        <table className="organizer-table min-w-[1040px]">
+          <thead>
             <tr>
               <th className="w-12 px-4 py-3"></th>
               <th className="px-4 py-3">Séjour</th>
@@ -303,7 +327,7 @@ export default function OrganizerStaysTable({
                         </form>
                         <Link
                           href={withOrganizerQuery(`/organisme/sejours/${stay.id}`, organizerId)}
-                          className="inline-flex items-center gap-1 rounded-lg border border-orange-200 px-3 py-1 text-xs font-semibold text-orange-600"
+                          className="organizer-btn-secondary min-h-[36px] gap-1 border-orange-200 px-3 py-1 text-xs text-orange-700 hover:border-orange-300 hover:bg-orange-50"
                         >
                           <Pencil className="h-3.5 w-3.5" />
                           Éditer
@@ -404,7 +428,7 @@ export default function OrganizerStaysTable({
 
                                             setEditingSessionId(sessionItem.id);
                                           }}
-                                          className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:border-slate-300 hover:text-slate-900"
+                                          className="organizer-btn-secondary min-h-[36px] gap-2 px-3 py-2 text-sm font-medium"
                                         >
                                           <span>{formatRemainingPlacesLabel(remainingPlaces)}</span>
                                           <Pencil className="h-3.5 w-3.5" />

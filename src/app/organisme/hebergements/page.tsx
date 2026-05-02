@@ -1,6 +1,7 @@
 import { revalidatePath } from 'next/cache';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
+import OrganizerPageHeader from '@/components/organisme/OrganizerPageHeader';
 import SavedToast from '@/components/common/SavedToast';
 import { formatAccommodationType } from '@/lib/accommodation-types';
 import { extractAccommodationLocationMeta } from '@/lib/accommodation-location';
@@ -26,10 +27,7 @@ export const revalidate = 0;
 
 export default async function OrganizerAccommodationsPage({ searchParams }: PageProps) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
-  const {
-    selectedOrganizer,
-    selectedOrganizerId
-  } = await requireOrganizerPageAccess({
+  const { selectedOrganizerId } = await requireOrganizerPageAccess({
     requestedOrganizerId: resolvedSearchParams?.organizerId,
     requiredSection: 'accommodations'
   });
@@ -185,27 +183,23 @@ export default async function OrganizerAccommodationsPage({ searchParams }: Page
         </div>
       )}
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Hébergements</h1>
-          <p className="text-sm text-slate-600">
-            {selectedOrganizer
-              ? `Gestion des hébergements réutilisables pour ${selectedOrganizer.name}.`
-              : 'Gestion des hébergements réutilisables.'}
-          </p>
-        </div>
-        <Link
-          href={withOrganizerQuery('/organisme/hebergements/new', selectedOrganizerId)}
-          className="inline-flex min-h-[44px] items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white"
-        >
-          Ajouter un hébergement
-        </Link>
-      </div>
+      <OrganizerPageHeader
+        title="Hébergements"
+        subtitle="Gérez vos hébergements partagés pour accélérer la création des séjours."
+        actions={(
+          <Link
+            href={withOrganizerQuery('/organisme/hebergements/new', selectedOrganizerId)}
+            className="organizer-btn-primary"
+          >
+            Ajouter un hébergement
+          </Link>
+        )}
+      />
 
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+      <div className="organizer-table-shell">
         <div className="overflow-x-auto">
-          <table className="min-w-[980px] w-full text-left text-sm">
-            <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+          <table className="organizer-table min-w-[980px]">
+            <thead>
               <tr>
                 <th className="px-4 py-3">Hébergement</th>
                 <th className="px-4 py-3">Type</th>
@@ -249,7 +243,7 @@ export default async function OrganizerAccommodationsPage({ searchParams }: Page
                     <div className="flex items-center justify-end gap-2">
                       <Link
                         href={withOrganizerQuery(`/organisme/hebergements/${accommodation.id}`, selectedOrganizerId)}
-                        className="rounded-lg border border-emerald-200 px-3 py-1 text-xs font-semibold text-emerald-700"
+                        className="organizer-btn-secondary min-h-[36px] border-emerald-200 px-3 py-1 text-xs text-emerald-700 hover:border-emerald-300 hover:bg-emerald-50"
                       >
                         Éditer
                       </Link>
@@ -267,10 +261,10 @@ export default async function OrganizerAccommodationsPage({ searchParams }: Page
                           }
                         />
                         <button
-                          className={`rounded-lg px-3 py-1 text-xs font-semibold ${
+                          className={`inline-flex min-h-[36px] items-center rounded-lg px-3 py-1 text-xs font-semibold ${
                             accommodation.status === 'ARCHIVED'
-                              ? 'border border-emerald-200 text-emerald-700'
-                              : 'border border-amber-200 text-amber-700'
+                              ? 'border border-emerald-200 text-emerald-700 hover:bg-emerald-50'
+                              : 'border border-amber-200 text-amber-700 hover:bg-amber-50'
                           }`}
                         >
                           {accommodation.status === 'ARCHIVED' ? 'Désarchiver' : 'Archiver'}
@@ -278,7 +272,7 @@ export default async function OrganizerAccommodationsPage({ searchParams }: Page
                       </form>
                       <form action={deleteAccommodation}>
                         <input type="hidden" name="accommodation_id" value={accommodation.id} />
-                        <button className="rounded-lg border border-rose-200 px-3 py-1 text-xs font-semibold text-rose-700">
+                        <button className="organizer-btn-danger min-h-[36px] px-3 py-1 text-xs">
                           Supprimer
                         </button>
                       </form>

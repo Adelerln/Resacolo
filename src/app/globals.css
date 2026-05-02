@@ -212,6 +212,106 @@
   .admin-kpi-label {
     @apply text-xs font-semibold uppercase tracking-wide text-slate-500;
   }
+
+  .organizer-page-title {
+    @apply text-2xl font-semibold text-slate-900 sm:text-3xl;
+  }
+
+  .organizer-page-subtitle {
+    @apply text-sm font-medium text-slate-600;
+  }
+
+  .organizer-page-header {
+    @apply flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between;
+  }
+
+  .organizer-page-header-actions {
+    @apply flex flex-wrap items-center gap-2;
+  }
+
+  .organizer-section-title {
+    @apply text-lg font-semibold text-slate-900;
+  }
+
+  .organizer-kpi-label {
+    @apply text-xs font-semibold uppercase tracking-wide text-slate-500;
+  }
+
+  .organizer-card {
+    @apply rounded-2xl border border-slate-200 bg-white shadow-sm;
+  }
+
+  .organizer-card-subtle {
+    @apply rounded-2xl border border-slate-200 bg-slate-50/60 shadow-sm;
+  }
+
+  .organizer-input {
+    @apply mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 transition;
+  }
+
+  .organizer-input:focus-visible {
+    @apply border-brand-500 outline-none ring-2 ring-brand-100;
+  }
+
+  .organizer-alert-info {
+    @apply rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900;
+  }
+
+  .organizer-alert-success {
+    @apply rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800;
+  }
+
+  .organizer-alert-warning {
+    @apply rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900;
+  }
+
+  .organizer-alert-error {
+    @apply rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700;
+  }
+
+  .organizer-btn {
+    @apply inline-flex min-h-[44px] items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2;
+  }
+
+  .organizer-btn-primary {
+    @apply organizer-btn bg-emerald-600 text-white hover:bg-emerald-700 focus-visible:ring-emerald-300;
+  }
+
+  .organizer-btn-secondary {
+    @apply organizer-btn border border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50 focus-visible:ring-slate-300;
+  }
+
+  .organizer-btn-danger {
+    @apply organizer-btn border border-rose-200 bg-white text-rose-700 hover:bg-rose-50 focus-visible:ring-rose-300;
+  }
+
+  .organizer-btn-warning {
+    @apply organizer-btn border border-amber-200 bg-white text-amber-700 hover:bg-amber-50 focus-visible:ring-amber-300;
+  }
+
+  .organizer-table-shell {
+    @apply overflow-hidden rounded-2xl border border-slate-200 bg-white;
+  }
+
+  .organizer-table {
+    @apply min-w-full text-left text-sm;
+  }
+
+  .organizer-table thead {
+    @apply bg-slate-50 text-xs uppercase text-slate-500;
+  }
+
+  .organizer-table th {
+    @apply px-4 py-3;
+  }
+
+  .organizer-table td {
+    @apply px-4 py-3 align-top;
+  }
+
+  .organizer-table tbody tr {
+    @apply border-t border-slate-100;
+  }
 }
 
 :root {

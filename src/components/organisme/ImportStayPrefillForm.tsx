@@ -165,7 +165,7 @@ export default function ImportStayPrefillForm({
               inputMode="url"
               autoComplete="url"
               placeholder="https://exemple.com/fiche-sejour"
-              className={`mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 ${pending ? 'cursor-wait bg-slate-50' : ''}`}
+              className={`organizer-input ${pending ? 'cursor-wait bg-slate-50' : ''}`}
               required
               readOnly={pending}
             />
@@ -174,7 +174,7 @@ export default function ImportStayPrefillForm({
             Hébergement à rattacher
             <select
               name="selectedAccommodationId"
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+              className="organizer-input"
               defaultValue=""
             >
               <option value="">Créer un nouvel hébergement depuis l&apos;import</option>
@@ -208,7 +208,7 @@ export default function ImportStayPrefillForm({
         <button
           type="submit"
           disabled={pending}
-          className="h-10 rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white disabled:cursor-wait disabled:opacity-90"
+          className="organizer-btn-primary min-h-[40px] disabled:cursor-wait disabled:opacity-90"
         >
           {pending ? 'Import en cours… (patientez)' : 'Pré-remplir'}
         </button>
@@ -219,7 +219,7 @@ export default function ImportStayPrefillForm({
           </p>
         ) : null}
         {createdDraftId && importAction === 'existing' ? (
-          <p className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+          <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
             Un brouillon existait déjà pour cette URL. Le brouillon existant a été réutilisé.{' '}
             <Link
               href={`/organisme/sejours/drafts/${createdDraftId}?organizerId=${encodeURIComponent(organizerId)}`}

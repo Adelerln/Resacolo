@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import ErrorToast from '@/components/common/ErrorToast';
 import NewStayChoiceModalTrigger from '@/components/organisme/NewStayChoiceModalTrigger';
 import SavedToast from '@/components/common/SavedToast';
+import OrganizerPageHeader from '@/components/organisme/OrganizerPageHeader';
 import OrganizerStaysTable from '@/components/organisme/OrganizerStaysTable';
 import { requireOrganizerPageAccess } from '@/lib/organizer-backoffice-access.server';
 import { withOrganizerQuery } from '@/lib/organizers.server';
@@ -481,12 +482,10 @@ export default async function OrganizerStaysPage({ searchParams }: PageProps) {
       {draftDeletedParam === '1' && <SavedToast message="Le brouillon d'import a bien été supprimé." />}
       {savedParam === '1' && <SavedToast message="Le stock de la session a bien été mis à jour." />}
       {errorParam && <ErrorToast message={decodeURIComponent(errorParam)} />}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Séjours</h1>
-        </div>
-        <NewStayChoiceModalTrigger organizerId={organizerId} />
-      </div>
+      <OrganizerPageHeader
+        title="Séjours"
+        actions={<NewStayChoiceModalTrigger organizerId={organizerId} />}
+      />
 
       {stayRows.length > 0 || importDraftRows.length > 0 ? (
         <OrganizerStaysTable

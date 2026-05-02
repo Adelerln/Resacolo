@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
+import OrganizerPageHeader from '@/components/organisme/OrganizerPageHeader';
 import StayDraftReviewForm from '@/components/organisme/StayDraftReviewForm';
 import { requireOrganizerPageAccess } from '@/lib/organizer-backoffice-access.server';
 import { mapPublishedStayToReviewPayload } from '@/lib/map-published-stay-to-review-payload';
@@ -139,20 +140,15 @@ export default async function OrganizerStayEditTunnelPage({ params: paramsPromis
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Modifier le séjour</h1>
-          <p className="text-sm text-slate-600">
-            Modifiez directement la fiche publiée. Les sessions se gèrent séparément pour éviter les doublons et préserver les réservations.
-          </p>
-        </div>
-        <Link
-          href={backHref}
-          className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700"
-        >
-          Retour à la fiche
-        </Link>
-      </div>
+      <OrganizerPageHeader
+        title="Modifier le séjour"
+        subtitle="Utilisez le tunnel unique pour mettre à jour la fiche publiée."
+        actions={(
+          <Link href={backHref} className="organizer-btn-secondary">
+            Retour à la fiche
+          </Link>
+        )}
+      />
 
       <StayDraftReviewForm
         draftId={stay.id}

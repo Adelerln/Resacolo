@@ -40,15 +40,15 @@ export default async function OrganizerLayout({ children }: { children: React.Re
             <Link
               key={item.href}
               href={withOrganizerQuery(item.href, selectedOrganizerId)}
-              className="inline-flex shrink-0 rounded-full border border-slate-200 px-3 py-1.5 transition hover:border-slate-300 hover:text-slate-900"
+              className="inline-flex shrink-0 rounded-full border border-slate-200 px-3 py-1.5 font-semibold transition hover:border-slate-300 hover:text-slate-900"
             >
               {item.label}
             </Link>
           ))}
         </nav>
       </div>
-      <div className="flex min-h-screen">
-        <aside className="hidden w-64 flex-col border-r border-slate-200 bg-white lg:flex">
+      <div className="flex min-h-screen lg:h-screen lg:overflow-hidden">
+        <aside className="hidden h-screen w-64 flex-col border-r border-slate-200 bg-white shadow-sm lg:flex">
           <div className="px-6 py-6">
             <div className="mb-3">
               <Link
@@ -90,15 +90,17 @@ export default async function OrganizerLayout({ children }: { children: React.Re
             </div>
           </div>
         </aside>
-        <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-10">
+        <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:overflow-y-auto lg:px-8 lg:py-10">
           <Suspense
             fallback={<div className="mb-6 rounded-2xl border border-slate-200 bg-white px-4 py-4" />}
           >
-            <OrganizerWorkspaceSelector
-              organizers={organizers}
-              initialSelectedOrganizerId={selectedOrganizerId}
-              accessRolesByOrganizerId={accessByOrganizerId}
-            />
+            <div className="sticky top-0 z-20 bg-slate-50/95 pb-4 backdrop-blur-sm">
+              <OrganizerWorkspaceSelector
+                organizers={organizers}
+                initialSelectedOrganizerId={selectedOrganizerId}
+                accessRolesByOrganizerId={accessByOrganizerId}
+              />
+            </div>
           </Suspense>
           {children}
         </main>

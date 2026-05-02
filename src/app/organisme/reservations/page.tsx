@@ -1,5 +1,8 @@
+import Link from 'next/link';
+import OrganizerPageHeader from '@/components/organisme/OrganizerPageHeader';
 import { requireOrganizerPageAccess } from '@/lib/organizer-backoffice-access.server';
 import { mockRequests, mockSessions, mockStages, mockStays } from '@/lib/mocks';
+import { withOrganizerQuery } from '@/lib/organizers.server';
 
 type PageProps = {
   searchParams?: Promise<{
@@ -9,7 +12,7 @@ type PageProps = {
 
 export default async function OrganizerRequestsPage({ searchParams }: PageProps) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
-  const { selectedOrganizer } = await requireOrganizerPageAccess({
+  const { selectedOrganizerId } = await requireOrganizerPageAccess({
     requestedOrganizerId: resolvedSearchParams?.organizerId,
     requiredSection: 'reservations'
   });
@@ -26,18 +29,14 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-slate-900">Réservations</h1>
-        <p className="text-sm text-slate-600">
-          {selectedOrganizer
-            ? `Affichage du contexte ${selectedOrganizer.name}.`
-            : 'Affichage des réservations.'}
-        </p>
-      </div>
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+      <OrganizerPageHeader
+        title="Réservations"
+        subtitle="Suivez les demandes et priorisez les sessions à traiter."
+      />
+      <div className="organizer-table-shell">
         <div className="overflow-x-auto">
-          <table className="min-w-[680px] w-full text-left text-sm">
-            <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+          <table className="organizer-table min-w-[680px]">
+            <thead>
               <tr>
                 <th className="px-4 py-3">Séjour</th>
                 <th className="px-4 py-3">Session</th>
@@ -58,8 +57,16 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
               ))}
               {requests.length === 0 && (
                 <tr>
-                  <td className="px-4 py-6 text-slate-500" colSpan={4}>
-                    Aucune demande.
+                  <td className="px-4 py-8 text-slate-500" colSpan={4}>
+                    <p>Aucune demande pour le moment.</p>
+                    <p className="mt-2 text-sm">
+                      <Link
+                        href={withOrganizerQuery('/organisme/sejours', selectedOrganizerId)}
+                        className="font-semibold text-emerald-700 underline"
+                      >
+                        Vérifier les séjours publiés
+                      </Link>
+                    </p>
                   </td>
                 </tr>
               )}

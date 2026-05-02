@@ -71,7 +71,7 @@ function redirectToOrganizerStayCreation(
 ) {
   const query = new URLSearchParams(params ?? {}).toString();
   const path = withOrganizerQuery(
-    query ? `/organisme/sejours/new?${query}` : '/organisme/sejours/new',
+    query ? `/organisme/sejours/new/url?${query}` : '/organisme/sejours/new/url',
     organizerId
   );
   return NextResponse.redirect(new URL(path, req.url), 303);

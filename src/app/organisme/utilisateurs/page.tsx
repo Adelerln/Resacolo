@@ -1,4 +1,5 @@
 import { requireOrganizerPageAccess } from '@/lib/organizer-backoffice-access.server';
+import OrganizerPageHeader from '@/components/organisme/OrganizerPageHeader';
 import { ORGANIZER_ACCESS_LABELS, ORGANIZER_ACCESS_ROLE_VALUES } from '@/lib/organizer-access';
 import { PASSWORD_POLICY_HTML_PATTERN, PASSWORD_POLICY_MESSAGE } from '@/lib/auth/password-policy';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
@@ -13,7 +14,7 @@ export default async function OrganismeUsersPage({
   searchParams?: Promise<{ organizerId?: string | string[] }>;
 }) {
   const resolved = searchParams ? await searchParams : undefined;
-  const { selectedOrganizerId, selectedOrganizer, accessRole } = await requireOrganizerPageAccess({
+  const { selectedOrganizerId, accessRole } = await requireOrganizerPageAccess({
     requestedOrganizerId: resolved?.organizerId,
     requiredSection: 'users'
   });
@@ -39,33 +40,31 @@ export default async function OrganismeUsersPage({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-slate-900">Utilisateurs</h1>
-        <p className="mt-1 text-sm text-slate-600">
-          Organisme : {selectedOrganizer?.name ?? '—'} · Accès : {ORGANIZER_ACCESS_LABELS[accessRole]}
+      <OrganizerPageHeader
+        title="Utilisateurs"
+        subtitle="Gérez les membres et leurs rôles d’accès à l’espace organisateur."
+      />
+      {!isOwner && (
+        <p className="organizer-alert-warning">
+          Seul un <strong>Propriétaire</strong> peut ajouter/modifier/supprimer des utilisateurs.
         </p>
-        {!isOwner && (
-          <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-            Seul un <strong>Propriétaire</strong> peut ajouter/modifier/supprimer des utilisateurs.
-          </p>
-        )}
-      </div>
+      )}
 
       {isOwner && (
         <form
-          className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6"
+          className="organizer-card space-y-4 p-4 sm:p-6"
           action="/api/organisme/members"
           method="post"
         >
           <input type="hidden" name="organizer_id" value={selectedOrganizerId} />
-          <h2 className="text-lg font-semibold text-slate-900">Ajouter un utilisateur</h2>
+          <h2 className="organizer-section-title">Ajouter un utilisateur</h2>
           <div className="grid gap-4 md:grid-cols-2">
             <label className="block text-sm font-medium text-slate-700">
               Prénom
               <input
                 name="first_name"
                 required
-                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+                className="organizer-input"
               />
             </label>
             <label className="block text-sm font-medium text-slate-700">
@@ -73,7 +72,7 @@ export default async function OrganismeUsersPage({
               <input
                 name="last_name"
                 required
-                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+                className="organizer-input"
               />
             </label>
             <label className="block text-sm font-medium text-slate-700">
@@ -82,7 +81,7 @@ export default async function OrganismeUsersPage({
                 name="email"
                 type="email"
                 required
-                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+                className="organizer-input"
               />
             </label>
             <label className="block text-sm font-medium text-slate-700">
@@ -90,7 +89,7 @@ export default async function OrganismeUsersPage({
               <select
                 name="role"
                 defaultValue="EDITOR"
-                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+                className="organizer-input"
               >
                 {ORGANIZER_ACCESS_ROLE_VALUES.map((role) => (
                   <option key={role} value={role}>
@@ -108,7 +107,7 @@ export default async function OrganismeUsersPage({
                 type="password"
                 pattern={PASSWORD_POLICY_HTML_PATTERN}
                 title={PASSWORD_POLICY_MESSAGE}
-                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+                className="organizer-input"
               />
             </label>
             <div className="flex items-end">
@@ -116,17 +115,17 @@ export default async function OrganismeUsersPage({
             </div>
           </div>
           <div className="flex justify-end">
-            <button className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">
+            <button className="organizer-btn-primary">
               Ajouter
             </button>
           </div>
         </form>
       )}
 
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+      <div className="organizer-table-shell">
         <div className="overflow-x-auto">
-          <table className="min-w-[980px] w-full text-left text-sm">
-            <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+          <table className="organizer-table min-w-[980px]">
+            <thead>
               <tr>
                 <th className="px-4 py-3">Email</th>
                 <th className="px-4 py-3">Prénom</th>
@@ -147,7 +146,7 @@ export default async function OrganismeUsersPage({
                       name="first_name"
                       defaultValue={member.first_name ?? ''}
                       disabled={!isOwner}
-                      className="min-h-[42px] w-full min-w-[9rem] rounded-lg border border-slate-200 px-3 py-2 text-sm disabled:bg-slate-50"
+                      className="organizer-input mt-0 min-h-[42px] w-full min-w-[9rem] disabled:bg-slate-50"
                     />
                   </td>
                   <td className="px-4 py-3 text-slate-600">
@@ -156,7 +155,7 @@ export default async function OrganismeUsersPage({
                       name="last_name"
                       defaultValue={member.last_name ?? ''}
                       disabled={!isOwner}
-                      className="min-h-[42px] w-full min-w-[9rem] rounded-lg border border-slate-200 px-3 py-2 text-sm disabled:bg-slate-50"
+                      className="organizer-input mt-0 min-h-[42px] w-full min-w-[9rem] disabled:bg-slate-50"
                     />
                   </td>
                   <td className="px-4 py-3 text-slate-600">
@@ -165,7 +164,7 @@ export default async function OrganismeUsersPage({
                       name="role"
                       defaultValue={member.role}
                       disabled={!isOwner}
-                      className="min-h-[42px] rounded-lg border border-slate-200 px-3 py-2 text-sm disabled:bg-slate-50"
+                      className="organizer-input mt-0 min-h-[42px] disabled:bg-slate-50"
                     >
                       {ORGANIZER_ACCESS_ROLE_VALUES.map((role) => (
                         <option key={role} value={role}>
@@ -189,11 +188,11 @@ export default async function OrganismeUsersPage({
                         pattern={PASSWORD_POLICY_HTML_PATTERN}
                         title={PASSWORD_POLICY_MESSAGE}
                         placeholder="Nouveau mot de passe"
-                        className="min-h-[42px] w-full rounded-lg border border-slate-200 px-3 py-2 text-sm disabled:bg-slate-50"
+                        className="organizer-input mt-0 min-h-[42px] w-full disabled:bg-slate-50"
                       />
                       <button
                         disabled={!isOwner}
-                        className="shrink-0 rounded bg-slate-900 px-2 py-1 text-xs font-semibold text-white disabled:opacity-50"
+                        className="organizer-btn-secondary min-h-[32px] shrink-0 px-2 py-1 text-xs disabled:opacity-50"
                       >
                         MAJ
                       </button>
@@ -212,7 +211,7 @@ export default async function OrganismeUsersPage({
                         <input type="hidden" name="organizer_id" value={selectedOrganizerId} />
                         <button
                           disabled={!isOwner}
-                          className="rounded bg-emerald-600 px-2 py-1 text-xs font-semibold text-white disabled:opacity-50"
+                          className="organizer-btn-primary min-h-[32px] px-2 py-1 text-xs disabled:opacity-50"
                         >
                           OK
                         </button>
@@ -221,7 +220,7 @@ export default async function OrganismeUsersPage({
                         <input type="hidden" name="organizer_id" value={selectedOrganizerId} />
                         <button
                           disabled={!isOwner}
-                          className="rounded border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
+                          className="organizer-btn-secondary min-h-[32px] px-2 py-1 text-xs disabled:opacity-50"
                         >
                           Supprimer
                         </button>
@@ -244,4 +243,3 @@ export default async function OrganismeUsersPage({
     </div>
   );
 }
-

@@ -2,6 +2,7 @@ import { revalidatePath } from 'next/cache';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import AccommodationFormFields from '@/components/organisme/AccommodationFormFields';
+import OrganizerPageHeader from '@/components/organisme/OrganizerPageHeader';
 import { parseAccommodationMediaUrls, replaceAccommodationMedia } from '@/lib/accommodations';
 import {
   buildAccessibilityInfoFromForm,
@@ -26,7 +27,7 @@ export const revalidate = 0;
 
 export default async function NewAccommodationPage({ searchParams }: PageProps) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
-  const { selectedOrganizer, selectedOrganizerId } = await requireOrganizerPageAccess({
+  const { selectedOrganizerId } = await requireOrganizerPageAccess({
     requestedOrganizerId: resolvedSearchParams?.organizerId,
     requiredSection: 'accommodations'
   });
@@ -146,22 +147,18 @@ export default async function NewAccommodationPage({ searchParams }: PageProps) 
         </div>
       )}
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Nouvel hébergement</h1>
-          <p className="text-sm text-slate-600">
-            {selectedOrganizer
-              ? `Création d'un hébergement pour ${selectedOrganizer.name}.`
-              : 'Création d’un hébergement.'}
-          </p>
-        </div>
-        <Link
-          href={withOrganizerQuery('/organisme/hebergements', selectedOrganizerId)}
-          className="inline-flex min-h-[44px] items-center justify-center rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700"
-        >
-          Retour à la liste
-        </Link>
-      </div>
+      <OrganizerPageHeader
+        title="Nouvel hébergement"
+        subtitle="Créez une fiche propre et réutilisable pour vos prochains séjours."
+        actions={(
+          <Link
+            href={withOrganizerQuery('/organisme/hebergements', selectedOrganizerId)}
+            className="organizer-btn-secondary"
+          >
+            Retour à la liste
+          </Link>
+        )}
+      />
 
       <form action={createAccommodation} className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
         <AccommodationFormFields submitLabel="Créer l'hébergement" />

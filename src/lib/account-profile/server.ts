@@ -36,8 +36,12 @@ function isLegacyClientsUserForeignKeyError(error: { code?: string; message?: st
   return code === '23503' && message.includes('clients_user_id_fkey');
 }
 
-function shouldIgnoreLegacyClientsSyncError(error: unknown) {
+function shouldIgnoreLegacyClientsSyncError(error: unknown): error is Error {
   return error instanceof Error && error.message.includes('clients_user_id_fkey');
+}
+
+function messageFromUnknown(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 async function waitForLegacyClientsRetry() {
@@ -387,16 +391,13 @@ async function upsertProfile(profile: FamilyProfile): Promise<FamilyProfile> {
 
   if (error || !data) {
     if (isMissingClientProfilesTableError(error)) {
-      throw new Error(CLIENT_PROFILES_MISSING_ERROR);
       try {
         await syncLegacyClientsRow({ userId: profile.userId, fullName, phone: profile.phone });
       } catch (legacyClientsError) {
         if (shouldIgnoreLegacyClientsSyncError(legacyClientsError)) {
-          const legacyClientsMessage =
-            legacyClientsError instanceof Error ? legacyClientsError.message : String(legacyClientsError);
           console.warn('[account-profile] legacy clients sync skipped without client_profiles table', {
             userId: profile.userId,
-            error: legacyClientsMessage
+            error: messageFromUnknown(legacyClientsError)
           });
         } else {
           throw legacyClientsError;
@@ -414,11 +415,9 @@ async function upsertProfile(profile: FamilyProfile): Promise<FamilyProfile> {
     await syncLegacyClientsRow({ userId: profile.userId, fullName, phone: profile.phone });
   } catch (legacyClientsError) {
     if (shouldIgnoreLegacyClientsSyncError(legacyClientsError)) {
-      const legacyClientsMessage =
-        legacyClientsError instanceof Error ? legacyClientsError.message : String(legacyClientsError);
       console.warn('[account-profile] legacy clients sync skipped after profile upsert', {
         userId: profile.userId,
-        error: legacyClientsMessage
+        error: messageFromUnknown(legacyClientsError)
       });
     } else {
       throw legacyClientsError;

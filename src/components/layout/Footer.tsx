@@ -1,4 +1,7 @@
+'use client';
+
 import type { ReactNode } from 'react';
+import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import type { LucideIcon } from 'lucide-react';
@@ -10,35 +13,10 @@ type FooterHighlight = {
   description: ReactNode;
 };
 
-const footerHighlights: FooterHighlight[] = [
-  {
-    title: 'Authenticité',
-    description: (
-      <>
-        <strong>100 % des séjours</strong> conçus et organisés par des opérateurs producteurs
-      </>
-    ),
-    imageSrc: '/image/footer/qualite.png'
-  },
-  {
-    title: 'Savoir-faire',
-    description: (
-      <>
-        <strong>De 5 à 75 ans</strong> d’expérience dans le secteur des accueils collectifs de mineurs
-      </>
-    ),
-    imageSrc: '/image/footer/evaluation.png'
-  },
-  {
-    title: 'Engagement',
-    description: (
-      <>
-        <strong>La sécurité et l’épanouissement</strong> des enfants comme premières préoccupations
-      </>
-    ),
-    imageSrc: '/image/footer/bouclier.png'
-  }
-];
+type OrganizerExperienceRange = {
+  minYears: number;
+  maxYears: number;
+};
 
 const helpLinks: { href: string; label: string; Icon: LucideIcon }[] = [
   { href: '/bien-choisir-sa-colo', label: 'Bien choisir sa colo', Icon: BarChart3 },
@@ -56,7 +34,77 @@ const legalLinks: { href: string; label: string; Icon: LucideIcon }[] = [
 const footerLinkIconClass =
   'mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center text-white/90';
 
+function buildExperienceLabel(range: OrganizerExperienceRange | null) {
+  if (!range) {
+    return 'De 5 à 75 ans';
+  }
+
+  if (range.minYears === range.maxYears) {
+    return `${range.minYears} ans`;
+  }
+
+  return `De ${range.minYears} à ${range.maxYears} ans`;
+}
+
 export function Footer({ hideHelpAndLegal = false }: { hideHelpAndLegal?: boolean }) {
+  const [experienceRange, setExperienceRange] = useState<OrganizerExperienceRange | null>(null);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    async function loadExperienceRange() {
+      try {
+        const response = await fetch('/api/organizers/experience-range');
+        if (!response.ok) {
+          throw new Error(`Impossible de charger l'ancienneté organisateurs (${response.status})`);
+        }
+
+        const data = (await response.json()) as OrganizerExperienceRange | null;
+        if (!isCancelled) {
+          setExperienceRange(data);
+        }
+      } catch (error) {
+        console.error('Erreur chargement ancienneté organisateurs', error);
+      }
+    }
+
+    loadExperienceRange();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
+
+  const footerHighlights: FooterHighlight[] = [
+    {
+      title: 'Authenticité',
+      description: (
+        <>
+          <strong>100 % des séjours</strong> conçus et organisés par des opérateurs producteurs
+        </>
+      ),
+      imageSrc: '/image/footer/qualite.png'
+    },
+    {
+      title: 'Savoir-faire',
+      description: (
+        <>
+          <strong>{buildExperienceLabel(experienceRange)}</strong> d’expérience dans le secteur des accueils collectifs de mineurs
+        </>
+      ),
+      imageSrc: '/image/footer/evaluation.png'
+    },
+    {
+      title: 'Engagement',
+      description: (
+        <>
+          <strong>La sécurité et l’épanouissement</strong> des enfants comme premières préoccupations
+        </>
+      ),
+      imageSrc: '/image/footer/bouclier.png'
+    }
+  ];
+
   return (
     <footer className="relative overflow-visible bg-[color:var(--color-primary)] text-white">
       <div className="pointer-events-none absolute right-0 top-0 z-10 translate-y-[-42%]" aria-hidden>

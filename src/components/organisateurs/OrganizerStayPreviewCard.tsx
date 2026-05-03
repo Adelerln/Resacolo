@@ -23,6 +23,8 @@ export type OrganizerStayPreviewCardProps = {
   disableBlueHoverEffect?: boolean;
   compact?: boolean;
   liftOnHover?: boolean;
+  /** Aucune session ouverte : affiche « Complet » au lieu du CTA catalogue. */
+  isFullyBooked?: boolean;
 };
 
 export function OrganizerStayPreviewCard({
@@ -42,7 +44,8 @@ export function OrganizerStayPreviewCard({
   overlayAction,
   disableBlueHoverEffect = false,
   compact = false,
-  liftOnHover = false
+  liftOnHover = false,
+  isFullyBooked = false
 }: OrganizerStayPreviewCardProps) {
   const body = description?.trim() || summary?.trim() || 'Présentation du séjour à venir.';
   const normalizedTitle = title.trim();
@@ -89,6 +92,7 @@ export function OrganizerStayPreviewCard({
     ? `${compact ? 'text-base' : 'text-lg'} font-bold text-[#FA8500] transition-colors group-hover:text-white`
     : `${compact ? 'text-base' : 'text-lg'} font-bold text-[#FA8500]`;
   const ctaClass = `mt-auto flex w-full shrink-0 items-center justify-center border-t border-white/15 bg-[linear-gradient(151deg,var(--color-primary)_38%,#52b0ea_100%)] px-4 ${compact ? 'py-3 text-[12px]' : 'py-3.5 text-sm'} font-bold uppercase tracking-wide text-white transition-opacity ${hoverEnabled ? 'group-hover:opacity-95' : ''}`;
+  const fullCtaClass = `mt-auto flex w-full shrink-0 items-center justify-center border-t border-slate-200 bg-white px-4 ${compact ? 'py-3 text-[12px]' : 'py-3.5 text-sm'} font-bold uppercase tracking-wide text-[#FA8500]`;
 
   return (
     <article className={articleClass}>
@@ -141,7 +145,11 @@ export function OrganizerStayPreviewCard({
         </Link>
       </div>
 
-      <Link href={href} className={`${contentClass} no-underline`} aria-label={`Découvrir le séjour ${title}`}>
+      <Link
+        href={href}
+        className={`${contentClass} no-underline`}
+        aria-label={isFullyBooked ? `Fiche du séjour ${title} (complet)` : `Découvrir le séjour ${title}`}
+      >
         <div className={`grid grid-cols-2 items-center gap-2 ${compact ? 'px-3.5 pb-0.5 pt-[0.75rem]' : 'px-4 pb-1 pt-[0.85rem]'}`}>
           <span className={`flex min-w-0 items-center gap-2 ${metaTextClass} ${locationSlotClass}`}>
             <Image
@@ -199,9 +207,11 @@ export function OrganizerStayPreviewCard({
           </p>
         </div>
 
-        <span className={ctaClass}>
-          DÉCOUVRIR LE SÉJOUR
-        </span>
+        {isFullyBooked ? (
+          <span className={fullCtaClass}>Complet</span>
+        ) : (
+          <span className={ctaClass}>DÉCOUVRIR LE SÉJOUR</span>
+        )}
       </Link>
     </article>
   );

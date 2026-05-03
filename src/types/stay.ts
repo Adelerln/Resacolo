@@ -116,6 +116,8 @@ export interface StayAccommodation {
   cateringInfo: string;
   accessibilityInfo: string;
   imageUrls: string[];
+  /** Liens vidéo (YouTube, Vimeo, etc.) associés au lieu d’hébergement. */
+  videoUrls?: string[];
 }
 
 export interface Stay {

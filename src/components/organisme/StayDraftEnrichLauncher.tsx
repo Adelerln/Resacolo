@@ -10,6 +10,7 @@ type StayDraftEnrichLauncherProps = {
   initialDraftId?: string;
   aiDraftId?: string;
   aiSuccess?: boolean;
+  transportCitiesDebug?: string;
   showOnlyWhenDraftReady?: boolean;
 };
 
@@ -18,11 +19,13 @@ export default function StayDraftEnrichLauncher({
   initialDraftId = '',
   aiDraftId = '',
   aiSuccess = false,
+  transportCitiesDebug = '',
   showOnlyWhenDraftReady = false
 }: StayDraftEnrichLauncherProps) {
-  const [draftId, setDraftId] = useState(initialDraftId || aiDraftId || '');
+  const [createdDraftId, setCreatedDraftId] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const isDraftReady = draftId.trim().length > 0;
+  const draftId = (createdDraftId || initialDraftId || aiDraftId || '').trim();
+  const isDraftReady = draftId.length > 0;
   const shouldRender = !showOnlyWhenDraftReady || isDraftReady || (aiSuccess && aiDraftId.trim().length > 0);
 
   useEffect(() => {
@@ -30,7 +33,7 @@ export default function StayDraftEnrichLauncher({
       const customEvent = event as CustomEvent<{ draftId?: string }>;
       const nextDraftId = customEvent.detail?.draftId?.trim();
       if (nextDraftId) {
-        setDraftId(nextDraftId);
+        setCreatedDraftId(nextDraftId);
       }
     };
 
@@ -40,10 +43,26 @@ export default function StayDraftEnrichLauncher({
   }, []);
 
   useEffect(() => {
-    const nextDraftId = (initialDraftId || aiDraftId || '').trim();
-    if (!nextDraftId) return;
-    setDraftId(nextDraftId);
-  }, [aiDraftId, initialDraftId]);
+    if (!aiSuccess || !aiDraftId.trim() || !transportCitiesDebug.trim()) return;
+
+    try {
+      const parsed = JSON.parse(transportCitiesDebug) as unknown;
+      const transportCities = Array.isArray(parsed)
+        ? parsed.filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+        : [];
+
+      console.info('[stay-drafts/enrich] villes de transport détectées', {
+        draftId: aiDraftId,
+        transportCities,
+        transportCityCount: transportCities.length
+      });
+    } catch {
+      console.info('[stay-drafts/enrich] villes de transport détectées', {
+        draftId: aiDraftId,
+        transportCitiesDebug
+      });
+    }
+  }, [aiDraftId, aiSuccess, transportCitiesDebug]);
 
   if (!shouldRender) return null;
 
@@ -78,6 +97,7 @@ export default function StayDraftEnrichLauncher({
             labelClassName="mt-2 text-xs font-semibold uppercase tracking-wide text-emerald-700"
             codeClassName="text-emerald-900"
             buttonClassName="border-emerald-300 text-emerald-900 hover:bg-emerald-100"
+            showCopyButton={false}
           />
           <Link
             href={withOrganizerQuery(`/organisme/sejours/drafts/${aiDraftId}`, organizerId)}

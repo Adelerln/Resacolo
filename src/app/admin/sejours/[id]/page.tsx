@@ -105,7 +105,17 @@ export default async function AdminStayDetailPage({ params }: PageProps) {
     return {
       ...accommodation,
       description: locationMeta.description,
-      locationLabel: locationMeta.locationLabel
+      locationLabel: locationMeta.locationLabel,
+      city: locationMeta.city,
+      postalCode: locationMeta.postalCode,
+      departmentCode: locationMeta.departmentCode,
+      regionText: locationMeta.regionText,
+      country: locationMeta.country,
+      locationMode: locationMeta.locationMode,
+      locationCity: locationMeta.locationCity,
+      locationDepartmentCode: locationMeta.locationDepartmentCode,
+      locationCountry: locationMeta.locationCountry,
+      itinerantZone: locationMeta.itinerantZone
     };
   });
 
@@ -116,6 +126,17 @@ export default async function AdminStayDetailPage({ params }: PageProps) {
 
   const linkedAccommodation = linkedAccommodations[0] ?? null;
 
+  let linkedAccommodationVideoUrls: string[] = [];
+  if (linkedAccommodation?.id) {
+    const { data: accommodationMediaRows } = await supabase
+      .from('accommodation_media')
+      .select('url')
+      .eq('accommodation_id', linkedAccommodation.id);
+    linkedAccommodationVideoUrls = (accommodationMediaRows ?? [])
+      .map((row) => row.url)
+      .filter((url): url is string => Boolean(url && typeof url === 'string'));
+  }
+
   const initialPayload = mapPublishedStayToReviewPayload({
     stay,
     sessions,
@@ -123,7 +144,22 @@ export default async function AdminStayDetailPage({ params }: PageProps) {
     extraOptions: extraOptionsRaw ?? [],
     insuranceOptions: insuranceOptionsRaw ?? [],
     transportOptions: transportOptionsRaw ?? [],
-    media: mediaRaw ?? []
+    media: mediaRaw ?? [],
+    linkedAccommodationDestinationFallback: linkedAccommodation
+      ? {
+          city: linkedAccommodation.city,
+          postalCode: linkedAccommodation.postalCode,
+          departmentCode: linkedAccommodation.departmentCode,
+          regionText: linkedAccommodation.regionText,
+          country: linkedAccommodation.country,
+          locationMode: linkedAccommodation.locationMode,
+          locationCity: linkedAccommodation.locationCity,
+          locationDepartmentCode: linkedAccommodation.locationDepartmentCode,
+          locationCountry: linkedAccommodation.locationCountry,
+          itinerantZone: linkedAccommodation.itinerantZone
+        }
+      : null,
+    linkedAccommodationVideoUrls
   });
 
   const backHref = '/admin/sejours';
@@ -165,6 +201,11 @@ export default async function AdminStayDetailPage({ params }: PageProps) {
               }
             : null
         }
+        organizerAccommodationPickerOptions={accommodations.map((row) => ({
+          id: row.id,
+          name: row.name,
+          accommodationType: row.accommodation_type
+        }))}
       />
     </div>
   );

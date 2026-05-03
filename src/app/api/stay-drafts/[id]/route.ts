@@ -1,3 +1,4 @@
+import { revalidatePath } from 'next/cache';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requireOrganizerApiAccess } from '@/lib/organizer-backoffice-access.server';
@@ -81,6 +82,7 @@ const bodySchema = z.object({
     .optional()
     .default([]),
   video_urls: z.array(z.string()).optional().default([]),
+  accommodation_video_urls: z.array(z.string()).optional().default([]),
   partner_discount_percent: z.number().min(0).max(100).nullable().optional().default(null)
 });
 
@@ -399,6 +401,9 @@ async function parseBody(req: Request): Promise<{ payload: StayDraftReviewPayloa
     seo_score: data.seo_score,
     seo_checks: data.seo_checks,
     video_urls: data.video_urls.map((url) => normalizeString(url)).filter(Boolean),
+    accommodation_video_urls: data.accommodation_video_urls
+      .map((url) => normalizeString(url))
+      .filter(Boolean),
     partner_discount_percent:
       data.partner_discount_percent != null && Number.isFinite(data.partner_discount_percent)
         ? data.partner_discount_percent
@@ -512,6 +517,10 @@ async function handleUpdate(req: Request, params: { id: string }, mode: 'save' |
         (parsedBody.payload.season_names ?? []).length > 0 ? parsedBody.payload.season_names : null,
       video_urls:
         parsedBody.payload.video_urls.length > 0 ? parsedBody.payload.video_urls : null,
+      accommodation_video_urls:
+        parsedBody.payload.accommodation_video_urls.length > 0
+          ? parsedBody.payload.accommodation_video_urls
+          : null,
       partner_discount_percent: parsedBody.payload.partner_discount_percent
   };
 
@@ -560,6 +569,11 @@ async function handleUpdate(req: Request, params: { id: string }, mode: 'save' |
     status: updatedDraft.status,
     validatedAt: updatedDraft.validated_at
   });
+
+  revalidatePath('/organisme/sejours');
+  revalidatePath('/organisme/stays');
+  revalidatePath(`/organisme/sejours/drafts/${params.id}`);
+  revalidatePath(`/organisme/stays/drafts/${params.id}`);
 
   const { data: freshDraft, error: freshDraftError } = await supabase
     .from('stay_drafts')

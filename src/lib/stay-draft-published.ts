@@ -32,16 +32,14 @@ function readStayIdFromLivePublication(live: unknown): string | null {
   return null;
 }
 
-/** True si le JSON du brouillon indique une publication live réussise. */
+/**
+ * True si le JSON du brouillon indique une publication live réussie.
+ * On s’appuie uniquement sur `live_publication.stay_id` : un `published_at` orphelin
+ * (sans liaison séjour) ne doit pas masquer le brouillon dans la liste d’import.
+ */
 export function stayDraftHasLivePublicationInRawPayload(rawPayload: unknown): boolean {
   const o = parseStayDraftRawPayload(rawPayload);
-  if (readStayIdFromLivePublication(o.live_publication)) return true;
-  const publishedAt = o.published_at;
-  const publishError = o.publish_error;
-  if (typeof publishedAt === 'string' && publishedAt.length > 0 && !publishError) {
-    return true;
-  }
-  return false;
+  return readStayIdFromLivePublication(o.live_publication) != null;
 }
 
 export function normalizeStayDraftStatus(value: string | null | undefined): string {
@@ -61,9 +59,9 @@ type DraftRowForImportList = {
 
 /**
  * Masque le brouillon de la liste « imports » si :
- * - raw_payload indique une publication live, ou
+ * - raw_payload contient une publication live (`live_publication.stay_id`), ou
  * - le brouillon est déjà validé (plus considéré comme brouillon d’import), ou
- * - il est validé côté métier et un séjour publié existe pour la même source_url (filet).
+ * - un séjour publié existe pour la même source_url (filet).
  */
 export function stayDraftShouldAppearInImportList(
   draft: DraftRowForImportList,

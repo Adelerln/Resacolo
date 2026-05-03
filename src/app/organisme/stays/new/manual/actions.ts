@@ -26,7 +26,10 @@ function isMissingCanonicalColumnError(
   return message.includes('source_url_canonical') && message.includes('column');
 }
 
-async function createManualDraftForOrganizer(actionOrganizerId: string): Promise<{
+async function createManualDraftForOrganizer(
+  actionOrganizerId: string,
+  linkedAccommodation: { id: string; name: string }
+): Promise<{
   draftId: string | null;
   errorMessage: string | null;
 }> {
@@ -41,7 +44,11 @@ async function createManualDraftForOrganizer(actionOrganizerId: string): Promise
     raw_payload: {
       manual_entry: true,
       created_via: 'manual-flow',
-      created_at: new Date().toISOString()
+      created_at: new Date().toISOString(),
+      import_options: {
+        existing_accommodation_id: linkedAccommodation.id,
+        existing_accommodation_name: linkedAccommodation.name
+      }
     }
   };
   const firstInsertAttempt = await supabaseInner
@@ -81,12 +88,47 @@ async function createManualDraftForOrganizer(actionOrganizerId: string): Promise
   };
 }
 
-export async function createManualDraftAndRedirect(actionOrganizerId: string) {
+export async function createManualDraftAndRedirect(
+  actionOrganizerId: string,
+  linkedAccommodation?: { id: string; name: string } | null
+) {
   if (!actionOrganizerId) {
     redirect('/organisme/sejours?error=Aucun%20organisateur%20disponible.');
   }
 
-  const { draftId, errorMessage } = await createManualDraftForOrganizer(actionOrganizerId);
+  const supabase = getServerSupabaseClient();
+  const selectedAccommodationId = linkedAccommodation?.id?.trim() ?? '';
+
+  if (!selectedAccommodationId) {
+    redirect(
+      withOrganizerQuery(
+        '/organisme/sejours/new/manual?error=Veuillez%20s%C3%A9lectionner%20un%20h%C3%A9bergement%20existant.',
+        actionOrganizerId
+      )
+    );
+  }
+
+  const { data: accommodation } = await supabase
+    .from('accommodations')
+    .select('id,name')
+    .eq('id', selectedAccommodationId)
+    .eq('organizer_id', actionOrganizerId)
+    .neq('status', 'ARCHIVED')
+    .maybeSingle();
+
+  if (!accommodation) {
+    redirect(
+      withOrganizerQuery(
+        '/organisme/sejours/new/manual?error=H%C3%A9bergement%20introuvable%20pour%20cet%20organisateur.',
+        actionOrganizerId
+      )
+    );
+  }
+
+  const { draftId, errorMessage } = await createManualDraftForOrganizer(actionOrganizerId, {
+    id: accommodation.id,
+    name: accommodation.name
+  });
   if (!draftId) {
     redirect(
       withOrganizerQuery(
@@ -103,10 +145,14 @@ export async function createManualDraftAndRedirect(actionOrganizerId: string) {
 
 export async function startManualDraft(formData: FormData) {
   const requestedOrganizerId = String(formData.get('organizerId') ?? '').trim();
+  const selectedAccommodationId = String(formData.get('selectedAccommodationId') ?? '').trim();
   const { selectedOrganizerId: actionOrganizerId } = await requireOrganizerPageAccess({
     requestedOrganizerId: requestedOrganizerId || undefined,
     requiredSection: 'stays'
   });
 
-  await createManualDraftAndRedirect(actionOrganizerId ?? '');
+  await createManualDraftAndRedirect(actionOrganizerId ?? '', {
+    id: selectedAccommodationId,
+    name: ''
+  });
 }

@@ -51,6 +51,26 @@ export function extractImageUrlsFromArbitraryString(text: string): string[] {
   return out;
 }
 
+export type DraftVideoScope = 'stay' | 'accommodation';
+
+export type DraftVideoEntry = {
+  url: string;
+  scope: DraftVideoScope;
+};
+
+/** Fusionne les listes séjour / hébergement en entrées ordonnées pour le tunnel de relecture. */
+export function buildInitialDraftVideoEntries(payload: {
+  video_urls: string[];
+  accommodation_video_urls?: string[] | null;
+}): DraftVideoEntry[] {
+  const stay = normalizeImportedVideoUrlList(payload.video_urls ?? []);
+  const accom = normalizeImportedVideoUrlList(payload.accommodation_video_urls ?? []);
+  return [
+    ...stay.map((url) => ({ url, scope: 'stay' as const })),
+    ...accom.map((url) => ({ url, scope: 'accommodation' as const }))
+  ];
+}
+
 /** À partir d’entrées brutes (JSON import, href javascript…), ne garde que des URLs vidéo https normalisées. */
 export function normalizeImportedVideoUrlList(entries: string[]): string[] {
   const seen = new Set<string>();

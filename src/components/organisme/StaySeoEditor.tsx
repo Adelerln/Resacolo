@@ -360,8 +360,7 @@ export default function StaySeoEditor({
       </label>
 
       <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
-        Les champs avancés (mots-clés secondaires, intentions, ciblage ville/région) sont gérés automatiquement
-        par la génération SEO.
+        Les champs avancés (mots-clés secondaires et intentions) sont gérés automatiquement par la génération SEO.
       </div>
 
       <div className="space-y-4 rounded-xl border border-slate-200 p-4">

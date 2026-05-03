@@ -6,6 +6,7 @@ import { FILTER_LABELS } from '@/lib/constants';
 import { buildStayDestinationLabel, normalizeStayDestination, type StayDestinationInput } from '@/lib/stay-destination';
 import { normalizeStayCategories } from '@/lib/stay-categories';
 import { deriveStayAudiences, formatStayAgeRange } from '@/lib/stay-ages';
+import { isVideoUrlCandidate } from '@/lib/stay-draft-url-extract';
 import { normalizeStayTitle } from '@/lib/stay-title';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { slugify } from '@/lib/utils';
@@ -763,11 +764,19 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
           regionText: accommodation.region_text,
           country: accommodation.country
         });
+        const mediaForAccommodation = accommodationMediaByAccommodationId.get(accommodation.id) ?? [];
         const imageUrls = Array.from(
           new Set(
-            (accommodationMediaByAccommodationId.get(accommodation.id) ?? [])
+            mediaForAccommodation
               .map((item) => item.url?.trim())
-              .filter((url): url is string => Boolean(url))
+              .filter((url): url is string => Boolean(url && !isVideoUrlCandidate(url)))
+          )
+        );
+        const accommodationVideoUrls = Array.from(
+          new Set(
+            mediaForAccommodation
+              .map((item) => item.url?.trim())
+              .filter((url): url is string => Boolean(url && isVideoUrlCandidate(url)))
           )
         );
 
@@ -794,7 +803,8 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
           bathroomInfo: accommodation.bathroom_info?.trim() ?? '',
           cateringInfo: accommodation.catering_info?.trim() ?? '',
           accessibilityInfo: accommodation.accessibility_info?.trim() ?? '',
-          imageUrls
+          imageUrls,
+          videoUrls: accommodationVideoUrls.length > 0 ? accommodationVideoUrls : undefined
         };
       });
       const centerLocations = Array.from(

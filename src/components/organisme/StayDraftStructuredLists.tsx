@@ -915,7 +915,7 @@ export function DraftTransportOptionsEditor({
                   </div>
                   <div className="grid grid-cols-2 gap-2 sm:max-w-md">
                     <label className="block text-xs font-medium text-slate-600">
-                      Prix
+                      Prix A/R
                       <input
                         value={row.price}
                         onChange={(e) => updateRow(index, { price: e.target.value })}

@@ -1,7 +1,9 @@
 import { revalidatePath } from 'next/cache';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 import OrganizerPageHeader from '@/components/organisme/OrganizerPageHeader';
+import AccommodationLinkedStaysDropdown from '@/components/organisme/AccommodationLinkedStaysDropdown';
 import SavedToast from '@/components/common/SavedToast';
 import { formatAccommodationType } from '@/lib/accommodation-types';
 import { extractAccommodationLocationMeta } from '@/lib/accommodation-location';
@@ -19,8 +21,31 @@ type PageProps = {
     archived?: string | string[];
     unarchived?: string | string[];
     error?: string | string[];
+    sortBy?: string | string[];
+    sortDir?: string | string[];
   }>;
 };
+
+type AccommodationSortKey = 'name' | 'type' | 'linkedStays' | 'mediaCount' | 'status' | 'updatedAt';
+type AccommodationSortDirection = 'asc' | 'desc';
+
+const DEFAULT_SORT_KEY: AccommodationSortKey = 'name';
+const DEFAULT_SORT_DIRECTION: AccommodationSortDirection = 'asc';
+
+function getSingleParam(value?: string | string[]) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function isAccommodationSortKey(value: string | undefined): value is AccommodationSortKey {
+  return (
+    value === 'name' ||
+    value === 'type' ||
+    value === 'linkedStays' ||
+    value === 'mediaCount' ||
+    value === 'status' ||
+    value === 'updatedAt'
+  );
+}
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -32,21 +57,16 @@ export default async function OrganizerAccommodationsPage({ searchParams }: Page
     requiredSection: 'accommodations'
   });
   const supabase = getServerSupabaseClient();
-  const savedParam = Array.isArray(resolvedSearchParams?.saved)
-    ? resolvedSearchParams?.saved[0]
-    : resolvedSearchParams?.saved;
-  const deletedParam = Array.isArray(resolvedSearchParams?.deleted)
-    ? resolvedSearchParams?.deleted[0]
-    : resolvedSearchParams?.deleted;
-  const archivedParam = Array.isArray(resolvedSearchParams?.archived)
-    ? resolvedSearchParams?.archived[0]
-    : resolvedSearchParams?.archived;
-  const unarchivedParam = Array.isArray(resolvedSearchParams?.unarchived)
-    ? resolvedSearchParams?.unarchived[0]
-    : resolvedSearchParams?.unarchived;
-  const errorParam = Array.isArray(resolvedSearchParams?.error)
-    ? resolvedSearchParams?.error[0]
-    : resolvedSearchParams?.error;
+  const savedParam = getSingleParam(resolvedSearchParams?.saved);
+  const deletedParam = getSingleParam(resolvedSearchParams?.deleted);
+  const archivedParam = getSingleParam(resolvedSearchParams?.archived);
+  const unarchivedParam = getSingleParam(resolvedSearchParams?.unarchived);
+  const errorParam = getSingleParam(resolvedSearchParams?.error);
+  const requestedSortBy = getSingleParam(resolvedSearchParams?.sortBy);
+  const requestedSortDir = getSingleParam(resolvedSearchParams?.sortDir);
+  const sortBy = isAccommodationSortKey(requestedSortBy) ? requestedSortBy : DEFAULT_SORT_KEY;
+  const sortDir: AccommodationSortDirection =
+    requestedSortDir === 'desc' ? 'desc' : DEFAULT_SORT_DIRECTION;
   const showSavedBanner = savedParam === '1';
   const showDeletedBanner = deletedParam === '1';
   const showArchivedBanner = archivedParam === '1';
@@ -62,8 +82,7 @@ export default async function OrganizerAccommodationsPage({ searchParams }: Page
       .select(
         'id,name,accommodation_type,address_text,postal_code,city,department_code,region_text,country,description,bed_info,bathroom_info,catering_info,accessibility_info,status,updated_at,validated_at'
       )
-      .eq('organizer_id', selectedOrganizerId)
-      .order('name', { ascending: true }),
+      .eq('organizer_id', selectedOrganizerId),
     supabase.from('stay_accommodations').select('accommodation_id,stay_id'),
     supabase.from('stays').select('id,title,organizer_id').eq('organizer_id', selectedOrganizerId),
     supabase.from('accommodation_media').select('accommodation_id,id').order('position', { ascending: true })
@@ -88,27 +107,127 @@ export default async function OrganizerAccommodationsPage({ searchParams }: Page
     mediaCountByAccommodationId.set(media.accommodation_id, count + 1);
   }
 
-  const accommodations = (accommodationsRaw ?? []).map((accommodation) => {
-    const locationMeta = extractAccommodationLocationMeta(accommodation.description, {
-      addressText: accommodation.address_text,
-      postalCode: accommodation.postal_code,
-      city: accommodation.city,
-      departmentCode: accommodation.department_code,
-      regionText: accommodation.region_text,
-      country: accommodation.country
-    });
-    const linkedStayTitles = linkedStayTitlesByAccommodationId.get(accommodation.id) ?? [];
+  const accommodations = (accommodationsRaw ?? [])
+    .map((accommodation) => {
+      const locationMeta = extractAccommodationLocationMeta(accommodation.description, {
+        addressText: accommodation.address_text,
+        postalCode: accommodation.postal_code,
+        city: accommodation.city,
+        departmentCode: accommodation.department_code,
+        regionText: accommodation.region_text,
+        country: accommodation.country
+      });
+      const linkedStayTitles = linkedStayTitlesByAccommodationId.get(accommodation.id) ?? [];
 
-    return {
-      ...accommodation,
-      description: locationMeta.description,
-      locationLabel: locationMeta.locationLabel,
-      linkedStayTitles: linkedStayTitles.sort((left, right) =>
-        left.localeCompare(right, 'fr', { sensitivity: 'base' })
-      ),
-      mediaCount: mediaCountByAccommodationId.get(accommodation.id) ?? 0
-    };
-  });
+      return {
+        ...accommodation,
+        description: locationMeta.description,
+        locationLabel: locationMeta.locationLabel,
+        linkedStayTitles: linkedStayTitles.sort((left, right) =>
+          left.localeCompare(right, 'fr', { sensitivity: 'base' })
+        ),
+        mediaCount: mediaCountByAccommodationId.get(accommodation.id) ?? 0
+      };
+    })
+    .sort((left, right) => {
+      const direction = sortDir === 'asc' ? 1 : -1;
+
+      const compareText = (a: string, b: string) =>
+        a.localeCompare(b, 'fr', { sensitivity: 'base' }) * direction;
+      const compareNumber = (a: number, b: number) => (a - b) * direction;
+
+      switch (sortBy) {
+        case 'name': {
+          const result = compareText(left.name ?? '', right.name ?? '');
+          if (result !== 0) return result;
+          break;
+        }
+        case 'type': {
+          const result = compareText(
+            formatAccommodationType(left.accommodation_type),
+            formatAccommodationType(right.accommodation_type)
+          );
+          if (result !== 0) return result;
+          break;
+        }
+        case 'linkedStays': {
+          const result = compareNumber(left.linkedStayTitles.length, right.linkedStayTitles.length);
+          if (result !== 0) return result;
+          break;
+        }
+        case 'mediaCount': {
+          const result = compareNumber(left.mediaCount, right.mediaCount);
+          if (result !== 0) return result;
+          break;
+        }
+        case 'status': {
+          const result = compareText(
+            accommodationStatusLabel(left.status),
+            accommodationStatusLabel(right.status)
+          );
+          if (result !== 0) return result;
+          break;
+        }
+        case 'updatedAt': {
+          const result = compareNumber(
+            new Date(left.updated_at).getTime(),
+            new Date(right.updated_at).getTime()
+          );
+          if (result !== 0) return result;
+          break;
+        }
+      }
+
+      return (left.name ?? '').localeCompare(right.name ?? '', 'fr', { sensitivity: 'base' });
+    });
+
+  function buildSortHref(key: AccommodationSortKey) {
+    const params = new URLSearchParams();
+
+    for (const [paramKey, paramValue] of Object.entries(resolvedSearchParams ?? {})) {
+      if (
+        paramValue == null ||
+        paramKey === 'sortBy' ||
+        paramKey === 'sortDir' ||
+        paramKey === 'organizerId'
+      ) {
+        continue;
+      }
+      if (Array.isArray(paramValue)) {
+        for (const value of paramValue) {
+          params.append(paramKey, value);
+        }
+      } else {
+        params.set(paramKey, paramValue);
+      }
+    }
+
+    params.set('sortBy', key);
+    params.set('sortDir', sortBy === key && sortDir === 'asc' ? 'desc' : 'asc');
+
+    return withOrganizerQuery(`/organisme/hebergements?${params.toString()}`, selectedOrganizerId);
+  }
+
+  function renderSortableHeader(label: string, key: AccommodationSortKey, align: 'left' | 'center' = 'left') {
+    const isActive = sortBy === key;
+    const icon = !isActive ? null : sortDir === 'asc' ? (
+      <ChevronUp className="h-3.5 w-3.5" />
+    ) : (
+      <ChevronDown className="h-3.5 w-3.5" />
+    );
+
+    return (
+      <Link
+        href={buildSortHref(key)}
+        className={`inline-flex items-center gap-1 uppercase tracking-wide text-slate-500 hover:text-slate-700 ${
+          align === 'center' ? 'justify-center' : ''
+        }`}
+      >
+        <span>{label}</span>
+        {icon}
+      </Link>
+    );
+  }
 
   async function deleteAccommodation(formData: FormData) {
     'use server';
@@ -220,65 +339,55 @@ export default async function OrganizerAccommodationsPage({ searchParams }: Page
             </colgroup>
             <thead>
               <tr>
-                <th className="px-4 py-3">Hébergement</th>
-                <th className="px-4 py-3">Type</th>
-                <th className="px-4 py-3">Séjours liés</th>
-                <th className="px-4 py-3">Médias</th>
-                <th className="px-4 py-3">Statut</th>
-                <th className="px-4 py-3">Mis à jour</th>
-                <th className="px-4 py-3"></th>
+                <th className="px-4 py-3">{renderSortableHeader('Hébergement', 'name')}</th>
+                <th className="px-4 py-3 text-center">{renderSortableHeader('Type', 'type', 'center')}</th>
+                <th className="px-4 py-3 text-center">
+                  {renderSortableHeader('Séjours liés', 'linkedStays', 'center')}
+                </th>
+                <th className="px-4 py-3 text-center">
+                  {renderSortableHeader('Médias', 'mediaCount', 'center')}
+                </th>
+                <th className="px-4 py-3 text-center">
+                  {renderSortableHeader('Statut', 'status', 'center')}
+                </th>
+                <th className="px-4 py-3 text-center">
+                  {renderSortableHeader('Mis à jour', 'updatedAt', 'center')}
+                </th>
+                <th className="px-4 py-3 text-center"></th>
               </tr>
             </thead>
             <tbody>
               {accommodations.map((accommodation) => (
-                <tr key={accommodation.id} className="border-t border-slate-100 align-top">
+                <tr key={accommodation.id} className="border-t border-slate-100">
                   <td className="px-4 py-3">
                     <div className="font-medium text-slate-900">{accommodation.name}</div>
                     {accommodation.locationLabel ? (
                       <div className="mt-1 text-xs font-semibold text-slate-700">{accommodation.locationLabel}</div>
                     ) : null}
                   </td>
-                  <td className="px-4 py-3 text-slate-600">
+                  <td className="px-4 py-3 text-center text-slate-600">
                     {formatAccommodationType(accommodation.accommodation_type)}
                   </td>
-                  <td className="px-4 py-3 text-slate-600">
+                  <td className="px-4 py-3 text-center text-slate-600">
                     {accommodation.linkedStayTitles.length > 0 ? (
-                      <details className="group relative">
-                        <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50">
-                          {accommodation.linkedStayTitles.length} séjour
-                          {accommodation.linkedStayTitles.length > 1 ? 's' : ''}
-                          <span className="text-slate-400 transition group-open:rotate-180">⌄</span>
-                        </summary>
-                        <div className="absolute left-0 z-20 mt-2 w-72 rounded-xl border border-slate-200 bg-white p-2 shadow-xl">
-                          <ul className="max-h-64 space-y-1 overflow-y-auto">
-                            {accommodation.linkedStayTitles.map((title) => (
-                              <li
-                                key={title}
-                                className="rounded-lg px-2.5 py-2 text-xs font-medium leading-snug text-slate-700 hover:bg-slate-50"
-                              >
-                                {title}
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      </details>
+                      <AccommodationLinkedStaysDropdown stayTitles={accommodation.linkedStayTitles} />
                     ) : (
                       'Aucun'
                     )}
                   </td>
-                  <td className="px-4 py-3 text-slate-600">{accommodation.mediaCount}</td>
-                  <td className="px-4 py-3 text-slate-600">
+                  <td className="px-4 py-3 text-center text-slate-600">{accommodation.mediaCount}</td>
+                  <td className="px-4 py-3 text-center text-slate-600">
                     <span
                       className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${accommodationStatusBadgeClassName(accommodation.status)}`}
                     >
                       {accommodationStatusLabel(accommodation.status)}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-slate-600">
+                  <td className="px-4 py-3 text-center text-slate-600">
                     {new Date(accommodation.updated_at).toLocaleDateString('fr-FR')}
                   </td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-2 whitespace-nowrap">
+                  <td className="px-4 py-3 text-center">
+                    <div className="flex items-center justify-center gap-2 whitespace-nowrap">
                       <Link
                         href={withOrganizerQuery(`/organisme/hebergements/${accommodation.id}`, selectedOrganizerId)}
                         className="organizer-btn-secondary min-h-[36px] border-emerald-200 px-3 py-1 text-xs text-emerald-700 hover:border-emerald-300 hover:bg-emerald-50"

@@ -7,6 +7,7 @@ type DraftReferenceCopyFieldProps = {
   labelClassName?: string;
   codeClassName?: string;
   buttonClassName?: string;
+  showCopyButton?: boolean;
 };
 
 async function copyText(text: string) {
@@ -30,7 +31,8 @@ export default function DraftReferenceCopyField({
   value,
   labelClassName = 'mt-2 text-xs font-semibold uppercase tracking-wide',
   codeClassName = 'text-slate-900',
-  buttonClassName = 'border-slate-300 text-slate-700 hover:bg-slate-100'
+  buttonClassName = 'border-slate-300 text-slate-700 hover:bg-slate-100',
+  showCopyButton = true
 }: DraftReferenceCopyFieldProps) {
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'error'>('idle');
   const resetTimerRef = useRef<number | null>(null);
@@ -70,15 +72,17 @@ export default function DraftReferenceCopyField({
         <p className={`inline-flex rounded-md bg-white/80 px-2 py-1 font-mono text-xs ${codeClassName}`}>
           {value}
         </p>
-        <button
-          type="button"
-          onClick={() => {
-            void handleCopy();
-          }}
-          className={`inline-flex min-h-[28px] items-center justify-center rounded-md border px-2.5 py-1 text-xs font-semibold transition ${buttonClassName}`}
-        >
-          {copyState === 'copied' ? 'Copié' : copyState === 'error' ? 'Erreur' : 'Copier'}
-        </button>
+        {showCopyButton ? (
+          <button
+            type="button"
+            onClick={() => {
+              void handleCopy();
+            }}
+            className={`inline-flex min-h-[28px] items-center justify-center rounded-md border px-2.5 py-1 text-xs font-semibold transition ${buttonClassName}`}
+          >
+            {copyState === 'copied' ? 'Copié' : copyState === 'error' ? 'Erreur' : 'Copier'}
+          </button>
+        ) : null}
       </div>
     </div>
   );

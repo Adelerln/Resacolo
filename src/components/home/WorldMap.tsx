@@ -5,6 +5,7 @@ import { useEffect, useState, type MouseEvent as ReactMouseEvent } from 'react';
 type ParsedCountryPath = {
   id: string;
   name: string;
+  matchKeys: string[];
   d: string;
 };
 
@@ -22,6 +23,8 @@ type ParsedSvgMap = {
 };
 
 type WorldMapProps = {
+  activeCountryNames?: string[] | null;
+  hasActiveFrance?: boolean;
   onFranceSelect?: () => void;
   onCountrySelect?: (countryName: string, countryId: string) => void;
 };
@@ -38,6 +41,15 @@ function parseSvgDimension(value: string | null, fallback: number) {
 
   const parsed = Number.parseFloat(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function normalizeCountryKey(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
 }
 
 function translateCountryName(id: string, fallbackName: string) {
@@ -88,9 +100,16 @@ function buildHoveredCountryFromMouse(
   };
 }
 
-export function WorldMap({ onFranceSelect, onCountrySelect }: WorldMapProps) {
+export function WorldMap({
+  activeCountryNames,
+  hasActiveFrance = true,
+  onFranceSelect,
+  onCountrySelect
+}: WorldMapProps) {
   const [svgMap, setSvgMap] = useState<ParsedSvgMap | null>(null);
   const [hoveredCountry, setHoveredCountry] = useState<HoveredCountry | null>(null);
+  const activeCountryKeySet = new Set((activeCountryNames ?? []).map((country) => normalizeCountryKey(country)));
+  const hasAvailability = activeCountryNames != null;
 
   useEffect(() => {
     let isCancelled = false;
@@ -127,6 +146,9 @@ export function WorldMap({ onFranceSelect, onCountrySelect }: WorldMapProps) {
             return {
               id,
               name: translateCountryName(id, name.trim()),
+              matchKeys: Array.from(
+                new Set([normalizeCountryKey(id), normalizeCountryKey(name.trim()), normalizeCountryKey(translateCountryName(id, name.trim()))])
+              ).filter(Boolean),
               d
             } satisfies ParsedCountryPath;
           })
@@ -164,26 +186,38 @@ export function WorldMap({ onFranceSelect, onCountrySelect }: WorldMapProps) {
         aria-label="Carte du monde interactive par pays"
       >
         {svgMap.paths.map((country) => {
-          const isHovered = hoveredCountry?.id === country.id;
           const isFrance = country.id === 'FR';
+          const isActive = isFrance
+            ? !hasAvailability || hasActiveFrance
+            : !hasAvailability || country.matchKeys.some((key) => activeCountryKeySet.has(key));
+          const isHovered = isActive && hoveredCountry?.id === country.id;
 
           return (
             <path
               key={country.id}
               d={country.d}
-              fill={isHovered ? '#f5c273' : '#f7931e'}
+              fill={isActive ? (isHovered ? '#f5c273' : '#f7931e') : '#dbe4ee'}
               stroke="#ffffff"
               strokeWidth="0.8"
               strokeLinejoin="round"
-              className="cursor-pointer transition-colors duration-150"
-              onMouseEnter={(event) => setHoveredCountry(buildHoveredCountryFromMouse(event, country))}
-              onMouseMove={(event) => setHoveredCountry(buildHoveredCountryFromMouse(event, country))}
+              className={isActive ? 'cursor-pointer transition-colors duration-150' : 'transition-colors duration-150'}
+              onMouseEnter={(event) => {
+                if (!isActive) return;
+                setHoveredCountry(buildHoveredCountryFromMouse(event, country));
+              }}
+              onMouseMove={(event) => {
+                if (!isActive) return;
+                setHoveredCountry(buildHoveredCountryFromMouse(event, country));
+              }}
               onFocus={(event) =>
-                setHoveredCountry(buildHoveredCountry(event.currentTarget, country, svgMap.width, svgMap.height))
+                isActive
+                  ? setHoveredCountry(buildHoveredCountry(event.currentTarget, country, svgMap.width, svgMap.height))
+                  : setHoveredCountry(null)
               }
               onMouseLeave={() => setHoveredCountry(null)}
               onBlur={() => setHoveredCountry(null)}
               onClick={() => {
+                if (!isActive) return;
                 if (isFrance) {
                   onFranceSelect?.();
                 } else if (onCountrySelect) {
@@ -194,6 +228,7 @@ export function WorldMap({ onFranceSelect, onCountrySelect }: WorldMapProps) {
                 }
               }}
               onKeyDown={(event) => {
+                if (!isActive) return;
                 if (event.key === 'Enter' || event.key === ' ') {
                   event.preventDefault();
                   if (isFrance) {
@@ -205,9 +240,9 @@ export function WorldMap({ onFranceSelect, onCountrySelect }: WorldMapProps) {
                   }
                 }
               }}
-              role="button"
-              tabIndex={0}
-              aria-label={country.name}
+              role={isActive ? 'button' : undefined}
+              tabIndex={isActive ? 0 : -1}
+              aria-label={isActive ? country.name : `${country.name} indisponible`}
             />
           );
         })}

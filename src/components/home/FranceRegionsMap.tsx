@@ -116,10 +116,16 @@ function buildHoveredRegionFromMouse(event: ReactMouseEvent<SVGPathElement>, reg
   };
 }
 
-export function FranceRegionsMap() {
+type FranceRegionsMapProps = {
+  activeRegionIds?: string[] | null;
+};
+
+export function FranceRegionsMap({ activeRegionIds }: FranceRegionsMapProps) {
   const router = useRouter();
   const [svgMap, setSvgMap] = useState<ParsedSvgMap | null>(null);
   const [hoveredRegion, setHoveredRegion] = useState<HoveredRegion | null>(null);
+  const activeRegionIdSet = new Set(activeRegionIds ?? []);
+  const hasAvailability = activeRegionIds != null;
 
   useEffect(() => {
     let isCancelled = false;
@@ -211,36 +217,47 @@ export function FranceRegionsMap() {
         aria-label="Carte de France interactive par région"
       >
         {svgMap.paths.map((region) => {
+          const isActive = !hasAvailability || activeRegionIdSet.has(region.id);
           const isHovered = hoveredRegion?.id === region.id;
 
           return (
             <path
               key={region.id}
               d={region.d}
-              fill={isHovered ? '#f5c273' : '#f7931e'}
+              fill={isActive ? (isHovered ? '#f5c273' : '#f7931e') : '#dbe4ee'}
               stroke="#ffffff"
               strokeWidth="1"
               strokeLinejoin="round"
-              className="cursor-pointer transition-colors duration-200"
-              onMouseEnter={(event) =>
-                setHoveredRegion(buildHoveredRegionFromMouse(event, region))
-              }
-              onMouseMove={(event) => setHoveredRegion(buildHoveredRegionFromMouse(event, region))}
+              className={isActive ? 'cursor-pointer transition-colors duration-200' : 'transition-colors duration-200'}
+              onMouseEnter={(event) => {
+                if (!isActive) return;
+                setHoveredRegion(buildHoveredRegionFromMouse(event, region));
+              }}
+              onMouseMove={(event) => {
+                if (!isActive) return;
+                setHoveredRegion(buildHoveredRegionFromMouse(event, region));
+              }}
               onFocus={(event) =>
-                setHoveredRegion(buildHoveredRegion(event.currentTarget, region, svgMap.width, svgMap.height))
+                isActive
+                  ? setHoveredRegion(buildHoveredRegion(event.currentTarget, region, svgMap.width, svgMap.height))
+                  : setHoveredRegion(null)
               }
               onMouseLeave={() => setHoveredRegion(null)}
               onBlur={() => setHoveredRegion(null)}
-              onClick={() => router.push(region.href)}
+              onClick={() => {
+                if (!isActive) return;
+                router.push(region.href);
+              }}
               onKeyDown={(event) => {
+                if (!isActive) return;
                 if (event.key === 'Enter' || event.key === ' ') {
                   event.preventDefault();
                   router.push(region.href);
                 }
               }}
-              role="link"
-              tabIndex={0}
-              aria-label={`Voir les séjours en ${region.name}`}
+              role={isActive ? 'link' : undefined}
+              tabIndex={isActive ? 0 : -1}
+              aria-label={isActive ? `Voir les séjours en ${region.name}` : `${region.name} indisponible`}
             />
           );
         })}

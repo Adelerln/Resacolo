@@ -211,6 +211,9 @@ const fadeUp = {
 
 export default function HomePage() {
   const [destinationMap, setDestinationMap] = useState<'france' | 'world'>('france');
+  const [activeFranceRegionIds, setActiveFranceRegionIds] = useState<string[] | null>(null);
+  const [activeCountryNames, setActiveCountryNames] = useState<string[] | null>(null);
+  const [hasFranceDestinations, setHasFranceDestinations] = useState(true);
   const [inspiIndex, setInspiIndex] = useState(inspiCards.length);
   const [inspiTransitionEnabled, setInspiTransitionEnabled] = useState(true);
   const [inspiStepPx, setInspiStepPx] = useState(0);
@@ -221,6 +224,41 @@ export default function HomePage() {
   const leftAids = aids.filter((_, index) => index % 2 === 0);
   const rightAids = aids.filter((_, index) => index % 2 === 1);
   const inspiLoopCards = [...inspiCards, ...inspiCards, ...inspiCards];
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    async function loadDestinationAvailability() {
+      try {
+        const response = await fetch('/api/sejours/destinations');
+        if (!response.ok) {
+          throw new Error(`Impossible de charger les destinations (${response.status})`);
+        }
+
+        const data = (await response.json()) as {
+          activeFranceRegionIds?: string[];
+          activeCountryNames?: string[];
+          hasFranceDestinations?: boolean;
+        };
+
+        if (isCancelled) {
+          return;
+        }
+
+        setActiveFranceRegionIds(data.activeFranceRegionIds ?? []);
+        setActiveCountryNames(data.activeCountryNames ?? []);
+        setHasFranceDestinations(data.hasFranceDestinations ?? false);
+      } catch (error) {
+        console.error('Erreur chargement destinations accueil', error);
+      }
+    }
+
+    loadDestinationAvailability();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -329,7 +367,7 @@ export default function HomePage() {
                     Trouver une colo
                     <ArrowRight size={18} />
                   </Link>
-                  <a href="#comment-ca-marche" className="btn btn-secondary btn-md w-full sm:w-auto">
+                  <a href="#notice-heading" className="btn btn-secondary btn-md w-full sm:w-auto">
                     Comment ça marche ?
                   </a>
                 </div>
@@ -536,6 +574,8 @@ export default function HomePage() {
       <section id="comment-ca-marche" className="bg-slate-50 pb-16 pt-8 sm:pb-24 sm:pt-10">
         <div className="section-container text-center">
           <motion.div
+            id="notice-heading"
+            className="scroll-mt-20 sm:scroll-mt-24"
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
@@ -675,10 +715,14 @@ export default function HomePage() {
             >
               {destinationMap === 'france' ? (
                 <div className="bg-transparent p-0 shadow-none">
-                  <FranceRegionsMap />
+                  <FranceRegionsMap activeRegionIds={activeFranceRegionIds} />
                 </div>
               ) : (
-                <WorldMap onFranceSelect={() => setDestinationMap('france')} />
+                <WorldMap
+                  activeCountryNames={activeCountryNames}
+                  hasActiveFrance={hasFranceDestinations}
+                  onFranceSelect={() => setDestinationMap('france')}
+                />
               )}
             </motion.div>
           </div>
@@ -786,7 +830,7 @@ export default function HomePage() {
                     href={aid.href}
                     target="_blank"
                     rel="noreferrer"
-                    className="aid-card-sweep resacolo-card flex h-[118px] w-full cursor-pointer flex-col items-center justify-center gap-1.5 !px-4 !py-3 text-center"
+                    className="resacolo-card flex h-[118px] w-full cursor-pointer flex-col items-center justify-center gap-1.5 !px-4 !py-3 text-center transition-transform duration-200 hover:scale-[1.02]"
                     initial={{ opacity: 0, y: 20 }}
                     whileInView={{ opacity: 1, y: 0 }}
                     viewport={{ once: true }}

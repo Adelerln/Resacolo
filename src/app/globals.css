@@ -86,39 +86,6 @@
     z-index: 1;
   }
 
-  .aid-card-sweep {
-    position: relative;
-    z-index: 0;
-    overflow: hidden;
-    isolation: isolate;
-  }
-
-  .aid-card-sweep::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    width: 0;
-    border-radius: inherit;
-    background-color: #37b5f5;
-    transition: width 0.5s ease;
-    z-index: 0;
-  }
-
-  .aid-card-sweep:hover::before,
-  .aid-card-sweep:focus-visible::before {
-    width: 100%;
-  }
-
-  .aid-card-sweep > * {
-    position: relative;
-    z-index: 1;
-  }
-
-  .aid-card-sweep:hover span,
-  .aid-card-sweep:focus-visible span {
-    color: #fff !important;
-  }
-
   .card-blue-vertical-sweep {
     position: relative;
     z-index: 0;

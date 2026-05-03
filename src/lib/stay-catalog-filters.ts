@@ -86,6 +86,38 @@ const LEGACY_AGE_ALIAS: Record<string, StayAgeBandValue> = {
 const STAY_CATALOG_SORT_VALUES = new Set<StayCatalogSortValue>(
   STAY_CATALOG_SORT_OPTIONS.map((option) => option.value)
 );
+const SEARCH_STOP_WORDS = new Set([
+  'a',
+  'au',
+  'aux',
+  'de',
+  'des',
+  'du',
+  'd',
+  'la',
+  'le',
+  'les',
+  'un',
+  'une',
+  'en',
+  'et',
+  'ou',
+  'pour',
+  'avec',
+  'sur',
+  'dans',
+  'colonie',
+  'colonies',
+  'vacance',
+  'vacances',
+  'sejour',
+  'sejours'
+]);
+type SearchIndexedStay = Stay & { _searchText: string; _locationText: string };
+export type StaySearchQuery = {
+  tokens: string[];
+  locationIntent: string | null;
+};
 
 export const EMPTY_STAY_CATALOG_FILTERS: StayCatalogFilterState = {
   q: '',
@@ -349,6 +381,98 @@ export function normalizeCatalogText(value: string) {
       .replace(/[^a-zA-Z0-9\s-]/g, ' ')
       .toLowerCase()
   );
+}
+
+export function getSearchTokens(q: string) {
+  return uniq(
+    normalizeCatalogText(q)
+      .split(' ')
+      .map((token) => token.trim())
+      .filter((token) => token.length >= 3 && !SEARCH_STOP_WORDS.has(token))
+  );
+}
+
+function extractLocationIntent(q: string) {
+  const normalized = normalizeCatalogText(q);
+  if (!normalized) return null;
+
+  const patterns = [
+    /\b(?:pres de|proche de)\s+(.+)$/,
+    /\b(?:dans)\s+(?:les|la|le|l)\s+(.+)$/,
+    /\b(?:dans)\s+(.+)$/,
+    /\b(?:a|au|aux)\s+(.+)$/
+  ];
+
+  for (const pattern of patterns) {
+    const match = normalized.match(pattern);
+    if (!match?.[1]) continue;
+    const intent = normalizeSpaces(match[1]).replace(/^(les|la|le|l)\s+/, '').trim();
+    if (intent.length >= 2) return intent;
+  }
+
+  return null;
+}
+
+export function parseSearchQuery(q: string): StaySearchQuery {
+  return {
+    tokens: getSearchTokens(q),
+    locationIntent: extractLocationIntent(q)
+  };
+}
+
+export function buildStaySearchIndex(stay: Stay): SearchIndexedStay {
+  const locationText = normalizeCatalogText(
+    [
+      // Equivalent of requested fields with existing domain model keys.
+      stay.destinationCity,
+      stay.location,
+      stay.displayLocation,
+      stay.region,
+      stayDestinationLabel(stay),
+      stay.destinationRegion,
+      stay.destinationCountry
+    ]
+      .filter(Boolean)
+      .join(' ')
+  );
+
+  return {
+    ...stay,
+    _searchText: normalizeCatalogText(
+      [
+        stay.title,
+        stay.summary,
+        stay.description,
+        stay.location,
+        stay.destinationCity,
+        stay.region,
+        stayDestinationLabel(stay),
+        buildStayDestinationSearchText({
+          destinationType: stay.destinationType,
+          destinationCity: stay.destinationCity,
+          destinationPostalCode: stay.destinationPostalCode,
+          destinationDepartmentCode: stay.destinationDepartmentCode,
+          destinationRegion: stay.destinationRegion,
+          destinationCountry: stay.destinationCountry,
+          destinationItineraryLabel: stay.destinationItineraryLabel,
+          destinationCountries: stay.destinationCountries,
+          locationText: stay.location,
+          regionText: stay.region
+        }),
+        stay.activitiesText ?? '',
+        stay.programText ?? '',
+        stay.transportText ?? '',
+        stay.categories.join(' '),
+        stay.organizer.name,
+        stay.ageRange,
+        stay.ageMin != null ? `${stay.ageMin} ans` : '',
+        stay.ageMax != null ? `${stay.ageMax} ans` : ''
+      ]
+        .filter(Boolean)
+        .join(' ')
+    ),
+    _locationText: locationText
+  };
 }
 
 export function stayCatalogFilterStateKey(state: StayCatalogFilterState) {
@@ -672,10 +796,26 @@ export function applyStayCatalogSort(
   return sorted;
 }
 
-export function applyStayCatalogFilters(stays: Stay[], state: StayCatalogFilterState) {
-  const queryTokens = normalizeCatalogText(state.q).split(' ').filter(Boolean);
+export function applyStayCatalogFilters(
+  stays: Stay[],
+  state: StayCatalogFilterState,
+  preParsedQuery?: StaySearchQuery
+) {
+  const searchQuery = preParsedQuery ?? parseSearchQuery(state.q);
+  const queryTokens = searchQuery.tokens;
+  const locationIntent = searchQuery.locationIntent;
+  const searchableTextForStay = (stay: Stay) => {
+    const indexed = stay as SearchIndexedStay;
+    if (typeof indexed._searchText === 'string') return indexed._searchText;
+    return buildStaySearchIndex(stay)._searchText;
+  };
+  const locationTextForStay = (stay: Stay) => {
+    const indexed = stay as SearchIndexedStay;
+    if (typeof indexed._locationText === 'string') return indexed._locationText;
+    return buildStaySearchIndex(stay)._locationText;
+  };
 
-  return stays.filter((stay) => {
+  const matchesNonTextFilters = (stay: Stay) => {
     if (state.seasonIds.length > 0 && !state.seasonIds.includes(stay.seasonId)) {
       return false;
     }
@@ -742,39 +882,52 @@ export function applyStayCatalogFilters(stays: Stay[], state: StayCatalogFilterS
       }
     }
 
-    if (queryTokens.length > 0) {
-      const searchable = normalizeCatalogText(
-        [
-          stay.title,
-          stay.summary,
-          stay.description,
-          stay.location,
-          stay.region,
-          buildStayDestinationSearchText({
-            destinationType: stay.destinationType,
-            destinationCity: stay.destinationCity,
-            destinationPostalCode: stay.destinationPostalCode,
-            destinationDepartmentCode: stay.destinationDepartmentCode,
-            destinationRegion: stay.destinationRegion,
-            destinationCountry: stay.destinationCountry,
-            destinationItineraryLabel: stay.destinationItineraryLabel,
-            destinationCountries: stay.destinationCountries,
-            locationText: stay.location,
-            regionText: stay.region
-          }),
-          stay.activitiesText ?? '',
-          stay.programText ?? '',
-          stay.transportText ?? '',
-          stay.organizer.name
-        ].join(' ')
-      );
+    return true;
+  };
 
-      const isMatch = queryTokens.every((token) => searchable.includes(token));
-      if (!isMatch) {
-        return false;
+  const strictResults: Stay[] = [];
+  const fallbackResults: Stay[] = [];
+  const canUseFallback = !locationIntent && queryTokens.length >= 2;
+
+  for (const stay of stays) {
+    if (!matchesNonTextFilters(stay)) continue;
+
+    if (locationIntent) {
+      if (locationTextForStay(stay).includes(locationIntent)) {
+        strictResults.push(stay);
+      }
+      continue;
+    }
+
+    if (queryTokens.length === 0) {
+      strictResults.push(stay);
+      continue;
+    }
+
+    const searchable = searchableTextForStay(stay);
+    let matchedCount = 0;
+    for (const token of queryTokens) {
+      if (searchable.includes(token)) {
+        matchedCount += 1;
+      } else if (!canUseFallback) {
+        matchedCount = -1;
+        break;
       }
     }
 
-    return true;
-  });
+    if (matchedCount === queryTokens.length) {
+      strictResults.push(stay);
+      continue;
+    }
+
+    if (canUseFallback && matchedCount > 0) {
+      fallbackResults.push(stay);
+    }
+  }
+
+  if (locationIntent || queryTokens.length === 0 || strictResults.length > 0) {
+    return strictResults;
+  }
+
+  return canUseFallback ? fallbackResults : strictResults;
 }

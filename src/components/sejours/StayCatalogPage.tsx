@@ -3,7 +3,7 @@
 import Image from 'next/image';
 import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { Compass, Filter, Search, ShoppingCart, X } from 'lucide-react';
+import { Compass, Filter, Search, X } from 'lucide-react';
 import { FavoriteToggleButton } from '@/components/favorites/FavoriteToggleButton';
 import { OrganizerStayPreviewCard } from '@/components/organisateurs/OrganizerStayPreviewCard';
 import { staySessionsAppearFullyBooked } from '@/lib/stay-catalog-availability';
@@ -23,9 +23,11 @@ import {
   applyStayCatalogFilters,
   applyStayCatalogSort,
   buildStayCatalogFilterOptions,
+  buildStaySearchIndex,
   countActiveStayCatalogFilters,
   parseStayCatalogFiltersFromSearchParams,
   parseStayCatalogSortFromSearchParams,
+  parseSearchQuery,
   serializeStayCatalogFiltersToSearchParams,
   stayCatalogFilterStateKey,
   type StayCatalogFilterOption,
@@ -146,20 +148,6 @@ function toUrlSearchParams(input: SearchParamInput) {
   });
 
   return params;
-}
-
-function useDebouncedValue<TValue>(value: TValue, delayMs = 120) {
-  const [debouncedValue, setDebouncedValue] = useState(value);
-
-  useEffect(() => {
-    const timeout = window.setTimeout(() => {
-      setDebouncedValue(value);
-    }, delayMs);
-
-    return () => window.clearTimeout(timeout);
-  }, [delayMs, value]);
-
-  return debouncedValue;
 }
 
 function toggleListValue<TValue extends string>(list: TValue[], value: TValue) {
@@ -439,6 +427,7 @@ export function StayCatalogPage({
   const runtimeSearchParams = useSearchParams();
 
   const filterOptions = useMemo(() => buildStayCatalogFilterOptions(stays), [stays]);
+  const indexedStays = useMemo(() => stays.map(buildStaySearchIndex), [stays]);
   const initialSearchParams = useMemo(() => toUrlSearchParams(searchParams), [searchParams]);
   const initialFilters = useMemo(
     () => parseStayCatalogFiltersFromSearchParams(initialSearchParams, filterOptions),
@@ -452,6 +441,7 @@ export function StayCatalogPage({
   const [sort, setSort] = useState<StayCatalogSortValue>(initialSort);
   const [randomSeed] = useState<number>(() => Math.floor(Math.random() * 2_147_483_647));
   const deferredFilters = useDeferredValue(filters);
+  const deferredSearchQuery = useMemo(() => parseSearchQuery(deferredFilters.q), [deferredFilters.q]);
 
   const sliderBounds = useMemo(() => {
     const ageMins = stays.map((s) => s.ageMin).filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
@@ -568,8 +558,8 @@ export function StayCatalogPage({
   }, [sort, urlFilters, urlFiltersKey, pathname, router, runtimeQuery]);
 
   const filteredStays = useMemo(
-    () => applyStayCatalogFilters(stays, deferredFilters),
-    [stays, deferredFilters]
+    () => applyStayCatalogFilters(indexedStays, deferredFilters, deferredSearchQuery),
+    [indexedStays, deferredFilters, deferredSearchQuery]
   );
   const panelOptions = useMemo(() => {
     function withSelectedFallbacks<TOption extends StayCatalogFilterOption>(
@@ -591,22 +581,22 @@ export function StayCatalogPage({
     }
 
     const seasonBase = buildStayCatalogFilterOptions(
-      applyStayCatalogFilters(stays, { ...deferredFilters, seasonIds: [] })
+      applyStayCatalogFilters(indexedStays, { ...deferredFilters, seasonIds: [] }, deferredSearchQuery)
     ).seasons;
     const categoryBase = buildStayCatalogFilterOptions(
-      applyStayCatalogFilters(stays, { ...deferredFilters, categories: [] })
+      applyStayCatalogFilters(indexedStays, { ...deferredFilters, categories: [] }, deferredSearchQuery)
     ).categories;
     const ageBandBase = buildStayCatalogFilterOptions(
-      applyStayCatalogFilters(stays, { ...deferredFilters, ageBands: [] })
+      applyStayCatalogFilters(indexedStays, { ...deferredFilters, ageBands: [] }, deferredSearchQuery)
     ).ageBands;
     const destinationTypeBase = buildStayCatalogFilterOptions(
-      applyStayCatalogFilters(stays, { ...deferredFilters, destinationTypes: [] })
+      applyStayCatalogFilters(indexedStays, { ...deferredFilters, destinationTypes: [] }, deferredSearchQuery)
     ).destinationTypes;
     const destinationBase = buildStayCatalogFilterOptions(
-      applyStayCatalogFilters(stays, { ...deferredFilters, destinations: [] })
+      applyStayCatalogFilters(indexedStays, { ...deferredFilters, destinations: [] }, deferredSearchQuery)
     ).destinations;
     const organizerBase = buildStayCatalogFilterOptions(
-      applyStayCatalogFilters(stays, { ...deferredFilters, organizerIds: [] })
+      applyStayCatalogFilters(indexedStays, { ...deferredFilters, organizerIds: [] }, deferredSearchQuery)
     ).organizers;
 
     return {
@@ -622,7 +612,7 @@ export function StayCatalogPage({
       destinations: withSelectedFallbacks(destinationBase, filterOptions.destinations, filters.destinations),
       organizers: withSelectedFallbacks(organizerBase, filterOptions.organizers, filters.organizerIds)
     };
-  }, [deferredFilters, filterOptions, stays]);
+  }, [deferredFilters, deferredSearchQuery, filterOptions, indexedStays]);
   const sortedStays = useMemo(
     () => applyStayCatalogSort(filteredStays, sort, { randomSeed }),
     [filteredStays, randomSeed, sort]
@@ -816,16 +806,6 @@ export function StayCatalogPage({
         </div>
       )}
 
-      <button
-        type="button"
-        className="fixed bottom-4 right-4 z-[110] flex h-12 w-12 items-center justify-center rounded-full bg-accent-500 text-white shadow-xl transition hover:bg-accent-600 sm:bottom-6 sm:right-6 sm:h-14 sm:w-14"
-        aria-label="Panier"
-      >
-        <ShoppingCart className="h-5 w-5 sm:h-6 sm:w-6" />
-        <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-brand-600 text-xs font-semibold text-white">
-          0
-        </span>
-      </button>
     </div>
   );
 }

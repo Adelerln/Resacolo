@@ -13,6 +13,8 @@ type ClientProfileRow = Database['public']['Tables']['client_profiles']['Row'];
 type ClientProfileInsert = Database['public']['Tables']['client_profiles']['Insert'];
 
 const DEFAULT_COUNTRY = 'France';
+const CLIENT_PROFILES_MISSING_ERROR =
+  "Configuration incomplète: table 'public.client_profiles' absente. Appliquez les migrations Supabase avant de modifier les préférences.";
 const LEGACY_CLIENTS_FK_RETRY_COUNT = 5;
 const LEGACY_CLIENTS_FK_RETRY_DELAY_MS = 250;
 
@@ -142,6 +144,8 @@ function mapRowToProfile(row: ClientProfileRow): FamilyProfile {
     cseOrganization: row.cse_organization,
     vacafNumber: row.vacaf_number,
     paymentMode: normalizePaymentMode(row.payment_mode),
+    parent1Status: normalizeParentStatus(row.parent1_status),
+    parent1StatusOther: row.parent1_status_other,
     parent2Name: row.parent2_name,
     parent2Status: normalizeParentStatus(row.parent2_status),
     parent2StatusOther: row.parent2_status_other,
@@ -184,6 +188,8 @@ function createDefaultProfile(input: {
     cseOrganization: '',
     vacafNumber: '',
     paymentMode: 'FULL',
+    parent1Status: 'pere',
+    parent1StatusOther: '',
     parent2Name: '',
     parent2Status: 'pere',
     parent2StatusOther: '',
@@ -227,6 +233,8 @@ function toDbPayload(profile: FamilyProfile): ClientProfileInsert {
     cse_organization: normalizeText(profile.cseOrganization),
     vacaf_number: normalizeUpper(profile.vacafNumber),
     payment_mode: normalizePaymentMode(profile.paymentMode),
+    parent1_status: normalizeParentStatus(profile.parent1Status),
+    parent1_status_other: normalizeText(profile.parent1StatusOther),
     parent2_name: normalizeText(profile.parent2Name),
     parent2_status: normalizeParentStatus(profile.parent2Status),
     parent2_status_other: normalizeText(profile.parent2StatusOther),
@@ -379,6 +387,7 @@ async function upsertProfile(profile: FamilyProfile): Promise<FamilyProfile> {
 
   if (error || !data) {
     if (isMissingClientProfilesTableError(error)) {
+      throw new Error(CLIENT_PROFILES_MISSING_ERROR);
       try {
         await syncLegacyClientsRow({ userId: profile.userId, fullName, phone: profile.phone });
       } catch (legacyClientsError) {
@@ -428,7 +437,7 @@ export async function getFamilyProfile(userId: string): Promise<FamilyProfile | 
 
   if (error) {
     if (isMissingClientProfilesTableError(error)) {
-      return null;
+      throw new Error(CLIENT_PROFILES_MISSING_ERROR);
     }
     throw new Error(`Impossible de lire le profil famille: ${error.message}`);
   }
@@ -495,6 +504,8 @@ export async function upsertFamilyProfileFromRegistration(input: {
     billingCity: '',
     billingCountry: DEFAULT_COUNTRY,
     parent2Name: normalizeText(input.parent2Name),
+    parent1Status: existing.parent1Status,
+    parent1StatusOther: existing.parent1StatusOther,
     parent2Status: normalizeParentStatus(input.parent2Status),
     parent2StatusOther: normalizeText(input.parent2StatusOther),
     parent2Phone: normalizeText(input.parent2Phone),
@@ -552,6 +563,8 @@ export async function upsertFamilyProfileFromCheckout(input: {
     cseOrganization: normalizeText(input.contact.cseOrganization),
     vacafNumber: normalizeUpper(input.contact.vacafNumber),
     paymentMode: input.contact.paymentMode,
+    parent1Status: existing.parent1Status,
+    parent1StatusOther: existing.parent1StatusOther,
     children
   };
 
@@ -630,6 +643,8 @@ export async function patchFamilyProfilePreferences(input: {
   userId: string;
   patch: {
     parent1Name: string;
+    parent1Status: FamilyProfile['parent1Status'];
+    parent1StatusOther?: string;
     parent1Email: string;
     parent1Phone: string;
     addressLine1: string;
@@ -665,6 +680,8 @@ export async function patchFamilyProfilePreferences(input: {
     ...existing,
     billingFirstName: normalizeText(parent1Split.firstName),
     billingLastName: normalizeText(parent1Split.lastName),
+    parent1Status: normalizeParentStatus(input.patch.parent1Status),
+    parent1StatusOther: normalizeText(input.patch.parent1StatusOther),
     email: normalizeText(input.patch.parent1Email).toLowerCase(),
     phone: normalizeText(input.patch.parent1Phone),
     addressLine1: normalizeText(input.patch.addressLine1),

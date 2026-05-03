@@ -10,6 +10,8 @@ import MonCompteClient from './MonCompteClient';
 export const metadata = {
   title: 'Mon compte | Resacolo'
 };
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export default async function MonComptePage() {
   const session = await getCurrentUser();
@@ -42,6 +44,8 @@ export default async function MonComptePage() {
     cseOrganization: '',
     vacafNumber: '',
     paymentMode: 'FULL' as const,
+    parent1Status: 'pere' as const,
+    parent1StatusOther: '',
     parent2Name: '',
     parent2Status: 'pere' as const,
     parent2StatusOther: '',
@@ -61,6 +65,7 @@ export default async function MonComptePage() {
     profile: fallbackProfile,
     upcomingReservations: []
   };
+  let profileLoadError: string | null = null;
   let favoriteStays: Stay[] = [];
   try {
     snapshot = await getFamilyProfileSnapshot({
@@ -68,7 +73,8 @@ export default async function MonComptePage() {
       sessionName: session.name,
       sessionEmail: session.email
     });
-  } catch {
+  } catch (error) {
+    profileLoadError = error instanceof Error ? error.message : 'Impossible de charger le profil famille.';
     snapshot = {
       profile: fallbackProfile,
       upcomingReservations: []
@@ -92,6 +98,7 @@ export default async function MonComptePage() {
       initialProfile={snapshot.profile}
       upcomingReservations={snapshot.upcomingReservations}
       favoriteStays={favoriteStays}
+      profileLoadError={profileLoadError}
     />
   );
 }

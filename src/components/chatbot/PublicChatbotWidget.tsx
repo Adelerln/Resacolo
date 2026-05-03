@@ -225,14 +225,14 @@ export function PublicChatbotWidget() {
         aria-expanded={open}
         aria-label="Ouvrir l'assistant Resacolo"
       >
-        {open ? <X className="h-4 w-4" /> : <MessageCircle className="h-4 w-4" />}
+        <MessageCircle className="h-4 w-4" />
         Assistant
       </button>
 
       {open ? (
         <section className="fixed bottom-20 right-4 z-[70] flex h-[70vh] w-[calc(100vw-2rem)] max-w-[25rem] flex-col overflow-hidden rounded-[1.45rem] border border-slate-200/90 bg-white shadow-[0_26px_50px_-26px_rgba(15,23,42,0.58)] sm:right-5">
           <header className="border-b border-slate-200/85 bg-[linear-gradient(120deg,#fff7eb_0%,#ebf8ff_58%,#ffffff_100%)] px-4 py-4">
-            <div>
+            <div className="flex items-start justify-between gap-3">
               <h2
                 className="font-display text-[1.7rem] font-bold leading-[1.05] text-[#505050] sm:text-[1.95rem]"
                 style={{
@@ -243,6 +243,14 @@ export function PublicChatbotWidget() {
               >
                 Assistant <span style={{ color: '#6dc7fe' }}>Resacolo</span>
               </h2>
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                aria-label="Fermer le chat"
+              >
+                <X className="h-4 w-4" />
+              </button>
             </div>
           </header>
 

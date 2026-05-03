@@ -692,7 +692,7 @@ export default function HomePage() {
             src="/image/accueil/images_accueil/fonds_euro.png"
             alt=""
             fill
-            className="object-contain object-center scale-110"
+            className="object-cover object-center"
             sizes="100vw"
             style={{
               filter: 'grayscale(1) brightness(1.08) sepia(1) hue-rotate(170deg) saturate(450%)'
@@ -813,19 +813,15 @@ export default function HomePage() {
               </div>
             </div>
           </div>
-        </div>
 
-      </section>
-
-      {/* ── Contact ── */}
-      <section id="contact" className="section-padding bg-slate-50">
-        <div className="section-container flex justify-center">
-          <Link
-            href="/contact"
-            className="cta-orange-sweep inline-flex items-center justify-center rounded-full px-10 py-4 text-base font-bold uppercase tracking-widest text-white shadow-[0_16px_30px_-18px_rgba(250,133,0,0.7)] transition"
-          >
-            Nous contacter
-          </Link>
+          <div id="contact" className="mt-10 flex justify-center sm:mt-14">
+            <Link
+              href="/contact"
+              className="cta-orange-sweep inline-flex items-center justify-center rounded-full px-10 py-4 text-base font-bold uppercase tracking-widest text-white shadow-[0_16px_30px_-18px_rgba(250,133,0,0.7)] transition"
+            >
+              Nous contacter
+            </Link>
+          </div>
         </div>
       </section>
     </div>

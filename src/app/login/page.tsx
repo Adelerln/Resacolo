@@ -61,36 +61,45 @@ function normalizeMode(mode: string | undefined): LoginMode {
 export default async function LoginPage({
   searchParams
 }: {
-  searchParams?: Promise<{ redirectTo?: string; error?: string; mode?: string; registered?: string }>;
+  searchParams?: Promise<{
+    redirectTo?: string;
+    error?: string;
+    mode?: string;
+    registered?: string;
+    forceLogin?: string;
+  }>;
 }) {
   if (process.env.MOCK_UI === '1') {
     return null;
   }
 
-  const { redirectTo, error, mode, registered } = searchParams ? await searchParams : {};
+  const { redirectTo, error, mode, registered, forceLogin } = searchParams ? await searchParams : {};
   const effectiveMode = normalizeMode(mode);
+  const shouldBypassSessionRedirect = forceLogin === '1';
   const safeRedirectTo = sanitizeRelativePath(
     redirectTo,
     effectiveMode === 'family' ? '/mon-compte' : '/admin'
   );
   const loginError = mapLoginErrorMessage(error);
 
-  const session = await getCurrentUser();
-  if (session) {
-    if (session.role === 'MNEMOS') {
-      redirect(canUseRedirectForRole('MNEMOS', safeRedirectTo) ? safeRedirectTo : '/mnemos');
-    }
-    if (session.role === 'ADMIN') {
-      redirect(canUseRedirectForRole('ADMIN', safeRedirectTo) ? safeRedirectTo : '/admin');
-    }
-    if (session.role === 'ORGANISATEUR') {
-      redirect(canUseRedirectForRole('ORGANISATEUR', safeRedirectTo) ? safeRedirectTo : '/organisme');
-    }
-    if (session.role === 'PARTENAIRE') {
-      redirect(canUseRedirectForRole('PARTENAIRE', safeRedirectTo) ? safeRedirectTo : '/partenaire');
-    }
-    if (session.role === 'CLIENT') {
-      redirect(canUseRedirectForRole('CLIENT', safeRedirectTo) ? safeRedirectTo : '/mon-compte');
+  if (!shouldBypassSessionRedirect) {
+    const session = await getCurrentUser();
+    if (session) {
+      if (session.role === 'MNEMOS') {
+        redirect(canUseRedirectForRole('MNEMOS', safeRedirectTo) ? safeRedirectTo : '/mnemos');
+      }
+      if (session.role === 'ADMIN') {
+        redirect(canUseRedirectForRole('ADMIN', safeRedirectTo) ? safeRedirectTo : '/admin');
+      }
+      if (session.role === 'ORGANISATEUR') {
+        redirect(canUseRedirectForRole('ORGANISATEUR', safeRedirectTo) ? safeRedirectTo : '/organisme');
+      }
+      if (session.role === 'PARTENAIRE') {
+        redirect(canUseRedirectForRole('PARTENAIRE', safeRedirectTo) ? safeRedirectTo : '/partenaire');
+      }
+      if (session.role === 'CLIENT') {
+        redirect(canUseRedirectForRole('CLIENT', safeRedirectTo) ? safeRedirectTo : '/mon-compte');
+      }
     }
   }
 

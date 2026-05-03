@@ -399,104 +399,97 @@ export default function CheckoutInformationsPage() {
             <div className="mt-5 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-4 text-sm text-emerald-800">
               <p className="font-semibold">Vous êtes déjà connecté(e).</p>
               <p className="mt-1 text-emerald-900/80">
-                Nous utilisons les informations de votre compte pour la réservation.
-              </p>
-              <p className="mt-3 text-xs text-emerald-900/70">
-                Besoin de modifier vos coordonnées ? Faites-le depuis{' '}
-                <Link
-                  href="/contact/preferences"
-                  className="font-semibold underline underline-offset-2"
-                >
-                  Préférences
-                </Link>
-                .
+                Vos coordonnées ont été préremplies depuis votre compte et restent modifiables ici pour finaliser la
+                réservation.
               </p>
             </div>
-          ) : (
-            <div className="mt-5 grid gap-4 md:grid-cols-2">
-              <label className={COMPACT_LABEL_CLASS}>
-                Prénom *
-                <input
-                  type="text"
-                  required
-                  value={form.billingFirstName}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, billingFirstName: event.target.value }))
-                  }
-                  className={INPUT_CLASS}
-                />
-              </label>
-              <label className={COMPACT_LABEL_CLASS}>
-                Nom *
-                <input
-                  type="text"
-                  required
-                  value={form.billingLastName}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, billingLastName: event.target.value }))
-                  }
-                  className={INPUT_CLASS}
-                />
-              </label>
-              <label className={`${COMPACT_LABEL_CLASS} md:col-span-2`}>
-                Numéro et nom de rue *
-                <input
-                  type="text"
-                  required
-                  value={form.addressLine1}
-                  onChange={(event) => setForm((prev) => ({ ...prev, addressLine1: event.target.value }))}
-                  className={INPUT_CLASS}
-                />
-              </label>
-              <label className={`${COMPACT_LABEL_CLASS} md:col-span-2`}>
-                Complément d&apos;adresse
-                <input
-                  type="text"
-                  value={form.addressLine2}
-                  onChange={(event) => setForm((prev) => ({ ...prev, addressLine2: event.target.value }))}
-                  className={INPUT_CLASS}
-                />
-              </label>
-              <label className={COMPACT_LABEL_CLASS}>
-                Code postal *
-                <input
-                  type="text"
-                  required
-                  value={form.postalCode}
-                  onChange={(event) => setForm((prev) => ({ ...prev, postalCode: event.target.value }))}
-                  className={INPUT_CLASS}
-                />
-              </label>
-              <label className={COMPACT_LABEL_CLASS}>
-                Ville *
-                <input
-                  type="text"
-                  required
-                  value={form.city}
-                  onChange={(event) => setForm((prev) => ({ ...prev, city: event.target.value }))}
-                  className={INPUT_CLASS}
-                />
-              </label>
-              <label className={COMPACT_LABEL_CLASS}>
-                Téléphone *
-                <input
-                  type="tel"
-                  required
-                  value={form.phone}
-                  onChange={(event) => setForm((prev) => ({ ...prev, phone: event.target.value }))}
-                  className={INPUT_CLASS}
-                />
-              </label>
-              <label className={COMPACT_LABEL_CLASS}>
-                E-mail *
-                <input
-                  type="email"
-                  required
-                  value={form.email}
-                  onChange={(event) => setForm((prev) => ({ ...prev, email: event.target.value.trim() }))}
-                  className={INPUT_CLASS}
-                />
-              </label>
+          ) : null}
+
+          <div className="mt-5 grid gap-4 md:grid-cols-2">
+            <label className={COMPACT_LABEL_CLASS}>
+              Prénom *
+              <input
+                type="text"
+                required
+                value={form.billingFirstName}
+                onChange={(event) =>
+                  setForm((prev) => ({ ...prev, billingFirstName: event.target.value }))
+                }
+                className={INPUT_CLASS}
+              />
+            </label>
+            <label className={COMPACT_LABEL_CLASS}>
+              Nom *
+              <input
+                type="text"
+                required
+                value={form.billingLastName}
+                onChange={(event) =>
+                  setForm((prev) => ({ ...prev, billingLastName: event.target.value }))
+                }
+                className={INPUT_CLASS}
+              />
+            </label>
+            <label className={`${COMPACT_LABEL_CLASS} md:col-span-2`}>
+              Numéro et nom de rue *
+              <input
+                type="text"
+                required
+                value={form.addressLine1}
+                onChange={(event) => setForm((prev) => ({ ...prev, addressLine1: event.target.value }))}
+                className={INPUT_CLASS}
+              />
+            </label>
+            <label className={`${COMPACT_LABEL_CLASS} md:col-span-2`}>
+              Complément d&apos;adresse
+              <input
+                type="text"
+                value={form.addressLine2}
+                onChange={(event) => setForm((prev) => ({ ...prev, addressLine2: event.target.value }))}
+                className={INPUT_CLASS}
+              />
+            </label>
+            <label className={COMPACT_LABEL_CLASS}>
+              Code postal *
+              <input
+                type="text"
+                required
+                value={form.postalCode}
+                onChange={(event) => setForm((prev) => ({ ...prev, postalCode: event.target.value }))}
+                className={INPUT_CLASS}
+              />
+            </label>
+            <label className={COMPACT_LABEL_CLASS}>
+              Ville *
+              <input
+                type="text"
+                required
+                value={form.city}
+                onChange={(event) => setForm((prev) => ({ ...prev, city: event.target.value }))}
+                className={INPUT_CLASS}
+              />
+            </label>
+            <label className={COMPACT_LABEL_CLASS}>
+              Téléphone *
+              <input
+                type="tel"
+                required
+                value={form.phone}
+                onChange={(event) => setForm((prev) => ({ ...prev, phone: event.target.value }))}
+                className={INPUT_CLASS}
+              />
+            </label>
+            <label className={COMPACT_LABEL_CLASS}>
+              E-mail *
+              <input
+                type="email"
+                required
+                value={form.email}
+                onChange={(event) => setForm((prev) => ({ ...prev, email: event.target.value.trim() }))}
+                className={INPUT_CLASS}
+              />
+            </label>
+            {!isFamilyAuthenticated ? (
               <>
                 <label className={COMPACT_LABEL_CLASS}>
                   Mot de passe *
@@ -528,8 +521,8 @@ export default function CheckoutInformationsPage() {
                 </label>
                 <p className="md:col-span-2 text-xs text-slate-500">{PASSWORD_POLICY_MESSAGE}</p>
               </>
-            </div>
-          )}
+            ) : null}
+          </div>
         </section>
 
         <section className={SECTION_CARD_CLASS}>

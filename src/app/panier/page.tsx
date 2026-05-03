@@ -1,12 +1,15 @@
 'use client';
 
+import { useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Bus, Calendar, Layers, MapPin, Shield, Trash2, Users } from 'lucide-react';
 import { useCart } from '@/context/CartContext';
+import { createCheckoutSession } from '@/lib/checkout/client';
 import { getMockImageUrl, mockImages } from '@/lib/mockImages';
 import type { CartItem } from '@/types/cart';
+import type { CheckoutPricingItem } from '@/types/checkout';
 
 function formatPrice(price?: number | null) {
   if (!price) return 'Sur demande';
@@ -20,7 +23,7 @@ function formatPrice(price?: number | null) {
 
 type SelectionRow = { Icon: typeof Calendar; label: string; text: string };
 
-function getPanierSelectionRows(item: CartItem): SelectionRow[] {
+function getPanierSelectionRows(item: CartItem, priced?: CheckoutPricingItem): SelectionRow[] {
   const L = item.selectionLabels;
   const sel = item.selection;
   const rows: SelectionRow[] = [];
@@ -35,6 +38,7 @@ function getPanierSelectionRows(item: CartItem): SelectionRow[] {
   }
 
   const transportText =
+    priced?.transportDisplayLine?.trim() ||
     L?.transportLine?.trim() ||
     (sel.transportMode === 'Sans transport'
       ? 'Sans transport'
@@ -61,9 +65,36 @@ function getPanierSelectionRows(item: CartItem): SelectionRow[] {
 export default function PanierPage() {
   const router = useRouter();
   const { items, removeItemByIndex } = useCart();
+  const [pricedItems, setPricedItems] = useState<Record<string, CheckoutPricingItem>>({});
 
   const total = items.reduce((sum, item) => sum + (item.unitPrice ?? 0), 0);
   const hasTotal = items.every((item) => item.unitPrice != null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (items.length === 0) {
+      return;
+    }
+
+    void createCheckoutSession(items)
+      .then(({ pricing }) => {
+        if (cancelled) return;
+        setPricedItems(
+          Object.fromEntries(pricing.items.map((pricedItem) => [pricedItem.cartItemId, pricedItem]))
+        );
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setPricedItems({});
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [items]);
+
+  const pricedItemsById = useMemo(() => pricedItems, [pricedItems]);
 
   if (items.length === 0) {
     return (
@@ -101,7 +132,7 @@ export default function PanierPage() {
 
       <div className="mt-10 space-y-6">
         {items.map((item, index) => {
-          const selectionRows = getPanierSelectionRows(item);
+          const selectionRows = getPanierSelectionRows(item, pricedItemsById[item.id]);
           return (
           <article
             key={`${item.id}-${index}`}

@@ -93,7 +93,7 @@ function formatSessionLabel(session: StaySessionOption) {
   return `${start} - ${end}${status}${price}`;
 }
 
-function formatTransportLabel(option: StayTransportOption) {
+function formatTransportLabel(option: StayTransportOption, displayAmount?: number) {
   const cities = [option.departureCity, option.returnCity].filter(Boolean);
   const route =
     cities.length === 0
@@ -101,7 +101,8 @@ function formatTransportLabel(option: StayTransportOption) {
       : cities.length === 1 || option.departureCity === option.returnCity
         ? cities[0]
         : `${option.departureCity} / ${option.returnCity}`;
-  return `${route} · ${formatPrice(option.amount)}`;
+  const amount = displayAmount ?? option.amount;
+  return `${route} · ${formatPrice(amount)}`;
 }
 
 function formatInsuranceLabel(option: StayInsuranceOption) {
@@ -662,12 +663,14 @@ export function StayDetailView({ stay }: { stay: Stay }) {
     } else if (isDifferentiatedTransport) {
       const chunks: string[] = [];
       if (selectedDepartureTransportOption) {
-        chunks.push(`Aller : ${formatTransportLabel(selectedDepartureTransportOption)}`);
+        const opt = selectedDepartureTransportOption;
+        chunks.push(`Aller : ${formatTransportLabel(opt, opt.amount / 2)}`);
       } else if (selectedDepartureCity) {
         chunks.push(`Aller : ${selectedDepartureCity}`);
       }
       if (selectedReturnTransportOption) {
-        chunks.push(`Retour : ${formatTransportLabel(selectedReturnTransportOption)}`);
+        const opt = selectedReturnTransportOption;
+        chunks.push(`Retour : ${formatTransportLabel(opt, opt.amount / 2)}`);
       } else if (selectedReturnCity) {
         chunks.push(`Retour : ${selectedReturnCity}`);
       }

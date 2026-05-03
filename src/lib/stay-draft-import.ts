@@ -369,6 +369,12 @@ export type DraftSessionItem = {
 export type DraftAccommodation = {
   title: string;
   description: string;
+  address_text?: string | null;
+  postal_code?: string | null;
+  city?: string | null;
+  department_code?: string | null;
+  region_text?: string | null;
+  country?: string | null;
 };
 
 export type DraftTransportVariant = {
@@ -4697,7 +4703,10 @@ export async function extractTransportVariants(
   };
 }
 
-function extractAccommodation(sections: SectionBlock[]): DraftAccommodation | null {
+function extractAccommodation(
+  sections: SectionBlock[],
+  addressHints: AddressHint[]
+): DraftAccommodation | null {
   const section = findSection(sections, [
     'hebergement',
     'hébergement',
@@ -4716,10 +4725,17 @@ function extractAccommodation(sections: SectionBlock[]): DraftAccommodation | nu
 
   const description = normalizeParagraph(section.text);
   if (!description) return null;
+  const primaryAddressHint = addressHints[0] ?? null;
 
   return {
     title: section.heading,
-    description
+    description,
+    address_text: primaryAddressHint?.street ?? null,
+    postal_code: primaryAddressHint?.postalCode ?? null,
+    city: primaryAddressHint?.locality ?? null,
+    department_code: null,
+    region_text: primaryAddressHint?.region ?? primaryAddressHint?.department ?? null,
+    country: null
   };
 }
 
@@ -4817,7 +4833,7 @@ export function extractStayData(html: string, sourceUrl: string): ExtractedStayD
   const transportText = normalizeParagraph(transportSection?.text ?? null);
   const transportMode = detectTransportMode(transportText, visibleText);
   const sessionsJson = extractSessions($, visibleText, html);
-  const accommodationsJson = extractAccommodation(sections);
+  const accommodationsJson = extractAccommodation(sections, addressHints);
 
   return {
     title,

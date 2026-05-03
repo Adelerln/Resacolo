@@ -1,7 +1,6 @@
 'use client';
 
 import { ACCOMMODATION_TYPE_OPTIONS, formatAccommodationType } from '@/lib/accommodation-types';
-import type { AccommodationLocationMode } from '@/lib/accommodation-location';
 import {
   defaultAccommodationImportRecord,
   mergeAccommodationImportRecord
@@ -37,8 +36,6 @@ export default function AccommodationImportReviewFields({
     const next = types.includes(option) ? types.filter((t) => t !== option) : [...types, option];
     patch({ accommodation_types: next });
   }
-
-  const locationMode = (draft.location_mode as AccommodationLocationMode | null) || '';
 
   return (
     <section className="rounded-2xl border border-amber-200 bg-amber-50/40 p-5 sm:p-6">
@@ -96,97 +93,75 @@ export default function AccommodationImportReviewFields({
         </div>
 
         <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <h3 className="text-sm font-semibold text-slate-900">Lieu affiché</h3>
-          <label className="mt-3 block text-sm font-medium text-slate-700">
-            Type de lieu
-            <select
-              className={draftReviewControlClass({
-                required: false,
-                filled: Boolean(locationMode)
-              })}
-              value={locationMode}
-              onChange={(e) =>
-                patch({
-                  location_mode: e.target.value ? (e.target.value as AccommodationLocationMode) : null
-                })
-              }
-            >
-              <option value="">Non renseigné</option>
-              <option value="france">Ville en France (+ département)</option>
-              <option value="abroad">Ville à l&apos;étranger (+ pays)</option>
-              <option value="itinerant">Circuit / zone itinérante</option>
-            </select>
-          </label>
-
-          {locationMode === 'france' ? (
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <label className="block text-sm font-medium text-slate-700">
-                Ville
-                <input
-                  className={draftReviewControlClass({
-                    required: false,
-                    filled: Boolean(String(draft.location_city ?? '').trim())
-                  })}
-                  value={String(draft.location_city ?? '')}
-                  onChange={(e) => patch({ location_city: e.target.value })}
-                />
-              </label>
-              <label className="block text-sm font-medium text-slate-700">
-                Numéro de département
-                <input
-                  className={draftReviewControlClass({
-                    required: false,
-                    filled: Boolean(String(draft.location_department_code ?? '').trim())
-                  })}
-                  placeholder="Ex. 85"
-                  value={String(draft.location_department_code ?? '')}
-                  maxLength={2}
-                  onChange={(e) => patch({ location_department_code: e.target.value.slice(0, 2) })}
-                />
-              </label>
-            </div>
-          ) : null}
-
-          {locationMode === 'abroad' ? (
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <label className="block text-sm font-medium text-slate-700">
-                Ville
-                <input
-                  className={draftReviewControlClass({
-                    required: false,
-                    filled: Boolean(String(draft.location_city ?? '').trim())
-                  })}
-                  value={String(draft.location_city ?? '')}
-                  onChange={(e) => patch({ location_city: e.target.value })}
-                />
-              </label>
-              <label className="block text-sm font-medium text-slate-700">
-                Pays
-                <input
-                  className={draftReviewControlClass({
-                    required: false,
-                    filled: Boolean(String(draft.location_country ?? '').trim())
-                  })}
-                  value={String(draft.location_country ?? '')}
-                  onChange={(e) => patch({ location_country: e.target.value })}
-                />
-              </label>
-            </div>
-          ) : null}
-
-          {locationMode === 'itinerant' ? (
-            <label className="mt-4 block text-sm font-medium text-slate-700">
-              Zone ou itinéraire
+          <h3 className="text-sm font-semibold text-slate-900">Adresse physique du centre</h3>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <label className="block text-sm font-medium text-slate-700 sm:col-span-2">
+              Adresse
               <input
                 className={draftReviewControlClass({
                   required: false,
-                  filled: Boolean(String(draft.itinerant_zone ?? '').trim())
+                  filled: Boolean(String(draft.address_text ?? '').trim())
                 })}
-                value={String(draft.itinerant_zone ?? '')}
-                onChange={(e) => patch({ itinerant_zone: e.target.value })}
+                value={String(draft.address_text ?? '')}
+                onChange={(e) => patch({ address_text: e.target.value })}
               />
             </label>
-          ) : null}
+            <label className="block text-sm font-medium text-slate-700">
+              Code postal
+              <input
+                className={draftReviewControlClass({
+                  required: false,
+                  filled: Boolean(String(draft.postal_code ?? '').trim())
+                })}
+                value={String(draft.postal_code ?? '')}
+                onChange={(e) => patch({ postal_code: e.target.value })}
+              />
+            </label>
+            <label className="block text-sm font-medium text-slate-700">
+              Ville
+              <input
+                className={draftReviewControlClass({
+                  required: false,
+                  filled: Boolean(String(draft.city ?? '').trim())
+                })}
+                value={String(draft.city ?? '')}
+                onChange={(e) => patch({ city: e.target.value })}
+              />
+            </label>
+            <label className="block text-sm font-medium text-slate-700">
+              Département
+              <input
+                className={draftReviewControlClass({
+                  required: false,
+                  filled: Boolean(String(draft.department_code ?? '').trim())
+                })}
+                value={String(draft.department_code ?? '')}
+                onChange={(e) => patch({ department_code: e.target.value })}
+              />
+            </label>
+            <label className="block text-sm font-medium text-slate-700">
+              Région
+              <input
+                className={draftReviewControlClass({
+                  required: false,
+                  filled: Boolean(String(draft.region_text ?? '').trim())
+                })}
+                value={String(draft.region_text ?? '')}
+                onChange={(e) => patch({ region_text: e.target.value })}
+              />
+            </label>
+            <label className="block text-sm font-medium text-slate-700 sm:col-span-2">
+              Pays
+              <input
+                className={draftReviewControlClass({
+                  required: false,
+                  filled: Boolean(String(draft.country ?? '').trim())
+                })}
+                value={String(draft.country ?? '')}
+                onChange={(e) => patch({ country: e.target.value })}
+              />
+            </label>
+          </div>
         </div>
 
         <label className="block text-sm font-medium text-slate-700">

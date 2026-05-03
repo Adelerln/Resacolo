@@ -6,6 +6,7 @@ import StayDraftReviewForm from '@/components/organisme/StayDraftReviewForm';
 import { requireOrganizerPageAccess } from '@/lib/organizer-backoffice-access.server';
 import { withOrganizerQuery } from '@/lib/organizers.server';
 import { normalizeStayDraftCategories } from '@/lib/stay-categories';
+import { readDraftDestinationFields } from '@/lib/stay-draft-destination';
 import { extractVideoUrls } from '@/lib/stay-draft-import';
 import {
   buildDraftTransportOptionsFromVariants,
@@ -470,8 +471,9 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
             .filter((season) => resolvedSeasonIds.includes(season.id))
             .map((season) => season.name)
         : inferredSeasonName
-          ? [inferredSeasonName]
+        ? [inferredSeasonName]
           : [];
+  const destination = readDraftDestinationFields(rawPayload);
 
   const initialPayload: StayDraftReviewPayload = {
     title: normalizeString(draft.title),
@@ -479,6 +481,14 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
     season_ids: resolvedSeasonIds,
     season_names: resolvedSeasonNames,
     summary: normalizeString(draft.summary),
+    destination_type: destination.destinationType ?? '',
+    destination_city: destination.destinationCity ?? '',
+    destination_postal_code: destination.destinationPostalCode ?? '',
+    destination_department_code: destination.destinationDepartmentCode ?? '',
+    destination_region: destination.destinationRegion ?? '',
+    destination_country: destination.destinationCountry ?? '',
+    destination_itinerary_label: destination.destinationItineraryLabel ?? '',
+    destination_countries: destination.destinationCountries,
     location_text: normalizeString(draft.location_text),
     region_text: normalizeString(draft.region_text),
     description: normalizeString(draft.description),

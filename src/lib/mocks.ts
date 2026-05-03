@@ -72,6 +72,7 @@ export const mockRequests = [
     stayId: 'stay-1',
     sessionId: 'session-1',
     partnerTenantId: 'tenant-partner-1',
+    status: 'REQUESTED',
     currentStageId: 'stage-2'
   }
 ];

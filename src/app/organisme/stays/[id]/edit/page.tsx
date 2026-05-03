@@ -77,7 +77,7 @@ export default async function OrganizerStayEditTunnelPage({ params: paramsPromis
     supabase
       .from('accommodations')
       .select(
-        'id,name,accommodation_type,description,bed_info,bathroom_info,catering_info,accessibility_info,status'
+        'id,name,accommodation_type,address_text,postal_code,city,department_code,region_text,country,description,bed_info,bathroom_info,catering_info,accessibility_info,status'
       )
       .eq('organizer_id', selectedOrganizerId)
       .order('name', { ascending: true }),
@@ -113,7 +113,14 @@ export default async function OrganizerStayEditTunnelPage({ params: paramsPromis
   );
 
   const accommodations = (accommodationsRaw ?? []).map((accommodation) => {
-    const locationMeta = extractAccommodationLocationMeta(accommodation.description);
+    const locationMeta = extractAccommodationLocationMeta(accommodation.description, {
+      addressText: accommodation.address_text,
+      postalCode: accommodation.postal_code,
+      city: accommodation.city,
+      departmentCode: accommodation.department_code,
+      regionText: accommodation.region_text,
+      country: accommodation.country
+    });
     return {
       ...accommodation,
       description: locationMeta.description,

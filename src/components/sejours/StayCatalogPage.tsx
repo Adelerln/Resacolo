@@ -34,9 +34,23 @@ import {
 import type { Stay } from '@/types/stay';
 
 type SearchParamInput = Record<string, string | string[] | undefined> | undefined;
-type MultiFilterKey = 'seasonIds' | 'categories' | 'ageBands' | 'destinations' | 'organizerIds';
+type MultiFilterKey =
+  | 'seasonIds'
+  | 'categories'
+  | 'ageBands'
+  | 'destinationTypes'
+  | 'destinations'
+  | 'organizerIds';
 
-const ACCORDION_DEFAULT_OPEN = ['priceRange', 'ageRange', 'seasonIds', 'categories', 'destinations', 'organizerIds'];
+const ACCORDION_DEFAULT_OPEN = [
+  'priceRange',
+  'ageRange',
+  'seasonIds',
+  'categories',
+  'destinationTypes',
+  'destinations',
+  'organizerIds'
+];
 
 function clampNumber(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
@@ -215,6 +229,7 @@ function FiltersPanel({
   }> = [
     { key: 'seasonIds', label: 'SAISON', options: options.seasons },
     { key: 'categories', label: 'TYPE DE SÉJOUR', options: options.categories },
+    { key: 'destinationTypes', label: 'FORMAT DE DESTINATION', options: options.destinationTypes },
     { key: 'destinations', label: 'DESTINATIONS', options: options.destinations },
     { key: 'organizerIds', label: 'ORGANISATEURS', options: options.organizers }
   ];
@@ -338,6 +353,7 @@ function FiltersPanel({
       <Accordion type="multiple" defaultValue={ACCORDION_DEFAULT_OPEN} className="mt-3">
         {renderFilterGroup('seasonIds')}
         {renderFilterGroup('categories')}
+        {renderFilterGroup('destinationTypes')}
 
         <AccordionItem value="ageRange">
           <AccordionTrigger className="py-2.5 text-[12px] tracking-[0.07em] text-slate-900">
@@ -500,6 +516,7 @@ export function StayCatalogPage({
         q: debouncedQuery,
         seasonIds: filters.seasonIds,
         categories: filters.categories,
+        destinationTypes: filters.destinationTypes,
         destinations: filters.destinations,
         organizerIds: filters.organizerIds,
         ageBands: filters.ageBands,
@@ -512,6 +529,7 @@ export function StayCatalogPage({
     [
       debouncedQuery,
       filters.categories,
+      filters.destinationTypes,
       filters.destinations,
       filters.organizerIds,
       filters.seasonIds,
@@ -578,6 +596,9 @@ export function StayCatalogPage({
     const ageBandBase = buildStayCatalogFilterOptions(
       applyStayCatalogFilters(stays, { ...filters, ageBands: [] })
     ).ageBands;
+    const destinationTypeBase = buildStayCatalogFilterOptions(
+      applyStayCatalogFilters(stays, { ...filters, destinationTypes: [] })
+    ).destinationTypes;
     const destinationBase = buildStayCatalogFilterOptions(
       applyStayCatalogFilters(stays, { ...filters, destinations: [] })
     ).destinations;
@@ -590,6 +611,11 @@ export function StayCatalogPage({
       seasons: withSelectedFallbacks(seasonBase, filterOptions.seasons, filters.seasonIds),
       categories: withSelectedFallbacks(categoryBase, filterOptions.categories, filters.categories),
       ageBands: withSelectedFallbacks(ageBandBase, filterOptions.ageBands, filters.ageBands),
+      destinationTypes: withSelectedFallbacks(
+        destinationTypeBase,
+        filterOptions.destinationTypes,
+        filters.destinationTypes
+      ),
       destinations: withSelectedFallbacks(destinationBase, filterOptions.destinations, filters.destinations),
       organizers: withSelectedFallbacks(organizerBase, filterOptions.organizers, filters.organizerIds)
     };

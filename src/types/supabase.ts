@@ -1436,6 +1436,7 @@ export type Database = {
       accommodations: {
         Row: {
           accessibility_info: string | null
+          address_text: string | null
           accommodation_type: string | null
           ai_extracted_data: Json | null
           bathroom_info: string | null
@@ -1444,7 +1445,10 @@ export type Database = {
           catering_info: string | null
           center_latitude: number | null
           center_longitude: number | null
+          city: string | null
           created_at: string
+          country: string | null
+          department_code: string | null
           description: string | null
           id: string
           indoor_features: string | null
@@ -1452,6 +1456,8 @@ export type Database = {
           name: string
           organizer_id: string
           outdoor_features: string | null
+          postal_code: string | null
+          region_text: string | null
           room_count: number | null
           slug: string | null
           source_url: string | null
@@ -1462,6 +1468,7 @@ export type Database = {
         }
         Insert: {
           accessibility_info?: string | null
+          address_text?: string | null
           accommodation_type?: string | null
           ai_extracted_data?: Json | null
           bathroom_info?: string | null
@@ -1470,7 +1477,10 @@ export type Database = {
           catering_info?: string | null
           center_latitude?: number | null
           center_longitude?: number | null
+          city?: string | null
           created_at?: string
+          country?: string | null
+          department_code?: string | null
           description?: string | null
           id?: string
           indoor_features?: string | null
@@ -1478,6 +1488,8 @@ export type Database = {
           name: string
           organizer_id: string
           outdoor_features?: string | null
+          postal_code?: string | null
+          region_text?: string | null
           room_count?: number | null
           slug?: string | null
           source_url?: string | null
@@ -1488,6 +1500,7 @@ export type Database = {
         }
         Update: {
           accessibility_info?: string | null
+          address_text?: string | null
           accommodation_type?: string | null
           ai_extracted_data?: Json | null
           bathroom_info?: string | null
@@ -1496,7 +1509,10 @@ export type Database = {
           catering_info?: string | null
           center_latitude?: number | null
           center_longitude?: number | null
+          city?: string | null
           created_at?: string
+          country?: string | null
+          department_code?: string | null
           description?: string | null
           id?: string
           indoor_features?: string | null
@@ -1504,6 +1520,8 @@ export type Database = {
           name?: string
           organizer_id?: string
           outdoor_features?: string | null
+          postal_code?: string | null
+          region_text?: string | null
           room_count?: number | null
           slug?: string | null
           source_url?: string | null
@@ -2139,6 +2157,14 @@ export type Database = {
           categories: string[]
           created_at: string
           description: string | null
+          destination_city: string | null
+          destination_countries: string[] | null
+          destination_country: string | null
+          destination_department_code: string | null
+          destination_itinerary_label: string | null
+          destination_postal_code: string | null
+          destination_region: string | null
+          destination_type: string | null
           id: string
           location_text: string | null
           region_text: string | null
@@ -2180,6 +2206,14 @@ export type Database = {
           categories?: string[]
           created_at?: string
           description?: string | null
+          destination_city?: string | null
+          destination_countries?: string[] | null
+          destination_country?: string | null
+          destination_department_code?: string | null
+          destination_itinerary_label?: string | null
+          destination_postal_code?: string | null
+          destination_region?: string | null
+          destination_type?: string | null
           id?: string
           location_text?: string | null
           region_text?: string | null
@@ -2221,6 +2255,14 @@ export type Database = {
           categories?: string[]
           created_at?: string
           description?: string | null
+          destination_city?: string | null
+          destination_countries?: string[] | null
+          destination_country?: string | null
+          destination_department_code?: string | null
+          destination_itinerary_label?: string | null
+          destination_postal_code?: string | null
+          destination_region?: string | null
+          destination_type?: string | null
           id?: string
           location_text?: string | null
           region_text?: string | null

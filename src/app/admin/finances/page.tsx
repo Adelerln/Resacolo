@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { AdminFinancesDetailsModal } from '@/components/admin/AdminFinancesDetailsModal';
 import { requireRole } from '@/lib/auth/require';
 import {
   loadAdminFinancesReport,
@@ -139,8 +140,9 @@ export default async function AdminFinancesPage({ searchParams }: PageProps) {
                 </th>
                 <th className="px-4 py-3 text-right">CA lignes commande (TTC)</th>
                 <th className="px-4 py-3 text-right">Commission clients</th>
-                <th className="px-4 py-3 text-right">Forfaits publication (net)</th>
+                <th className="px-4 py-3 text-right">Forfaits publication TTC</th>
                 <th className="px-4 py-3 text-right tabular-nums">Mises en ligne facturées</th>
+                <th className="px-4 py-3 text-right">Détail</th>
               </tr>
             </thead>
             <tbody>
@@ -159,6 +161,9 @@ export default async function AdminFinancesPage({ searchParams }: PageProps) {
                   <td className="px-4 py-3 text-right tabular-nums text-slate-600">
                     {row.publicationPositiveCount}
                   </td>
+                  <td className="px-4 py-3 text-right">
+                    <AdminFinancesDetailsModal row={row} />
+                  </td>
                 </tr>
               ))}
               {rows.length > 0 && (
@@ -176,11 +181,12 @@ export default async function AdminFinancesPage({ searchParams }: PageProps) {
                   <td className="px-4 py-3 text-right tabular-nums text-slate-600">
                     {rows.reduce((s, r) => s + r.publicationPositiveCount, 0)}
                   </td>
+                  <td className="px-4 py-3" />
                 </tr>
               )}
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-slate-500">
+                  <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
                     Aucune donnée pour cette année et ce regroupement.
                   </td>
                 </tr>

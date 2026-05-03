@@ -69,6 +69,12 @@ const accommodationsJsonInnerSchema = z
     description: nullableTextSchema,
     accommodation_types: z.array(z.string().trim()).max(5).optional(),
     accommodation_type: nullableTextSchema,
+    address_text: nullableTextSchema,
+    postal_code: nullableTextSchema,
+    city: nullableTextSchema,
+    department_code: nullableTextSchema,
+    region_text: nullableTextSchema,
+    country: nullableTextSchema,
     location_mode: nullableTextSchema,
     location_city: nullableTextSchema,
     location_department_code: nullableTextSchema,
@@ -640,6 +646,12 @@ function normalizeAccommodations(value: unknown): StayDraftAiExtracted['accommod
     description: toNullableString(record.description),
     accommodation_types: uniqueTypes.length > 0 ? uniqueTypes : undefined,
     accommodation_type: toNullableString(record.accommodation_type),
+    address_text: toNullableString(record.address_text ?? record.full_address ?? record.address),
+    postal_code: toNullableString(record.postal_code ?? record.zip_code),
+    city: toNullableString(record.city ?? record.location_city),
+    department_code: toNullableString(record.department_code ?? record.location_department_code),
+    region_text: toNullableString(record.region_text ?? record.region),
+    country: toNullableString(record.country ?? record.location_country),
     location_mode: normalizeLocationMode(record.location_mode) ?? null,
     location_city: toNullableString(record.location_city),
     location_department_code: toNullableString(record.location_department_code),
@@ -818,6 +830,12 @@ Schéma exact attendu :
     "description": string | null,
     "accommodation_types": string[],
     "accommodation_type": string | null,
+    "address_text": string | null,
+    "postal_code": string | null,
+    "city": string | null,
+    "department_code": string | null,
+    "region_text": string | null,
+    "country": string | null,
     "location_mode": "france" | "abroad" | "itinerant" | null,
     "location_city": string | null,
     "location_department_code": string | null,
@@ -837,6 +855,8 @@ Règles pour "accommodations_json" (objet complet si un nouvel hébergement est 
 - "title" : nom institutionnel court (ex. « Centre Pierre Brossolette », « Centre à Quillan », « Circuit itinérant : A, B et C », « Camping à … »). N'y mettre ni couchage, ni sanitaires, ni repas.
 - "accommodation_types" : 1 à 3 valeurs parmi exactement : centre, auberge de jeunesse, camping, famille d'accueil, gite, mixte. Plusieurs structures sur un circuit ⇒ plusieurs entrées ou "mixte". "accommodation_type" peut répéter le principal si besoin de compatibilité.
 - "location_mode" : france | abroad | itinerant selon le cas ; null si inconnu.
+- Adresse physique du centre : renseigne en priorité les champs propres "address_text", "postal_code", "city", "department_code", "region_text", "country". Ces champs décrivent l'adresse ou la localisation réelle de l'hébergement, pas la destination commerciale du séjour.
+- Les anciens champs "location_city", "location_department_code", "location_country" restent acceptés pour compatibilité mais ne doivent être qu'un miroir des champs propres quand tu les connais.
 - Lieu — règles strictes :
   - Si "location_mode" = "france" : "location_city" doit être un NOM DE COMMUNE ou de ville (jamais le nom d'un département seul, jamais « Vendée / Deux-Sèvres »). "location_department_code" doit être le NUMÉRO INSEE à 2 ou 3 caractères (ex. 85 pour la Vendée, 79 pour les Deux-Sèvres, 75 pour Paris). Si la source ne donne qu'une frontière entre deux départements sans commune précise, utilise "itinerant" + "itinerant_zone" décrivant la zone (tu peux citer les deux départements avec leurs numéros).
   - Si "abroad" : ville réelle + pays en toutes lettres dans "location_country".

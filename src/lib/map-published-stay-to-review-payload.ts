@@ -142,6 +142,19 @@ export function mapPublishedStayToReviewPayload(input: {
   return {
     title: stay.title ?? '',
     summary: stay.summary ?? '',
+    destination_type:
+      stay.destination_type === 'fixed_france' ||
+      stay.destination_type === 'fixed_abroad' ||
+      stay.destination_type === 'itinerant'
+        ? stay.destination_type
+        : '',
+    destination_city: stay.destination_city ?? '',
+    destination_postal_code: stay.destination_postal_code ?? '',
+    destination_department_code: stay.destination_department_code ?? '',
+    destination_region: stay.destination_region ?? '',
+    destination_country: stay.destination_country ?? '',
+    destination_itinerary_label: stay.destination_itinerary_label ?? '',
+    destination_countries: stay.destination_countries ?? [],
     location_text: stay.location_text ?? '',
     region_text: stay.region_text ?? '',
     description: stay.description ?? '',

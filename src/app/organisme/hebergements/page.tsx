@@ -60,7 +60,7 @@ export default async function OrganizerAccommodationsPage({ searchParams }: Page
     supabase
       .from('accommodations')
       .select(
-        'id,name,accommodation_type,description,bed_info,bathroom_info,catering_info,accessibility_info,status,updated_at,validated_at'
+        'id,name,accommodation_type,address_text,postal_code,city,department_code,region_text,country,description,bed_info,bathroom_info,catering_info,accessibility_info,status,updated_at,validated_at'
       )
       .eq('organizer_id', selectedOrganizerId)
       .order('name', { ascending: true }),
@@ -89,12 +89,23 @@ export default async function OrganizerAccommodationsPage({ searchParams }: Page
   }
 
   const accommodations = (accommodationsRaw ?? []).map((accommodation) => {
-    const locationMeta = extractAccommodationLocationMeta(accommodation.description);
+    const locationMeta = extractAccommodationLocationMeta(accommodation.description, {
+      addressText: accommodation.address_text,
+      postalCode: accommodation.postal_code,
+      city: accommodation.city,
+      departmentCode: accommodation.department_code,
+      regionText: accommodation.region_text,
+      country: accommodation.country
+    });
+    const linkedStayTitles = linkedStayTitlesByAccommodationId.get(accommodation.id) ?? [];
+
     return {
       ...accommodation,
       description: locationMeta.description,
       locationLabel: locationMeta.locationLabel,
-      linkedStayTitles: linkedStayTitlesByAccommodationId.get(accommodation.id) ?? [],
+      linkedStayTitles: linkedStayTitles.sort((left, right) =>
+        left.localeCompare(right, 'fr', { sensitivity: 'base' })
+      ),
       mediaCount: mediaCountByAccommodationId.get(accommodation.id) ?? 0
     };
   });
@@ -231,9 +242,29 @@ export default async function OrganizerAccommodationsPage({ searchParams }: Page
                     {formatAccommodationType(accommodation.accommodation_type)}
                   </td>
                   <td className="px-4 py-3 text-slate-600">
-                    {accommodation.linkedStayTitles.length > 0
-                      ? accommodation.linkedStayTitles.join(', ')
-                      : 'Aucun'}
+                    {accommodation.linkedStayTitles.length > 0 ? (
+                      <details className="group relative">
+                        <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50">
+                          {accommodation.linkedStayTitles.length} séjour
+                          {accommodation.linkedStayTitles.length > 1 ? 's' : ''}
+                          <span className="text-slate-400 transition group-open:rotate-180">⌄</span>
+                        </summary>
+                        <div className="absolute left-0 z-20 mt-2 w-72 rounded-xl border border-slate-200 bg-white p-2 shadow-xl">
+                          <ul className="max-h-64 space-y-1 overflow-y-auto">
+                            {accommodation.linkedStayTitles.map((title) => (
+                              <li
+                                key={title}
+                                className="rounded-lg px-2.5 py-2 text-xs font-medium leading-snug text-slate-700 hover:bg-slate-50"
+                              >
+                                {title}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      </details>
+                    ) : (
+                      'Aucun'
+                    )}
                   </td>
                   <td className="px-4 py-3 text-slate-600">{accommodation.mediaCount}</td>
                   <td className="px-4 py-3 text-slate-600">

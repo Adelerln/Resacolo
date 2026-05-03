@@ -13,6 +13,7 @@ import {
   normalizeStaySummary,
   normalizeStayTransportLogisticsMode
 } from '@/lib/stay-draft-content';
+import { normalizeStayDestination } from '@/lib/stay-destination';
 import { isMissingRegionTextColumnError, normalizeStayRegion } from '@/lib/stay-regions';
 import { sanitizeSeoPrimaryKeyword, sanitizeSeoTags, sanitizeSeoText } from '@/lib/stay-seo';
 import { normalizeStayTitle } from '@/lib/stay-title';
@@ -70,9 +71,18 @@ export async function applyPublishedStayReviewPayload(
   const ageMax = ages.length > 0 ? ages[ages.length - 1]! : null;
 
   const region = normalizeStayRegion(payload.region_text);
-  const isForeignStay = categoryValues.includes('etranger');
+  const destination = normalizeStayDestination({
+    destinationType: payload.destination_type,
+    destinationCity: payload.destination_city,
+    destinationPostalCode: payload.destination_postal_code,
+    destinationDepartmentCode: payload.destination_department_code,
+    destinationRegion: payload.destination_region,
+    destinationCountry: payload.destination_country,
+    destinationItineraryLabel: payload.destination_itinerary_label,
+    destinationCountries: payload.destination_countries
+  });
 
-  if (!isForeignStay && (!region || region === 'Étranger')) {
+  if (destination.destinationType === 'fixed_france' && (!destination.destinationRegion || destination.destinationRegion === 'Étranger')) {
     return {
       ok: false,
       message:
@@ -110,6 +120,15 @@ export async function applyPublishedStayReviewPayload(
     age_min: ageMin,
     age_max: ageMax,
     location_text: payload.location_text.trim() || null,
+    destination_type: destination.destinationType,
+    destination_city: destination.destinationCity,
+    destination_postal_code: destination.destinationPostalCode,
+    destination_department_code: destination.destinationDepartmentCode,
+    destination_region: destination.destinationRegion,
+    destination_country: destination.destinationCountry,
+    destination_itinerary_label: destination.destinationItineraryLabel,
+    destination_countries:
+      destination.destinationCountries.length > 0 ? destination.destinationCountries : null,
     transport_mode: requestedTransportMode,
     transport_text: payload.transport_text.trim() || null,
     partner_discount_percent:

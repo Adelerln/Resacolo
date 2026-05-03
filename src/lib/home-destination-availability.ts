@@ -94,9 +94,9 @@ export function deriveHomeDestinationAvailability(stays: Stay[]): HomeDestinatio
   let hasFranceDestinations = false;
 
   for (const stay of stays) {
-    const canonicalRegion = mapToCanonicalStayRegion(stay.region);
+    const canonicalRegion = mapToCanonicalStayRegion(stay.destinationRegion ?? stay.region);
 
-    if (canonicalRegion && canonicalRegion !== 'Étranger') {
+    if (stay.destinationType === 'fixed_france' && canonicalRegion && canonicalRegion !== 'Étranger') {
       hasFranceDestinations = true;
 
       const regionId = FRANCE_REGION_ID_BY_CANONICAL_NAME[canonicalRegion];
@@ -106,9 +106,18 @@ export function deriveHomeDestinationAvailability(stays: Stay[]): HomeDestinatio
       continue;
     }
 
-    const country = extractForeignCountry(stay);
-    if (country) {
-      activeCountryNames.add(country);
+    const countries =
+      stay.destinationType === 'itinerant'
+        ? stay.destinationCountries ?? []
+        : stay.destinationCountry
+          ? [stay.destinationCountry]
+          : [];
+
+    for (const country of countries) {
+      const cleaned = country.trim();
+      if (cleaned && cleaned.toLowerCase() !== 'france') {
+        activeCountryNames.add(cleaned);
+      }
     }
   }
 

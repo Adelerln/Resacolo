@@ -539,7 +539,7 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
           supabase
             .from('accommodations')
             .select(
-              'id,name,accommodation_type,description,bed_info,bathroom_info,catering_info,accessibility_info,status,updated_at'
+              'id,name,accommodation_type,address_text,postal_code,city,department_code,region_text,country,description,bed_info,bathroom_info,catering_info,accessibility_info,status,updated_at'
             )
             .eq('organizer_id', resolvedOrganizer.id)
             .order('updated_at', { ascending: false }),
@@ -556,6 +556,12 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
               id: string;
               name: string;
               accommodation_type: string | null;
+              address_text: string | null;
+              postal_code: string | null;
+              city: string | null;
+              department_code: string | null;
+              region_text: string | null;
+              country: string | null;
               description: string | null;
               bed_info: string | null;
               bathroom_info: string | null;
@@ -605,7 +611,14 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
   }
 
   const accommodations = (accommodationsRaw ?? []).map((accommodation) => {
-    const locationMeta = extractAccommodationLocationMeta(accommodation.description);
+    const locationMeta = extractAccommodationLocationMeta(accommodation.description, {
+      addressText: accommodation.address_text,
+      postalCode: accommodation.postal_code,
+      city: accommodation.city,
+      departmentCode: accommodation.department_code,
+      regionText: accommodation.region_text,
+      country: accommodation.country
+    });
     return {
       ...accommodation,
       description: locationMeta.description,

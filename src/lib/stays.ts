@@ -1,8 +1,9 @@
 import { cache } from 'react';
 import { NextRequest } from 'next/server';
 import { formatAccommodationType } from '@/lib/accommodation-types';
-import { extractAccommodationLocationMeta } from '@/lib/accommodation-location';
+import { buildAccommodationAddressLabel, extractAccommodationLocationMeta } from '@/lib/accommodation-location';
 import { FILTER_LABELS } from '@/lib/constants';
+import { buildStayDestinationLabel, normalizeStayDestination, type StayDestinationInput } from '@/lib/stay-destination';
 import { normalizeStayCategories } from '@/lib/stay-categories';
 import { deriveStayAudiences, formatStayAgeRange } from '@/lib/stay-ages';
 import { normalizeStayTitle } from '@/lib/stay-title';
@@ -57,6 +58,12 @@ type AccommodationRow = Pick<
   | 'id'
   | 'name'
   | 'accommodation_type'
+  | 'address_text'
+  | 'postal_code'
+  | 'city'
+  | 'department_code'
+  | 'region_text'
+  | 'country'
   | 'description'
   | 'bed_info'
   | 'bathroom_info'
@@ -223,7 +230,14 @@ function buildAccommodationText(accommodations: AccommodationRow[]) {
 
   return accommodations
     .map((accommodation) => {
-      const locationMeta = extractAccommodationLocationMeta(accommodation.description);
+      const locationMeta = extractAccommodationLocationMeta(accommodation.description, {
+        addressText: accommodation.address_text,
+        postalCode: accommodation.postal_code,
+        city: accommodation.city,
+        departmentCode: accommodation.department_code,
+        regionText: accommodation.region_text,
+        country: accommodation.country
+      });
       const accommodationType =
         accommodation.accommodation_type?.trim().toLowerCase() === 'centre'
           ? null
@@ -245,9 +259,19 @@ function buildAccommodationText(accommodations: AccommodationRow[]) {
     .join('\n\n');
 }
 
-function buildStayDisplayLocation(accommodations: AccommodationRow[]) {
+function buildStayDisplayLocation(destination: StayDestinationInput, accommodations: AccommodationRow[]) {
+  const destinationLabel = buildStayDestinationLabel(destination);
+  if (destinationLabel) return destinationLabel;
+
   const locationMetas = accommodations.map((accommodation) =>
-    extractAccommodationLocationMeta(accommodation.description)
+    extractAccommodationLocationMeta(accommodation.description, {
+      addressText: accommodation.address_text,
+      postalCode: accommodation.postal_code,
+      city: accommodation.city,
+      departmentCode: accommodation.department_code,
+      regionText: accommodation.region_text,
+      country: accommodation.country
+    })
   );
 
   const itinerant = locationMetas.find((meta) => meta.locationMode === 'itinerant');
@@ -579,7 +603,7 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
       ? supabase
           .from('accommodations')
           .select(
-            'id,name,accommodation_type,description,bed_info,bathroom_info,catering_info,accessibility_info,center_latitude,center_longitude'
+            'id,name,accommodation_type,address_text,postal_code,city,department_code,region_text,country,description,bed_info,bathroom_info,catering_info,accessibility_info,center_latitude,center_longitude'
           )
       : Promise.resolve({ data: [] as AccommodationRow[] | null }),
     stayIds.length
@@ -718,8 +742,27 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
       const stayAccommodations = [...(accommodationIdsByStayId.get(stay.id) ?? [])]
         .map((accommodationId) => accommodationsById.get(accommodationId))
         .filter((item): item is AccommodationRow => Boolean(item));
+      const destination = normalizeStayDestination({
+        destinationType: stay.destination_type,
+        destinationCity: stay.destination_city,
+        destinationPostalCode: stay.destination_postal_code,
+        destinationDepartmentCode: stay.destination_department_code,
+        destinationRegion: stay.destination_region,
+        destinationCountry: stay.destination_country,
+        destinationItineraryLabel: stay.destination_itinerary_label,
+        destinationCountries: stay.destination_countries,
+        locationText: stay.location_text,
+        regionText: stay.region_text
+      });
       const structuredAccommodations: StayAccommodation[] = stayAccommodations.map((accommodation) => {
-        const locationMeta = extractAccommodationLocationMeta(accommodation.description);
+        const locationMeta = extractAccommodationLocationMeta(accommodation.description, {
+          addressText: accommodation.address_text,
+          postalCode: accommodation.postal_code,
+          city: accommodation.city,
+          departmentCode: accommodation.department_code,
+          regionText: accommodation.region_text,
+          country: accommodation.country
+        });
         const imageUrls = Array.from(
           new Set(
             (accommodationMediaByAccommodationId.get(accommodation.id) ?? [])
@@ -732,6 +775,20 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
           id: accommodation.id,
           name: accommodation.name,
           accommodationType: accommodation.accommodation_type,
+          locationLabel:
+            buildAccommodationAddressLabel({
+              postalCode: accommodation.postal_code,
+              city: accommodation.city,
+              departmentCode: accommodation.department_code,
+              regionText: accommodation.region_text,
+              country: accommodation.country
+            }) ?? locationMeta.locationLabel,
+          addressText: accommodation.address_text,
+          postalCode: accommodation.postal_code,
+          city: accommodation.city,
+          departmentCode: accommodation.department_code,
+          regionText: accommodation.region_text,
+          country: accommodation.country,
           locationLabel: locationMeta.locationLabel,
           description: locationMeta.description ?? '',
           bedInfo: accommodation.bed_info?.trim() ?? '',
@@ -773,7 +830,7 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
       const transport = mapTransport(stay.transport_mode);
       const categories = normalizeStayCategories(stay.categories ?? []);
       const sharedTransportOptions = transportOptionsByStayId.get(stay.id) ?? [];
-      const displayLocation = buildStayDisplayLocation(stayAccommodations);
+      const displayLocation = buildStayDisplayLocation(destination, stayAccommodations);
       const visibleBookingSessionItems = sessionItems.filter(
         (sessionItem) => sessionItem.status !== 'COMPLETED' && sessionItem.status !== 'ARCHIVED'
       );
@@ -874,10 +931,18 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
           slug: organizer?.slug?.trim() || slugify(organizerName),
           logoUrl: logoUrlByOrganizerId.get(stay.organizer_id) ?? undefined
         },
-        location: stay.location_text ?? '',
+        location: stay.location_text ?? destination.destinationCity ?? destination.destinationCountry ?? '',
         displayLocation,
-        region: stay.region_text ?? '',
-        country: '',
+        region: stay.region_text ?? destination.destinationRegion ?? '',
+        country: destination.destinationCountry ?? '',
+        destinationType: destination.destinationType,
+        destinationCity: destination.destinationCity,
+        destinationPostalCode: destination.destinationPostalCode,
+        destinationDepartmentCode: destination.destinationDepartmentCode,
+        destinationRegion: destination.destinationRegion,
+        destinationCountry: destination.destinationCountry,
+        destinationItineraryLabel: destination.destinationItineraryLabel,
+        destinationCountries: destination.destinationCountries,
         ageMin: stay.age_min,
         ageMax: stay.age_max,
         ageRange: formatStayAgeRange(stay.ages, stay.age_min, stay.age_max),
@@ -925,7 +990,11 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
           encadrement: stay.supervision_text ?? '',
           documents_obligatoires: stay.required_documents_text ?? '',
           transport: stay.transport_text ?? '',
-          region: stay.region_text ?? ''
+          region: stay.region_text ?? '',
+          destination_type: stay.destination_type ?? '',
+          destination_region: stay.destination_region ?? '',
+          destination_country: stay.destination_country ?? '',
+          destination_itinerary_label: stay.destination_itinerary_label ?? ''
         },
         filters: {
           categories,

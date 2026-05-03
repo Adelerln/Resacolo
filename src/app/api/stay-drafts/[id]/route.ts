@@ -12,6 +12,7 @@ import {
   normalizeStaySummary,
   normalizeStayTransportLogisticsMode
 } from '@/lib/stay-draft-content';
+import { writeDraftDestinationFields } from '@/lib/stay-draft-destination';
 import { mapToCanonicalStayRegion } from '@/lib/stay-regions';
 import { sanitizeSeoPrimaryKeyword, sanitizeSeoTags, sanitizeSeoText } from '@/lib/stay-seo';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
@@ -30,6 +31,14 @@ const bodySchema = z.object({
   season_ids: z.array(z.string().trim().min(1)).optional().default([]),
   season_names: z.array(z.string().trim().min(1)).optional().default([]),
   summary: textFieldSchema,
+  destination_type: z.enum(['fixed_france', 'fixed_abroad', 'itinerant', '']).optional().default(''),
+  destination_city: textFieldSchema,
+  destination_postal_code: textFieldSchema,
+  destination_department_code: textFieldSchema,
+  destination_region: textFieldSchema,
+  destination_country: textFieldSchema,
+  destination_itinerary_label: textFieldSchema,
+  destination_countries: z.array(z.string()).optional().default([]),
   location_text: textFieldSchema,
   region_text: textFieldSchema,
   description: textFieldSchema,
@@ -352,6 +361,14 @@ async function parseBody(req: Request): Promise<{ payload: StayDraftReviewPayloa
     season_names: data.season_names.map((value) => normalizeString(value)).filter(Boolean),
     season_name: normalizeString(data.season_names[0] ?? data.season_names.join(', ')),
     summary: normalizeStaySummary(data.summary),
+    destination_type: data.destination_type,
+    destination_city: normalizeString(data.destination_city),
+    destination_postal_code: normalizeString(data.destination_postal_code),
+    destination_department_code: normalizeString(data.destination_department_code),
+    destination_region: mapToCanonicalStayRegion(data.destination_region) ?? normalizeString(data.destination_region),
+    destination_country: normalizeString(data.destination_country),
+    destination_itinerary_label: normalizeString(data.destination_itinerary_label),
+    destination_countries: data.destination_countries.map((value) => normalizeString(value)).filter(Boolean),
     location_text: normalizeString(data.location_text),
     region_text: mapToCanonicalStayRegion(data.region_text) ?? '',
     description: normalizeString(data.description),
@@ -474,8 +491,21 @@ async function handleUpdate(req: Request, params: { id: string }, mode: 'save' |
     seo_slug_candidate: toNullableString(parsedBody.payload.seo_slug_candidate),
     seo_score: parsedBody.payload.seo_score,
     seo_checks: parsedBody.payload.seo_checks,
-    raw_payload: {
-      ...currentRawPayload,
+    raw_payload: writeDraftDestinationFields(currentRawPayload, {
+      destination_type: parsedBody.payload.destination_type,
+      destination_city: parsedBody.payload.destination_city,
+      destination_postal_code: parsedBody.payload.destination_postal_code,
+      destination_department_code: parsedBody.payload.destination_department_code,
+      destination_region: parsedBody.payload.destination_region,
+      destination_country: parsedBody.payload.destination_country,
+      destination_itinerary_label: parsedBody.payload.destination_itinerary_label,
+      destination_countries: parsedBody.payload.destination_countries
+    }),
+    updated_at: now
+  };
+
+  updatePayload.raw_payload = {
+    ...(updatePayload.raw_payload as Record<string, unknown>),
       draft_season_ids:
         (parsedBody.payload.season_ids ?? []).length > 0 ? parsedBody.payload.season_ids : null,
       draft_season_names:
@@ -483,8 +513,6 @@ async function handleUpdate(req: Request, params: { id: string }, mode: 'save' |
       video_urls:
         parsedBody.payload.video_urls.length > 0 ? parsedBody.payload.video_urls : null,
       partner_discount_percent: parsedBody.payload.partner_discount_percent
-    },
-    updated_at: now
   };
 
   if (mode === 'validate') {

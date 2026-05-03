@@ -8,6 +8,7 @@ import {
   stayCategoryValueToLabel
 } from '@/lib/stay-categories';
 import { inferTransportLogisticsModeFromSignals } from '@/lib/stay-draft-content';
+import { writeDraftDestinationFields } from '@/lib/stay-draft-destination';
 import {
   buildDraftTransportOptionsFromVariants,
   type TransportVariantForDraft
@@ -147,6 +148,95 @@ function parseBooleanInput(value: unknown): boolean | undefined {
   if (['1', 'true', 'on', 'yes', 'oui'].includes(normalized)) return true;
   if (['0', 'false', 'off', 'no', 'non'].includes(normalized)) return false;
   return undefined;
+}
+
+function cleanText(value: string | null | undefined) {
+  const normalized = (value ?? '').trim();
+  return normalized || null;
+}
+
+function extractCountryFromLocationText(value: string | null | undefined) {
+  const candidate = cleanText(value);
+  if (!candidate) return null;
+  const parts = candidate.split(',').map((part) => part.trim()).filter(Boolean);
+  return parts.length >= 2 ? parts.at(-1) ?? null : null;
+}
+
+function extractCityFromLocationText(value: string | null | undefined) {
+  const candidate = cleanText(value);
+  if (!candidate) return null;
+  const parts = candidate.split(',').map((part) => part.trim()).filter(Boolean);
+  return parts[0] ?? null;
+}
+
+function deriveDraftDestinationFromAi(input: {
+  categories: string[];
+  locationText: string | null;
+  regionText: string | null;
+  accommodation:
+    | {
+        city?: string | null;
+        postal_code?: string | null;
+        department_code?: string | null;
+        region_text?: string | null;
+        country?: string | null;
+        location_mode: string | null;
+        location_city: string | null;
+        location_department_code: string | null;
+        location_country: string | null;
+        itinerant_zone: string | null;
+      }
+    | null;
+}) {
+  const categories = new Set(input.categories.map((value) => value.toLowerCase()));
+  const accommodation = input.accommodation;
+  const mode = accommodation?.location_mode ?? null;
+  const regionText = cleanText(input.regionText);
+  const locationText = cleanText(input.locationText);
+  const city = cleanText(accommodation?.city) ?? cleanText(accommodation?.location_city);
+  const postalCode = cleanText(accommodation?.postal_code);
+  const departmentCode = cleanText(accommodation?.department_code) ?? cleanText(accommodation?.location_department_code);
+  const country = cleanText(accommodation?.country) ?? cleanText(accommodation?.location_country);
+
+  if (mode === 'itinerant' || categories.has('itinerant')) {
+    return {
+      destination_type: 'itinerant' as const,
+      destination_city: null,
+      destination_postal_code: null,
+      destination_department_code: null,
+      destination_region: null,
+      destination_country: country,
+      destination_itinerary_label: cleanText(accommodation?.itinerant_zone) ?? locationText,
+      destination_countries:
+        country != null ? [country] : []
+    };
+  }
+
+  if (mode === 'abroad' || categories.has('etranger') || regionText === 'Étranger') {
+    const destinationCity = city ?? extractCityFromLocationText(locationText);
+    const destinationCountry = country ?? extractCountryFromLocationText(locationText);
+    return {
+      destination_type: 'fixed_abroad' as const,
+      destination_city: destinationCity,
+      destination_postal_code: null,
+      destination_department_code: null,
+      destination_region: null,
+      destination_country: destinationCountry,
+      destination_itinerary_label: null,
+      destination_countries: []
+    };
+  }
+
+  return {
+    destination_type: 'fixed_france' as const,
+    destination_city: city ?? locationText,
+    destination_postal_code: postalCode,
+    destination_department_code: departmentCode,
+    destination_region: regionText,
+    destination_country: 'France',
+    destination_itinerary_label: null,
+    destination_countries: []
+  };
 }
 
 async function readEnrichInput(req: Request) {
@@ -385,9 +475,9 @@ async function buildDraftUpdateFromAi(
     const resolvedCoordinates = await resolveAccommodationCenterCoordinates({
       title: extractedAccommodation.title,
       locationMode: extractedAccommodation.location_mode,
-      locationCity: extractedAccommodation.location_city,
-      locationDepartmentCode: extractedAccommodation.location_department_code,
-      locationCountry: extractedAccommodation.location_country,
+      locationCity: extractedAccommodation.city ?? extractedAccommodation.location_city,
+      locationDepartmentCode: extractedAccommodation.department_code ?? extractedAccommodation.location_department_code,
+      locationCountry: extractedAccommodation.country ?? extractedAccommodation.location_country,
       geocodingQuery: extractedAccommodation.center_geocoding_query,
       draftLocationText: draft.location_text,
       draftRegionText: draft.region_text,
@@ -440,6 +530,25 @@ async function buildDraftUpdateFromAi(
     if (label) acc.push(label);
     return acc;
   }, []);
+  const derivedDestination = deriveDraftDestinationFromAi({
+    categories: normalizedCategoryValues,
+    locationText: extracted.location_text,
+    regionText: extracted.region_text,
+    accommodation: extractedAccommodation
+      ? {
+          city: extractedAccommodation.city,
+          postal_code: extractedAccommodation.postal_code,
+          department_code: extractedAccommodation.department_code,
+          region_text: extractedAccommodation.region_text,
+          country: extractedAccommodation.country,
+          location_mode: extractedAccommodation.location_mode,
+          location_city: extractedAccommodation.location_city,
+          location_department_code: extractedAccommodation.location_department_code,
+          location_country: extractedAccommodation.location_country,
+          itinerant_zone: extractedAccommodation.itinerant_zone
+        }
+      : null
+  });
 
   if ((force || !hasText(draft.summary)) && hasText(extracted.summary)) patch.summary = extracted.summary;
   if (shouldReplaceDescription(draft, currentRawPayload, force) && hasText(extracted.description)) {
@@ -504,7 +613,7 @@ async function buildDraftUpdateFromAi(
 
   const aiEnrichedAt = new Date().toISOString();
   patch.raw_payload = {
-    ...currentRawPayload,
+    ...writeDraftDestinationFields(currentRawPayload, derivedDestination),
     ai_raw: ai.rawResponse,
     ai_extracted: {
       ...extracted,

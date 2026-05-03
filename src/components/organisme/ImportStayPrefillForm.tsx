@@ -239,11 +239,11 @@ export default function ImportStayPrefillForm({
             className="mt-0.5 h-4 w-4 rounded border-slate-300 text-emerald-600"
           />
           <span>
-            Inclure les prix et les villes de transport dans l&apos;import.
+            Importer aussi les prix et le transport.
           </span>
         </label>
         <p className="mt-2 text-xs text-slate-500">
-          Si vous décochez, seules les sessions seront importées.
+          Décochez seulement si vous voulez importer les sessions sans les prix ni les villes de transport.
         </p>
       </div>
 

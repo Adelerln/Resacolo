@@ -18,17 +18,8 @@ export default async function MonComptePage() {
     redirect('/login/familles');
   }
 
-  if (session.role === 'MNEMOS') {
-    redirect('/mnemos');
-  }
-  if (session.role === 'ADMIN') {
-    redirect('/admin');
-  }
-  if (session.role === 'ORGANISATEUR') {
-    redirect('/organisme');
-  }
-  if (session.role === 'PARTENAIRE') {
-    redirect('/partenaire');
+  if (session.role !== 'CLIENT') {
+    redirect('/login?mode=family&forceLogin=1');
   }
 
   const fallbackProfile = {

@@ -191,8 +191,11 @@ export default function ImportStayPrefillForm({
   return (
     <form action={actionPath} method="post" className="mt-4 space-y-4" onSubmit={handleSubmit}>
       <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-        1) Collez l&apos;adresse internet du séjour. 2) Vérifiez l&apos;hébergement. 3) Cliquez sur{' '}
-        <strong>Pré-remplir</strong>.
+        1) Collez l&apos;adresse internet du séjour.
+        <br />
+        2) Vérifiez l&apos;hébergement.
+        <br />
+        3) Cliquez sur <strong>Pré-remplir</strong>.
       </p>
 
       <label className="block text-sm font-medium text-slate-700">
@@ -223,34 +226,26 @@ export default function ImportStayPrefillForm({
             </option>
           ))}
         </select>
-        <p className="mt-1 text-xs font-normal text-slate-500">
-          L&apos;hébergement est toujours nécessaire. Laissez l&apos;option par défaut si vous ne savez pas:
-          un nouvel hébergement sera créé automatiquement.
-        </p>
       </label>
 
-      <details className="rounded-lg border border-slate-200 bg-white px-3 py-2">
-        <summary className="cursor-pointer text-sm font-medium text-slate-700">
-          Options avancées (facultatif)
-        </summary>
-        <div className="mt-3 space-y-3">
-          <label className="flex items-start gap-2 text-sm text-slate-700">
-            <input
-              name="includePricing"
-              type="checkbox"
-              value="true"
-              defaultChecked
-              className="mt-0.5 h-4 w-4 rounded border-slate-300 text-emerald-600"
-            />
-            <span>
-              Importer aussi les prix et le transport <strong>(recommandé)</strong>.
-            </span>
-          </label>
-          <p className="text-xs text-slate-500">
-            Décochez seulement si vous voulez importer les sessions sans les prix ni les villes de transport.
-          </p>
-        </div>
-      </details>
+      <div className="rounded-lg border border-slate-200 bg-white px-3 py-3">
+        <p className="text-sm font-medium text-slate-700">Import des prix et du transport</p>
+        <label className="mt-2 flex items-start gap-2 text-sm text-slate-700">
+          <input
+            name="includePricing"
+            type="checkbox"
+            value="true"
+            defaultChecked
+            className="mt-0.5 h-4 w-4 rounded border-slate-300 text-emerald-600"
+          />
+          <span>
+            Importer aussi les prix et le transport.
+          </span>
+        </label>
+        <p className="mt-2 text-xs text-slate-500">
+          Décochez seulement si vous voulez importer les sessions sans les prix ni les villes de transport.
+        </p>
+      </div>
 
       <input type="hidden" name="organizerId" value={organizerId} />
       <div>

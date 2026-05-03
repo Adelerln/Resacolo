@@ -34,6 +34,10 @@ export default function BienChoisirSaColoPage() {
               séjours, surtout si c&apos;est la première fois que l&apos;on confie son enfant. Profitez de nos
               conseils pour bien choisir !
             </p>
+            <p className="mt-3 max-w-xl font-medium leading-relaxed text-slate-600">
+              Face à une offre de séjours multiple et diversifiée, profitez de nos conseils pour ne pas vous
+              tromper lors du choix des vacances de votre enfant.
+            </p>
           </div>
           <div className="flex items-center justify-center lg:justify-end">
             <SlotMachineVisual />
@@ -63,14 +67,13 @@ export default function BienChoisirSaColoPage() {
             <div className="rounded-[32px] bg-white p-4 sm:p-5 lg:p-6">
               <div className="space-y-3 text-sm font-medium leading-7 text-slate-600 sm:text-[15px]">
                 <p>
-                  Chaque enfant est unique, avec ses préférences, ses attentes ou ses besoins. Il est
-                  important d&apos;en tenir compte lorsqu&apos;on envisage de l&apos;inscrire à une colonie de
-                  vacances.
+                  Chaque enfant est unique, avec ses préférences, ses attentes et ses besoins. Il est
+                  primordial d&apos;en tenir compte lors d&apos;une inscription en colonie de vacances.
                 </p>
                 <p>
                   Partir en colonie de vacances, ce n&apos;est pas uniquement pratiquer une activité.
                   C&apos;est également découvrir un nouvel environnement, évoluer dans un cadre de vie
-                  collectif, faire des rencontres et nouer des liens d&apos;amitié.
+                  collectif pour faire des rencontres et nouer des liens d&apos;amitié.
                 </p>
                 <p className="font-bold">
                   Prenez le temps de discuter avec votre enfant pour identifier ses envies !
@@ -147,7 +150,7 @@ export default function BienChoisirSaColoPage() {
                   />
                 </div>
                 <h2 className="font-display text-xl font-bold sm:text-2xl" style={{ color: ORIGIN_GRAY }}>
-                  Les questions essentielles avant une colonie de vacances
+                  Les questions souvent posées avant un départ en colo
                 </h2>
               </div>
 
@@ -155,7 +158,7 @@ export default function BienChoisirSaColoPage() {
                 <div className="space-y-3 text-sm font-medium leading-7 text-slate-600 sm:text-[15px]">
                   <p>
                     Avant de vous décider, l&apos;organisateur du séjour est à votre disposition pour répondre à
-                    vos éventuelles questions :
+                    vos éventuelles questions sur :
                   </p>
 
                   <div className="space-y-4 pt-1">
@@ -291,7 +294,7 @@ export default function BienChoisirSaColoPage() {
 
             <div className="relative min-h-[220px] overflow-hidden rounded-[32px] sm:min-h-[280px] xl:h-full xl:min-h-0">
               <Image
-                src="/image/choisirsacolo/images_choisirsacolo/bien-choisir-sa-colo-activite%CC%81s.jpg"
+                src="/image/choisirsacolo/images_choisirsacolo/bien-choisir-sa-colo-activites.jpg"
                 alt="Activites pour une colonie de vacances"
                 fill
                 className="object-cover object-right"

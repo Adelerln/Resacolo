@@ -19,6 +19,10 @@ import { expandDraftAges } from '@/lib/stay-draft-content';
 import { liveSessionStableKey } from '@/lib/draft-session-keys';
 import { readDraftDestinationFields } from '@/lib/stay-draft-destination';
 import {
+  isVideoUrlCandidate,
+  normalizeImportedVideoUrlList
+} from '@/lib/stay-draft-url-extract';
+import {
   removeStayMediaStorageFiles,
   uploadImportedStayImages
 } from '@/lib/stay-media-storage';
@@ -1583,7 +1587,8 @@ export async function syncStayMedia(
   supabase: SupabaseClient<Database>,
   organizerId: string,
   stayId: string,
-  images: string[]
+  images: string[],
+  stayVideoUrls: string[] = []
 ): Promise<void> {
   const { data: existingRows, error: existingRowsError } = await supabase
     .from('stay_media')
@@ -1594,10 +1599,16 @@ export async function syncStayMedia(
     throw new PublishStayDraftError('read-stay-media', existingRowsError.message);
   }
 
-  const nextUrls = await uploadImportedStayImages(supabase, {
+  const normalizedStayVideos = normalizeImportedVideoUrlList(stayVideoUrls).slice(0, 20);
+  const nextImageUrls = await uploadImportedStayImages(supabase, {
     organizerId,
     stayId,
     imageUrls: images
+  });
+  const nextVideoUrls = await uploadImportedStayImages(supabase, {
+    organizerId,
+    stayId,
+    imageUrls: normalizedStayVideos
   });
   const previousUrls = (existingRows ?? []).map((row) => row.url).filter(Boolean);
 
@@ -1606,7 +1617,8 @@ export async function syncStayMedia(
     throw new PublishStayDraftError('delete-stay-media', deleteError.message);
   }
 
-  const urlsToRemove = previousUrls.filter((url) => !nextUrls.includes(url));
+  const allNextUrls = [...nextImageUrls, ...nextVideoUrls];
+  const urlsToRemove = previousUrls.filter((url) => !allNextUrls.includes(url));
   if (urlsToRemove.length > 0) {
     try {
       await removeStayMediaStorageFiles(supabase, urlsToRemove);
@@ -1618,20 +1630,91 @@ export async function syncStayMedia(
     }
   }
 
-  if (nextUrls.length === 0) {
+  if (nextImageUrls.length === 0 && nextVideoUrls.length === 0) {
     return;
   }
 
-  const rows: StayMediaInsert[] = nextUrls.map((url, index) => ({
-    stay_id: stayId,
-    url,
-    position: index + 1,
-    media_type: index === 0 ? 'cover' : 'gallery'
-  }));
+  const rows: StayMediaInsert[] = [];
+  nextImageUrls.forEach((url, index) => {
+    rows.push({
+      stay_id: stayId,
+      url,
+      position: index + 1,
+      media_type: index === 0 ? 'cover' : 'gallery'
+    });
+  });
+  const imageCount = nextImageUrls.length;
+  nextVideoUrls.forEach((url, index) => {
+    rows.push({
+      stay_id: stayId,
+      url,
+      position: imageCount + index + 1,
+      media_type: 'video'
+    });
+  });
 
   const { error: insertError } = await supabase.from('stay_media').insert(rows);
   if (insertError) {
     throw new PublishStayDraftError('insert-stay-media', insertError.message);
+  }
+}
+
+/**
+ * Remplace uniquement les médias vidéo d’une fiche hébergement (URLs reconnues comme vidéo).
+ * Les images catalogue existantes sont conservées.
+ */
+export async function replaceAccommodationVideoOnlyMedia(
+  supabase: SupabaseClient<Database>,
+  accommodationId: string,
+  videoUrls: string[]
+): Promise<void> {
+  const { data: mediaRows, error: readError } = await supabase
+    .from('accommodation_media')
+    .select('id,url')
+    .eq('accommodation_id', accommodationId);
+
+  if (readError) {
+    throw new PublishStayDraftError('read-accommodation-media', readError.message);
+  }
+
+  const videoRowIds = (mediaRows ?? [])
+    .filter((row) => isVideoUrlCandidate(String(row.url ?? '')))
+    .map((row) => row.id);
+
+  if (videoRowIds.length > 0) {
+    const { error: deleteVideosError } = await supabase
+      .from('accommodation_media')
+      .delete()
+      .in('id', videoRowIds);
+    if (deleteVideosError) {
+      throw new PublishStayDraftError('delete-accommodation-videos', deleteVideosError.message);
+    }
+  }
+
+  const normalized = normalizeImportedVideoUrlList(videoUrls);
+  if (normalized.length === 0) {
+    return;
+  }
+
+  const { data: tailRows } = await supabase
+    .from('accommodation_media')
+    .select('position')
+    .eq('accommodation_id', accommodationId)
+    .order('position', { ascending: false })
+    .limit(1);
+  const tail = tailRows?.[0];
+  let start = (typeof tail?.position === 'number' ? tail.position : 0) + 1;
+
+  const { error: insertError } = await supabase.from('accommodation_media').insert(
+    normalized.map((url, index) => ({
+      accommodation_id: accommodationId,
+      url,
+      position: start + index
+    }))
+  );
+
+  if (insertError) {
+    throw new PublishStayDraftError('insert-accommodation-videos', insertError.message);
   }
 }
 
@@ -2196,6 +2279,12 @@ export async function publishStayDraftToLive(
   const images = Array.from(
     new Set(asStringArray(draft.images).filter((url) => /^https?:\/\//i.test(url)))
   ).slice(0, 20);
+  const stayPublishVideos = normalizeImportedVideoUrlList(
+    asStringArray((rawPayload.video_urls as Json | null) ?? null)
+  );
+  const accommodationPublishVideos = normalizeImportedVideoUrlList(
+    asStringArray((rawPayload.accommodation_video_urls as Json | null) ?? null)
+  );
   console.info('[publish-stay-draft] mapping catégories', {
     draftId: draft.id,
     draftCategories: categoryMapping.draftReceived,
@@ -2254,8 +2343,13 @@ export async function publishStayDraftToLive(
   await syncSessions(supabase, stayId, sessions);
   syncedTables.push('sessions', 'session_prices');
 
-  console.info('[publish-stay-draft] sync médias', { stayId, images: images.length });
-  await syncStayMedia(supabase, draft.organizer_id, stayId, images);
+  console.info('[publish-stay-draft] sync médias', {
+    stayId,
+    images: images.length,
+    stayVideos: stayPublishVideos.length,
+    accommodationVideos: accommodationPublishVideos.length
+  });
+  await syncStayMedia(supabase, draft.organizer_id, stayId, images, stayPublishVideos);
   syncedTables.push('stay_media');
 
   console.info('[publish-stay-draft] sync options extras', { stayId, extraOptions: extraOptions.length });
@@ -2292,6 +2386,11 @@ export async function publishStayDraftToLive(
     accommodation
   );
   syncedTables.push('stay_accommodations', 'accommodations');
+
+  if (accommodationId) {
+    await replaceAccommodationVideoOnlyMedia(supabase, accommodationId, accommodationPublishVideos);
+    syncedTables.push('accommodation_media');
+  }
 
   const publishedAt = new Date().toISOString();
   const nextLivePublication: LivePublication = {

@@ -11,6 +11,7 @@ export const runtime = 'nodejs';
 /** Vercel : le travail lourd continue via `after()` après la redirection ; garder une marge pour Playwright + Thalie. */
 export const maxDuration = 300;
 type ImportAction = 'created' | 'existing' | 'restarted';
+type ExistingDraftContext = 'visible' | 'validated' | 'published';
 
 type ImportableDraftRow = {
   id: string;
@@ -18,6 +19,8 @@ type ImportableDraftRow = {
   raw_payload: unknown;
   source_url: string;
   source_url_canonical?: string | null;
+  transport_options_json?: unknown;
+  validated_at?: string | null;
 };
 type ExistingStayRow = {
   id: string;
@@ -93,6 +96,144 @@ function toObject(value: unknown): Record<string, unknown> {
   return {};
 }
 
+function asRecordArray(value: unknown): Array<Record<string, unknown>> {
+  if (Array.isArray(value)) {
+    return value.filter(
+      (item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object' && !Array.isArray(item)
+    );
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+    try {
+      const parsed = JSON.parse(trimmed) as unknown;
+      if (Array.isArray(parsed)) {
+        return parsed.filter(
+          (item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object' && !Array.isArray(item)
+        );
+      }
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+function normalizeStatus(value: string | null | undefined): string {
+  return String(value ?? '').trim().toLowerCase();
+}
+
+function countPricedTransportOptions(value: unknown): number {
+  return asRecordArray(value).filter((row) => {
+    if (typeof row.amount_cents === 'number' && Number.isFinite(row.amount_cents)) return true;
+    if (typeof row.price === 'number' && Number.isFinite(row.price)) return true;
+    if (typeof row.price === 'string' && row.price.trim().length > 0) {
+      const parsed = Number(row.price.trim().replace(',', '.'));
+      return Number.isFinite(parsed);
+    }
+    return false;
+  }).length;
+}
+
+function readIncludePricingFromRawPayload(rawPayload: unknown): boolean | null {
+  const importOptions = toObject(toObject(rawPayload).import_options);
+  const rawValue = importOptions.include_pricing;
+  if (typeof rawValue === 'boolean') return rawValue;
+  if (typeof rawValue === 'number') return rawValue !== 0;
+  if (typeof rawValue !== 'string') return null;
+  const normalized = rawValue.trim().toLowerCase();
+  if (!normalized) return null;
+  if (['1', 'true', 'on', 'yes', 'oui'].includes(normalized)) return true;
+  if (['0', 'false', 'off', 'no', 'non'].includes(normalized)) return false;
+  return null;
+}
+
+function countRecoveredRawTransportOptions(rawPayload: unknown): number {
+  const raw = toObject(rawPayload);
+  return countPricedTransportOptions([
+    ...asRecordArray(raw.transport_variants),
+    ...asRecordArray(raw.transport_matrix),
+    ...asRecordArray(raw.transport_price_debug)
+  ]);
+}
+
+function shouldRefreshExistingDraftImport(existingDraft: ImportableDraftRow, includePricing: boolean): {
+  shouldRefresh: boolean;
+  reason:
+    | 'failed_status'
+    | 'already_pending'
+    | 'pricing_not_requested'
+    | 'pricing_now_requested'
+    | 'transport_data_present'
+    | 'missing_transport_data';
+  currentPricedTransportCount: number;
+  recoveredPricedTransportCount: number;
+  previousIncludePricing: boolean | null;
+} {
+  const status = normalizeStatus(existingDraft.status);
+  const currentPricedTransportCount = countPricedTransportOptions(existingDraft.transport_options_json);
+  const recoveredPricedTransportCount = countRecoveredRawTransportOptions(existingDraft.raw_payload);
+  const previousIncludePricing = readIncludePricingFromRawPayload(existingDraft.raw_payload);
+
+  if (status === 'failed') {
+    return {
+      shouldRefresh: true,
+      reason: 'failed_status',
+      currentPricedTransportCount,
+      recoveredPricedTransportCount,
+      previousIncludePricing
+    };
+  }
+
+  if (status === 'pending') {
+    return {
+      shouldRefresh: false,
+      reason: 'already_pending',
+      currentPricedTransportCount,
+      recoveredPricedTransportCount,
+      previousIncludePricing
+    };
+  }
+
+  if (!includePricing) {
+    return {
+      shouldRefresh: false,
+      reason: 'pricing_not_requested',
+      currentPricedTransportCount,
+      recoveredPricedTransportCount,
+      previousIncludePricing
+    };
+  }
+
+  if (previousIncludePricing !== true) {
+    return {
+      shouldRefresh: true,
+      reason: 'pricing_now_requested',
+      currentPricedTransportCount,
+      recoveredPricedTransportCount,
+      previousIncludePricing
+    };
+  }
+
+  if (currentPricedTransportCount > 0 || recoveredPricedTransportCount > 0) {
+    return {
+      shouldRefresh: false,
+      reason: 'transport_data_present',
+      currentPricedTransportCount,
+      recoveredPricedTransportCount,
+      previousIncludePricing
+    };
+  }
+
+  return {
+    shouldRefresh: true,
+    reason: 'missing_transport_data',
+    currentPricedTransportCount,
+    recoveredPricedTransportCount,
+    previousIncludePricing
+  };
+}
+
 function buildImportRawPayload(input: {
   existingRawPayload?: unknown;
   selectedAccommodation: { id: string; name: string } | null;
@@ -123,6 +264,20 @@ function buildImportRawPayload(input: {
 
 function isFailedStatus(status: string | null | undefined): boolean {
   return String(status ?? '').trim().toLowerCase() === 'failed';
+}
+
+function hasLivePublication(rawPayload: unknown): boolean {
+  const livePublication = toObject(toObject(rawPayload).live_publication);
+  const stayId = livePublication.stay_id ?? livePublication.stayId;
+  return typeof stayId === 'string' && stayId.trim().length > 0;
+}
+
+function getExistingDraftContext(existingDraft: ImportableDraftRow): ExistingDraftContext {
+  if (hasLivePublication(existingDraft.raw_payload)) return 'published';
+  if (existingDraft.validated_at || normalizeStatus(existingDraft.status) === 'validated') {
+    return 'validated';
+  }
+  return 'visible';
 }
 
 function shouldMatchExistingSourceUrl(
@@ -407,18 +562,14 @@ export async function POST(req: Request) {
     };
   };
 
-  const upsertExistingFailedDraft = async (
+  const refreshExistingDraftImport = async (
     existingDraft: ImportableDraftRow
   ): Promise<{ draft: ImportableDraftRow; importAction: ImportAction; errorMessage: string | null }> => {
-    if (!isFailedStatus(existingDraft.status)) {
-      return { draft: existingDraft, importAction: 'existing', errorMessage: null };
-    }
-
     const restartRawPayload = buildImportRawPayload({
       existingRawPayload: existingDraft.raw_payload,
       selectedAccommodation,
       includePricing,
-      progressLabel: 'Relance du brouillon'
+      progressLabel: isFailedStatus(existingDraft.status) ? 'Relance du brouillon' : 'Actualisation du brouillon'
     });
     const { data: restartedDraft, error: restartError } = await supabase
       .from('stay_drafts')
@@ -426,11 +577,11 @@ export async function POST(req: Request) {
         status: 'pending',
         source_url: sourceUrl,
         ...(supportsCanonicalColumn ? { source_url_canonical: canonicalSourceUrl } : {}),
-        raw_payload: restartRawPayload as Json
+        raw_payload: restartRawPayload as Json,
+        updated_at: new Date().toISOString()
       })
       .eq('id', existingDraft.id)
       .eq('organizer_id', selectedOrganizerId)
-      .eq('status', 'failed')
       .select('*')
       .maybeSingle();
 
@@ -464,7 +615,23 @@ export async function POST(req: Request) {
   }
 
   if (preflightExisting.draft) {
-    const existingHandling = await upsertExistingFailedDraft(preflightExisting.draft);
+    const existingDraftContext = getExistingDraftContext(preflightExisting.draft);
+    const existingDecision = shouldRefreshExistingDraftImport(preflightExisting.draft, includePricing);
+    console.info('[import-stay] existing draft decision', {
+      draftId: preflightExisting.draft.id,
+      existingDraftContext,
+      status: normalizeStatus(preflightExisting.draft.status),
+      includePricingRequested: includePricing,
+      previousIncludePricing: existingDecision.previousIncludePricing,
+      currentPricedTransportCount: existingDecision.currentPricedTransportCount,
+      recoveredPricedTransportCount: existingDecision.recoveredPricedTransportCount,
+      shouldRefresh: existingDecision.shouldRefresh,
+      reason: existingDecision.reason
+    });
+
+    const existingHandling = existingDecision.shouldRefresh
+      ? await refreshExistingDraftImport(preflightExisting.draft)
+      : { draft: preflightExisting.draft, importAction: 'existing' as const, errorMessage: null };
     if (existingHandling.errorMessage) {
       if (requestExpectsJson(req)) {
         return NextResponse.json({ error: existingHandling.errorMessage }, { status: 500 });
@@ -494,7 +661,8 @@ export async function POST(req: Request) {
         success: true,
         draftId: existingHandling.draft.id,
         organizerId: selectedOrganizerId,
-        importAction: existingHandling.importAction
+        importAction: existingHandling.importAction,
+        existingDraftContext
       });
     }
 
@@ -601,7 +769,22 @@ export async function POST(req: Request) {
       });
     }
 
-    const conflictHandling = await upsertExistingFailedDraft(existingAfterConflict.draft);
+    const conflictDraftContext = getExistingDraftContext(existingAfterConflict.draft);
+    const conflictDecision = shouldRefreshExistingDraftImport(existingAfterConflict.draft, includePricing);
+    console.info('[import-stay] conflict existing draft decision', {
+      draftId: existingAfterConflict.draft.id,
+      existingDraftContext: conflictDraftContext,
+      status: normalizeStatus(existingAfterConflict.draft.status),
+      includePricingRequested: includePricing,
+      previousIncludePricing: conflictDecision.previousIncludePricing,
+      currentPricedTransportCount: conflictDecision.currentPricedTransportCount,
+      recoveredPricedTransportCount: conflictDecision.recoveredPricedTransportCount,
+      shouldRefresh: conflictDecision.shouldRefresh,
+      reason: conflictDecision.reason
+    });
+    const conflictHandling = conflictDecision.shouldRefresh
+      ? await refreshExistingDraftImport(existingAfterConflict.draft)
+      : { draft: existingAfterConflict.draft, importAction: 'existing' as const, errorMessage: null };
     if (conflictHandling.errorMessage) {
       if (requestExpectsJson(req)) {
         return NextResponse.json({ error: conflictHandling.errorMessage }, { status: 500 });
@@ -631,7 +814,8 @@ export async function POST(req: Request) {
         success: true,
         draftId: conflictHandling.draft.id,
         organizerId: selectedOrganizerId,
-        importAction: conflictHandling.importAction
+        importAction: conflictHandling.importAction,
+        existingDraftContext: conflictDraftContext
       });
     }
 

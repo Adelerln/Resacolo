@@ -2,9 +2,17 @@ import { z } from 'zod';
 
 const nullableIdSchema = z.string().trim().min(1).nullable();
 
+/** Chaîne issue du JSON (localStorage / fetch) : `null` est courant, Zod `.optional()` seul ne l’accepte pas. */
+const trimmedStringFromJson = z
+  .union([z.string(), z.null(), z.undefined()])
+  .transform((v) => (v == null ? '' : v).trim());
+
 export const cartSelectionSchema = z.object({
   sessionId: nullableIdSchema,
-  transportMode: z.string().trim().min(1),
+  transportMode: z.preprocess(
+    (v) => (v === null || v === undefined || v === '' ? 'Sans transport' : v),
+    z.string().trim().min(1)
+  ),
   transportOptionId: nullableIdSchema,
   departureTransportOptionId: nullableIdSchema,
   returnTransportOptionId: nullableIdSchema,
@@ -16,10 +24,11 @@ export const cartSelectionSchema = z.object({
 
 export const cartItemSelectionLabelsSchema = z
   .object({
-    sessionLine: z.string().trim().optional(),
-    transportLine: z.string().trim().optional(),
-    insuranceLine: z.string().trim().optional(),
-    extraLine: z.string().trim().optional()
+    // Aligné sur CartItemSelectionLabels : les lignes peuvent être null côté UI / ajout panier.
+    sessionLine: z.string().trim().nullable().optional(),
+    transportLine: z.string().trim().nullable().optional(),
+    insuranceLine: z.string().trim().nullable().optional(),
+    extraLine: z.string().trim().nullable().optional()
   })
   .optional();
 
@@ -33,46 +42,50 @@ export const cartItemSchema = z.object({
   location: z.string().trim().min(1),
   duration: z.string().trim().min(1),
   ageRange: z.string().trim().min(1),
-  coverImage: z.string().trim().optional(),
+  coverImage: z.preprocess((v) => (v === null ? undefined : v), z.string().trim().optional()),
   unitPrice: z.number().nullable(),
   selection: cartSelectionSchema,
-  selectionLabels: cartItemSelectionLabelsSchema,
+  selectionLabels: z.preprocess((v) => (v === null ? undefined : v), cartItemSelectionLabelsSchema),
   addedAt: z.string().trim().min(1)
 });
 
 export const cartItemsSchema = z.array(cartItemSchema).min(1, 'Votre panier est vide.');
 
 export const checkoutContactSchema = z.object({
-  billingFirstName: z.string().trim().min(2, 'Prénom requis.'),
-  billingLastName: z.string().trim().min(2, 'Nom requis.'),
-  email: z.string().trim().email('Adresse email invalide.'),
-  phone: z.string().trim().min(8, 'Numéro de téléphone invalide.'),
-  addressLine1: z.string().trim().min(3, 'Adresse requise.'),
-  addressLine2: z.string().trim().optional().default(''),
-  postalCode: z.string().trim().min(4, 'Code postal requis.'),
-  city: z.string().trim().min(2, 'Ville requise.'),
-  country: z.string().trim().min(2, 'Pays requis.'),
-  hasSeparateBillingAddress: z.boolean().optional().default(false),
-  billingAddressLine1: z.string().trim().optional().default(''),
-  billingAddressLine2: z.string().trim().optional().default(''),
-  billingPostalCode: z.string().trim().optional().default(''),
-  billingCity: z.string().trim().optional().default(''),
-  billingCountry: z.string().trim().optional().default('France'),
-  cseOrganization: z.string().trim().optional().default(''),
-  vacafNumber: z
-    .string()
-    .trim()
-    .regex(/^$|^\d{7}[A-Za-z]?$/, 'Le numéro allocataire doit contenir 7 chiffres, ou 7 chiffres et 1 lettre.')
-    .optional()
-    .default(''),
+  billingFirstName: trimmedStringFromJson.pipe(z.string().min(2, 'Prénom requis.')),
+  billingLastName: trimmedStringFromJson.pipe(z.string().min(2, 'Nom requis.')),
+  email: trimmedStringFromJson.pipe(z.string().email('Adresse email invalide.')),
+  phone: trimmedStringFromJson.pipe(z.string().min(8, 'Numéro de téléphone invalide.')),
+  addressLine1: trimmedStringFromJson.pipe(z.string().min(3, 'Adresse requise.')),
+  addressLine2: trimmedStringFromJson,
+  postalCode: trimmedStringFromJson.pipe(z.string().min(4, 'Code postal requis.')),
+  city: trimmedStringFromJson.pipe(z.string().min(2, 'Ville requise.')),
+  country: trimmedStringFromJson.pipe(z.string().min(2, 'Pays requis.')),
+  hasSeparateBillingAddress: z
+    .union([z.boolean(), z.null(), z.undefined()])
+    .transform((v) => Boolean(v)),
+  billingAddressLine1: trimmedStringFromJson,
+  billingAddressLine2: trimmedStringFromJson,
+  billingPostalCode: trimmedStringFromJson,
+  billingCity: trimmedStringFromJson,
+  billingCountry: trimmedStringFromJson.transform((s) => s || 'France'),
+  cseOrganization: trimmedStringFromJson,
+  vacafNumber: trimmedStringFromJson.pipe(
+    z.string().regex(/^$|^\d{7}[A-Za-z]?$/, 'Le numéro allocataire doit contenir 7 chiffres, ou 7 chiffres et 1 lettre.')
+  ),
   paymentMode: z
-    .enum(['FULL', 'DEPOSIT_200', 'CV_CONNECT', 'CV_PAPER', 'DEFERRED'])
-    .optional()
-    .default('FULL'),
+    .union([
+      z.enum(['FULL', 'DEPOSIT_200', 'CV_CONNECT', 'CV_PAPER', 'DEFERRED']),
+      z.null(),
+      z.undefined()
+    ])
+    .transform((v) => v ?? 'FULL'),
   acceptsTerms: z.literal(true, {
     errorMap: () => ({ message: 'Vous devez accepter les CGV.' })
   }),
-  acceptsPrivacy: z.boolean().optional().default(true)
+  acceptsPrivacy: z
+    .union([z.boolean(), z.null(), z.undefined()])
+    .transform((v) => (v === null || v === undefined ? true : v))
 }).superRefine((data, ctx) => {
   if (!data.hasSeparateBillingAddress) return;
 
@@ -103,14 +116,15 @@ export const checkoutContactSchema = z.object({
 
 export const checkoutParticipantSchema = z.object({
   cartItemId: z.string().trim().min(1),
-  childFirstName: z.string().trim().min(2, 'Prénom requis.'),
-  childLastName: z.string().trim().min(2, 'Nom requis.'),
-  childBirthdate: z
-    .string()
-    .trim()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date de naissance invalide (AAAA-MM-JJ).'),
-  childGender: z.enum(['MASCULIN', 'FEMININ']).or(z.literal('')).optional().default(''),
-  additionalInfo: z.string().trim().optional().default('')
+  childFirstName: trimmedStringFromJson.pipe(z.string().min(2, 'Prénom requis.')),
+  childLastName: trimmedStringFromJson.pipe(z.string().min(2, 'Nom requis.')),
+  childBirthdate: trimmedStringFromJson.pipe(
+    z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date de naissance invalide (AAAA-MM-JJ).')
+  ),
+  childGender: z
+    .union([z.enum(['MASCULIN', 'FEMININ']), z.literal(''), z.null(), z.undefined()])
+    .transform((v) => (v == null ? '' : v)),
+  additionalInfo: trimmedStringFromJson
 });
 
 export const checkoutParticipantsSchema = z.array(checkoutParticipantSchema).min(1);

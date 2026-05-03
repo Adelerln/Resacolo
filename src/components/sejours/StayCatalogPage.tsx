@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Compass, Filter, Search, X } from 'lucide-react';
 import { FavoriteToggleButton } from '@/components/favorites/FavoriteToggleButton';
 import { OrganizerStayPreviewCard } from '@/components/organisateurs/OrganizerStayPreviewCard';
+import { staySessionsAppearFullyBooked } from '@/lib/stay-catalog-availability';
 import { getMockImageUrl, mockImages } from '@/lib/mockImages';
 import { resolveStaySeasonPicto } from '@/lib/organizer-profile-options';
 import { mapToCanonicalStayRegion } from '@/lib/stay-regions';
@@ -158,6 +159,7 @@ function toggleListValue<TValue extends string>(list: TValue[], value: TValue) {
 
 function StayCard({ stay }: { stay: Stay }) {
   const season = resolveStaySeasonPicto(stay.seasonName || stay.period[0] || null);
+  const isFullyBooked = staySessionsAppearFullyBooked(stay.bookingOptions?.sessions);
 
   return (
     <div className="flex justify-center">
@@ -179,6 +181,7 @@ function StayCard({ stay }: { stay: Stay }) {
         disableBlueHoverEffect
         compact
         liftOnHover
+        isFullyBooked={isFullyBooked}
       />
     </div>
   );

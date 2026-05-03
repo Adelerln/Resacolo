@@ -6,6 +6,7 @@ import { ArrowLeft, Heart } from 'lucide-react';
 import { FavoriteToggleButton } from '@/components/favorites/FavoriteToggleButton';
 import { useFavorites } from '@/components/favorites/FavoritesProvider';
 import { OrganizerStayPreviewCard } from '@/components/organisateurs/OrganizerStayPreviewCard';
+import { staySessionsAppearFullyBooked } from '@/lib/stay-catalog-availability';
 import { getMockImageUrl, mockImages } from '@/lib/mockImages';
 import { resolveStaySeasonPicto } from '@/lib/organizer-profile-options';
 import type { Stay } from '@/types/stay';
@@ -63,6 +64,7 @@ export function FavoritesPageClient({ stays }: { stays: Stay[] }) {
         <div className="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
           {favoriteStays.map((stay) => {
             const season = resolveStaySeasonPicto(stay.seasonName || stay.period[0] || null);
+            const isFullyBooked = staySessionsAppearFullyBooked(stay.bookingOptions?.sessions);
             return (
               <div key={stay.id} className="flex justify-center">
                 <OrganizerStayPreviewCard
@@ -83,6 +85,7 @@ export function FavoritesPageClient({ stays }: { stays: Stay[] }) {
                   disableBlueHoverEffect
                   compact
                   liftOnHover
+                  isFullyBooked={isFullyBooked}
                 />
               </div>
             );

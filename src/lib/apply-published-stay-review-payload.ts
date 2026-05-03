@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   parseMergedExtraOptionsRows,
   parseTransportOptionsFromJson,
+  replaceAccommodationVideoOnlyMedia,
   syncExtraOptions,
   syncInsuranceOptions,
   syncStayMedia,
@@ -17,6 +18,7 @@ import { normalizeStayDestination } from '@/lib/stay-destination';
 import { isMissingRegionTextColumnError, normalizeStayRegion } from '@/lib/stay-regions';
 import { sanitizeSeoPrimaryKeyword, sanitizeSeoTags, sanitizeSeoText } from '@/lib/stay-seo';
 import { normalizeStayTitle } from '@/lib/stay-title';
+import { normalizeImportedVideoUrlList } from '@/lib/stay-draft-url-extract';
 import type { Json } from '@/types/supabase';
 import type { Database } from '@/types/supabase';
 import type { StayDraftReviewPayload } from '@/types/stay-draft-review';
@@ -202,10 +204,83 @@ export async function applyPublishedStayReviewPayload(
     );
     await syncTransportOptions(supabase, stayId, transportParsed);
 
-    await syncStayMedia(supabase, organizerId, stayId, payload.images);
+    await syncStayMedia(supabase, organizerId, stayId, payload.images, payload.video_urls);
+
+    const accommodationVideos = normalizeImportedVideoUrlList(payload.accommodation_video_urls ?? []);
+    const { data: stayAccommodationLink } = await supabase
+      .from('stay_accommodations')
+      .select('accommodation_id')
+      .eq('stay_id', stayId)
+      .limit(1)
+      .maybeSingle();
+
+    if (stayAccommodationLink?.accommodation_id) {
+      const { data: accommodationRow } = await supabase
+        .from('accommodations')
+        .select('id')
+        .eq('id', stayAccommodationLink.accommodation_id)
+        .eq('organizer_id', organizerId)
+        .maybeSingle();
+
+      if (accommodationRow?.id) {
+        await replaceAccommodationVideoOnlyMedia(supabase, accommodationRow.id, accommodationVideos);
+      }
+    }
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Erreur lors de la synchronisation des données liées.';
     return { ok: false, message: msg };
+  }
+
+  const linkedIdRaw = payload.linked_accommodation_id;
+  const linkedId =
+    typeof linkedIdRaw === 'string' && linkedIdRaw.trim().length > 0 ? linkedIdRaw.trim() : null;
+
+  if (linkedId) {
+    const { data: accommodationRow, error: accommodationReadError } = await supabase
+      .from('accommodations')
+      .select('id')
+      .eq('id', linkedId)
+      .eq('organizer_id', organizerId)
+      .maybeSingle();
+
+    if (accommodationReadError || !accommodationRow?.id) {
+      return {
+        ok: false,
+        message: "L'hébergement choisi est introuvable ou n'appartient pas à cet organisateur."
+      };
+    }
+
+    const { data: existingLinks, error: linksReadError } = await supabase
+      .from('stay_accommodations')
+      .select('accommodation_id')
+      .eq('stay_id', stayId);
+
+    if (linksReadError) {
+      return { ok: false, message: linksReadError.message };
+    }
+
+    const currentIds = (existingLinks ?? []).map((row) => row.accommodation_id);
+    const alreadyOnlyTarget = currentIds.length === 1 && currentIds[0] === linkedId;
+
+    if (!alreadyOnlyTarget) {
+      const { error: deleteLinksError } = await supabase
+        .from('stay_accommodations')
+        .delete()
+        .eq('stay_id', stayId);
+
+      if (deleteLinksError) {
+        return { ok: false, message: deleteLinksError.message };
+      }
+
+      const { error: insertLinkError } = await supabase.from('stay_accommodations').insert({
+        stay_id: stayId,
+        accommodation_id: linkedId
+      });
+
+      if (insertLinkError) {
+        return { ok: false, message: insertLinkError.message };
+      }
+    }
   }
 
   return { ok: true };

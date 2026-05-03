@@ -158,7 +158,7 @@ export default function OrganizerStaysTable({
                       href={withOrganizerQuery(`/organisme/sejours/drafts/${draft.id}`, organizerId)}
                       className="organizer-btn-secondary min-h-[36px] px-3 py-1.5 text-xs"
                     >
-                      Ouvrir la relecture
+                      Modifier brouillon
                     </Link>
                     {deleteImportDraftAction ? (
                       <form
@@ -377,7 +377,7 @@ export default function OrganizerStaysTable({
                           </button>
                         </form>
                         <Link
-                          href={withOrganizerQuery(`/organisme/sejours/${stay.id}`, organizerId)}
+                          href={withOrganizerQuery(`/organisme/sejours/${stay.id}/edit`, organizerId)}
                           className="organizer-btn-secondary min-h-[36px] gap-1 border-orange-200 px-3 py-1 text-xs text-orange-700 hover:border-orange-300 hover:bg-orange-50"
                         >
                           <Pencil className="h-3.5 w-3.5" />

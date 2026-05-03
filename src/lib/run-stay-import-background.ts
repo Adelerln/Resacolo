@@ -730,6 +730,7 @@ function buildRawPayload(
     status_code: status,
     extracted,
     video_urls: videoUrls,
+    accommodation_video_urls: [],
     transport_variants: transportVariants,
     transport_matrix: transportVariants,
     transport_price_debug: transportPriceDebug,

@@ -230,6 +230,8 @@ export default function AccommodationFormFields({
         <h3 className="text-sm font-semibold text-slate-900">Médias</h3>
         <p className="mt-2 text-sm text-slate-500">
           Renseigne une URL d&apos;image par ligne pour alimenter le carrousel public de l&apos;hébergement.
+          <br />
+          <strong>Attention, merci de revenir à la ligne entre chaque URL</strong>
         </p>
         <label className="mt-3 block text-sm font-medium text-slate-700">
           URLs des photos

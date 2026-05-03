@@ -15,6 +15,8 @@ type ClientProfileInsert = Database['public']['Tables']['client_profiles']['Inse
 const DEFAULT_COUNTRY = 'France';
 const CLIENT_PROFILES_MISSING_ERROR =
   "Configuration incomplète: table 'public.client_profiles' absente. Appliquez les migrations Supabase avant de modifier les préférences.";
+const LEGACY_CLIENTS_FK_RETRY_COUNT = 5;
+const LEGACY_CLIENTS_FK_RETRY_DELAY_MS = 250;
 
 function isMissingClientProfilesTableError(error: { code?: string; message?: string } | null | undefined) {
   if (!error) return false;
@@ -25,6 +27,21 @@ function isMissingClientProfilesTableError(error: { code?: string; message?: str
     message.includes('public.client_profiles') &&
     (message.includes('schema cache') || message.includes('Could not find the table') || message.includes('does not exist'))
   );
+}
+
+function isLegacyClientsUserForeignKeyError(error: { code?: string; message?: string } | null | undefined) {
+  if (!error) return false;
+  const code = String(error.code ?? '').trim();
+  const message = String(error.message ?? '').toLowerCase();
+  return code === '23503' && message.includes('clients_user_id_fkey');
+}
+
+function shouldIgnoreLegacyClientsSyncError(error: unknown) {
+  return error instanceof Error && error.message.includes('clients_user_id_fkey');
+}
+
+async function waitForLegacyClientsRetry() {
+  await new Promise((resolve) => setTimeout(resolve, LEGACY_CLIENTS_FK_RETRY_DELAY_MS));
 }
 
 function normalizeText(value: string | null | undefined) {
@@ -255,16 +272,26 @@ function labelOrderStatus(status: string) {
 
 async function syncLegacyClientsRow(input: { userId: string; fullName: string; phone: string }) {
   const supabase = getServerSupabaseClient();
-  const { error } = await supabase.from('clients').upsert(
-    {
-      user_id: input.userId,
-      full_name: input.fullName || null,
-      phone: input.phone || null,
-      collectivity_id: null
-    },
-    { onConflict: 'user_id' }
-  );
-  if (error) {
+  for (let attempt = 0; attempt < LEGACY_CLIENTS_FK_RETRY_COUNT; attempt += 1) {
+    const { error } = await supabase.from('clients').upsert(
+      {
+        user_id: input.userId,
+        full_name: input.fullName || null,
+        phone: input.phone || null,
+        collectivity_id: null
+      },
+      { onConflict: 'user_id' }
+    );
+
+    if (!error) {
+      return;
+    }
+
+    if (isLegacyClientsUserForeignKeyError(error) && attempt < LEGACY_CLIENTS_FK_RETRY_COUNT - 1) {
+      await waitForLegacyClientsRetry();
+      continue;
+    }
+
     throw new Error(`Impossible de synchroniser la table clients: ${error.message}`);
   }
 }
@@ -351,6 +378,7 @@ async function readUpcomingReservations(userId: string): Promise<FamilyUpcomingR
 async function upsertProfile(profile: FamilyProfile): Promise<FamilyProfile> {
   const supabase = getServerSupabaseClient();
   const payload = toDbPayload(profile);
+  const fullName = [profile.billingFirstName, profile.billingLastName].filter(Boolean).join(' ').trim();
   const { data, error } = await supabase
     .from('client_profiles')
     .upsert(payload, { onConflict: 'user_id' })
@@ -360,12 +388,42 @@ async function upsertProfile(profile: FamilyProfile): Promise<FamilyProfile> {
   if (error || !data) {
     if (isMissingClientProfilesTableError(error)) {
       throw new Error(CLIENT_PROFILES_MISSING_ERROR);
+      try {
+        await syncLegacyClientsRow({ userId: profile.userId, fullName, phone: profile.phone });
+      } catch (legacyClientsError) {
+        if (shouldIgnoreLegacyClientsSyncError(legacyClientsError)) {
+          const legacyClientsMessage =
+            legacyClientsError instanceof Error ? legacyClientsError.message : String(legacyClientsError);
+          console.warn('[account-profile] legacy clients sync skipped without client_profiles table', {
+            userId: profile.userId,
+            error: legacyClientsMessage
+          });
+        } else {
+          throw legacyClientsError;
+        }
+      }
+      return {
+        ...profile,
+        updatedAt: new Date().toISOString()
+      };
     }
     throw new Error(error?.message ?? 'Impossible de sauvegarder le profil famille.');
   }
 
-  const fullName = [profile.billingFirstName, profile.billingLastName].filter(Boolean).join(' ').trim();
-  await syncLegacyClientsRow({ userId: profile.userId, fullName, phone: profile.phone });
+  try {
+    await syncLegacyClientsRow({ userId: profile.userId, fullName, phone: profile.phone });
+  } catch (legacyClientsError) {
+    if (shouldIgnoreLegacyClientsSyncError(legacyClientsError)) {
+      const legacyClientsMessage =
+        legacyClientsError instanceof Error ? legacyClientsError.message : String(legacyClientsError);
+      console.warn('[account-profile] legacy clients sync skipped after profile upsert', {
+        userId: profile.userId,
+        error: legacyClientsMessage
+      });
+    } else {
+      throw legacyClientsError;
+    }
+  }
   return mapRowToProfile(data as ClientProfileRow);
 }
 

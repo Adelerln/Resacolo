@@ -32,6 +32,7 @@ function getDetailedItemSelectionLines(item: CartItem, priced: CheckoutPricingIt
       : undefined);
 
   const transport =
+    priced?.transportDisplayLine?.trim() ||
     L?.transportLine?.trim() ||
     (priced && (priced.transportPriceCents ?? 0) > 0
       ? `${priced.transportLabel ?? 'Transport'} (${formatEuroFromCents(priced.transportPriceCents)})`

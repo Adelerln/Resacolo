@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import {
@@ -8,6 +7,8 @@ import {
   Building2,
   Bus,
   CalendarDays,
+  ChevronLeft,
+  ChevronRight,
   CheckCircle2,
   Circle,
   FileText,
@@ -68,7 +69,6 @@ type StayDraftReviewFormProps = {
     id: string;
     name: string;
   }>;
-  backHref: string;
   initialPayload: StayDraftReviewPayload;
   initialStatus: string;
   initialValidatedAt: string | null;
@@ -224,6 +224,30 @@ const DRAFT_REVIEW_STEPS: {
   { id: 'seo', label: 'SEO', Icon: Search }
 ];
 
+type PublishBlockHint = {
+  step: DraftReviewStepId;
+  fieldId: string;
+  buttonLabel: string;
+};
+
+function resolvePublishBlockHint(errorMessage: string | null | undefined): PublishBlockHint | null {
+  const normalized = String(errorMessage ?? '').toLowerCase();
+  if (!normalized) return null;
+
+  if (
+    normalized.includes('validate-region') ||
+    (normalized.includes('région') && normalized.includes('obligatoire'))
+  ) {
+    return {
+      step: 'sejour',
+      fieldId: 'draft-region-input',
+      buttonLabel: 'Aller au champ Région'
+    };
+  }
+
+  return null;
+}
+
 function draftReviewStepIndex(step: DraftReviewStepId, steps: DraftReviewStepId[]): number {
   return steps.indexOf(step);
 }
@@ -258,7 +282,6 @@ export default function StayDraftReviewForm({
   draftId,
   organizerId,
   seasonOptions = [],
-  backHref,
   initialPayload,
   initialStatus,
   initialValidatedAt,
@@ -303,7 +326,7 @@ export default function StayDraftReviewForm({
         isPublishedVariant
       ) !== 'hebergement'
   );
-  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [title, setTitle] = useState(initialPayload.title);
   const [summary, setSummary] = useState(initialPayload.summary);
   const [locationText, setLocationText] = useState(initialPayload.location_text);
@@ -369,6 +392,7 @@ export default function StayDraftReviewForm({
   const [validatedByUserId, setValidatedByUserId] = useState(initialValidatedByUserId);
   const [fieldErrors, setFieldErrors] = useState<StayDraftReviewFieldErrors>({});
   const [globalError, setGlobalError] = useState<string | null>(null);
+  const [publishBlockHint, setPublishBlockHint] = useState<PublishBlockHint | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGeneratingSeo, setIsGeneratingSeo] = useState(false);
@@ -538,6 +562,8 @@ export default function StayDraftReviewForm({
     () => imageUrls.filter((url) => /^https?:\/\//i.test(url)).slice(0, 24),
     [imageUrls]
   );
+  const lightboxUrl =
+    lightboxIndex !== null ? imagePreviewUrls[lightboxIndex] ?? null : null;
 
   const hasGeneratedSeo = useMemo(
     () =>
@@ -653,12 +679,23 @@ export default function StayDraftReviewForm({
   }
 
   function removeImageAt(index: number) {
+    const targetUrl = imagePreviewUrls[index] ?? null;
     setImageUrls((current) => {
-      const removed = current[index];
-      if (removed) {
-        setLightboxUrl((open) => (open === removed ? null : open));
+      if (!targetUrl) return current;
+      const next = [...current];
+      const targetIndex = next.indexOf(targetUrl);
+      if (targetIndex >= 0) {
+        next.splice(targetIndex, 1);
       }
-      return current.filter((_, i) => i !== index);
+      return next;
+    });
+    setLightboxIndex((current) => {
+      if (current === null) return current;
+      if (current === index) {
+        return imagePreviewUrls.length <= 1 ? null : current % (imagePreviewUrls.length - 1);
+      }
+      if (current > index) return current - 1;
+      return current;
     });
   }
 
@@ -1063,6 +1100,7 @@ export default function StayDraftReviewForm({
     setIsSubmitting(true);
     setFieldErrors({});
     setGlobalError(null);
+    setPublishBlockHint(null);
     setSuccessMessage(null);
 
     try {
@@ -1109,6 +1147,7 @@ export default function StayDraftReviewForm({
 
       if (!response.ok) {
         setFieldErrors(data?.fieldErrors ?? {});
+        setPublishBlockHint(resolvePublishBlockHint(data?.error));
         setGlobalError(
           data?.error ??
             (isPublishedVariant
@@ -1134,6 +1173,7 @@ export default function StayDraftReviewForm({
             ? 'Séjour enregistré et publié.'
             : 'Brouillon enregistré avec succès.'
       );
+      setPublishBlockHint(null);
       if (!isPublishedVariant) {
         setStatus(data?.draft?.status ?? status);
         setValidatedAt(data?.draft?.validated_at ?? validatedAt);
@@ -1170,6 +1210,7 @@ export default function StayDraftReviewForm({
 
       router.refresh();
     } catch {
+      setPublishBlockHint(null);
       setGlobalError(
         isPublishedVariant
           ? "Une erreur réseau est survenue pendant l'enregistrement du séjour."
@@ -1185,6 +1226,7 @@ export default function StayDraftReviewForm({
   const effectiveStepIndex = draftReviewStepIndex(effectiveStep, reviewSteps);
   const publishAllowed =
     isPublishedVariant || (!accommodationGateClosed && title.trim().length > 0);
+  const showStatusInTopCard = String(status ?? '').trim().toLowerCase() !== 'pending';
 
   const stepHasError = useMemo(() => {
     const byStep: Record<DraftReviewStepId, boolean> = {
@@ -1259,10 +1301,44 @@ export default function StayDraftReviewForm({
     videoUrls
   ]);
 
-  const completedVisibleStepsCount = useMemo(
-    () => visibleReviewSteps.filter((step) => stepIsCompleted[step.id]).length,
-    [stepIsCompleted, visibleReviewSteps]
-  );
+  useEffect(() => {
+    if (lightboxIndex === null) return;
+    if (imagePreviewUrls.length === 0) {
+      setLightboxIndex(null);
+      return;
+    }
+    if (lightboxIndex >= imagePreviewUrls.length) {
+      setLightboxIndex(imagePreviewUrls.length - 1);
+    }
+  }, [imagePreviewUrls.length, lightboxIndex]);
+
+  useEffect(() => {
+    if (lightboxIndex === null) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setLightboxIndex(null);
+      } else if (event.key === 'ArrowLeft' && imagePreviewUrls.length > 1) {
+        event.preventDefault();
+        setLightboxIndex((current) => {
+          if (current === null) return current;
+          return (current - 1 + imagePreviewUrls.length) % imagePreviewUrls.length;
+        });
+      } else if (event.key === 'ArrowRight' && imagePreviewUrls.length > 1) {
+        event.preventDefault();
+        setLightboxIndex((current) => {
+          if (current === null) return current;
+          return (current + 1) % imagePreviewUrls.length;
+        });
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [imagePreviewUrls.length, lightboxIndex]);
 
   useEffect(() => {
     if (isPublishedVariant) return;
@@ -1299,13 +1375,17 @@ export default function StayDraftReviewForm({
 
   return (
     <div className="space-y-6">
-      {!hideTopStatusCard ? (
+      {!hideTopStatusCard && (showStatusInTopCard || validatedAt || validatedByUserId) ? (
         <div className="rounded-2xl border border-slate-200 bg-white p-6">
           <div className="flex flex-wrap items-center gap-3">
-            <span className="text-sm font-medium text-slate-500">Statut :</span>
-            <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700">
-              {status}
-            </span>
+            {showStatusInTopCard ? (
+              <>
+                <span className="text-sm font-medium text-slate-500">Statut :</span>
+                <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700">
+                  {status}
+                </span>
+              </>
+            ) : null}
             {validatedAt && (
               <span className="text-xs text-slate-500">
                 Validé le {new Date(validatedAt).toLocaleString('fr-FR')}
@@ -1320,7 +1400,27 @@ export default function StayDraftReviewForm({
 
       {globalError && (
         <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-          {globalError}
+          <p>{globalError}</p>
+          {publishBlockHint ? (
+            <button
+              type="button"
+              onClick={() => {
+                goToDraftStep(publishBlockHint.step);
+                window.setTimeout(() => {
+                  const target = document.getElementById(publishBlockHint.fieldId) as
+                    | HTMLInputElement
+                    | HTMLTextAreaElement
+                    | null;
+                  if (!target) return;
+                  target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                  target.focus();
+                }, 30);
+              }}
+              className="mt-2 inline-flex items-center rounded-md border border-rose-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-rose-800 hover:bg-rose-100"
+            >
+              {publishBlockHint.buttonLabel}
+            </button>
+          ) : null}
         </div>
       )}
       {successMessage && (
@@ -1367,12 +1467,9 @@ export default function StayDraftReviewForm({
             <p className="font-semibold text-slate-700">
               Étape {Math.max(1, effectiveStepIndex + 1)} / {visibleReviewSteps.length}
             </p>
-            <p>
-              {completedVisibleStepsCount} étape(s) complétée(s)
-            </p>
           </div>
           <ul className="flex snap-x snap-mandatory gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:justify-between sm:gap-3 sm:overflow-visible">
-            {visibleReviewSteps.map(({ id, label, Icon }, index) => {
+            {visibleReviewSteps.map(({ id, label, Icon }) => {
               const isActive = effectiveStep === id;
               const stepDisabled = accommodationGateClosed && id !== 'hebergement';
               const isError = stepHasError[id];
@@ -1394,7 +1491,6 @@ export default function StayDraftReviewForm({
                   >
                     <span className="flex w-full items-center justify-between gap-2">
                       <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                        <span>{index + 1}</span>
                         <span>{label}</span>
                       </span>
                       {isError ? (
@@ -1490,6 +1586,7 @@ export default function StayDraftReviewForm({
         <label className="block text-sm font-medium text-slate-700">
           Titre
           <input
+            id="draft-title-input"
             value={title}
             onChange={(event) => setTitle(event.target.value)}
             className={draftReviewControlClass({
@@ -1557,6 +1654,7 @@ export default function StayDraftReviewForm({
           <label className="block text-sm font-medium text-slate-700">
             Région
             <input
+              id="draft-region-input"
               value={regionText}
               onChange={(event) => setRegionText(event.target.value)}
               className={draftReviewControlClass({
@@ -2293,7 +2391,7 @@ export default function StayDraftReviewForm({
                 <div key={`${url}-${index}`} className="relative">
                   <button
                     type="button"
-                    onClick={() => setLightboxUrl(url)}
+                    onClick={() => setLightboxIndex(index)}
                     className="block w-full overflow-hidden rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-orange-400"
                   >
                     <img src={url} alt="" className="h-28 w-full object-cover" />
@@ -2393,7 +2491,7 @@ export default function StayDraftReviewForm({
 
         </div>
 
-        <div className="sticky bottom-2 z-20 -mx-1 mt-2 rounded-xl border border-slate-200/90 bg-white/95 p-3 shadow-md backdrop-blur-sm">
+        <div className="mt-6 rounded-xl border border-slate-200 bg-white p-3">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex flex-wrap items-center gap-2">
               <button
@@ -2425,12 +2523,6 @@ export default function StayDraftReviewForm({
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <Link
-                href={backHref}
-                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700"
-              >
-                Annuler
-              </Link>
               <button
                 type="button"
                 onClick={() => submit('save')}
@@ -2455,19 +2547,54 @@ export default function StayDraftReviewForm({
       </div>
 
       {lightboxUrl ? (
-        <button
-          type="button"
-          className="fixed inset-0 z-50 flex cursor-zoom-out items-center justify-center border-0 bg-black/85 p-4"
-          onClick={() => setLightboxUrl(null)}
-          aria-label="Fermer l’aperçu"
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4"
+          onClick={() => setLightboxIndex(null)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Aperçu des images du séjour"
         >
+          {imagePreviewUrls.length > 1 ? (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                setLightboxIndex((current) => {
+                  if (current === null) return current;
+                  return (current - 1 + imagePreviewUrls.length) % imagePreviewUrls.length;
+                });
+              }}
+              className="absolute left-3 top-1/2 -translate-y-1/2 rounded-full bg-white/90 p-2 text-slate-900 shadow transition hover:bg-white"
+              aria-label="Image précédente"
+            >
+              <ChevronLeft className="h-6 w-6" />
+            </button>
+          ) : null}
+
           <img
             src={lightboxUrl}
             alt=""
             className="max-h-[90vh] max-w-full rounded-lg object-contain shadow-2xl"
             onClick={(event) => event.stopPropagation()}
           />
-        </button>
+
+          {imagePreviewUrls.length > 1 ? (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                setLightboxIndex((current) => {
+                  if (current === null) return current;
+                  return (current + 1) % imagePreviewUrls.length;
+                });
+              }}
+              className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-white/90 p-2 text-slate-900 shadow transition hover:bg-white"
+              aria-label="Image suivante"
+            >
+              <ChevronRight className="h-6 w-6" />
+            </button>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );

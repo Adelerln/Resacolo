@@ -102,13 +102,6 @@ export default async function OrganizerStayDetailPage({ params: paramsPromise, s
         />
       </div>
 
-      <p className="text-center text-sm text-slate-500">
-        Texte, médias, options, transports, SEO : utilisez le{' '}
-        <Link href={editHref} className="font-medium text-emerald-700 underline">
-          tunnel d&apos;édition
-        </Link>
-        .
-      </p>
     </div>
   );
 }

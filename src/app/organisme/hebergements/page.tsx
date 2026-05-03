@@ -185,7 +185,6 @@ export default async function OrganizerAccommodationsPage({ searchParams }: Page
 
       <OrganizerPageHeader
         title="Hébergements"
-        subtitle="Gérez vos hébergements partagés pour accélérer la création des séjours."
         actions={(
           <Link
             href={withOrganizerQuery('/organisme/hebergements/new', selectedOrganizerId)}
@@ -198,7 +197,16 @@ export default async function OrganizerAccommodationsPage({ searchParams }: Page
 
       <div className="organizer-table-shell">
         <div className="overflow-x-auto">
-          <table className="organizer-table min-w-[980px]">
+          <table className="organizer-table min-w-[1120px] w-full table-fixed">
+            <colgroup>
+              <col className="w-[31%]" />
+              <col className="w-[9%]" />
+              <col className="w-[13%]" />
+              <col className="w-[7%]" />
+              <col className="w-[9%]" />
+              <col className="w-[9%]" />
+              <col className="w-[22%]" />
+            </colgroup>
             <thead>
               <tr>
                 <th className="px-4 py-3">Hébergement</th>
@@ -218,7 +226,6 @@ export default async function OrganizerAccommodationsPage({ searchParams }: Page
                     {accommodation.locationLabel ? (
                       <div className="mt-1 text-xs font-semibold text-slate-700">{accommodation.locationLabel}</div>
                     ) : null}
-                    <div className="mt-1 max-w-md text-xs text-slate-500">{accommodation.description || 'Aucune description'}</div>
                   </td>
                   <td className="px-4 py-3 text-slate-600">
                     {formatAccommodationType(accommodation.accommodation_type)}
@@ -240,7 +247,7 @@ export default async function OrganizerAccommodationsPage({ searchParams }: Page
                     {new Date(accommodation.updated_at).toLocaleDateString('fr-FR')}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-2">
+                    <div className="flex items-center justify-end gap-2 whitespace-nowrap">
                       <Link
                         href={withOrganizerQuery(`/organisme/hebergements/${accommodation.id}`, selectedOrganizerId)}
                         className="organizer-btn-secondary min-h-[36px] border-emerald-200 px-3 py-1 text-xs text-emerald-700 hover:border-emerald-300 hover:bg-emerald-50"

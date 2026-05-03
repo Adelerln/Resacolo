@@ -124,7 +124,16 @@ export default async function OrganismeUsersPage({
 
       <div className="organizer-table-shell">
         <div className="overflow-x-auto">
-          <table className="organizer-table min-w-[980px]">
+          <table className="organizer-table min-w-[1200px] w-full table-fixed">
+            <colgroup>
+              <col className="w-[18%]" />
+              <col className="w-[14%]" />
+              <col className="w-[14%]" />
+              <col className="w-[12%]" />
+              <col className="w-[22%]" />
+              <col className="w-[10%]" />
+              <col className="w-[10%]" />
+            </colgroup>
             <thead>
               <tr>
                 <th className="px-4 py-3">Email</th>
@@ -146,7 +155,7 @@ export default async function OrganismeUsersPage({
                       name="first_name"
                       defaultValue={member.first_name ?? ''}
                       disabled={!isOwner}
-                      className="organizer-input mt-0 min-h-[42px] w-full min-w-[9rem] disabled:bg-slate-50"
+                      className="organizer-input mt-0 min-h-[42px] w-full min-w-0 disabled:bg-slate-50"
                     />
                   </td>
                   <td className="px-4 py-3 text-slate-600">
@@ -155,7 +164,7 @@ export default async function OrganismeUsersPage({
                       name="last_name"
                       defaultValue={member.last_name ?? ''}
                       disabled={!isOwner}
-                      className="organizer-input mt-0 min-h-[42px] w-full min-w-[9rem] disabled:bg-slate-50"
+                      className="organizer-input mt-0 min-h-[42px] w-full min-w-0 disabled:bg-slate-50"
                     />
                   </td>
                   <td className="px-4 py-3 text-slate-600">
@@ -164,7 +173,7 @@ export default async function OrganismeUsersPage({
                       name="role"
                       defaultValue={member.role}
                       disabled={!isOwner}
-                      className="organizer-input mt-0 min-h-[42px] disabled:bg-slate-50"
+                      className="organizer-input mt-0 min-h-[42px] w-full disabled:bg-slate-50"
                     >
                       {ORGANIZER_ACCESS_ROLE_VALUES.map((role) => (
                         <option key={role} value={role}>
@@ -177,7 +186,7 @@ export default async function OrganismeUsersPage({
                     <form
                       action={`/api/organisme/members/${member.id}/password`}
                       method="post"
-                      className="flex min-w-[18rem] items-center gap-2"
+                      className="flex w-full min-w-0 items-center gap-2"
                     >
                       <input type="hidden" name="organizer_id" value={selectedOrganizerId} />
                       <input

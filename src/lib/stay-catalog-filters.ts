@@ -1,4 +1,8 @@
 import { FILTER_LABELS } from '@/lib/constants';
+import {
+  buildStayDestinationSearchText,
+  buildStayPrimaryDestinationFilterLabel
+} from '@/lib/stay-destination';
 import { slugify } from '@/lib/utils';
 import type { Stay } from '@/types/stay';
 
@@ -20,6 +24,7 @@ export type StayCatalogFilterOptions = {
   seasons: StayCatalogFilterOption[];
   categories: StayCatalogFilterOption[];
   ageBands: StayCatalogAgeFilterOption[];
+  destinationTypes: StayCatalogFilterOption[];
   destinations: StayCatalogFilterOption[];
   organizers: StayCatalogFilterOption[];
 };
@@ -29,6 +34,7 @@ export type StayCatalogFilterState = {
   seasonIds: string[];
   categories: string[];
   ageBands: StayAgeBandValue[];
+  destinationTypes: string[];
   destinations: string[];
   organizerIds: string[];
   ageMin: number | null;
@@ -86,6 +92,7 @@ export const EMPTY_STAY_CATALOG_FILTERS: StayCatalogFilterState = {
   seasonIds: [],
   categories: [],
   ageBands: [],
+  destinationTypes: [],
   destinations: [],
   organizerIds: [],
   ageMin: null,
@@ -192,9 +199,31 @@ function agesOverlap(left: AgeBounds, right: AgeBounds) {
 }
 
 function stayDestinationLabel(stay: Stay) {
-  const region = cleanText(stay.region);
-  if (region) return region;
-  return cleanText(stay.location);
+  return buildStayPrimaryDestinationFilterLabel({
+    destinationType: stay.destinationType,
+    destinationRegion: stay.destinationRegion,
+    destinationCountry: stay.destinationCountry,
+    destinationItineraryLabel: stay.destinationItineraryLabel,
+    locationText: stay.location,
+    regionText: stay.region
+  });
+}
+
+function stayDestinationTypeValue(stay: Stay) {
+  const normalized = cleanText(stay.destinationType);
+  if (normalized === 'fixed_france' || normalized === 'fixed_abroad' || normalized === 'itinerant') {
+    return normalized;
+  }
+  if (stay.categories.includes('itinerant')) return 'itinerant';
+  if (stay.categories.includes('etranger')) return 'fixed_abroad';
+  return 'fixed_france';
+}
+
+function getDestinationTypeLabel(value: string) {
+  if (value === 'fixed_france') return 'Séjour fixe en France';
+  if (value === 'fixed_abroad') return "Séjour fixe à l'étranger";
+  if (value === 'itinerant') return 'Circuit itinérant';
+  return value;
 }
 
 function readParamList(searchParams: URLSearchParams, keys: string[]) {
@@ -328,6 +357,7 @@ export function stayCatalogFilterStateKey(state: StayCatalogFilterState) {
     buildStateKeyValues(state.seasonIds),
     buildStateKeyValues(state.categories),
     buildStateKeyValues(state.ageBands),
+    buildStateKeyValues(state.destinationTypes),
     buildStateKeyValues(state.destinations),
     buildStateKeyValues(state.organizerIds),
     `${state.ageMin ?? ''}-${state.ageMax ?? ''}`,
@@ -344,6 +374,7 @@ export function countActiveStayCatalogFilters(state: StayCatalogFilterState) {
     state.seasonIds.length +
     state.categories.length +
     state.ageBands.length +
+    state.destinationTypes.length +
     state.destinations.length +
     state.organizerIds.length +
     hasAgeRange +
@@ -354,6 +385,7 @@ export function countActiveStayCatalogFilters(state: StayCatalogFilterState) {
 export function buildStayCatalogFilterOptions(stays: Stay[]): StayCatalogFilterOptions {
   const seasonCounts = new Map<string, { label: string; count: number }>();
   const categoryCounts = new Map<string, { label: string; count: number }>();
+  const destinationTypeCounts = new Map<string, { label: string; count: number }>();
   const destinationCounts = new Map<string, { label: string; count: number }>();
   const organizerCounts = new Map<string, { label: string; count: number }>();
   const ageBandCounts = new Map<StayAgeBandValue, number>(
@@ -386,6 +418,17 @@ export function buildStayCatalogFilterOptions(stays: Stay[]): StayCatalogFilterO
           });
         }
       });
+
+    const destinationType = stayDestinationTypeValue(stay);
+    const currentDestinationType = destinationTypeCounts.get(destinationType);
+    if (currentDestinationType) {
+      currentDestinationType.count += 1;
+    } else {
+      destinationTypeCounts.set(destinationType, {
+        label: getDestinationTypeLabel(destinationType),
+        count: 1
+      });
+    }
 
     const destinationLabel = stayDestinationLabel(stay);
     if (destinationLabel) {
@@ -443,6 +486,14 @@ export function buildStayCatalogFilterOptions(stays: Stay[]): StayCatalogFilterO
     }))
     .sort((left, right) => compareLabel(left.label, right.label));
 
+  const destinationTypes = Array.from(destinationTypeCounts.entries())
+    .map(([value, data]) => ({
+      value,
+      label: data.label,
+      count: data.count
+    }))
+    .sort((left, right) => compareLabel(left.label, right.label));
+
   const destinations = Array.from(destinationCounts.entries())
     .map(([value, data]) => ({
       value,
@@ -469,6 +520,7 @@ export function buildStayCatalogFilterOptions(stays: Stay[]): StayCatalogFilterO
     seasons,
     categories,
     ageBands,
+    destinationTypes,
     destinations,
     organizers
   };
@@ -498,6 +550,11 @@ export function parseStayCatalogFiltersFromSearchParams(
     options.ageBands
   );
 
+  const destinationTypes = resolveValuesFromOptions(
+    readParamList(searchParams, ['destinationTypes', 'destination_type', 'destinationType']),
+    options.destinationTypes
+  );
+
   const destinations = resolveValuesFromOptions(
     [
       ...readParamList(searchParams, ['destinations', 'destination']),
@@ -521,6 +578,7 @@ export function parseStayCatalogFiltersFromSearchParams(
     seasonIds: seasons,
     categories,
     ageBands,
+    destinationTypes,
     destinations,
     organizerIds,
     ageMin: ageMinRaw != null ? clampNumber(ageMinRaw, 0, 99) : null,
@@ -538,6 +596,9 @@ export function serializeStayCatalogFiltersToSearchParams(state: StayCatalogFilt
   if (state.seasonIds.length > 0) params.set('season', uniq(state.seasonIds).join(','));
   if (state.categories.length > 0) params.set('categories', uniq(state.categories).join(','));
   if (state.ageBands.length > 0) params.set('ages', uniq(state.ageBands).join(','));
+  if (state.destinationTypes.length > 0) {
+    params.set('destinationTypes', uniq(state.destinationTypes).join(','));
+  }
   if (state.destinations.length > 0) params.set('destinations', uniq(state.destinations).join(','));
   if (state.organizerIds.length > 0) params.set('organizers', uniq(state.organizerIds).join(','));
   if (state.ageMin != null) params.set('ageMin', String(state.ageMin));
@@ -626,6 +687,13 @@ export function applyStayCatalogFilters(stays: Stay[], state: StayCatalogFilterS
       return false;
     }
 
+    if (state.destinationTypes.length > 0) {
+      const destinationType = stayDestinationTypeValue(stay);
+      if (!state.destinationTypes.includes(destinationType)) {
+        return false;
+      }
+    }
+
     if (state.ageBands.length > 0) {
       const ageBounds = extractStayAgeBounds(stay);
       if (!ageBounds) return false;
@@ -682,6 +750,18 @@ export function applyStayCatalogFilters(stays: Stay[], state: StayCatalogFilterS
           stay.description,
           stay.location,
           stay.region,
+          buildStayDestinationSearchText({
+            destinationType: stay.destinationType,
+            destinationCity: stay.destinationCity,
+            destinationPostalCode: stay.destinationPostalCode,
+            destinationDepartmentCode: stay.destinationDepartmentCode,
+            destinationRegion: stay.destinationRegion,
+            destinationCountry: stay.destinationCountry,
+            destinationItineraryLabel: stay.destinationItineraryLabel,
+            destinationCountries: stay.destinationCountries,
+            locationText: stay.location,
+            regionText: stay.region
+          }),
           stay.activitiesText ?? '',
           stay.programText ?? '',
           stay.transportText ?? '',

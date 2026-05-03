@@ -104,6 +104,12 @@ export interface StayAccommodation {
   name: string;
   accommodationType: string | null;
   locationLabel: string | null;
+  addressText?: string | null;
+  postalCode?: string | null;
+  city?: string | null;
+  departmentCode?: string | null;
+  regionText?: string | null;
+  country?: string | null;
   description: string;
   bedInfo: string;
   bathroomInfo: string;
@@ -128,6 +134,14 @@ export interface Stay {
   displayLocation?: string;
   region: string;
   country: string;
+  destinationType?: 'fixed_france' | 'fixed_abroad' | 'itinerant' | null;
+  destinationCity?: string | null;
+  destinationPostalCode?: string | null;
+  destinationDepartmentCode?: string | null;
+  destinationRegion?: string | null;
+  destinationCountry?: string | null;
+  destinationItineraryLabel?: string | null;
+  destinationCountries?: string[];
   ageMin: number | null;
   ageMax: number | null;
   ageRange: string;

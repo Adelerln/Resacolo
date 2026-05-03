@@ -6,9 +6,8 @@ import OrganizerPageHeader from '@/components/organisme/OrganizerPageHeader';
 import { parseAccommodationMediaUrls, replaceAccommodationMedia } from '@/lib/accommodations';
 import {
   buildAccessibilityInfoFromForm,
-  embedAccommodationLocationMeta,
+  validateAccommodationAddress,
   validateAndParseAccommodationCenterCoordinates,
-  validateAccommodationLocation
 } from '@/lib/accommodation-location';
 import { requireOrganizerPageAccess } from '@/lib/organizer-backoffice-access.server';
 import { withOrganizerQuery } from '@/lib/organizers.server';
@@ -45,23 +44,24 @@ export default async function NewAccommodationPage({ searchParams }: PageProps) 
     const name = String(formData.get('name') ?? '').trim();
     const accommodationType = String(formData.get('accommodation_type') ?? '').trim();
     const description = String(formData.get('description') ?? '').trim();
-    const locationInput = {
-      locationMode: String(formData.get('location_mode') ?? '').trim(),
-      locationCity: String(formData.get('location_city') ?? '').trim(),
-      locationDepartmentCode: String(formData.get('location_department_code') ?? '').trim().slice(0, 2),
-      locationCountry: String(formData.get('location_country') ?? '').trim(),
-      itinerantZone: String(formData.get('itinerant_zone') ?? '').trim()
+    const addressInput = {
+      addressText: String(formData.get('address_text') ?? '').trim(),
+      postalCode: String(formData.get('postal_code') ?? '').trim(),
+      city: String(formData.get('city') ?? '').trim(),
+      departmentCode: String(formData.get('department_code') ?? '').trim(),
+      regionText: String(formData.get('region_text') ?? '').trim(),
+      country: String(formData.get('country') ?? '').trim()
     };
 
     if (!name || !accommodationType) {
       redirect(withOrganizerQuery('/organisme/hebergements/new?error=missing-required-fields', selectedOrganizerId));
     }
 
-    const locationError = validateAccommodationLocation(locationInput);
-    if (locationError) {
+    const addressError = validateAccommodationAddress(addressInput);
+    if (addressError) {
       redirect(
         withOrganizerQuery(
-          `/organisme/hebergements/new?error=${encodeURIComponent(locationError)}`,
+          `/organisme/hebergements/new?error=${encodeURIComponent(addressError)}`,
           selectedOrganizerId
         )
       );
@@ -89,7 +89,13 @@ export default async function NewAccommodationPage({ searchParams }: PageProps) 
         organizer_id: selectedOrganizerId,
         name,
         accommodation_type: accommodationType,
-        description: embedAccommodationLocationMeta(description, locationInput),
+        description: description || null,
+        address_text: addressInput.addressText || null,
+        postal_code: addressInput.postalCode || null,
+        city: addressInput.city || null,
+        department_code: addressInput.departmentCode || null,
+        region_text: addressInput.regionText || null,
+        country: addressInput.country || null,
         bed_info: String(formData.get('bed_info') ?? '').trim() || null,
         bathroom_info: String(formData.get('bathroom_info') ?? '').trim() || null,
         catering_info: String(formData.get('catering_info') ?? '').trim() || null,

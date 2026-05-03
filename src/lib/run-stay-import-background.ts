@@ -26,6 +26,7 @@ import {
   shouldUsePlaywrightForDynamicTransport
 } from '@/lib/stay-draft-playwright';
 import { normalizeStayAges } from '@/lib/stay-ages';
+import { writeDraftDestinationFields } from '@/lib/stay-draft-destination';
 import { tryCanonicalizeStaySourceUrl } from '@/lib/stay-source-url-canonical';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { normalizeStayTitle } from '@/lib/stay-title';
@@ -38,6 +39,57 @@ function envTruthy(value: string | undefined): boolean {
 }
 
 const PLAYWRIGHT_RENDER_BUDGET_MS = 20_000;
+
+function deriveDraftDestinationFromExtracted(extracted: ReturnType<typeof extractStayData>) {
+  const accommodation = extracted.accommodationsJson;
+  const regionText = extracted.regionText?.trim() || null;
+  const locationText = extracted.locationText?.trim() || null;
+  const accommodationCity = accommodation?.city?.trim() || null;
+  const accommodationCountry = accommodation?.country?.trim() || null;
+
+  if (regionText === 'Séjour itinérant') {
+    return {
+      destination_type: 'itinerant' as const,
+      destination_city: null,
+      destination_postal_code: null,
+      destination_department_code: null,
+      destination_region: null,
+      destination_country: accommodationCountry,
+      destination_itinerary_label: locationText,
+      destination_countries:
+        accommodationCountry ? [accommodationCountry] : []
+    };
+  }
+
+  if (regionText === 'Étranger' || (accommodationCountry && accommodationCountry.toLowerCase() !== 'france')) {
+    const city = accommodationCity || locationText?.split(',')[0]?.trim() || null;
+    const country =
+      accommodationCountry ||
+      locationText?.split(',').map((part) => part.trim()).filter(Boolean).at(-1) ||
+      null;
+    return {
+      destination_type: 'fixed_abroad' as const,
+      destination_city: city,
+      destination_postal_code: null,
+      destination_department_code: null,
+      destination_region: null,
+      destination_country: country,
+      destination_itinerary_label: null,
+      destination_countries: []
+    };
+  }
+
+  return {
+    destination_type: 'fixed_france' as const,
+    destination_city: accommodationCity || locationText,
+    destination_postal_code: accommodation?.postal_code?.trim() || null,
+    destination_department_code: accommodation?.department_code?.trim() || null,
+    destination_region: regionText,
+    destination_country: 'France',
+    destination_itinerary_label: null,
+    destination_countries: []
+  };
+}
 const COLOS_CANDIDATE_LIMIT = 8;
 const COLOS_SIGNAL_TOKENS = ['dates', 'tarifs', 'tarif', 'inscription', 'reserve', 'reserver', 'mobile'];
 
@@ -667,8 +719,9 @@ function buildRawPayload(
     existingAccommodationName?: string | null;
     includePricing?: boolean;
   }
-) {
-  return {
+): Record<string, unknown> {
+  return writeDraftDestinationFields(
+    {
     html,
     fetched_at: fetchedAt,
     source_url: sourceUrl,
@@ -685,7 +738,9 @@ function buildRawPayload(
       existing_accommodation_name: importOptions?.existingAccommodationName ?? null,
       include_pricing: importOptions?.includePricing ?? true
     }
-  };
+    },
+    deriveDraftDestinationFromExtracted(extracted)
+  );
 }
 
 function stripSessionPrices(
@@ -782,11 +837,11 @@ function buildDraftUpdatePayload(
     payload.image = extracted.images[0] ?? null;
   }
   if (columns.has('source_url')) {
-    payload.source_url = rawPayload.source_url;
+    payload.source_url = rawPayload['source_url'];
   }
   if (columns.has('source_url_canonical')) {
     payload.source_url_canonical =
-      tryCanonicalizeStaySourceUrl(String(rawPayload.source_url ?? '')) ?? String(rawPayload.source_url ?? '');
+      tryCanonicalizeStaySourceUrl(String(rawPayload['source_url'] ?? '')) ?? String(rawPayload['source_url'] ?? '');
   }
   if (columns.has('raw_text')) {
     payload.raw_text = extracted.rawText;

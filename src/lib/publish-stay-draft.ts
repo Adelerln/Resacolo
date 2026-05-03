@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
-  embedAccommodationLocationMeta,
+  normalizeAccommodationAddress,
   validateAndParseAccommodationCenterCoordinates
 } from '@/lib/accommodation-location';
 import { repairAccommodationImportLocation } from '@/lib/french-department-codes';
@@ -17,6 +17,7 @@ import {
 } from '@/lib/stay-draft-accommodation-import';
 import { expandDraftAges } from '@/lib/stay-draft-content';
 import { liveSessionStableKey } from '@/lib/draft-session-keys';
+import { readDraftDestinationFields } from '@/lib/stay-draft-destination';
 import {
   removeStayMediaStorageFiles,
   uploadImportedStayImages
@@ -1008,6 +1009,12 @@ function parseAccommodation(
   cateringInfo: string | null;
   accessibilityInfo: string | null;
   accommodationType: string;
+  addressText: string | null;
+  postalCode: string | null;
+  city: string | null;
+  departmentCode: string | null;
+  regionText: string | null;
+  country: string | null;
   centerLatitude: number | null;
   centerLongitude: number | null;
 } | null {
@@ -1065,16 +1072,37 @@ function parseAccommodation(
       [title, descriptionText, bedInfo, locationHint].filter(Boolean).join(' ')
     );
 
+  const description = descriptionRaw;
   const locationModeNorm = normalizeLocationMode(object.location_mode);
-  const description = embedAccommodationLocationMeta(descriptionRaw, {
-    locationMode: locationModeNorm ?? '',
-    locationCity: sanitizeAccommodationText(String(object.location_city ?? ''), { maxLength: 120 }),
-    locationDepartmentCode: sanitizeAccommodationText(String(object.location_department_code ?? ''), {
-      maxLength: 8
-    }),
-    locationCountry: sanitizeAccommodationText(String(object.location_country ?? ''), { maxLength: 80 }),
-    itinerantZone: sanitizeAccommodationText(String(object.itinerant_zone ?? ''), { maxLength: 200 })
+  const normalizedAddress = normalizeAccommodationAddress({
+    addressText: sanitizeAccommodationText(
+      String(object.address_text ?? object.street ?? object.street_address ?? ''),
+      { maxLength: 220 }
+    ),
+    postalCode: sanitizeAccommodationText(
+      String(object.postal_code ?? object.postalCode ?? ''),
+      { maxLength: 16 }
+    ),
+    city: sanitizeAccommodationText(
+      String(object.city ?? object.location_city ?? ''),
+      { maxLength: 120 }
+    ),
+    departmentCode: sanitizeAccommodationText(
+      String(object.department_code ?? object.location_department_code ?? ''),
+      { maxLength: 8 }
+    ),
+    regionText: sanitizeAccommodationText(
+      String(object.region_text ?? object.region ?? ''),
+      { maxLength: 120 }
+    ),
+    country: sanitizeAccommodationText(
+      String(object.country ?? object.location_country ?? ''),
+      { maxLength: 80 }
+    )
   });
+  if (locationModeNorm === 'france' && !normalizedAddress.country) {
+    normalizedAddress.country = 'France';
+  }
   const resolvedName = buildAccommodationName({
     title,
     description: descriptionText,
@@ -1102,6 +1130,12 @@ function parseAccommodation(
     cateringInfo,
     accessibilityInfo,
     accommodationType,
+    addressText: normalizedAddress.addressText,
+    postalCode: normalizedAddress.postalCode,
+    city: normalizedAddress.city,
+    departmentCode: normalizedAddress.departmentCode,
+    regionText: normalizedAddress.regionText,
+    country: normalizedAddress.country,
     centerLatitude: centerCoordinates.error ? null : centerCoordinates.value.centerLatitude,
     centerLongitude: centerCoordinates.error ? null : centerCoordinates.value.centerLongitude
   };
@@ -1249,8 +1283,8 @@ async function updateOrInsertStay(
   const ageMax = ages.length > 0 ? ages[ages.length - 1] : draft.age_max;
   const normalizedTitle = normalizeStayTitle(draft.title);
   const normalizedRegion = mapToCanonicalStayRegion(draft.region_text);
+  const destination = readDraftDestinationFields(draftRawPayload);
   const seasonId = await resolveSeasonIdFromSessions(supabase, sessions);
-  const isForeignStay = mappedCategories.includes('etranger');
 
   let previousStatus: string | null | undefined;
   if (stayId) {
@@ -1268,6 +1302,14 @@ async function updateOrInsertStay(
     required_documents_text: toNullableText(draft.required_documents_text),
     location_text: toNullableText(draft.location_text),
     region_text: normalizedRegion ?? null,
+    destination_type: destination.destinationType,
+    destination_city: destination.destinationCity,
+    destination_postal_code: destination.destinationPostalCode,
+    destination_department_code: destination.destinationDepartmentCode,
+    destination_region: destination.destinationRegion,
+    destination_country: destination.destinationCountry,
+    destination_itinerary_label: destination.destinationItineraryLabel,
+    destination_countries: destination.destinationCountries.length > 0 ? destination.destinationCountries : null,
     season_id: seasonId,
     age_min: ageMin ?? null,
     age_max: ageMax ?? null,
@@ -1299,7 +1341,7 @@ async function updateOrInsertStay(
     throw new PublishStayDraftError('validate-title', 'Le titre est requis pour publier.');
   }
 
-  if (!isForeignStay && (!normalizedRegion || normalizedRegion === 'Étranger')) {
+  if (destination.destinationType === 'fixed_france' && (!destination.destinationRegion || destination.destinationRegion === 'Étranger')) {
     throw new PublishStayDraftError(
       'validate-region',
       'La région est obligatoire pour publier un séjour en France (sélectionnez une région, pas "Étranger").'
@@ -1742,6 +1784,12 @@ async function syncAccommodation(
     cateringInfo: string | null;
     accessibilityInfo: string | null;
     accommodationType: string;
+    addressText: string | null;
+    postalCode: string | null;
+    city: string | null;
+    departmentCode: string | null;
+    regionText: string | null;
+    country: string | null;
     centerLatitude: number | null;
     centerLongitude: number | null;
   } | null
@@ -1813,6 +1861,12 @@ async function syncAccommodation(
       catering_info: parsedAccommodation.cateringInfo,
       accessibility_info: parsedAccommodation.accessibilityInfo,
       accommodation_type: parsedAccommodation.accommodationType,
+      address_text: parsedAccommodation.addressText,
+      postal_code: parsedAccommodation.postalCode,
+      city: parsedAccommodation.city,
+      department_code: parsedAccommodation.departmentCode,
+      region_text: parsedAccommodation.regionText,
+      country: parsedAccommodation.country,
       center_latitude: parsedAccommodation.centerLatitude,
       center_longitude: parsedAccommodation.centerLongitude,
       source_url: draft.source_url,
@@ -1851,6 +1905,12 @@ async function syncAccommodation(
       accessibility_info: parsedAccommodation.accessibilityInfo,
       source_url: draft.source_url,
       accommodation_type: parsedAccommodation.accommodationType,
+      address_text: parsedAccommodation.addressText,
+      postal_code: parsedAccommodation.postalCode,
+      city: parsedAccommodation.city,
+      department_code: parsedAccommodation.departmentCode,
+      region_text: parsedAccommodation.regionText,
+      country: parsedAccommodation.country,
       center_latitude: parsedAccommodation.centerLatitude,
       center_longitude: parsedAccommodation.centerLongitude,
       ai_extracted_data: extractedData,
@@ -1934,6 +1994,12 @@ export async function syncStayDraftPreviewAccommodation(
       catering_info: parsed.cateringInfo,
       accessibility_info: parsed.accessibilityInfo,
       accommodation_type: parsed.accommodationType,
+      address_text: parsed.addressText,
+      postal_code: parsed.postalCode,
+      city: parsed.city,
+      department_code: parsed.departmentCode,
+      region_text: parsed.regionText,
+      country: parsed.country,
       center_latitude: parsed.centerLatitude,
       center_longitude: parsed.centerLongitude,
       source_url: draft.source_url,
@@ -1968,6 +2034,12 @@ export async function syncStayDraftPreviewAccommodation(
       accessibility_info: parsed.accessibilityInfo,
       source_url: draft.source_url,
       accommodation_type: parsed.accommodationType,
+      address_text: parsed.addressText,
+      postal_code: parsed.postalCode,
+      city: parsed.city,
+      department_code: parsed.departmentCode,
+      region_text: parsed.regionText,
+      country: parsed.country,
       center_latitude: parsed.centerLatitude,
       center_longitude: parsed.centerLongitude,
       ai_extracted_data: extractedData,

@@ -223,7 +223,7 @@ export function WorldMap({
                 } else if (onCountrySelect) {
                   onCountrySelect(country.name, country.id);
                 } else {
-                  const href = `/sejours?q=${encodeURIComponent(country.name)}&categories=etranger`;
+                  const href = `/sejours?q=${encodeURIComponent(country.name)}&destinationTypes=fixed_abroad,itinerant`;
                   window.location.href = href;
                 }
               }}
@@ -236,7 +236,7 @@ export function WorldMap({
                   } else if (onCountrySelect) {
                     onCountrySelect(country.name, country.id);
                   } else {
-                    window.location.href = `/sejours?q=${encodeURIComponent(country.name)}&categories=etranger`;
+                    window.location.href = `/sejours?q=${encodeURIComponent(country.name)}&destinationTypes=fixed_abroad,itinerant`;
                   }
                 }
               }}

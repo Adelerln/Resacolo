@@ -12,6 +12,25 @@ export type FinancesBreakdownRow = {
   commissionClientCents: number;
   publicationFeeCents: number;
   publicationPositiveCount: number;
+  commissionDetails: FinancesCommissionDetail[];
+  publicationDetails: FinancesPublicationDetail[];
+};
+
+export type FinancesCommissionDetail = {
+  key: string;
+  organizerName: string;
+  stayTitle: string;
+  orderVolumeCents: number;
+  commissionClientCents: number;
+  lineCount: number;
+};
+
+export type FinancesPublicationDetail = {
+  key: string;
+  organizerName: string;
+  publicationFeeCents: number;
+  stayCount: number;
+  stayTitles: string[];
 };
 
 function yearBoundsUtc(year: number) {
@@ -34,8 +53,30 @@ function monthLabel(key: string) {
 }
 
 type SeasonCarrier = {
+  title?: string | null;
   seasons?: { name?: string | null } | { name?: string | null }[] | null;
 } | null;
+
+type LedgerReportRow = {
+  occurred_at: string;
+  organizer_id: string;
+  fee_kind: string;
+  channel: string;
+  amount_cents: number;
+  stay_id?: string | null;
+  order_items?: {
+    total_price_cents?: number;
+    sessions?:
+      | {
+          stays?: SeasonCarrier;
+        }
+      | {
+          stays?: SeasonCarrier;
+        }[]
+      | null;
+  } | null;
+  stays?: SeasonCarrier;
+};
 
 function seasonNameFromNested(row: {
   fee_kind: string;
@@ -66,11 +107,23 @@ function seasonNameFromNested(row: {
   return Array.isArray(seasons) ? seasons[0]?.name ?? null : seasons.name ?? null;
 }
 
+function stayTitleFromNested(row: LedgerReportRow) {
+  if (row.fee_kind === 'PUBLICATION') {
+    return row.stays?.title?.trim() || 'Séjour sans titre';
+  }
+
+  const sessions = row.order_items?.sessions;
+  const session = Array.isArray(sessions) ? sessions[0] : sessions;
+  return session?.stays?.title?.trim() || 'Séjour sans titre';
+}
+
 type Agg = {
   orderVolumeCents: number;
   commissionClientCents: number;
   publicationFeeCents: number;
   publicationPositiveCount: number;
+  commissionDetails: Map<string, FinancesCommissionDetail>;
+  publicationDetails: Map<string, FinancesPublicationDetail>;
 };
 
 const EMPTY_TOTALS = {
@@ -125,11 +178,13 @@ export async function loadAdminFinancesReport(
         total_price_cents,
         sessions (
           stays (
+            title,
             seasons ( name )
           )
         )
       ),
       stays (
+        title,
         seasons ( name )
       )
     `
@@ -165,7 +220,9 @@ export async function loadAdminFinancesReport(
       orderVolumeCents: 0,
       commissionClientCents: 0,
       publicationFeeCents: 0,
-      publicationPositiveCount: 0
+      publicationPositiveCount: 0,
+      commissionDetails: new Map<string, FinancesCommissionDetail>(),
+      publicationDetails: new Map<string, FinancesPublicationDetail>()
     };
     if (patch.orderVolumeCents != null) cur.orderVolumeCents += patch.orderVolumeCents;
     if (patch.commissionClientCents != null) cur.commissionClientCents += patch.commissionClientCents;
@@ -190,19 +247,14 @@ export async function loadAdminFinancesReport(
   }
 
   for (const raw of ledgerRaw ?? []) {
-    const row = raw as unknown as {
-      occurred_at: string;
-      organizer_id: string;
-      fee_kind: string;
-      channel: string;
-      amount_cents: number;
-      order_items?: { total_price_cents?: number } | null;
-    };
+    const row = raw as unknown as LedgerReportRow;
     const t = new Date(row.occurred_at).getTime();
     if (t < start || t >= end) continue;
 
     const seasonName = seasonNameFromNested(row as Parameters<typeof seasonNameFromNested>[0]);
     const key = rowKey(t, row.organizer_id, seasonName);
+    const organizerName = organizerNames[row.organizer_id] ?? row.organizer_id;
+    const stayTitle = stayTitleFromNested(row);
 
     if (row.fee_kind === 'COMMISSION') {
       const lineTotal = row.order_items?.total_price_cents ?? 0;
@@ -211,11 +263,45 @@ export async function loadAdminFinancesReport(
         orderVolumeCents: lineTotal,
         commissionClientCents: clientPart
       });
+      if (clientPart > 0) {
+        const current = bucket.get(key);
+        const detailKey = `${row.organizer_id}:${stayTitle}`;
+        const detail = current?.commissionDetails.get(detailKey) ?? {
+          key: detailKey,
+          organizerName,
+          stayTitle,
+          orderVolumeCents: 0,
+          commissionClientCents: 0,
+          lineCount: 0
+        };
+        detail.orderVolumeCents += lineTotal;
+        detail.commissionClientCents += clientPart;
+        detail.lineCount += 1;
+        current?.commissionDetails.set(detailKey, detail);
+      }
     } else if (row.fee_kind === 'PUBLICATION') {
       bump(key, {
         publicationFeeCents: row.amount_cents,
         publicationPositiveCount: row.amount_cents > 0 ? 1 : 0
       });
+      if (row.amount_cents > 0) {
+        const current = bucket.get(key);
+        const detailKey = row.organizer_id;
+        const detail = current?.publicationDetails.get(detailKey) ?? {
+          key: detailKey,
+          organizerName,
+          publicationFeeCents: 0,
+          stayCount: 0,
+          stayTitles: []
+        };
+        detail.publicationFeeCents += row.amount_cents;
+        detail.stayCount += 1;
+        if (!detail.stayTitles.includes(stayTitle)) {
+          detail.stayTitles.push(stayTitle);
+          detail.stayTitles.sort((left, right) => left.localeCompare(right, 'fr', { sensitivity: 'base' }));
+        }
+        current?.publicationDetails.set(detailKey, detail);
+      }
     }
   }
 
@@ -235,7 +321,15 @@ export async function loadAdminFinancesReport(
       orderVolumeCents: agg.orderVolumeCents,
       commissionClientCents: agg.commissionClientCents,
       publicationFeeCents: agg.publicationFeeCents,
-      publicationPositiveCount: agg.publicationPositiveCount
+      publicationPositiveCount: agg.publicationPositiveCount,
+      commissionDetails: Array.from(agg.commissionDetails.values()).sort((left, right) => {
+        const organizerDelta = left.organizerName.localeCompare(right.organizerName, 'fr', { sensitivity: 'base' });
+        if (organizerDelta !== 0) return organizerDelta;
+        return left.stayTitle.localeCompare(right.stayTitle, 'fr', { sensitivity: 'base' });
+      }),
+      publicationDetails: Array.from(agg.publicationDetails.values()).sort((left, right) =>
+        left.organizerName.localeCompare(right.organizerName, 'fr', { sensitivity: 'base' })
+      )
     };
   });
 

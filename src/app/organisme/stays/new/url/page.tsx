@@ -52,12 +52,19 @@ export default async function NewStayUrlPage({ searchParams }: PageProps) {
   const initialImportDraftId = draftIdParam?.trim() ? draftIdParam.trim() : '';
   const { data: existingAccommodations } = await supabase
     .from('accommodations')
-    .select('id,name,accommodation_type,description,status')
+    .select('id,name,accommodation_type,address_text,postal_code,city,department_code,region_text,country,description,status')
     .eq('organizer_id', organizerId)
     .neq('status', 'ARCHIVED')
     .order('name', { ascending: true });
   const accommodationOptions = (existingAccommodations ?? []).map((accommodation) => {
-    const location = extractAccommodationLocationMeta(accommodation.description);
+    const location = extractAccommodationLocationMeta(accommodation.description, {
+      addressText: accommodation.address_text,
+      postalCode: accommodation.postal_code,
+      city: accommodation.city,
+      departmentCode: accommodation.department_code,
+      regionText: accommodation.region_text,
+      country: accommodation.country
+    });
     const primaryLabel = accommodation.accommodation_type
       ? `${formatAccommodationType(accommodation.accommodation_type)}${
           location.locationLabel ? ` (${location.locationLabel})` : ''

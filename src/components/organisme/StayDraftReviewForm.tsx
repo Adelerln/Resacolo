@@ -60,7 +60,16 @@ import {
   draftReviewFieldGroupClass,
   draftReviewSectionClass
 } from '@/lib/draft-review-field-styles';
+import { buildStayDestinationLabel } from '@/lib/stay-destination';
 import type { StayDraftReviewFieldErrors, StayDraftReviewPayload } from '@/types/stay-draft-review';
+
+type DestinationTypeValue = 'fixed_france' | 'fixed_abroad' | 'itinerant';
+
+const DESTINATION_TYPE_OPTIONS: Array<{ value: DestinationTypeValue; label: string }> = [
+  { value: 'fixed_france', label: 'Séjour fixe en France' },
+  { value: 'fixed_abroad', label: "Séjour fixe à l'étranger" },
+  { value: 'itinerant', label: 'Circuit itinérant' }
+];
 
 type StayDraftReviewFormProps = {
   draftId: string;
@@ -329,6 +338,22 @@ export default function StayDraftReviewForm({
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [title, setTitle] = useState(initialPayload.title);
   const [summary, setSummary] = useState(initialPayload.summary);
+  const [destinationType, setDestinationType] = useState<DestinationTypeValue | ''>(
+    initialPayload.destination_type
+  );
+  const [destinationCity, setDestinationCity] = useState(initialPayload.destination_city);
+  const [destinationPostalCode, setDestinationPostalCode] = useState(initialPayload.destination_postal_code);
+  const [destinationDepartmentCode, setDestinationDepartmentCode] = useState(
+    initialPayload.destination_department_code
+  );
+  const [destinationRegion, setDestinationRegion] = useState(initialPayload.destination_region);
+  const [destinationCountry, setDestinationCountry] = useState(initialPayload.destination_country);
+  const [destinationItineraryLabel, setDestinationItineraryLabel] = useState(
+    initialPayload.destination_itinerary_label
+  );
+  const [destinationCountriesText, setDestinationCountriesText] = useState(
+    (initialPayload.destination_countries ?? []).join(', ')
+  );
   const [locationText, setLocationText] = useState(initialPayload.location_text);
   const [regionText, setRegionText] = useState(initialPayload.region_text);
   const [, setSelectedSeasonIds] = useState<string[]>(() => initialPayload.season_ids ?? []);
@@ -494,14 +519,32 @@ export default function StayDraftReviewForm({
   );
 
   const seoInput = useMemo(
-    () => ({
-      title,
-      summary,
-      description,
-      activitiesText: description,
-      programText,
-      location: locationText,
-      region: regionText,
+    () => {
+      const destinationLabel =
+        buildStayDestinationLabel({
+          destinationType,
+          destinationCity,
+          destinationPostalCode,
+          destinationDepartmentCode,
+          destinationRegion,
+          destinationCountry,
+          destinationItineraryLabel,
+          destinationCountries: destinationCountriesText
+            .split(',')
+            .map((item) => item.trim())
+            .filter(Boolean),
+          locationText,
+          regionText
+        }) ?? locationText;
+
+      return {
+        title,
+        summary,
+        description,
+        activitiesText: description,
+        programText,
+        location: destinationLabel,
+        region: destinationRegion || regionText,
       seasonName: selectedSeasonNames.join(', '),
       ageRange: formatAgeRangeFromAgesText(agesText),
       categories: seoCategoryValues,
@@ -520,12 +563,21 @@ export default function StayDraftReviewForm({
         score: seoScore ?? undefined,
         checks: seoChecks
       }
-    }),
+      };
+    },
     [
       title,
       summary,
       description,
       programText,
+      destinationType,
+      destinationCity,
+      destinationPostalCode,
+      destinationDepartmentCode,
+      destinationRegion,
+      destinationCountry,
+      destinationItineraryLabel,
+      destinationCountriesText,
       locationText,
       regionText,
       selectedSeasonNames,
@@ -887,6 +939,43 @@ export default function StayDraftReviewForm({
     }
   }
 
+  function parseDestinationCountries(): string[] {
+    return destinationCountriesText
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  function buildLegacyDestinationCompatibilityFields() {
+    const countries = parseDestinationCountries();
+
+    if (destinationType === 'fixed_france') {
+      return {
+        locationText: destinationCity.trim(),
+        regionText: destinationRegion.trim()
+      };
+    }
+
+    if (destinationType === 'fixed_abroad') {
+      return {
+        locationText: [destinationCity.trim(), destinationCountry.trim()].filter(Boolean).join(', '),
+        regionText: 'Étranger'
+      };
+    }
+
+    if (destinationType === 'itinerant') {
+      return {
+        locationText: destinationItineraryLabel.trim() || 'Circuit itinérant',
+        regionText: countries.length > 0 ? 'Étranger' : regionText.trim()
+      };
+    }
+
+    return {
+      locationText: locationText.trim(),
+      regionText: regionText.trim()
+    };
+  }
+
   function buildPayload(): { payload?: StayDraftReviewPayload; errors?: StayDraftReviewFieldErrors } {
     const nextErrors: StayDraftReviewFieldErrors = {};
     const normalizedTitle = title.trim();
@@ -932,6 +1021,8 @@ export default function StayDraftReviewForm({
     const videosPayload = normalizeImportedVideoUrlList(
       videoUrls.map((u) => u.trim()).filter(Boolean)
     );
+    const destinationCountries = parseDestinationCountries();
+    const legacyDestination = buildLegacyDestinationCompatibilityFields();
 
     if (!linkedAccommodation && !String(accommodationImport.title ?? '').trim()) {
       nextErrors.accommodations_json = "Le nom de l'hébergement importé est requis.";
@@ -966,8 +1057,16 @@ export default function StayDraftReviewForm({
       season_names: resolvedSeasonNames,
       season_name: resolvedSeasonNames[0] ?? resolvedSeasonNames.join(', '),
       summary,
-      location_text: locationText,
-      region_text: regionText,
+      destination_type: destinationType,
+      destination_city: destinationCity.trim(),
+      destination_postal_code: destinationPostalCode.trim(),
+      destination_department_code: destinationDepartmentCode.trim(),
+      destination_region: destinationRegion.trim(),
+      destination_country: destinationCountry.trim(),
+      destination_itinerary_label: destinationItineraryLabel.trim(),
+      destination_countries: destinationCountries,
+      location_text: legacyDestination.locationText,
+      region_text: legacyDestination.regionText,
       description,
       activities_text: initialPayload.activities_text,
       required_documents_text: requiredDocumentsText,
@@ -1047,6 +1146,8 @@ export default function StayDraftReviewForm({
     const partnerParsed = partnerRaw.length > 0 && Number.isFinite(Number(partnerRaw))
       ? Number(partnerRaw)
       : null;
+    const destinationCountries = parseDestinationCountries();
+    const legacyDestination = buildLegacyDestinationCompatibilityFields();
 
     return {
       title: title.trim(),
@@ -1054,8 +1155,16 @@ export default function StayDraftReviewForm({
       season_names: resolvedSeasonNames,
       season_name: resolvedSeasonNames[0] ?? resolvedSeasonNames.join(', '),
       summary,
-      location_text: locationText,
-      region_text: regionText,
+      destination_type: destinationType,
+      destination_city: destinationCity.trim(),
+      destination_postal_code: destinationPostalCode.trim(),
+      destination_department_code: destinationDepartmentCode.trim(),
+      destination_region: destinationRegion.trim(),
+      destination_country: destinationCountry.trim(),
+      destination_itinerary_label: destinationItineraryLabel.trim(),
+      destination_countries: destinationCountries,
+      location_text: legacyDestination.locationText,
+      region_text: legacyDestination.regionText,
       description,
       activities_text: initialPayload.activities_text,
       required_documents_text: requiredDocumentsText,
@@ -1637,32 +1746,170 @@ export default function StayDraftReviewForm({
           </div>
         </section>
 
-        <div className="grid gap-4 md:grid-cols-2">
-          <GoogleMapsCityInput
-            key={draftId}
-            name="location_text"
-            label="Lieu"
-            value={locationText}
-            onValueChange={setLocationText}
-            showApiHint
-            inputClassName={draftReviewControlClass({
-              required: false,
-              filled: Boolean(locationText.trim()),
-              omitOuterMargin: true
-            })}
-          />
+        <div className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+          <div>
+            <h3 className="text-sm font-semibold text-slate-900">Destination du séjour</h3>
+            <p className="mt-1 text-xs text-slate-500">
+              Cette destination commerciale alimente les filtres du catalogue, les cartes SVG et l&apos;affichage public.
+            </p>
+          </div>
+
           <label className="block text-sm font-medium text-slate-700">
-            Région
-            <input
-              id="draft-region-input"
-              value={regionText}
-              onChange={(event) => setRegionText(event.target.value)}
+            Type de destination
+            <select
+              value={destinationType}
+              onChange={(event) => setDestinationType(event.target.value as DestinationTypeValue | '')}
               className={draftReviewControlClass({
                 required: false,
-                filled: Boolean(regionText.trim())
+                filled: Boolean(destinationType)
               })}
-            />
+            >
+              <option value="">Non renseigné</option>
+              {DESTINATION_TYPE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </label>
+
+          {destinationType === 'fixed_france' ? (
+            <div className="grid gap-4 md:grid-cols-2">
+              <GoogleMapsCityInput
+                key={`${draftId}-destination-france`}
+                name="destination_city"
+                label="Ville"
+                value={destinationCity}
+                onValueChange={setDestinationCity}
+                showApiHint
+                inputClassName={draftReviewControlClass({
+                  required: false,
+                  filled: Boolean(destinationCity.trim()),
+                  omitOuterMargin: true
+                })}
+              />
+              <label className="block text-sm font-medium text-slate-700">
+                Code postal
+                <input
+                  value={destinationPostalCode}
+                  onChange={(event) => setDestinationPostalCode(event.target.value)}
+                  className={draftReviewControlClass({
+                    required: false,
+                    filled: Boolean(destinationPostalCode.trim())
+                  })}
+                />
+              </label>
+              <label className="block text-sm font-medium text-slate-700">
+                Département
+                <input
+                  value={destinationDepartmentCode}
+                  onChange={(event) => setDestinationDepartmentCode(event.target.value)}
+                  className={draftReviewControlClass({
+                    required: false,
+                    filled: Boolean(destinationDepartmentCode.trim())
+                  })}
+                />
+              </label>
+              <label className="block text-sm font-medium text-slate-700">
+                Région
+                <input
+                  id="draft-region-input"
+                  value={destinationRegion}
+                  onChange={(event) => setDestinationRegion(event.target.value)}
+                  className={draftReviewControlClass({
+                    required: false,
+                    filled: Boolean(destinationRegion.trim())
+                  })}
+                />
+              </label>
+            </div>
+          ) : null}
+
+          {destinationType === 'fixed_abroad' ? (
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="block text-sm font-medium text-slate-700">
+                Ville
+                <input
+                  value={destinationCity}
+                  onChange={(event) => setDestinationCity(event.target.value)}
+                  className={draftReviewControlClass({
+                    required: false,
+                    filled: Boolean(destinationCity.trim())
+                  })}
+                />
+              </label>
+              <label className="block text-sm font-medium text-slate-700">
+                Pays
+                <input
+                  value={destinationCountry}
+                  onChange={(event) => setDestinationCountry(event.target.value)}
+                  className={draftReviewControlClass({
+                    required: false,
+                    filled: Boolean(destinationCountry.trim())
+                  })}
+                />
+              </label>
+            </div>
+          ) : null}
+
+          {destinationType === 'itinerant' ? (
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="block text-sm font-medium text-slate-700 md:col-span-2">
+                Libellé itinéraire
+                <input
+                  value={destinationItineraryLabel}
+                  onChange={(event) => setDestinationItineraryLabel(event.target.value)}
+                  className={draftReviewControlClass({
+                    required: false,
+                    filled: Boolean(destinationItineraryLabel.trim())
+                  })}
+                  placeholder="Ex. Circuit andalou ou Tour de Bretagne"
+                />
+              </label>
+              <label className="block text-sm font-medium text-slate-700 md:col-span-2">
+                Pays du circuit
+                <input
+                  value={destinationCountriesText}
+                  onChange={(event) => setDestinationCountriesText(event.target.value)}
+                  className={draftReviewControlClass({
+                    required: false,
+                    filled: Boolean(destinationCountriesText.trim())
+                  })}
+                  placeholder="Ex. Espagne, Portugal"
+                />
+              </label>
+            </div>
+          ) : null}
+
+          {!destinationType ? (
+            <div className="grid gap-4 md:grid-cols-2">
+              <GoogleMapsCityInput
+                key={draftId}
+                name="location_text"
+                label="Compatibilité ancienne ville / lieu"
+                value={locationText}
+                onValueChange={setLocationText}
+                showApiHint
+                inputClassName={draftReviewControlClass({
+                  required: false,
+                  filled: Boolean(locationText.trim()),
+                  omitOuterMargin: true
+                })}
+              />
+              <label className="block text-sm font-medium text-slate-700">
+                Compatibilité ancienne région
+                <input
+                  id="draft-region-input"
+                  value={regionText}
+                  onChange={(event) => setRegionText(event.target.value)}
+                  className={draftReviewControlClass({
+                    required: false,
+                    filled: Boolean(regionText.trim())
+                  })}
+                />
+              </label>
+            </div>
+          ) : null}
         </div>
 
         <label className="block text-sm font-medium text-slate-700">

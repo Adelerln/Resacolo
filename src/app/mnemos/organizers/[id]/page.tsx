@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { requireRole } from '@/lib/auth/require';
 import { canManageBackofficeAccess } from '@/lib/mnemos-backoffice-access-admins';
+import { createSignedMnemosInvoicePdfUrl } from '@/lib/mnemos/invoice-pdf.server';
 import { ORGANIZER_ACCESS_LABELS, ORGANIZER_ACCESS_ROLE_VALUES } from '@/lib/organizer-access';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import {
@@ -23,6 +24,10 @@ type PageProps = {
   searchParams?: Promise<{ access_saved?: string; access_error?: string; q?: string }>;
 };
 
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
 export default async function MnemosOrganizerDetailPage({ params, searchParams }: PageProps) {
   const session = await requireRole('MNEMOS');
   const { id } = await params;
@@ -37,7 +42,7 @@ export default async function MnemosOrganizerDetailPage({ params, searchParams }
       supabase.from('organizer_billing_settings').select('*').eq('organizer_id', id).maybeSingle(),
       supabase
         .from('invoices')
-        .select('id, number, year, invoice_type, status, total_cents, issued_at, created_at')
+        .select('id, number, year, invoice_type, status, total_cents, issued_at, created_at, pdf_url')
         .eq('organizer_id', id)
         .order('created_at', { ascending: false })
         .limit(40),
@@ -64,6 +69,14 @@ export default async function MnemosOrganizerDetailPage({ params, searchParams }
   const appUserIds = Array.from(new Set((accessRows ?? []).map((row) => row.app_user_id).filter(Boolean)));
   const appUsers = await Promise.all(
     appUserIds.map(async (userId) => {
+      if (!isUuid(userId)) {
+        return {
+          id: userId,
+          email: null,
+          name: null
+        };
+      }
+
       const { data } = await supabase.auth.admin.getUserById(userId);
       return {
         id: userId,
@@ -76,6 +89,14 @@ export default async function MnemosOrganizerDetailPage({ params, searchParams }
     })
   );
   const appUserById = new Map(appUsers.map((user) => [user.id, user]));
+  const invoicePdfUrls = new Map(
+    await Promise.all(
+      (invoices ?? []).map(async (invoice) => [
+        invoice.id,
+        await createSignedMnemosInvoicePdfUrl(supabase, invoice.pdf_url)
+      ] as const)
+    )
+  );
   const filteredAccessRows = (accessRows ?? []).filter((row) => {
     if (!searchTerm) return true;
     const appUser = appUserById.get(row.app_user_id);
@@ -348,29 +369,47 @@ export default async function MnemosOrganizerDetailPage({ params, searchParams }
                 <th className="px-3 py-2">Statut</th>
                 <th className="px-3 py-2 text-right">Total</th>
                 <th className="px-3 py-2">Émission</th>
+                <th className="px-3 py-2">PDF</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800">
-              {(invoices ?? []).map((inv) => (
-                <tr key={inv.id}>
-                  <td className="px-3 py-2 tabular-nums text-slate-200">
-                    {inv.year}-{String(inv.number).padStart(4, '0')}
-                  </td>
-                  <td className="px-3 py-2 text-slate-300">{inv.invoice_type}</td>
-                  <td className="px-3 py-2">
-                    <span className="rounded-full bg-slate-800 px-2 py-0.5 text-xs text-slate-300">
-                      {inv.status}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums text-slate-200">{euros(inv.total_cents)}</td>
-                  <td className="px-3 py-2 text-xs text-slate-500">
-                    {inv.issued_at ? new Date(inv.issued_at).toLocaleString('fr-FR') : '—'}
-                  </td>
-                </tr>
-              ))}
+              {(invoices ?? []).map((inv) => {
+                const pdfUrl = invoicePdfUrls.get(inv.id);
+                return (
+                  <tr key={inv.id}>
+                    <td className="px-3 py-2 tabular-nums text-slate-200">
+                      {inv.year}-{String(inv.number).padStart(4, '0')}
+                    </td>
+                    <td className="px-3 py-2 text-slate-300">{inv.invoice_type}</td>
+                    <td className="px-3 py-2">
+                      <span className="rounded-full bg-slate-800 px-2 py-0.5 text-xs text-slate-300">
+                        {inv.status}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums text-slate-200">{euros(inv.total_cents)}</td>
+                    <td className="px-3 py-2 text-xs text-slate-500">
+                      {inv.issued_at ? new Date(inv.issued_at).toLocaleString('fr-FR') : '—'}
+                    </td>
+                    <td className="px-3 py-2">
+                      {pdfUrl ? (
+                        <a
+                          href={pdfUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-xs font-semibold text-violet-300 hover:text-violet-200"
+                        >
+                          Télécharger
+                        </a>
+                      ) : (
+                        <span className="text-xs text-slate-600">—</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
               {!(invoices ?? []).length && (
                 <tr>
-                  <td colSpan={5} className="px-3 py-6 text-center text-slate-500">
+                  <td colSpan={6} className="px-3 py-6 text-center text-slate-500">
                     Aucune facture.
                   </td>
                 </tr>

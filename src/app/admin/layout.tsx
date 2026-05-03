@@ -4,6 +4,7 @@ import { ArrowLeft } from 'lucide-react';
 import { requireRole } from '@/lib/auth/require';
 
 const adminNavLinks = [
+  { href: '/admin', label: 'Dashboard' },
   { href: '/admin/sejours', label: 'Séjours' },
   { href: '/admin/finances', label: 'Recettes' },
   { href: '/admin/reservations', label: 'Réservations' },
@@ -34,6 +35,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             <Link
               key={item.href}
               href={item.href}
+              prefetch={false}
               className="inline-flex shrink-0 rounded-full border border-slate-200 px-3 py-1.5 font-semibold transition hover:border-slate-300 hover:text-slate-900"
             >
               {item.label}
@@ -54,10 +56,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
               </Link>
             </div>
             <div>
-              <Link href="/admin" className="text-lg font-semibold text-slate-900">
-                Admin Resacolo
-              </Link>
-              <p className="mt-1 text-xs text-slate-500">Pilotage plateforme</p>
+              <p className="text-lg font-semibold text-slate-900">Admin Resacolo</p>
             </div>
           </div>
           <nav className="px-3 text-sm text-slate-600">
@@ -65,6 +64,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
               <Link
                 key={item.href}
                 href={item.href}
+                prefetch={false}
                 className="mb-1 block rounded-lg px-3 py-2 font-semibold transition hover:bg-slate-100"
               >
                 {item.label}

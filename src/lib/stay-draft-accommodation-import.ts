@@ -9,6 +9,12 @@ export function defaultAccommodationImportRecord(): Record<string, unknown> {
     title: '',
     description: '',
     accommodation_types: [] as string[],
+    address_text: '',
+    postal_code: '',
+    city: '',
+    department_code: '',
+    region_text: '',
+    country: '',
     location_mode: null as AccommodationLocationMode | null,
     location_city: '',
     location_department_code: '',
@@ -29,14 +35,26 @@ export function mergeAccommodationImportRecord(
   patch: Record<string, unknown> | null | undefined
 ): Record<string, unknown> {
   if (!patch || typeof patch !== 'object') return { ...base };
-  const next = { ...base, ...patch };
+  const next = repairAccommodationImportLocation({ ...base, ...patch });
   if (!Array.isArray(next.accommodation_types)) {
     next.accommodation_types = [];
   }
   if (next.pmr_accessible === undefined) {
     next.pmr_accessible = false;
   }
-  return repairAccommodationImportLocation(next);
+  if (!String(next.city ?? '').trim() && String(next.location_city ?? '').trim()) {
+    next.city = String(next.location_city ?? '').trim();
+  }
+  if (!String(next.department_code ?? '').trim() && String(next.location_department_code ?? '').trim()) {
+    next.department_code = String(next.location_department_code ?? '').trim();
+  }
+  if (!String(next.country ?? '').trim() && String(next.location_country ?? '').trim()) {
+    next.country = String(next.location_country ?? '').trim();
+  }
+  if (!String(next.country ?? '').trim() && next.location_mode === 'france') {
+    next.country = 'France';
+  }
+  return next;
 }
 
 export function normalizeAccommodationTypeToken(raw: string): string | null {

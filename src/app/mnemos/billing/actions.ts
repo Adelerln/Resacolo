@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { requireRole } from '@/lib/auth/require';
 import { allocateInvoiceNumber } from '@/lib/mnemos/allocate-invoice-number.server';
+import { createAndUploadMnemosInvoicePdf } from '@/lib/mnemos/invoice-pdf.server';
 import {
   loadLedgerCommissionLines,
   loadLedgerPublicationLines,
@@ -27,6 +28,12 @@ function billingReturnQuery(fd: FormData): string {
   return `organizer_id=${encodeURIComponent(o)}&start_date=${encodeURIComponent(s)}&end_date=${encodeURIComponent(e)}`;
 }
 
+async function cleanupInvoice(supabase: ReturnType<typeof getServerSupabaseClient>, invoiceId: string) {
+  await supabase.from('invoice_lines').delete().eq('invoice_id', invoiceId);
+  await supabase.from('organizer_billing_events').delete().eq('invoice_id', invoiceId);
+  await supabase.from('invoices').delete().eq('id', invoiceId);
+}
+
 export async function createPublicationPeriodInvoice(formData: FormData) {
   const session = await requireRole('MNEMOS');
   const organizerId = String(formData.get('organizer_id') ?? '').trim();
@@ -48,6 +55,11 @@ export async function createPublicationPeriodInvoice(formData: FormData) {
   if (total <= 0) {
     redirect(`${base}&flash_err=${encodeURIComponent('Aucun montant publication sur cette période.')}`);
   }
+  const { data: organizer } = await supabase
+    .from('organizers')
+    .select('name')
+    .eq('id', organizerId)
+    .maybeSingle();
 
   const year = invoiceYearFromRange(endDate);
   const number = await allocateInvoiceNumber(supabase, year);
@@ -83,8 +95,34 @@ export async function createPublicationPeriodInvoice(formData: FormData) {
 
   const { error: linesErr } = await supabase.from('invoice_lines').insert(lineRows);
   if (linesErr) {
-    await supabase.from('invoices').delete().eq('id', invoice.id);
+    await cleanupInvoice(supabase, invoice.id);
     redirect(`${base}&flash_err=${encodeURIComponent(linesErr.message)}`);
+  }
+
+  try {
+    const pdfPath = await createAndUploadMnemosInvoicePdf(supabase, {
+      invoiceId: invoice.id,
+      invoiceNumber: number,
+      invoiceYear: year,
+      invoiceType: 'publication',
+      organizerName: organizer?.name ?? 'Organisateur',
+      issuedAt: new Date().toISOString(),
+      periodStartIso: startIso,
+      periodEndIso: endIso,
+      lines
+    });
+    const { error: pdfUpdateError } = await supabase
+      .from('invoices')
+      .update({ pdf_url: pdfPath })
+      .eq('id', invoice.id);
+    if (pdfUpdateError) throw pdfUpdateError;
+  } catch (pdfError) {
+    await cleanupInvoice(supabase, invoice.id);
+    redirect(
+      `${base}&flash_err=${encodeURIComponent(
+        pdfError instanceof Error ? pdfError.message : 'Génération du PDF impossible.'
+      )}`
+    );
   }
 
   await supabase.from('organizer_billing_events').insert({
@@ -126,6 +164,11 @@ export async function createCommissionPeriodInvoice(formData: FormData) {
   if (total <= 0) {
     redirect(`${base}&flash_err=${encodeURIComponent('Aucune commission sur cette période.')}`);
   }
+  const { data: organizer } = await supabase
+    .from('organizers')
+    .select('name')
+    .eq('id', organizerId)
+    .maybeSingle();
 
   const year = invoiceYearFromRange(endDate);
   const number = await allocateInvoiceNumber(supabase, year);
@@ -161,8 +204,34 @@ export async function createCommissionPeriodInvoice(formData: FormData) {
 
   const { error: linesErr } = await supabase.from('invoice_lines').insert(lineRows);
   if (linesErr) {
-    await supabase.from('invoices').delete().eq('id', invoice.id);
+    await cleanupInvoice(supabase, invoice.id);
     redirect(`${base}&flash_err=${encodeURIComponent(linesErr.message)}`);
+  }
+
+  try {
+    const pdfPath = await createAndUploadMnemosInvoicePdf(supabase, {
+      invoiceId: invoice.id,
+      invoiceNumber: number,
+      invoiceYear: year,
+      invoiceType: 'commission',
+      organizerName: organizer?.name ?? 'Organisateur',
+      issuedAt: new Date().toISOString(),
+      periodStartIso: startIso,
+      periodEndIso: endIso,
+      lines
+    });
+    const { error: pdfUpdateError } = await supabase
+      .from('invoices')
+      .update({ pdf_url: pdfPath })
+      .eq('id', invoice.id);
+    if (pdfUpdateError) throw pdfUpdateError;
+  } catch (pdfError) {
+    await cleanupInvoice(supabase, invoice.id);
+    redirect(
+      `${base}&flash_err=${encodeURIComponent(
+        pdfError instanceof Error ? pdfError.message : 'Génération du PDF impossible.'
+      )}`
+    );
   }
 
   await supabase.from('organizer_billing_events').insert({

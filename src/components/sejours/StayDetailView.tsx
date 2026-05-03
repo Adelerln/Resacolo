@@ -1190,7 +1190,7 @@ export function StayDetailView({ stay }: { stay: Stay }) {
                       ) : null}
                       <div className="mt-4">
                         <StayLocationMap
-                          location={stay.location}
+                          location={stay.displayLocation || stay.location}
                           centerLocations={stay.centerLocations}
                           className="h-[380px] overflow-hidden rounded-xl border border-slate-200"
                         />

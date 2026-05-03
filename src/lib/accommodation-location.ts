@@ -13,6 +13,15 @@ type AccommodationCenterCoordinatesInput = {
   centerLongitude?: string | number | null;
 };
 
+export type AccommodationAddressInput = {
+  addressText?: string | null;
+  postalCode?: string | null;
+  city?: string | null;
+  departmentCode?: string | null;
+  regionText?: string | null;
+  country?: string | null;
+};
+
 export type AccommodationCenterCoordinates = {
   centerLatitude: number | null;
   centerLongitude: number | null;
@@ -49,6 +58,19 @@ function normalizeDepartmentCode(value?: string | null) {
   const cleaned = cleanValue(value);
   if (!cleaned) return null;
   return cleaned.toUpperCase().replace(/\s+/g, '');
+}
+
+function normalizePostalCode(value?: string | null) {
+  const cleaned = cleanValue(value);
+  if (!cleaned) return null;
+  return cleaned.replace(/\s+/g, '');
+}
+
+function normalizeCountry(value?: string | null) {
+  const cleaned = cleanValue(value);
+  if (!cleaned) return null;
+  if (cleaned.toLowerCase() === 'france') return 'France';
+  return cleaned;
 }
 
 function normalizeCoordinateInput(value?: string | number | null) {
@@ -133,6 +155,17 @@ export function normalizeAccommodationLocation(input: AccommodationLocationInput
   };
 }
 
+export function normalizeAccommodationAddress(input: AccommodationAddressInput) {
+  return {
+    addressText: cleanValue(input.addressText),
+    postalCode: normalizePostalCode(input.postalCode),
+    city: cleanValue(input.city),
+    departmentCode: normalizeDepartmentCode(input.departmentCode),
+    regionText: cleanValue(input.regionText),
+    country: normalizeCountry(input.country)
+  };
+}
+
 export function buildAccommodationLocationLabel(input: AccommodationLocationInput) {
   const normalized = normalizeAccommodationLocation(input);
 
@@ -151,6 +184,29 @@ export function buildAccommodationLocationLabel(input: AccommodationLocationInpu
     return `Itinérant : ${normalized.itinerantZone}`;
   }
 
+  return null;
+}
+
+export function buildAccommodationAddressLabel(input: AccommodationAddressInput) {
+  const normalized = normalizeAccommodationAddress(input);
+  const country = normalized.country;
+  const isFrance = !country || country.toLowerCase() === 'france';
+
+  if (normalized.city && normalized.postalCode) {
+    return `${normalized.city} (${normalized.postalCode})`;
+  }
+
+  if (normalized.city && isFrance && normalized.departmentCode) {
+    return `${normalized.city} (${normalized.departmentCode})`;
+  }
+
+  if (normalized.city && country) {
+    return `${normalized.city} (${country})`;
+  }
+
+  if (normalized.city) return normalized.city;
+  if (normalized.regionText) return normalized.regionText;
+  if (country) return country;
   return null;
 }
 
@@ -180,7 +236,24 @@ export function validateAccommodationLocation(input: AccommodationLocationInput)
   return null;
 }
 
-export function extractAccommodationLocationMeta(description?: string | null) {
+export function validateAccommodationAddress(input: AccommodationAddressInput) {
+  const normalized = normalizeAccommodationAddress(input);
+  const hasAnyValue = Object.values(normalized).some(Boolean);
+
+  if (!hasAnyValue) return null;
+  if (normalized.postalCode && !normalized.city) {
+    return 'Renseigne la ville quand un code postal est saisi.';
+  }
+  if (normalized.departmentCode && !normalized.city && !normalized.regionText) {
+    return 'Renseigne une ville ou une région avec le département.';
+  }
+  return null;
+}
+
+export function extractAccommodationLocationMeta(
+  description?: string | null,
+  structuredAddress?: AccommodationAddressInput | null
+) {
   const raw = description ?? '';
   const match = raw.match(ACCOMMODATION_LOCATION_META_PATTERN);
   const [mode = '', city = '', departmentCode = '', country = '', itinerantZone = ''] =
@@ -193,11 +266,20 @@ export function extractAccommodationLocationMeta(description?: string | null) {
     locationCountry: decodeMetaPart(country),
     itinerantZone: decodeMetaPart(itinerantZone)
   });
+  const normalizedAddress = normalizeAccommodationAddress(structuredAddress ?? {});
+  const structuredLocationLabel = buildAccommodationAddressLabel(normalizedAddress);
+  const legacyLocationLabel = buildAccommodationLocationLabel(normalized);
 
   return {
     description: raw.replace(ACCOMMODATION_LOCATION_META_PATTERN, '').trim() || null,
     ...normalized,
-    locationLabel: buildAccommodationLocationLabel(normalized)
+    addressText: normalizedAddress.addressText,
+    postalCode: normalizedAddress.postalCode,
+    city: normalizedAddress.city,
+    departmentCode: normalizedAddress.departmentCode,
+    regionText: normalizedAddress.regionText,
+    country: normalizedAddress.country,
+    locationLabel: structuredLocationLabel ?? legacyLocationLabel
   };
 }
 

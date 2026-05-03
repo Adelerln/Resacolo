@@ -4,6 +4,14 @@ export type StayDraftReviewPayload = {
   season_ids?: string[];
   season_names?: string[];
   summary: string;
+  destination_type: 'fixed_france' | 'fixed_abroad' | 'itinerant' | '';
+  destination_city: string;
+  destination_postal_code: string;
+  destination_department_code: string;
+  destination_region: string;
+  destination_country: string;
+  destination_itinerary_label: string;
+  destination_countries: string[];
   location_text: string;
   region_text: string;
   description: string;
@@ -50,6 +58,14 @@ export type StayDraftReviewFieldErrorKey =
   | 'title'
   | 'season_ids'
   | 'summary'
+  | 'destination_type'
+  | 'destination_city'
+  | 'destination_postal_code'
+  | 'destination_department_code'
+  | 'destination_region'
+  | 'destination_country'
+  | 'destination_itinerary_label'
+  | 'destination_countries'
   | 'location_text'
   | 'region_text'
   | 'description'

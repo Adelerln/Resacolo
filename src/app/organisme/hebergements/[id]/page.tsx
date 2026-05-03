@@ -7,10 +7,9 @@ import { formatAccommodationType } from '@/lib/accommodation-types';
 import SavedToast from '@/components/common/SavedToast';
 import {
   buildAccessibilityInfoFromForm,
-  embedAccommodationLocationMeta,
+  validateAccommodationAddress,
   extractAccommodationLocationMeta,
   validateAndParseAccommodationCenterCoordinates,
-  validateAccommodationLocation
 } from '@/lib/accommodation-location';
 import { deleteAccommodationForOrganizer, parseAccommodationMediaUrls, replaceAccommodationMedia } from '@/lib/accommodations';
 import { requireOrganizerPageAccess } from '@/lib/organizer-backoffice-access.server';
@@ -74,7 +73,7 @@ export default async function AccommodationDetailPage({ params: paramsPromise, s
   const { data: accommodation } = await supabase
     .from('accommodations')
     .select(
-      'id,name,accommodation_type,description,bed_info,bathroom_info,catering_info,accessibility_info,status,updated_at,validated_at,validated_by_user_id,organizer_id,ai_extracted_data,center_latitude,center_longitude'
+      'id,name,accommodation_type,address_text,postal_code,city,department_code,region_text,country,description,bed_info,bathroom_info,catering_info,accessibility_info,status,updated_at,validated_at,validated_by_user_id,organizer_id,ai_extracted_data,center_latitude,center_longitude'
     )
     .eq('id', params.id)
     .maybeSingle();
@@ -87,15 +86,23 @@ export default async function AccommodationDetailPage({ params: paramsPromise, s
   if (!accommodation || accommodation.organizer_id !== selectedOrganizerId) {
     redirect(withOrganizerQuery('/organisme/hebergements', selectedOrganizerId));
   }
-  const currentAccommodationLocation = extractAccommodationLocationMeta(accommodation.description);
+  const currentAccommodationLocation = extractAccommodationLocationMeta(accommodation.description, {
+    addressText: accommodation.address_text,
+    postalCode: accommodation.postal_code,
+    city: accommodation.city,
+    departmentCode: accommodation.department_code,
+    regionText: accommodation.region_text,
+    country: accommodation.country
+  });
   const currentAccommodation = {
     ...accommodation,
     description: currentAccommodationLocation.description,
-    location_mode: currentAccommodationLocation.locationMode,
-    location_city: currentAccommodationLocation.locationCity,
-    location_department_code: currentAccommodationLocation.locationDepartmentCode,
-    location_country: currentAccommodationLocation.locationCountry,
-    itinerant_zone: currentAccommodationLocation.itinerantZone,
+    address_text: currentAccommodationLocation.addressText,
+    postal_code: currentAccommodationLocation.postalCode,
+    city: currentAccommodationLocation.city,
+    department_code: currentAccommodationLocation.departmentCode,
+    region_text: currentAccommodationLocation.regionText,
+    country: currentAccommodationLocation.country,
     center_latitude: accommodation.center_latitude,
     center_longitude: accommodation.center_longitude,
     media_urls: (accommodationMedia ?? []).map((item) => item.url)
@@ -123,12 +130,13 @@ export default async function AccommodationDetailPage({ params: paramsPromise, s
     const name = String(formData.get('name') ?? '').trim();
     const accommodationType = String(formData.get('accommodation_type') ?? '').trim();
     const description = String(formData.get('description') ?? '').trim();
-    const locationInput = {
-      locationMode: String(formData.get('location_mode') ?? '').trim(),
-      locationCity: String(formData.get('location_city') ?? '').trim(),
-      locationDepartmentCode: String(formData.get('location_department_code') ?? '').trim().slice(0, 2),
-      locationCountry: String(formData.get('location_country') ?? '').trim(),
-      itinerantZone: String(formData.get('itinerant_zone') ?? '').trim()
+    const addressInput = {
+      addressText: String(formData.get('address_text') ?? '').trim(),
+      postalCode: String(formData.get('postal_code') ?? '').trim(),
+      city: String(formData.get('city') ?? '').trim(),
+      departmentCode: String(formData.get('department_code') ?? '').trim(),
+      regionText: String(formData.get('region_text') ?? '').trim(),
+      country: String(formData.get('country') ?? '').trim()
     };
     const now = new Date().toISOString();
     const importedFromDraft = isAccommodationImportedFromStayDraft(rowBeforeSave.ai_extracted_data);
@@ -148,11 +156,11 @@ export default async function AccommodationDetailPage({ params: paramsPromise, s
       );
     }
 
-    const locationError = validateAccommodationLocation(locationInput);
-    if (locationError) {
+    const addressError = validateAccommodationAddress(addressInput);
+    if (addressError) {
       redirect(
         withOrganizerQuery(
-          `/organisme/hebergements/${params.id}?error=${encodeURIComponent(locationError)}`,
+          `/organisme/hebergements/${params.id}?error=${encodeURIComponent(addressError)}`,
           selectedOrganizerId
         )
       );
@@ -176,7 +184,13 @@ export default async function AccommodationDetailPage({ params: paramsPromise, s
       .update({
         name,
         accommodation_type: accommodationType,
-        description: embedAccommodationLocationMeta(description, locationInput),
+        description: description || null,
+        address_text: addressInput.addressText || null,
+        postal_code: addressInput.postalCode || null,
+        city: addressInput.city || null,
+        department_code: addressInput.departmentCode || null,
+        region_text: addressInput.regionText || null,
+        country: addressInput.country || null,
         bed_info: String(formData.get('bed_info') ?? '').trim() || null,
         bathroom_info: String(formData.get('bathroom_info') ?? '').trim() || null,
         catering_info: String(formData.get('catering_info') ?? '').trim() || null,

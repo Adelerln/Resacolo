@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { requireOrganizerApiAccess } from '@/lib/organizer-backoffice-access.server';
 import { normalizeStayDraftCategories } from '@/lib/stay-categories';
 import { expandDraftAges, normalizeStaySummary, normalizeStayTransportLogisticsMode } from '@/lib/stay-draft-content';
+import { writeDraftDestinationFields } from '@/lib/stay-draft-destination';
 import { mapToCanonicalStayRegion } from '@/lib/stay-regions';
 import { sanitizeSeoPrimaryKeyword, sanitizeSeoTags, sanitizeSeoText } from '@/lib/stay-seo';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
@@ -269,15 +270,48 @@ export async function PATCH(
         })()
       : currentDraft.seo_score,
     seo_checks: hasOwn(payload, 'seo_checks') ? asSeoChecks(payload.seo_checks) : currentDraft.seo_checks,
-    raw_payload: {
-      ...currentRawPayload,
+    raw_payload: writeDraftDestinationFields(currentRawPayload, {
+      destination_type:
+        hasOwn(payload, 'destination_type') && typeof payload.destination_type === 'string'
+          ? payload.destination_type
+          : (currentRawPayload.destination_type as string | null | undefined),
+      destination_city:
+        hasOwn(payload, 'destination_city') ? normalizeString(payload.destination_city) : String(currentRawPayload.destination_city ?? ''),
+      destination_postal_code:
+        hasOwn(payload, 'destination_postal_code')
+          ? normalizeString(payload.destination_postal_code)
+          : String(currentRawPayload.destination_postal_code ?? ''),
+      destination_department_code:
+        hasOwn(payload, 'destination_department_code')
+          ? normalizeString(payload.destination_department_code)
+          : String(currentRawPayload.destination_department_code ?? ''),
+      destination_region:
+        hasOwn(payload, 'destination_region')
+          ? mapToCanonicalStayRegion(String(payload.destination_region ?? '')) ?? normalizeString(payload.destination_region)
+          : String(currentRawPayload.destination_region ?? ''),
+      destination_country:
+        hasOwn(payload, 'destination_country')
+          ? normalizeString(payload.destination_country)
+          : String(currentRawPayload.destination_country ?? ''),
+      destination_itinerary_label:
+        hasOwn(payload, 'destination_itinerary_label')
+          ? normalizeString(payload.destination_itinerary_label)
+          : String(currentRawPayload.destination_itinerary_label ?? ''),
+      destination_countries:
+        hasOwn(payload, 'destination_countries')
+          ? asStringArray(payload.destination_countries)
+          : asStringArray(currentRawPayload.destination_countries)
+    }),
+    updated_at: now
+  };
+
+  updatePayload.raw_payload = {
+    ...(updatePayload.raw_payload as Record<string, unknown>),
       draft_season_ids: nextSeasonIds.length > 0 ? nextSeasonIds : null,
       draft_season_names: nextSeasonNames.length > 0 ? nextSeasonNames : null,
       video_urls: nextVideoUrls.length > 0 ? nextVideoUrls : null,
       partner_discount_percent: nextPartnerDiscount,
       autosave_updated_at: now
-    },
-    updated_at: now
   };
 
   let { data: savedDraft, error: updateError } = await supabase

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { Home, Save, UserRound } from 'lucide-react';
 import {
-  formatFrenchPhone,
+  formatPhoneInput,
   type AccountInfo,
   type AccountPreferences,
   type ParentStatus
@@ -57,8 +57,8 @@ function profileToForm(profile: FamilyProfile): AccountPreferences {
       city: profile.city,
       parent1Name,
       parent2Name: profile.parent2Name,
-      parent1Phone: profile.phone,
-      parent2Phone: profile.parent2Phone,
+      parent1Phone: formatPhoneInput(profile.phone),
+      parent2Phone: formatPhoneInput(profile.parent2Phone),
       parent1Email: profile.email,
       parent2Email: profile.parent2Email,
       parent1Status: 'mere',
@@ -344,11 +344,10 @@ export default function ContactPreferencesPage() {
                 <input
                   type="tel"
                   inputMode="tel"
-                  pattern="^0[1-9]([.][0-9]{2}){4}$"
                   className={inputClass()}
                   value={form.accountInfo.parent1Phone}
-                  onChange={(e) => updateAccountField('parent1Phone', formatFrenchPhone(e.target.value))}
-                  placeholder="01.23.45.67.89"
+                  onChange={(e) => updateAccountField('parent1Phone', formatPhoneInput(e.target.value))}
+                  placeholder="+33 6 12 34 56 78"
                   required
                 />
               </label>
@@ -396,7 +395,6 @@ export default function ContactPreferencesPage() {
                     value={form.accountInfo.parent2StatusOther}
                     onChange={(e) => updateAccountField('parent2StatusOther', e.target.value)}
                     placeholder="Précisez le statut"
-                    required
                   />
                 )}
               </label>
@@ -405,11 +403,10 @@ export default function ContactPreferencesPage() {
                 <input
                   type="tel"
                   inputMode="tel"
-                  pattern="^0[1-9]([.][0-9]{2}){4}$"
                   className={inputClass()}
                   value={form.accountInfo.parent2Phone}
-                  onChange={(e) => updateAccountField('parent2Phone', formatFrenchPhone(e.target.value))}
-                  placeholder="01.23.45.67.89"
+                  onChange={(e) => updateAccountField('parent2Phone', formatPhoneInput(e.target.value))}
+                  placeholder="+33 6 12 34 56 78"
                 />
               </label>
               <label className="sm:col-span-2 text-sm font-medium text-slate-700">
@@ -446,7 +443,6 @@ export default function ContactPreferencesPage() {
                     className={inputClass()}
                     value={form.accountInfo.parent2AddressLine1}
                     onChange={(e) => updateAccountField('parent2AddressLine1', e.target.value)}
-                    required
                   />
                 </label>
                 <label className="sm:col-span-2 text-sm font-medium text-slate-700">
@@ -467,7 +463,6 @@ export default function ContactPreferencesPage() {
                     className={inputClass()}
                     value={form.accountInfo.parent2PostalCode}
                     onChange={(e) => updateAccountField('parent2PostalCode', e.target.value)}
-                    required
                   />
                 </label>
                 <label className="text-sm font-medium text-slate-700">
@@ -477,14 +472,13 @@ export default function ContactPreferencesPage() {
                     className={inputClass()}
                     value={form.accountInfo.parent2City}
                     onChange={(e) => updateAccountField('parent2City', e.target.value)}
-                    required
                   />
                 </label>
               </div>
             )}
           </section>
 
-          <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+          <div className="relative z-30 flex flex-col gap-3 sm:flex-row sm:justify-end">
             <Link href="/mon-compte" className="btn btn-secondary btn-sm">
               Annuler
             </Link>
@@ -493,6 +487,8 @@ export default function ContactPreferencesPage() {
               Enregistrer les préférences
             </button>
           </div>
+
+          <div aria-hidden className="h-20 bg-slate-50" />
 
           {saveStatus === 'saved' && (
             <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">

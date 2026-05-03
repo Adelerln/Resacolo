@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import {
   Heart,
   Mail,
@@ -8,14 +8,12 @@ import {
   CalendarDays,
   UserRound,
   ShieldCheck,
-  Settings,
-  X
+  Settings
 } from 'lucide-react';
 import Link from 'next/link';
 import { useFavorites } from '@/components/favorites/FavoritesProvider';
-import { patchFamilyProfileParent2 } from '@/lib/account-profile/client';
-import { formatFrenchPhone, parentStatusLabel } from '@/lib/account-preferences';
-import type { FamilyProfile, FamilyUpcomingReservation, ParentStatus } from '@/types/family-profile';
+import { formatPhoneDisplay, parentStatusLabel } from '@/lib/account-preferences';
+import type { FamilyProfile, FamilyUpcomingReservation } from '@/types/family-profile';
 import type { Stay } from '@/types/stay';
 
 type MonCompteClientProps = {
@@ -24,36 +22,8 @@ type MonCompteClientProps = {
   favoriteStays: Stay[];
 };
 
-type Parent2Draft = {
-  parent2Name: string;
-  parent2Status: ParentStatus;
-  parent2StatusOther: string;
-  parent2Phone: string;
-  parent2Email: string;
-  parent2HasDifferentAddress: boolean;
-  parent2AddressLine1: string;
-  parent2AddressLine2: string;
-  parent2PostalCode: string;
-  parent2City: string;
-};
-
 function formatAddress(line1: string, line2: string, postalCode: string, city: string) {
   return [line1, line2, `${postalCode} ${city}`.trim()].filter(Boolean).join(', ');
-}
-
-function buildParent2Draft(profile: FamilyProfile): Parent2Draft {
-  return {
-    parent2Name: profile.parent2Name,
-    parent2Status: profile.parent2Status,
-    parent2StatusOther: profile.parent2StatusOther,
-    parent2Phone: profile.parent2Phone,
-    parent2Email: profile.parent2Email,
-    parent2HasDifferentAddress: profile.parent2HasDifferentAddress,
-    parent2AddressLine1: profile.parent2AddressLine1,
-    parent2AddressLine2: profile.parent2AddressLine2,
-    parent2PostalCode: profile.parent2PostalCode,
-    parent2City: profile.parent2City
-  };
 }
 
 function buildProfileDisplayName(profile: FamilyProfile) {
@@ -71,11 +41,7 @@ export default function MonCompteClient({
   upcomingReservations,
   favoriteStays
 }: MonCompteClientProps) {
-  const [profile, setProfile] = useState<FamilyProfile>(initialProfile);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [draft, setDraft] = useState<Parent2Draft>(() => buildParent2Draft(initialProfile));
-  const [isSaving, setIsSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
+  const profile = initialProfile;
   const { favoriteIdsArray, isLoaded } = useFavorites();
 
   const parent1Name = useMemo(() => mapProfileToParent1Name(profile), [profile]);
@@ -102,64 +68,6 @@ export default function MonCompteClient({
     return favoriteStays.filter((stay) => ids.has(stay.id));
   }, [favoriteIdsArray, favoriteStays, isLoaded]);
 
-  function openEditModal() {
-    setSaveError(null);
-    setDraft(buildParent2Draft(profile));
-    setIsModalOpen(true);
-  }
-
-  function closeEditModal() {
-    setIsModalOpen(false);
-  }
-
-  function updateField<K extends keyof Parent2Draft>(key: K, value: Parent2Draft[K]) {
-    setDraft((prev) => ({ ...prev, [key]: value }));
-  }
-
-  function handleParent2DifferentAddressChange(checked: boolean) {
-    setDraft((prev) => {
-      if (checked) {
-        return { ...prev, parent2HasDifferentAddress: true };
-      }
-
-      return {
-        ...prev,
-        parent2HasDifferentAddress: false,
-        parent2AddressLine1: '',
-        parent2AddressLine2: '',
-        parent2PostalCode: '',
-        parent2City: ''
-      };
-    });
-  }
-
-  async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setSaveError(null);
-    setIsSaving(true);
-    try {
-      const response = await patchFamilyProfileParent2({
-        parent2Name: draft.parent2Name,
-        parent2Status: draft.parent2Status,
-        parent2StatusOther: draft.parent2StatusOther,
-        parent2Phone: draft.parent2Phone,
-        parent2Email: draft.parent2Email,
-        parent2HasDifferentAddress: draft.parent2HasDifferentAddress,
-        parent2AddressLine1: draft.parent2AddressLine1,
-        parent2AddressLine2: draft.parent2AddressLine2,
-        parent2PostalCode: draft.parent2PostalCode,
-        parent2City: draft.parent2City
-      });
-      setProfile(response.profile);
-      setDraft(buildParent2Draft(response.profile));
-      setIsModalOpen(false);
-    } catch (error) {
-      setSaveError(error instanceof Error ? error.message : 'Impossible de sauvegarder les informations.');
-    } finally {
-      setIsSaving(false);
-    }
-  }
-
   return (
     <div className="min-h-screen bg-slate-50">
       <section className="section-container py-10 sm:py-14">
@@ -185,7 +93,7 @@ export default function MonCompteClient({
           <div className="flex flex-wrap gap-3">
             <Link href="/contact/preferences" className="btn btn-secondary btn-sm">
               <Settings className="h-4 w-4" />
-              Préférences
+              Mes informations
             </Link>
             <form action="/api/auth/logout" method="post">
               <input type="hidden" name="redirectTo" value="/login/familles" />
@@ -322,7 +230,7 @@ export default function MonCompteClient({
                     </div>
                     <div className="flex items-start justify-between gap-3">
                       <dt className="text-slate-500">Portable</dt>
-                      <dd className="font-medium text-slate-900">{formatFrenchPhone(profile.phone)}</dd>
+                      <dd className="font-medium text-slate-900">{formatPhoneDisplay(profile.phone)}</dd>
                     </div>
                     <div className="flex items-start justify-between gap-3">
                       <dt className="text-slate-500">Email</dt>
@@ -351,7 +259,7 @@ export default function MonCompteClient({
                     <div className="flex items-start justify-between gap-3">
                       <dt className="text-slate-500">Portable</dt>
                       <dd className="font-medium text-slate-900">
-                        {profile.parent2Phone ? formatFrenchPhone(profile.parent2Phone) : 'Non renseigné'}
+                        {profile.parent2Phone ? formatPhoneDisplay(profile.parent2Phone) : 'Non renseigné'}
                       </dd>
                     </div>
                     <div className="flex items-start justify-between gap-3">
@@ -370,12 +278,6 @@ export default function MonCompteClient({
                 </article>
               </div>
 
-              <button
-                onClick={openEditModal}
-                className="mt-5 text-sm font-semibold text-brand-600 hover:text-brand-700"
-              >
-                Mettre à jour les informations du parent 2
-              </button>
             </section>
 
             <section className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-600">
@@ -401,176 +303,6 @@ export default function MonCompteClient({
           </aside>
         </div>
       </section>
-
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
-          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-4 shadow-xl sm:p-6">
-            <div className="flex items-center justify-between gap-4">
-              <h3 className="font-display text-xl font-semibold text-slate-900">
-                Mettre à jour les informations du parent 2
-              </h3>
-              <button
-                type="button"
-                onClick={closeEditModal}
-                className="rounded-md p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-                aria-label="Fermer"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <form className="mt-6 space-y-6" onSubmit={onSubmit}>
-              {saveError ? (
-                <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                  {saveError}
-                </p>
-              ) : null}
-
-              <section className="rounded-xl border border-orange-100 bg-orange-100/60 p-4">
-                <h4 className="text-sm font-semibold text-slate-900">Parent 2</h4>
-                <div className="mt-3 grid gap-4 sm:grid-cols-2">
-                  <label className="sm:col-span-2 text-sm font-medium text-slate-700">
-                    Nom parent 2
-                    <input
-                      type="text"
-                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                      value={draft.parent2Name}
-                      onChange={(event) => updateField('parent2Name', event.target.value)}
-                      placeholder="Nom et prénom"
-                    />
-                  </label>
-                  <label className="text-sm font-medium text-slate-700">
-                    Statut parent 2
-                    <select
-                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                      value={draft.parent2Status}
-                      onChange={(event) => updateField('parent2Status', event.target.value as ParentStatus)}
-                    >
-                      <option value="pere">Père</option>
-                      <option value="mere">Mère</option>
-                      <option value="grand-parent">Grand-parent</option>
-                      <option value="autre">Autre</option>
-                    </select>
-                    {draft.parent2Status === 'autre' && (
-                      <input
-                        type="text"
-                        className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                        value={draft.parent2StatusOther}
-                        onChange={(event) => updateField('parent2StatusOther', event.target.value)}
-                        placeholder="Précisez le statut"
-                        required
-                      />
-                    )}
-                  </label>
-                  <label className="text-sm font-medium text-slate-700">
-                    Portable parent 2
-                    <input
-                      type="tel"
-                      inputMode="tel"
-                      pattern="^0[1-9]([.][0-9]{2}){4}$"
-                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                      value={draft.parent2Phone}
-                      onChange={(event) => updateField('parent2Phone', formatFrenchPhone(event.target.value))}
-                      placeholder="01.23.45.67.89"
-                    />
-                  </label>
-                  <label className="sm:col-span-2 text-sm font-medium text-slate-700">
-                    Email parent 2
-                    <input
-                      type="email"
-                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                      value={draft.parent2Email}
-                      onChange={(event) => updateField('parent2Email', event.target.value)}
-                      placeholder="parent2@mail.fr"
-                    />
-                  </label>
-                  <label className="sm:col-span-2 flex items-center gap-3 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700">
-                    <input
-                      type="checkbox"
-                      checked={draft.parent2HasDifferentAddress}
-                      onChange={(event) => handleParent2DifferentAddressChange(event.target.checked)}
-                      className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
-                    />
-                    Adresse du parent 2 différente du domicile
-                  </label>
-                  {!draft.parent2HasDifferentAddress && (
-                    <p className="sm:col-span-2 -mt-1 text-xs text-slate-500">
-                      Parent 2 utilise la même adresse que le domicile.
-                    </p>
-                  )}
-                </div>
-
-                {draft.parent2HasDifferentAddress && (
-                  <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                    <label className="sm:col-span-2 text-sm font-medium text-slate-700">
-                      N° et voie parent 2
-                      <input
-                        type="text"
-                        className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                        value={draft.parent2AddressLine1}
-                        onChange={(event) => updateField('parent2AddressLine1', event.target.value)}
-                        placeholder="Ex: 18 avenue de la République"
-                        required={draft.parent2HasDifferentAddress}
-                      />
-                    </label>
-                    <label className="sm:col-span-2 text-sm font-medium text-slate-700">
-                      Complément d&apos;adresse parent 2
-                      <input
-                        type="text"
-                        className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                        value={draft.parent2AddressLine2}
-                        onChange={(event) => updateField('parent2AddressLine2', event.target.value)}
-                        placeholder="Bâtiment, appartement, étage..."
-                      />
-                    </label>
-                    <label className="text-sm font-medium text-slate-700">
-                      Code postal parent 2
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        pattern="[0-9]{5}"
-                        className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                        value={draft.parent2PostalCode}
-                        onChange={(event) => updateField('parent2PostalCode', event.target.value)}
-                        placeholder="75001"
-                        required={draft.parent2HasDifferentAddress}
-                      />
-                    </label>
-                    <label className="text-sm font-medium text-slate-700">
-                      Ville parent 2
-                      <input
-                        type="text"
-                        className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                        value={draft.parent2City}
-                        onChange={(event) => updateField('parent2City', event.target.value)}
-                        placeholder="Paris"
-                        required={draft.parent2HasDifferentAddress}
-                      />
-                    </label>
-                  </div>
-                )}
-              </section>
-
-              <div className="flex justify-end gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={closeEditModal}
-                  className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                >
-                  Annuler
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSaving}
-                  className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60"
-                >
-                  {isSaving ? 'Enregistrement...' : 'Enregistrer'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

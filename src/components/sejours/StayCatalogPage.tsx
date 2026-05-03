@@ -1,7 +1,7 @@
 'use client';
 
 import Image from 'next/image';
-import { useEffect, useMemo, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Compass, Filter, Search, ShoppingCart, X } from 'lucide-react';
 import { FavoriteToggleButton } from '@/components/favorites/FavoriteToggleButton';
@@ -147,7 +147,7 @@ function toUrlSearchParams(input: SearchParamInput) {
   return params;
 }
 
-function useDebouncedValue<TValue>(value: TValue, delayMs = 240) {
+function useDebouncedValue<TValue>(value: TValue, delayMs = 120) {
   const [debouncedValue, setDebouncedValue] = useState(value);
 
   useEffect(() => {
@@ -448,6 +448,7 @@ export function StayCatalogPage({
   const [filters, setFilters] = useState<StayCatalogFilterState>(initialFilters);
   const [sort, setSort] = useState<StayCatalogSortValue>(initialSort);
   const [randomSeed] = useState<number>(() => Math.floor(Math.random() * 2_147_483_647));
+  const deferredFilters = useDeferredValue(filters);
 
   const sliderBounds = useMemo(() => {
     const ageMins = stays.map((s) => s.ageMin).filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
@@ -492,7 +493,6 @@ export function StayCatalogPage({
     };
   }, [runtimeFilters, runtimeFiltersKey, runtimeSort]);
 
-  const debouncedQuery = useDebouncedValue(filters.q);
   const urlFilters = useMemo(
     () => {
       const ageMin = filters.ageMin;
@@ -513,7 +513,7 @@ export function StayCatalogPage({
         priceMax === sliderBounds.price.max;
 
       return {
-        q: debouncedQuery,
+        q: filters.q,
         seasonIds: filters.seasonIds,
         categories: filters.categories,
         destinationTypes: filters.destinationTypes,
@@ -527,7 +527,7 @@ export function StayCatalogPage({
       };
     },
     [
-      debouncedQuery,
+      filters.q,
       filters.categories,
       filters.destinationTypes,
       filters.destinations,
@@ -565,8 +565,8 @@ export function StayCatalogPage({
   }, [sort, urlFilters, urlFiltersKey, pathname, router, runtimeQuery]);
 
   const filteredStays = useMemo(
-    () => applyStayCatalogFilters(stays, filters),
-    [stays, filters]
+    () => applyStayCatalogFilters(stays, deferredFilters),
+    [stays, deferredFilters]
   );
   const panelOptions = useMemo(() => {
     function withSelectedFallbacks<TOption extends StayCatalogFilterOption>(
@@ -588,22 +588,22 @@ export function StayCatalogPage({
     }
 
     const seasonBase = buildStayCatalogFilterOptions(
-      applyStayCatalogFilters(stays, { ...filters, seasonIds: [] })
+      applyStayCatalogFilters(stays, { ...deferredFilters, seasonIds: [] })
     ).seasons;
     const categoryBase = buildStayCatalogFilterOptions(
-      applyStayCatalogFilters(stays, { ...filters, categories: [] })
+      applyStayCatalogFilters(stays, { ...deferredFilters, categories: [] })
     ).categories;
     const ageBandBase = buildStayCatalogFilterOptions(
-      applyStayCatalogFilters(stays, { ...filters, ageBands: [] })
+      applyStayCatalogFilters(stays, { ...deferredFilters, ageBands: [] })
     ).ageBands;
     const destinationTypeBase = buildStayCatalogFilterOptions(
-      applyStayCatalogFilters(stays, { ...filters, destinationTypes: [] })
+      applyStayCatalogFilters(stays, { ...deferredFilters, destinationTypes: [] })
     ).destinationTypes;
     const destinationBase = buildStayCatalogFilterOptions(
-      applyStayCatalogFilters(stays, { ...filters, destinations: [] })
+      applyStayCatalogFilters(stays, { ...deferredFilters, destinations: [] })
     ).destinations;
     const organizerBase = buildStayCatalogFilterOptions(
-      applyStayCatalogFilters(stays, { ...filters, organizerIds: [] })
+      applyStayCatalogFilters(stays, { ...deferredFilters, organizerIds: [] })
     ).organizers;
 
     return {
@@ -619,7 +619,7 @@ export function StayCatalogPage({
       destinations: withSelectedFallbacks(destinationBase, filterOptions.destinations, filters.destinations),
       organizers: withSelectedFallbacks(organizerBase, filterOptions.organizers, filters.organizerIds)
     };
-  }, [filterOptions, filters, stays]);
+  }, [deferredFilters, filterOptions, stays]);
   const sortedStays = useMemo(
     () => applyStayCatalogSort(filteredStays, sort, { randomSeed }),
     [filteredStays, randomSeed, sort]

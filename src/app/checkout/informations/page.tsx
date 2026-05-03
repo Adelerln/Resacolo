@@ -109,6 +109,12 @@ export default function CheckoutInformationsPage() {
   const [isFamilyAuthenticated, setIsFamilyAuthenticated] = useState(false);
   const [hasPrefilledFromProfile, setHasPrefilledFromProfile] = useState(false);
 
+  function isAuthRequiredProfileError(error: unknown) {
+    if (!(error instanceof Error)) return false;
+    const normalized = error.message.toLowerCase();
+    return normalized.includes('connexion famille requise') || normalized.includes('auth_required');
+  }
+
   useEffect(() => {
     router.prefetch('/checkout/recapitulatif');
   }, [router]);
@@ -149,14 +155,12 @@ export default function CheckoutInformationsPage() {
             updateParticipant(item.id, mapChildToParticipant(child, item.id));
           });
         }
-      } catch {
-        if (!cancelled) {
-          setIsFamilyAuthenticated(false);
-        }
+      } catch (error) {
+        if (cancelled) return;
+        setIsFamilyAuthenticated(!isAuthRequiredProfileError(error));
       } finally {
-        if (!cancelled) {
-          setHasPrefilledFromProfile(true);
-        }
+        if (cancelled) return;
+        setHasPrefilledFromProfile(true);
       }
     }
 

@@ -163,10 +163,84 @@ export function saveAccountPreferences(preferences: AccountPreferences) {
   );
 }
 
-export function formatFrenchPhone(value: string) {
+function groupDigits(value: string, groupSize: number, separator: string) {
+  if (!value) return '';
+  const parts: string[] = [];
+  for (let index = 0; index < value.length; index += groupSize) {
+    parts.push(value.slice(index, index + groupSize));
+  }
+  return parts.join(separator);
+}
+
+function formatNorthAmericanNational(value: string) {
   const digits = value.replace(/\D/g, '').slice(0, 10);
   if (!digits) return '';
-  return digits.match(/.{1,2}/g)?.join('.') ?? digits;
+  if (digits.length <= 3) return `(${digits}`;
+  if (digits.length <= 6) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
+  return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6, 10)}`;
+}
+
+function normalizePhoneRaw(value: string) {
+  const trimmed = value.trim();
+  const hasPlus = trimmed.startsWith('+');
+  const digits = trimmed.replace(/\D/g, '');
+  if (!digits) return hasPlus ? '+' : '';
+  return hasPlus ? `+${digits}` : digits;
+}
+
+export function formatPhoneInput(value: string) {
+  const normalized = normalizePhoneRaw(value);
+  if (!normalized) return '';
+  if (normalized === '+') return '+';
+
+  if (normalized.startsWith('+1')) {
+    const national = normalized.slice(2).slice(0, 10);
+    if (!national) return '+1';
+    return `+1 ${formatNorthAmericanNational(national)}`;
+  }
+
+  if (normalized.startsWith('+33')) {
+    const national = normalized.slice(3).slice(0, 9);
+    if (!national) return '+33';
+    return `+33 ${groupDigits(national, 2, ' ')}`;
+  }
+
+  if (normalized.startsWith('+')) {
+    const intlDigits = normalized.slice(1).slice(0, 15);
+    return `+${groupDigits(intlDigits, 3, ' ')}`;
+  }
+
+  const localDigits = normalized.slice(0, 10);
+  return groupDigits(localDigits, 2, '.');
+}
+
+export function formatPhoneDisplay(value: string) {
+  const normalized = normalizePhoneRaw(value);
+  if (!normalized || normalized === '+') return '';
+
+  if (normalized.startsWith('+1')) {
+    const national = normalized.slice(2).replace(/\D/g, '');
+    if (!national) return '+1';
+    if (national.length <= 10) return formatNorthAmericanNational(national);
+    return `${formatNorthAmericanNational(national.slice(0, 10))} x${national.slice(10)}`;
+  }
+
+  if (normalized.startsWith('+33')) {
+    const national = normalized.slice(3).replace(/\D/g, '').slice(0, 9);
+    if (!national) return '+33';
+    const local = `0${national}`;
+    return groupDigits(local.slice(0, 10), 2, '.');
+  }
+
+  if (normalized.startsWith('+')) {
+    return `+${groupDigits(normalized.slice(1).replace(/\D/g, '').slice(0, 15), 3, ' ')}`;
+  }
+
+  return groupDigits(normalized.replace(/\D/g, '').slice(0, 10), 2, '.');
+}
+
+export function formatFrenchPhone(value: string) {
+  return formatPhoneDisplay(value);
 }
 
 export function parentStatusLabel(status: ParentStatus, other?: string) {

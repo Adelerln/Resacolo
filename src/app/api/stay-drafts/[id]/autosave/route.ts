@@ -312,6 +312,8 @@ export async function PATCH(
       video_urls: nextVideoUrls.length > 0 ? nextVideoUrls : null,
       partner_discount_percent: nextPartnerDiscount,
       autosave_updated_at: now
+    },
+    updated_at: now
   };
 
   let { data: savedDraft, error: updateError } = await supabase

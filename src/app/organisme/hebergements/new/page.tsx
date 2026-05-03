@@ -96,6 +96,7 @@ export default async function NewAccommodationPage({ searchParams }: PageProps) 
         department_code: addressInput.departmentCode || null,
         region_text: addressInput.regionText || null,
         country: addressInput.country || null,
+        description: embedAccommodationLocationMeta(description, locationInput),
         bed_info: String(formData.get('bed_info') ?? '').trim() || null,
         bathroom_info: String(formData.get('bathroom_info') ?? '').trim() || null,
         catering_info: String(formData.get('catering_info') ?? '').trim() || null,

@@ -1165,6 +1165,8 @@ export default function StayDraftReviewForm({
       destination_countries: destinationCountries,
       location_text: legacyDestination.locationText,
       region_text: legacyDestination.regionText,
+      location_text: locationText,
+      region_text: regionText,
       description,
       activities_text: initialPayload.activities_text,
       required_documents_text: requiredDocumentsText,
@@ -1759,6 +1761,11 @@ export default function StayDraftReviewForm({
             <select
               value={destinationType}
               onChange={(event) => setDestinationType(event.target.value as DestinationTypeValue | '')}
+            Région
+            <input
+              id="draft-region-input"
+              value={regionText}
+              onChange={(event) => setRegionText(event.target.value)}
               className={draftReviewControlClass({
                 required: false,
                 filled: Boolean(destinationType)

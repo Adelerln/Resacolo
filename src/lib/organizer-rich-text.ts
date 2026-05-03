@@ -10,10 +10,20 @@ function escapeHtml(value: string) {
 function stripHtmlTags(value: string) {
   return value
     .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/p>/gi, '\n')
+    .replace(/<\/(p|div|section|article|blockquote|h[1-6])>/gi, '\n\n')
+    .replace(/<li>/gi, '- ')
+    .replace(/<\/li>/gi, '\n')
+    .replace(/<\/(ul|ol)>/gi, '\n')
     .replace(/<[^>]+>/g, ' ')
     .replace(/&nbsp;|&#160;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/\r/g, '')
     .replace(/\s+\n/g, '\n')
+    .replace(/\n\s+/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .replace(/[ \t]{2,}/g, ' ')
     .trim();
@@ -62,6 +72,12 @@ export function sanitizeOrganizerRichText(value?: string | null) {
   html = html.replace(/<br>/gi, '<br />');
 
   return applyFrenchNbspBeforePunctuation(html.trim());
+}
+
+export function extractOrganizerRichTextPlainText(value?: string | null) {
+  const description = extractOrganizerDurationMeta(value).description;
+  if (!description) return '';
+  return stripHtmlTags(sanitizeOrganizerRichText(description));
 }
 
 export function extractOrganizerDurationMeta(value?: string | null) {

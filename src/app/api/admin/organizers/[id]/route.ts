@@ -25,7 +25,8 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
   const isFoundingMember = formData.get('is_founding_member') === 'on';
   const isResacoloMember = formData.get('is_resacolo_member') === 'on';
   const heroIntroText = String(formData.get('hero_intro_text') ?? '').trim();
-  const description = String(formData.get('description') ?? '').trim();
+  const hasDescriptionField = formData.has('description');
+  const description = hasDescriptionField ? String(formData.get('description') ?? '').trim() : null;
   const foundedYearRaw = String(formData.get('founded_year') ?? '').trim();
   const ageMinRaw = String(formData.get('age_min') ?? '').trim();
   const ageMaxRaw = String(formData.get('age_max') ?? '').trim();
@@ -68,27 +69,30 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
     .maybeSingle();
   const existingDurationMeta = extractOrganizerDurationMeta(organizerDetails?.description);
 
-  const { error } = await supabase
-    .from('organizers')
-    .update({
-      name,
-      contact_email: contactEmail,
-      website_url: websiteUrl || null,
-      logo_url: hasLogoUrlField ? logoUrlField || null : undefined,
-      is_founding_member: isFoundingMember,
-      is_resacolo_member: isResacoloMember,
-      hero_intro_text: heroIntroText || null,
-      description: embedOrganizerDurationMeta(
-        description || null,
-        existingDurationMeta.stayDurationMinDays,
-        existingDurationMeta.stayDurationMaxDays
-      ),
-      founded_year: foundedYear,
-      age_min: ageMin,
-      age_max: ageMax,
-      slug
-    })
-    .eq('id', organizer.id);
+  const updatePayload = {
+    name,
+    contact_email: contactEmail,
+    website_url: websiteUrl || null,
+    logo_url: hasLogoUrlField ? logoUrlField || null : undefined,
+    is_founding_member: isFoundingMember,
+    is_resacolo_member: isResacoloMember,
+    hero_intro_text: heroIntroText || null,
+    founded_year: foundedYear,
+    age_min: ageMin,
+    age_max: ageMax,
+    slug,
+    ...(hasDescriptionField
+      ? {
+          description: embedOrganizerDurationMeta(
+            description,
+            existingDurationMeta.stayDurationMinDays,
+            existingDurationMeta.stayDurationMaxDays
+          )
+        }
+      : {})
+  };
+
+  const { error } = await supabase.from('organizers').update(updatePayload).eq('id', organizer.id);
 
   if (error) {
     return NextResponse.redirect(

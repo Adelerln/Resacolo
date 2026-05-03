@@ -88,7 +88,6 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
   }
 
   const organizerDescriptionMeta = extractOrganizerDurationMeta(organizer.description);
-
   let stayDurationMinLoaded: number | null = null;
   let stayDurationMaxLoaded: number | null = null;
   const { data: durationRow, error: durationLoadError } = await supabase

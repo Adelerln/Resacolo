@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Pencil } from 'lucide-react';
+import { Pencil, Trash2 } from 'lucide-react';
 import { ORGANIZER_ACCESS_ROLE_VALUES, type OrganizerAccessRole } from '@/lib/organizer-access';
 import {
   PASSWORD_POLICY_HTML_PATTERN,
@@ -104,14 +104,35 @@ export function AdminOrganizerMembersSection({
                       {new Date(member.created_at).toLocaleDateString('fr-FR')}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <button
-                        type="button"
-                        onClick={() => setModalState({ mode: 'edit', member })}
-                        className="inline-flex items-center justify-center rounded-md border border-slate-200 p-2 text-slate-600 hover:text-slate-900"
-                        aria-label="Modifier le membre"
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </button>
+                      <div className="inline-flex items-center justify-end gap-2">
+                        <form
+                          action={`/api/admin/organizers/${organizerSlug}/members/${member.id}/delete`}
+                          method="post"
+                          className="inline"
+                          onSubmit={(event) => {
+                            if (!window.confirm('Supprimer cet utilisateur de cet organisme ?')) {
+                              event.preventDefault();
+                            }
+                          }}
+                        >
+                          <input type="hidden" name="redirect_to" value={`/admin/organizers/${organizerSlug}`} />
+                          <button
+                            type="submit"
+                            className="inline-flex items-center justify-center rounded-md border border-red-200 p-2 text-red-600 hover:border-red-300 hover:text-red-700"
+                            aria-label="Supprimer le membre"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </form>
+                        <button
+                          type="button"
+                          onClick={() => setModalState({ mode: 'edit', member })}
+                          className="inline-flex items-center justify-center rounded-md border border-slate-200 p-2 text-slate-600 hover:text-slate-900"
+                          aria-label="Modifier le membre"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );

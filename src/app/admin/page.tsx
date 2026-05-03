@@ -283,28 +283,29 @@ export default async function AdminHome() {
             prefetch={false}
             className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 hover:border-slate-300"
           >
-            Gérer les séjours ({totalStays}, dont {archivedStays} archivés)
+            Gérer les <span className="rounded bg-orange-100 px-1">séjours</span> ({totalStays}, dont {archivedStays}{' '}
+            archivés)
           </Link>
           <Link
             href="/admin/organizers"
             prefetch={false}
             className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 hover:border-slate-300"
           >
-            Gérer les organismes ({members.length} membres liés)
+            Gérer les <span className="rounded bg-orange-100 px-1">organismes</span> ({members.length} membres liés)
           </Link>
           <Link
             href="/admin/finances"
             prefetch={false}
             className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 hover:border-slate-300"
           >
-            Voir les recettes
+            Voir les <span className="rounded bg-orange-100 px-1">recettes</span>
           </Link>
           <Link
             href="/admin/utilisateurs"
             prefetch={false}
             className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 hover:border-slate-300"
           >
-            Gérer les utilisateurs back-office
+            Gérer les <span className="rounded bg-orange-100 px-1">utilisateurs de back-office</span>
           </Link>
         </div>
       </section>

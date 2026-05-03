@@ -307,13 +307,11 @@ export async function PATCH(
 
   updatePayload.raw_payload = {
     ...(updatePayload.raw_payload as Record<string, unknown>),
-      draft_season_ids: nextSeasonIds.length > 0 ? nextSeasonIds : null,
-      draft_season_names: nextSeasonNames.length > 0 ? nextSeasonNames : null,
-      video_urls: nextVideoUrls.length > 0 ? nextVideoUrls : null,
-      partner_discount_percent: nextPartnerDiscount,
-      autosave_updated_at: now
-    },
-    updated_at: now
+    draft_season_ids: nextSeasonIds.length > 0 ? nextSeasonIds : null,
+    draft_season_names: nextSeasonNames.length > 0 ? nextSeasonNames : null,
+    video_urls: nextVideoUrls.length > 0 ? nextVideoUrls : null,
+    partner_discount_percent: nextPartnerDiscount,
+    autosave_updated_at: now
   };
 
   let { data: savedDraft, error: updateError } = await supabase

@@ -789,7 +789,6 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
           departmentCode: accommodation.department_code,
           regionText: accommodation.region_text,
           country: accommodation.country,
-          locationLabel: locationMeta.locationLabel,
           description: locationMeta.description ?? '',
           bedInfo: accommodation.bed_info?.trim() ?? '',
           bathroomInfo: accommodation.bathroom_info?.trim() ?? '',

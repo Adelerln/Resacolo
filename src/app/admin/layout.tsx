@@ -1,6 +1,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
+import { AdminSidebarNav } from '@/components/admin/AdminSidebarNav';
 import { requireRole } from '@/lib/auth/require';
 
 const adminNavLinks = [
@@ -59,18 +60,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
               <p className="text-lg font-semibold text-slate-900">Admin Resacolo</p>
             </div>
           </div>
-          <nav className="px-3 text-sm text-slate-600">
-            {adminNavLinks.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                prefetch={false}
-                className="mb-1 block rounded-lg px-3 py-2 font-semibold transition hover:bg-slate-100"
-              >
-                {item.label}
-              </Link>
-            ))}
-          </nav>
+          <AdminSidebarNav links={adminNavLinks} />
           <div className="mt-auto px-6 pb-6 pt-4">
             <form action="/api/auth/logout" method="post">
               <button className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 hover:border-slate-300">

@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { requireRole } from '@/lib/auth/require';
 import { AdminOrganizerMembersSection } from '@/components/admin/AdminOrganizerMembersSection';
-import { extractOrganizerDurationMeta } from '@/lib/organizer-rich-text';
+import { sanitizeOrganizerRichText } from '@/lib/organizer-rich-text';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import type { Database } from '@/types/supabase';
 
@@ -81,7 +81,7 @@ export default async function AdminOrganizerDetailPage({ params: paramsPromise, 
   }
 
   const row = organizer as OrganizerDetail;
-  const organizerDescriptionMeta = extractOrganizerDurationMeta(row.description);
+  const organizerDescriptionHtml = sanitizeOrganizerRichText(row.description);
 
   const organizerSlug = row.slug ?? row.id;
 
@@ -152,6 +152,8 @@ export default async function AdminOrganizerDetailPage({ params: paramsPromise, 
               ? 'Membre ajouté.'
               : successParam === 'member-updated'
                 ? 'Membre mis à jour.'
+                : successParam === 'member-deleted'
+                  ? 'Membre supprimé.'
                 : 'Fiche organisme enregistrée.'}
         </div>
       )}
@@ -240,16 +242,19 @@ export default async function AdminOrganizerDetailPage({ params: paramsPromise, 
             className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
           />
         </label>
-        <label className="block text-sm font-medium text-slate-700">
-          Description
-          <textarea
-            name="description"
-            rows={4}
-            defaultValue={organizerDescriptionMeta.description ?? ''}
-            disabled
-            className="mt-1 w-full cursor-not-allowed rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-slate-600"
-          />
-        </label>
+        <div className="block text-sm font-medium text-slate-700">
+          <p>Texte de présentation</p>
+          <div className="mt-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+            {organizerDescriptionHtml ? (
+              <div
+                className="leading-relaxed text-slate-700 [&_ol]:mb-3 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:mb-3 [&_p:last-child]:mb-0 [&_strong]:font-semibold [&_ul]:mb-3 [&_ul]:list-disc [&_ul]:pl-5"
+                dangerouslySetInnerHTML={{ __html: organizerDescriptionHtml }}
+              />
+            ) : (
+              <p className="text-slate-500">Aucun texte de présentation.</p>
+            )}
+          </div>
+        </div>
 
         <div className="border-t border-slate-100 pt-6">
           <h2 className="admin-section-title">Statut organisme</h2>

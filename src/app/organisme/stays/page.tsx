@@ -18,6 +18,7 @@ type PageProps = {
     organizerId?: string | string[];
     saved?: string | string[];
     deleted?: string | string[];
+    visibility?: string | string[];
     draftDeleted?: string | string[];
     error?: string | string[];
     openStay?: string | string[];
@@ -48,6 +49,7 @@ export default async function OrganizerStaysPage({ searchParams }: PageProps) {
   const supabase = getServerSupabaseClient();
   const savedParam = formatRedirectValue(resolvedSearchParams?.saved);
   const deletedParam = formatRedirectValue(resolvedSearchParams?.deleted);
+  const visibilityParam = formatRedirectValue(resolvedSearchParams?.visibility);
   const draftDeletedParam = formatRedirectValue(resolvedSearchParams?.draftDeleted);
   const errorParam = formatRedirectValue(resolvedSearchParams?.error);
   const openStayParams = formatRedirectValues(resolvedSearchParams?.openStay);
@@ -412,6 +414,70 @@ export default async function OrganizerStaysPage({ searchParams }: PageProps) {
     redirect(withOrganizerQuery('/organisme/sejours?deleted=1', organizerId));
   }
 
+  async function updateStayStatus(formData: FormData) {
+    'use server';
+    const supabase = getServerSupabaseClient();
+    const stayId = String(formData.get('stay_id') ?? '').trim();
+    const requestedStatus = String(formData.get('status') ?? '').trim().toUpperCase();
+
+    if (!stayId || !organizerId) {
+      redirect(withOrganizerQuery('/organisme/sejours?error=Action%20impossible.', organizerId));
+    }
+
+    if (requestedStatus !== 'PUBLISHED' && requestedStatus !== 'HIDDEN') {
+      redirect(
+        withOrganizerQuery('/organisme/sejours?error=Statut%20invalide%20pour%20ce%20séjour.', organizerId)
+      );
+    }
+
+    const { data: stay, error: stayError } = await supabase
+      .from('stays')
+      .select('id,status')
+      .eq('id', stayId)
+      .eq('organizer_id', organizerId)
+      .maybeSingle();
+
+    if (stayError) {
+      redirect(
+        withOrganizerQuery(`/organisme/sejours?error=${encodeURIComponent(stayError.message)}`, organizerId)
+      );
+    }
+
+    if (!stay) {
+      redirect(withOrganizerQuery('/organisme/sejours?error=Séjour%20introuvable.', organizerId));
+    }
+
+    if (stay.status !== 'PUBLISHED' && stay.status !== 'HIDDEN') {
+      redirect(
+        withOrganizerQuery(
+          '/organisme/sejours?error=Seuls%20les%20séjours%20publiés%20peuvent%20être%20masqués%20ou%20affichés.',
+          organizerId
+        )
+      );
+    }
+
+    const { error: updateError } = await supabase
+      .from('stays')
+      .update({ status: requestedStatus })
+      .eq('id', stay.id)
+      .eq('organizer_id', organizerId);
+
+    if (updateError) {
+      redirect(
+        withOrganizerQuery(`/organisme/sejours?error=${encodeURIComponent(updateError.message)}`, organizerId)
+      );
+    }
+
+    revalidatePath('/organisme/sejours');
+    revalidatePath('/organisme/stays');
+    revalidatePath(`/organisme/sejours/${stay.id}`);
+    revalidatePath(`/organisme/stays/${stay.id}`);
+    revalidatePath('/sejours');
+
+    const visibilityQueryValue = requestedStatus === 'HIDDEN' ? 'hidden' : 'visible';
+    redirect(withOrganizerQuery(`/organisme/sejours?visibility=${visibilityQueryValue}`, organizerId));
+  }
+
   async function deleteStayDraft(formData: FormData) {
     'use server';
     const supabase = getServerSupabaseClient();
@@ -479,6 +545,12 @@ export default async function OrganizerStaysPage({ searchParams }: PageProps) {
   return (
     <div className="space-y-6">
       {deletedParam === '1' && <SavedToast message="Le séjour a bien été supprimé." />}
+      {visibilityParam === 'hidden' && (
+        <SavedToast message="Le séjour a été masqué du catalogue public." />
+      )}
+      {visibilityParam === 'visible' && (
+        <SavedToast message="Le séjour est de nouveau visible dans le catalogue public." />
+      )}
       {draftDeletedParam === '1' && <SavedToast message="Le brouillon d'import a bien été supprimé." />}
       {savedParam === '1' && <SavedToast message="Le stock de la session a bien été mis à jour." />}
       {errorParam && <ErrorToast message={decodeURIComponent(errorParam)} />}
@@ -494,6 +566,7 @@ export default async function OrganizerStaysPage({ searchParams }: PageProps) {
           importDrafts={importDraftRows}
           updateSessionRemainingPlacesAction={updateSessionRemainingPlaces}
           deleteStayAction={deleteStay}
+          updateStayStatusAction={updateStayStatus}
           deleteImportDraftAction={deleteStayDraft}
           defaultOpenStayIds={openStayParams}
           defaultEditingSessionId={editSessionParam ?? null}

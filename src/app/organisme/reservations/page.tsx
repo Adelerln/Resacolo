@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import OrganizerPageHeader from '@/components/organisme/OrganizerPageHeader';
+import { canAccessOrganizerSection } from '@/lib/organizer-access';
 import { requireOrganizerPageAccess } from '@/lib/organizer-backoffice-access.server';
 import { mockRequests, mockSessions, mockStages, mockStays } from '@/lib/mocks';
 import { withOrganizerQuery } from '@/lib/organizers.server';
@@ -12,10 +13,11 @@ type PageProps = {
 
 export default async function OrganizerRequestsPage({ searchParams }: PageProps) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
-  const { selectedOrganizerId } = await requireOrganizerPageAccess({
+  const { selectedOrganizerId, accessRole } = await requireOrganizerPageAccess({
     requestedOrganizerId: resolvedSearchParams?.organizerId,
     requiredSection: 'reservations'
   });
+  const canAccessStays = canAccessOrganizerSection(accessRole, 'stays');
   const useMock = process.env.MOCK_UI === '1';
   const requests = useMock
     ? mockRequests.map((request) => ({
@@ -59,14 +61,16 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
                 <tr>
                   <td className="px-4 py-8 text-slate-500" colSpan={4}>
                     <p>Aucune demande pour le moment.</p>
-                    <p className="mt-2 text-sm">
-                      <Link
-                        href={withOrganizerQuery('/organisme/sejours', selectedOrganizerId)}
-                        className="font-semibold text-emerald-700 underline"
-                      >
-                        Vérifier les séjours publiés
-                      </Link>
-                    </p>
+                    {canAccessStays ? (
+                      <p className="mt-2 text-sm">
+                        <Link
+                          href={withOrganizerQuery('/organisme/sejours', selectedOrganizerId)}
+                          className="font-semibold text-emerald-700 underline"
+                        >
+                          Vérifier les séjours publiés
+                        </Link>
+                      </p>
+                    ) : null}
                   </td>
                 </tr>
               )}

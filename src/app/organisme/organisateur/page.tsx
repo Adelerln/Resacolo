@@ -384,7 +384,9 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
-          <h2 className="text-lg font-semibold text-slate-900">Catalogue organisateur</h2>
+          <h2 className="text-lg font-semibold text-slate-900">
+            Catalogue organisateur (à compléter selon l'offre) :
+          </h2>
           <OrganizerCatalogTabs
             seasonChecklist={{
               name: 'season_keys',

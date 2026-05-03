@@ -244,11 +244,13 @@ export default async function OrganizerDashboardPage({ searchParams }: PageProps
           <div className="flex items-start justify-between gap-3">
             <p className="inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
               Sessions complètes
-              <KpiInfo text="Sessions marquées complètes ou à capacité atteinte." />
+              <KpiInfo text="Sessions ouvertes marquées complètes ou à capacité atteinte." />
             </p>
             <Gauge className="h-4 w-4 text-slate-400" />
           </div>
-          <p className="mt-3 text-3xl font-semibold text-slate-900">{metrics.fullSessionsCount}</p>
+          <p className="mt-3 text-3xl font-semibold text-slate-900">
+            {metrics.fullSessionsCount} / {metrics.openSessionsCount}
+          </p>
         </article>
       </section>
 
@@ -270,7 +272,7 @@ export default async function OrganizerDashboardPage({ searchParams }: PageProps
           <article className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
             <h3 className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
               <TrendingUp className="h-4 w-4 text-emerald-600" />
-              Top séjours
+              Top séjours réservés
             </h3>
             {lists.topStays.length > 0 ? (
               <ul className="mt-3 space-y-2 text-sm text-slate-700">
@@ -296,7 +298,7 @@ export default async function OrganizerDashboardPage({ searchParams }: PageProps
           <article className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
             <h3 className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
               <Megaphone className="h-4 w-4 text-amber-600" />
-              Séjours sans traction
+              Séjours les plus consultés
             </h3>
             {lists.noTractionPublishedStays.length > 0 ? (
               <ul className="mt-3 space-y-2 text-sm text-slate-700">
@@ -308,19 +310,21 @@ export default async function OrganizerDashboardPage({ searchParams }: PageProps
                     >
                       {formatStayDisplayTitle(stay.title)}
                     </Link>
-                    <span className="shrink-0 text-xs text-slate-500">{stay.sessionCount} sessions</span>
+                    <span className="shrink-0 text-xs text-slate-500">
+                      {stay.visitCount} {stay.visitCount > 1 ? 'visites' : 'visite'}
+                    </span>
                   </li>
                 ))}
               </ul>
             ) : (
-              <p className="mt-3 text-sm text-slate-500">Aucun séjour sans traction à prioriser.</p>
+              <p className="mt-3 text-sm text-slate-500">Aucune consultation enregistrée pour le moment.</p>
             )}
           </article>
 
           <article className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
             <h3 className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
               <Gauge className="h-4 w-4 text-rose-600" />
-              Points de vigilance
+              Séjours complets
             </h3>
             {lists.vigilanceStays.length > 0 ? (
               <ul className="mt-3 space-y-2 text-sm text-slate-700">
@@ -348,9 +352,6 @@ export default async function OrganizerDashboardPage({ searchParams }: PageProps
       <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 px-5 py-4">
           <h2 className="organizer-section-title">Suivi des séjours</h2>
-          <p className="mt-1 text-sm text-slate-600">
-            Détail des performances pour repérer rapidement les fiches à optimiser.
-          </p>
         </div>
 
         {stayRows.length > 0 ? (
@@ -366,39 +367,36 @@ export default async function OrganizerDashboardPage({ searchParams }: PageProps
               </colgroup>
               <thead>
                 <tr>
-                  <th className="px-5 py-3">Séjour</th>
-                  <th className="px-5 py-3">Statut</th>
-                  <th className="px-5 py-3">Sessions</th>
-                  <th className="px-5 py-3">Réservations</th>
-                  <th className="px-5 py-3">Fréquentation</th>
-                  <th className="px-5 py-3">Visibilité</th>
+                  <th className="px-5 py-2.5">Séjour</th>
+                  <th className="px-5 py-2.5">Statut</th>
+                  <th className="px-5 py-2.5">Sessions</th>
+                  <th className="px-5 py-2.5">Réservations</th>
+                  <th className="px-5 py-2.5">Fréquentation</th>
+                  <th className="px-5 py-2.5">Visibilité</th>
                 </tr>
               </thead>
               <tbody>
                 {stayRows.map((stay) => (
                   <tr key={stay.id} className="border-t border-slate-100 align-top">
-                    <td className="px-5 py-4">
+                    <td className="px-5 py-3">
                       <Link
                         href={withOrganizerQuery(`/organisme/sejours/${stay.id}`, organizerId)}
                         className="font-medium text-slate-900 hover:text-brand-700"
                       >
                         {formatStayDisplayTitle(stay.title)}
                       </Link>
-                      <div className="mt-1 text-xs text-slate-500">
-                        Mis à jour le {new Date(stay.updatedAt).toLocaleDateString('fr-FR')}
-                      </div>
                     </td>
-                    <td className="px-5 py-4">
+                    <td className="px-5 py-3">
                       <span
                         className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${stayStatusBadgeClassName(stay.status)}`}
                       >
                         {stayStatusLabel(stay.status)}
                       </span>
                     </td>
-                    <td className="px-5 py-4 text-slate-600">{stay.sessionCount}</td>
-                    <td className="px-5 py-4 text-slate-600">{stay.reserved}</td>
-                    <td className="px-5 py-4 text-slate-600">{formatPercent(stay.occupancy)}</td>
-                    <td className="px-5 py-4">
+                    <td className="px-5 py-3 text-slate-600">{stay.sessionCount}</td>
+                    <td className="px-5 py-3 text-slate-600">{stay.reserved}</td>
+                    <td className="px-5 py-3 text-slate-600">{formatPercent(stay.occupancy)}</td>
+                    <td className="px-5 py-3">
                       <span
                         className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${visibilityBadgeClassName(stay.isPublished, stay.mediaCount)}`}
                       >

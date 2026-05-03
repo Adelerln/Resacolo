@@ -46,12 +46,19 @@ export type StayDraftReviewPayload = {
   seo_generated_at?: string | null;
   seo_generation_source?: string | null;
   video_urls: string[];
+  /** Vidéos rattachées à la fiche hébergement (onglet Hébergement côté fiche publique). */
+  accommodation_video_urls: string[];
   /** Pourcentage de remise partenaire (0–100), ou null si non renseigné. */
   partner_discount_percent: number | null;
   /** Champ éditorial live (`stays.activities_text`) — tunnel séjour publié. */
   activities_text: string;
   /** Champ live (`stays.required_documents_text`) — tunnel séjour publié. */
   required_documents_text: string;
+  /**
+   * Séjour publié : identifiant de la fiche hébergement du catalogue organisateur à lier
+   * (`stay_accommodations`). Ignoré pour les brouillons.
+   */
+  linked_accommodation_id?: string | null;
 };
 
 export type StayDraftReviewFieldErrorKey =

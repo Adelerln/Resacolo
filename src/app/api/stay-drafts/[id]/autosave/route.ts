@@ -165,6 +165,9 @@ export async function PATCH(
   const nextVideoUrls = hasOwn(payload, 'video_urls')
     ? asStringArray(payload.video_urls)
     : asStringArray(currentRawPayload.video_urls);
+  const nextAccommodationVideoUrls = hasOwn(payload, 'accommodation_video_urls')
+    ? asStringArray(payload.accommodation_video_urls)
+    : asStringArray(currentRawPayload.accommodation_video_urls);
   const nextPartnerDiscountRaw = hasOwn(payload, 'partner_discount_percent')
     ? payload.partner_discount_percent
     : currentRawPayload.partner_discount_percent;
@@ -310,6 +313,8 @@ export async function PATCH(
     draft_season_ids: nextSeasonIds.length > 0 ? nextSeasonIds : null,
     draft_season_names: nextSeasonNames.length > 0 ? nextSeasonNames : null,
     video_urls: nextVideoUrls.length > 0 ? nextVideoUrls : null,
+    accommodation_video_urls:
+      nextAccommodationVideoUrls.length > 0 ? nextAccommodationVideoUrls : null,
     partner_discount_percent: nextPartnerDiscount,
     autosave_updated_at: now
   };

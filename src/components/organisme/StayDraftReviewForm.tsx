@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   AlertTriangle,
@@ -45,6 +46,7 @@ import {
 import { normalizeStayDraftCategories, STAY_CATEGORY_OPTIONS, stayCategoryLabelToValue } from '@/lib/stay-categories';
 import { cn, slugify } from '@/lib/utils';
 import { MAX_STAY_SUMMARY_LENGTH } from '@/lib/stay-draft-content';
+import { withOrganizerQuery } from '@/lib/organizers';
 import {
   defaultAccommodationImportRecord,
   mergeAccommodationImportRecord
@@ -54,7 +56,12 @@ import {
   splitDraftExtraOptionsJson
 } from '@/lib/stay-draft-extra-options-split';
 import { collapseTransportDraftOptionsJson } from '@/lib/stay-draft-transport-display';
-import { normalizeImportedImageUrlList, normalizeImportedVideoUrlList } from '@/lib/stay-draft-url-extract';
+import {
+  buildInitialDraftVideoEntries,
+  normalizeImportedImageUrlList,
+  normalizeImportedVideoUrlList,
+  type DraftVideoEntry
+} from '@/lib/stay-draft-url-extract';
 import {
   draftReviewControlClass,
   draftReviewFieldGroupClass,
@@ -86,11 +93,18 @@ type StayDraftReviewFormProps = {
   hideTopStatusCard?: boolean;
   variant?: 'draft' | 'published';
   publishedReviewEndpoint?: string;
+  saveSuccessRedirectHref?: string | null;
   linkedAccommodation?: {
     id: string;
     name: string;
     accommodationType: string | null;
   } | null;
+  /** Séjour publié : fiches hébergement du catalogue pour remplacer le lien. */
+  organizerAccommodationPickerOptions?: Array<{
+    id: string;
+    name: string;
+    accommodationType: string | null;
+  }>;
   publishedSessionsStep?: ReactNode;
 };
 
@@ -298,7 +312,9 @@ export default function StayDraftReviewForm({
   hideTopStatusCard = false,
   variant = 'draft',
   publishedReviewEndpoint,
+  saveSuccessRedirectHref = null,
   linkedAccommodation = null,
+  organizerAccommodationPickerOptions = [],
   publishedSessionsStep = null
 }: StayDraftReviewFormProps) {
   const router = useRouter();
@@ -306,7 +322,7 @@ export default function StayDraftReviewForm({
   const reviewSteps = useMemo(
     () =>
       isPublishedVariant
-        ? DRAFT_REVIEW_STEP_ORDER.filter((step) => step !== 'hebergement' && step !== 'sessions')
+        ? DRAFT_REVIEW_STEP_ORDER.filter((step) => step !== 'sessions')
         : DRAFT_REVIEW_STEP_ORDER,
     [isPublishedVariant]
   );
@@ -316,6 +332,11 @@ export default function StayDraftReviewForm({
   );
   const resolvedPublishedReviewEndpoint =
     publishedReviewEndpoint ?? `/api/organizer/stays/${draftId}/review-bundle`;
+  const [currentLinkedAccommodation, setCurrentLinkedAccommodation] = useState(linkedAccommodation);
+  const [selectedLinkedAccommodationId, setSelectedLinkedAccommodationId] = useState<string | null>(
+    () => linkedAccommodation?.id ?? null
+  );
+  const [isUnlinkingAccommodation, setIsUnlinkingAccommodation] = useState(false);
   const [activeStep, setActiveStep] = useState<DraftReviewStepId>(() =>
     firstIncompleteStepFromInitialPayload(
       reviewSteps,
@@ -409,9 +430,12 @@ export default function StayDraftReviewForm({
   const [imageUrls, setImageUrls] = useState<string[]>(() =>
     normalizeImportedImageUrlList(initialPayload.images)
   );
-  const [videoUrls, setVideoUrls] = useState<string[]>(() => {
-    return normalizeImportedVideoUrlList(initialPayload.video_urls);
-  });
+  const [videoEntries, setVideoEntries] = useState<DraftVideoEntry[]>(() =>
+    buildInitialDraftVideoEntries({
+      video_urls: initialPayload.video_urls,
+      accommodation_video_urls: initialPayload.accommodation_video_urls
+    })
+  );
   const [status, setStatus] = useState(initialStatus);
   const [validatedAt, setValidatedAt] = useState(initialValidatedAt);
   const [validatedByUserId, setValidatedByUserId] = useState(initialValidatedByUserId);
@@ -459,6 +483,15 @@ export default function StayDraftReviewForm({
   );
   const [seoActionState, setSeoActionState] = useState<SeoActionState | null>(null);
   const [seoAdvancedVisible, setSeoAdvancedVisible] = useState(false);
+
+  useEffect(() => {
+    setCurrentLinkedAccommodation(linkedAccommodation);
+  }, [linkedAccommodation]);
+
+  useEffect(() => {
+    if (!isPublishedVariant) return;
+    setSelectedLinkedAccommodationId(linkedAccommodation?.id ?? null);
+  }, [isPublishedVariant, linkedAccommodation?.id]);
 
   const seoCategoryValues = useMemo(
     () =>
@@ -759,17 +792,27 @@ export default function StayDraftReviewForm({
       window.alert('Aucun lien YouTube / Vimeo / fichier vidéo reconnu.');
       return;
     }
-    setVideoUrls((current) => {
+    setVideoEntries((current) => {
       const next = [...current];
+      const existing = new Set(next.map((e) => e.url));
       for (const url of extracted) {
-        if (!next.includes(url)) next.push(url);
+        if (!existing.has(url)) {
+          next.push({ url, scope: 'stay' });
+          existing.add(url);
+        }
       }
       return next;
     });
   }
 
   function removeVideoAt(index: number) {
-    setVideoUrls((current) => current.filter((_, i) => i !== index));
+    setVideoEntries((current) => current.filter((_, i) => i !== index));
+  }
+
+  function setVideoEntryScope(index: number, scope: DraftVideoEntry['scope']) {
+    setVideoEntries((current) =>
+      current.map((entry, i) => (i === index ? { ...entry, scope } : entry))
+    );
   }
 
   function toggleCategory(categoryLabel: string, checked: boolean) {
@@ -1012,19 +1055,35 @@ export default function StayDraftReviewForm({
     const transportOptionsPayload = transportOptionsList.filter(
       (row) => String(row.label ?? '').trim().length > 0
     );
-    const accommodationsParsed = linkedAccommodation
+    const accommodationsParsed = isPublishedVariant
       ? { value: null as Record<string, unknown> | null }
-      : { value: JSON.parse(JSON.stringify(accommodationImport)) as Record<string, unknown> };
+      : currentLinkedAccommodation
+        ? { value: null as Record<string, unknown> | null }
+        : { value: JSON.parse(JSON.stringify(accommodationImport)) as Record<string, unknown> };
     const imagesPayload = normalizeImportedImageUrlList(
       imageUrls.map((u) => u.trim()).filter(Boolean)
     );
-    const videosPayload = normalizeImportedVideoUrlList(
-      videoUrls.map((u) => u.trim()).filter(Boolean)
-    );
+    const stayVideoSource = videoEntries
+      .filter((e) => e.scope === 'stay')
+      .map((e) => e.url.trim())
+      .filter(Boolean);
+    const accommodationVideoSource = videoEntries
+      .filter((e) => e.scope === 'accommodation')
+      .map((e) => e.url.trim())
+      .filter(Boolean);
+    const videosPayload = normalizeImportedVideoUrlList(stayVideoSource);
+    const accommodationVideosPayload = normalizeImportedVideoUrlList(accommodationVideoSource);
     const destinationCountries = parseDestinationCountries();
     const legacyDestination = buildLegacyDestinationCompatibilityFields();
 
-    if (!linkedAccommodation && !String(accommodationImport.title ?? '').trim()) {
+    if (isPublishedVariant) {
+      if (
+        organizerAccommodationPickerOptions.length > 0 &&
+        (!selectedLinkedAccommodationId || !selectedLinkedAccommodationId.trim())
+      ) {
+        nextErrors.accommodations_json = "Sélectionnez l'hébergement lié au séjour dans le catalogue.";
+      }
+    } else if (!currentLinkedAccommodation && !String(accommodationImport.title ?? '').trim()) {
       nextErrors.accommodations_json = "Le nom de l'hébergement importé est requis.";
     }
 
@@ -1082,6 +1141,7 @@ export default function StayDraftReviewForm({
       accommodations_json: accommodationsParsed.value ?? null,
       images: imagesPayload,
       video_urls: videosPayload,
+      accommodation_video_urls: accommodationVideosPayload,
       seo_primary_keyword: sanitizeSeoPrimaryKeyword(seoPrimaryKeyword),
       seo_secondary_keywords: sanitizeSeoTags(seoSecondaryKeywords),
       seo_target_city: sanitizeSeoText(seoTargetCity),
@@ -1095,7 +1155,10 @@ export default function StayDraftReviewForm({
       seo_slug_candidate: sanitizeSeoText(seoSlugCandidate),
       seo_score: Number.isFinite(seoScore) ? seoScore : null,
       seo_checks: seoChecks,
-      partner_discount_percent: partnerDiscountParsed
+      partner_discount_percent: partnerDiscountParsed,
+      linked_accommodation_id: isPublishedVariant
+        ? selectedLinkedAccommodationId?.trim() || null
+        : null
     };
 
     return { payload };
@@ -1127,15 +1190,22 @@ export default function StayDraftReviewForm({
     const transportOptionsPayload = transportOptionsList.filter(
       (row) => String(row.label ?? '').trim().length > 0
     );
-    const accommodationsParsed = linkedAccommodation
+    const accommodationsParsed = currentLinkedAccommodation
       ? { value: null as Record<string, unknown> | null }
       : { value: JSON.parse(JSON.stringify(accommodationImport)) as Record<string, unknown> };
     const imagesPayload = normalizeImportedImageUrlList(
       imageUrls.map((u) => u.trim()).filter(Boolean)
     );
-    const videosPayload = normalizeImportedVideoUrlList(
-      videoUrls.map((u) => u.trim()).filter(Boolean)
-    );
+    const stayVideoSourceAutosave = videoEntries
+      .filter((e) => e.scope === 'stay')
+      .map((e) => e.url.trim())
+      .filter(Boolean);
+    const accommodationVideoSourceAutosave = videoEntries
+      .filter((e) => e.scope === 'accommodation')
+      .map((e) => e.url.trim())
+      .filter(Boolean);
+    const videosPayload = normalizeImportedVideoUrlList(stayVideoSourceAutosave);
+    const accommodationVideosPayload = normalizeImportedVideoUrlList(accommodationVideoSourceAutosave);
     const resolvedSeasonNames = normalizedSeasonOptions
       .filter((option) => selectedSeasonKeySet.has(normalizeSeasonKey(option.name)))
       .map((option) => option.name);
@@ -1180,6 +1250,7 @@ export default function StayDraftReviewForm({
       accommodations_json: accommodationsParsed.value ?? null,
       images: imagesPayload,
       video_urls: videosPayload,
+      accommodation_video_urls: accommodationVideosPayload,
       seo_primary_keyword: sanitizeSeoPrimaryKeyword(seoPrimaryKeyword),
       seo_secondary_keywords: sanitizeSeoTags(seoSecondaryKeywords),
       seo_target_city: sanitizeSeoText(seoTargetCity),
@@ -1193,7 +1264,8 @@ export default function StayDraftReviewForm({
       seo_slug_candidate: sanitizeSeoText(seoSlugCandidate),
       seo_score: Number.isFinite(seoScore) ? seoScore : null,
       seo_checks: seoChecks,
-      partner_discount_percent: partnerParsed
+      partner_discount_percent: partnerParsed,
+      linked_accommodation_id: null
     };
   }
 
@@ -1317,6 +1389,13 @@ export default function StayDraftReviewForm({
         return;
       }
 
+      if (mode === 'save' && typeof saveSuccessRedirectHref === 'string' && saveSuccessRedirectHref) {
+        // Navigation complète : évite un cache client obsolète sur la liste des séjours
+        // (le brouillon serait alors absent de « Brouillons d’import » jusqu’au prochain refresh).
+        window.location.assign(saveSuccessRedirectHref);
+        return;
+      }
+
       router.refresh();
     } catch {
       setPublishBlockHint(null);
@@ -1330,7 +1409,8 @@ export default function StayDraftReviewForm({
     }
   }
 
-  const accommodationGateClosed = !isPublishedVariant && !linkedAccommodation && !hasCompletedAccommodationGate;
+  const accommodationGateClosed =
+    !isPublishedVariant && !currentLinkedAccommodation && !hasCompletedAccommodationGate;
   const effectiveStep: DraftReviewStepId = accommodationGateClosed ? 'hebergement' : activeStep;
   const effectiveStepIndex = draftReviewStepIndex(effectiveStep, reviewSteps);
   const publishAllowed =
@@ -1380,11 +1460,16 @@ export default function StayDraftReviewForm({
 
   const stepIsCompleted = useMemo(() => {
     const completed: Record<DraftReviewStepId, boolean> = {
-      hebergement: linkedAccommodation
-        ? true
-        : Boolean(String(accommodationImport.title ?? '').trim()),
+      hebergement: isPublishedVariant
+        ? Boolean(selectedLinkedAccommodationId?.trim()) ||
+          organizerAccommodationPickerOptions.length === 0
+        : currentLinkedAccommodation
+          ? true
+          : Boolean(String(accommodationImport.title ?? '').trim()),
       sejour: Boolean(title.trim()),
-      photos: imagePreviewUrls.length > 0 || videoUrls.some((value) => value.trim().length > 0),
+      photos:
+        imagePreviewUrls.length > 0 ||
+        videoEntries.some((entry) => entry.url.trim().length > 0),
       sessions: sessionsList.length > 0 || isPublishedVariant,
       options: extraOptionsList.length > 0 || insuranceOptionsList.length > 0,
       transports:
@@ -1401,13 +1486,15 @@ export default function StayDraftReviewForm({
     imagePreviewUrls.length,
     insuranceOptionsList.length,
     isPublishedVariant,
-    linkedAccommodation,
+    currentLinkedAccommodation,
+    organizerAccommodationPickerOptions.length,
+    selectedLinkedAccommodationId,
     partnerDiscountPercent,
     sessionsList.length,
     title,
     transportMode,
     transportOptionsList.length,
-    videoUrls
+    videoEntries
   ]);
 
   useEffect(() => {
@@ -1562,7 +1649,7 @@ export default function StayDraftReviewForm({
         </div>
       )}
 
-      {!linkedAccommodation && accommodationGateClosed && (
+      {!currentLinkedAccommodation && accommodationGateClosed && (
         <div className="rounded-2xl border border-amber-200 bg-amber-50/60 px-4 py-3 text-sm text-amber-950">
           <span className="font-semibold">Première étape</span> — contrôlez l&apos;hébergement importé, puis
           « Continuer » pour débloquer les étapes suivantes. Aucune donnée n&apos;est envoyée tant que vous
@@ -1632,23 +1719,27 @@ export default function StayDraftReviewForm({
         </nav>
 
         <div className="space-y-4 border-t border-slate-100 pt-5">
-          {isPublishedVariant ? (
+          {isPublishedVariant && effectiveStep !== 'hebergement' ? (
             <div
               className={cn(
                 'rounded-2xl px-4 py-3 text-sm',
-                linkedAccommodation
+                currentLinkedAccommodation
                   ? 'border border-sky-200 bg-sky-50 text-sky-900'
                   : 'border border-amber-200 bg-amber-50/70 text-amber-950'
               )}
             >
-              {linkedAccommodation ? (
+              {currentLinkedAccommodation ? (
                 <>
                   <p className="font-semibold">Hébergement actuellement lié</p>
                   <p className="mt-1">
-                    <span className="font-semibold">{linkedAccommodation.name}</span>
-                    {linkedAccommodation.accommodationType
-                      ? ` (${formatAccommodationType(linkedAccommodation.accommodationType)})`
+                    <span className="font-semibold">{currentLinkedAccommodation.name}</span>
+                    {currentLinkedAccommodation.accommodationType
+                      ? ` (${formatAccommodationType(currentLinkedAccommodation.accommodationType)})`
                       : ''}.
+                  </p>
+                  <p className="mt-2 text-xs text-sky-800">
+                    Pour le remplacer, ouvrez l’étape <span className="font-semibold">Hébergement</span> puis
+                    enregistrez le séjour.
                   </p>
                 </>
               ) : (
@@ -1657,12 +1748,67 @@ export default function StayDraftReviewForm({
                   <p className="mt-1">
                     Le séjour reste modifiable, mais aucun lien d’hébergement n’a été retrouvé pour cette fiche.
                   </p>
+                  <p className="mt-2 text-xs text-amber-900/90">
+                    Associez une fiche catalogue depuis l’étape <span className="font-semibold">Hébergement</span>.
+                  </p>
                 </>
               )}
             </div>
           ) : null}
 
-          {effectiveStep === 'hebergement' && !linkedAccommodation && (
+          {effectiveStep === 'hebergement' && isPublishedVariant ? (
+            <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900">Hébergement lié au séjour</h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  Choisissez une fiche du catalogue organisateur. Les changements sont appliqués lorsque vous
+                  enregistrez le séjour.
+                </p>
+              </div>
+              {organizerAccommodationPickerOptions.length === 0 ? (
+                <p className="text-sm text-slate-700">
+                  Aucun hébergement dans votre catalogue.{' '}
+                  <Link
+                    href={withOrganizerQuery('/organisme/hebergements/new', organizerId)}
+                    className="font-semibold text-orange-700 underline underline-offset-2 hover:text-orange-800"
+                  >
+                    Créer une fiche hébergement
+                  </Link>
+                </p>
+              ) : (
+                <label className="block text-sm font-medium text-slate-700">
+                  Fiche catalogue
+                  <select
+                    value={selectedLinkedAccommodationId ?? ''}
+                    onChange={(event) => {
+                      const next = event.target.value.trim();
+                      setSelectedLinkedAccommodationId(next.length > 0 ? next : null);
+                    }}
+                    className={draftReviewControlClass({
+                      required: true,
+                      filled: Boolean(selectedLinkedAccommodationId?.trim()),
+                      hasError: Boolean(fieldErrors.accommodations_json)
+                    })}
+                  >
+                    <option value="">— Choisir un hébergement —</option>
+                    {organizerAccommodationPickerOptions.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.name}
+                        {option.accommodationType
+                          ? ` (${formatAccommodationType(option.accommodationType)})`
+                          : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {fieldErrors.accommodations_json ? (
+                    <span className="mt-1 block text-xs text-rose-600">{fieldErrors.accommodations_json}</span>
+                  ) : null}
+                </label>
+              )}
+            </div>
+          ) : null}
+
+          {effectiveStep === 'hebergement' && !isPublishedVariant && !currentLinkedAccommodation && (
             <AccommodationImportReviewFields
               value={accommodationImport}
               onChange={setAccommodationImport}
@@ -1675,18 +1821,74 @@ export default function StayDraftReviewForm({
             />
           )}
 
-          {effectiveStep === 'hebergement' && linkedAccommodation && (
+          {effectiveStep === 'hebergement' && !isPublishedVariant && currentLinkedAccommodation && (
             <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-4 text-sm text-sky-900">
               <p className="font-semibold">Hébergement déjà sélectionné avant import</p>
               <p className="mt-1">
-                Le séjour sera rattaché à <span className="font-semibold">{linkedAccommodation.name}</span>
-                {linkedAccommodation.accommodationType
-                  ? ` (${formatAccommodationType(linkedAccommodation.accommodationType)})`
+                Le séjour sera rattaché à <span className="font-semibold">{currentLinkedAccommodation.name}</span>
+                {currentLinkedAccommodation.accommodationType
+                  ? ` (${formatAccommodationType(currentLinkedAccommodation.accommodationType)})`
                   : ''}.
               </p>
               <p className="mt-1 text-sky-800">
                 L&apos;IA n&apos;extrait pas de nouvel hébergement pour ce brouillon.
               </p>
+              {variant === 'draft' &&
+              (String(status ?? '').trim().toLowerCase() === 'pending' ||
+                String(status ?? '').trim().toLowerCase() === 'draft' ||
+                String(status ?? '').trim().toLowerCase() === 'validated') ? (
+                <div className="mt-4 flex justify-end">
+                  <button
+                    type="button"
+                    disabled={isUnlinkingAccommodation}
+                    onClick={async () => {
+                      if (
+                        !window.confirm(
+                          "Êtes-vous sûr de vouloir délier cet hébergement de ce brouillon ? Vous pourrez ensuite sélectionner un autre centre."
+                        )
+                      ) {
+                        return;
+                      }
+
+                      setIsUnlinkingAccommodation(true);
+                      setGlobalError(null);
+                      try {
+                        const response = await fetch(`/api/stay-drafts/${draftId}/unlink-accommodation`, {
+                          method: 'POST',
+                          headers: {
+                            'content-type': 'application/json',
+                            accept: 'application/json'
+                          },
+                          body: JSON.stringify({ organizerId })
+                        });
+                        const data = (await response.json().catch(() => null)) as
+                          | { success?: boolean; error?: string }
+                          | null;
+
+                        if (!response.ok || !data?.success) {
+                          setGlobalError(
+                            data?.error ?? "Impossible de délier l'hébergement de ce brouillon."
+                          );
+                          return;
+                        }
+
+                        setCurrentLinkedAccommodation(null);
+                        setHasCompletedAccommodationGate(false);
+                        setActiveStep('hebergement');
+                        setSuccessMessage('Hébergement délié du brouillon.');
+                        router.refresh();
+                      } catch {
+                        setGlobalError("Impossible de délier l'hébergement de ce brouillon.");
+                      } finally {
+                        setIsUnlinkingAccommodation(false);
+                      }
+                    }}
+                    className="rounded-lg border border-rose-200 bg-white px-4 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-wait disabled:opacity-70"
+                  >
+                    {isUnlinkingAccommodation ? 'Déliaison...' : "Délier l'hébergement"}
+                  </button>
+                </div>
+              ) : null}
             </div>
           )}
 
@@ -1886,7 +2088,7 @@ export default function StayDraftReviewForm({
               <GoogleMapsCityInput
                 key={draftId}
                 name="location_text"
-                label="Compatibilité ancienne ville / lieu"
+                label="Ville / lieu"
                 value={locationText}
                 onValueChange={setLocationText}
                 showApiHint
@@ -1897,7 +2099,7 @@ export default function StayDraftReviewForm({
                 })}
               />
               <label className="block text-sm font-medium text-slate-700">
-                Compatibilité ancienne région
+                Région
                 <input
                   id="draft-region-input"
                   value={regionText}
@@ -2235,27 +2437,6 @@ export default function StayDraftReviewForm({
                     Ajouter
                   </button>
                 </div>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <label className="block text-sm font-medium text-slate-700">
-                  Ville cible SEO
-                  <input
-                    value={seoTargetCity}
-                    onChange={(event) => setSeoTargetCity(event.target.value)}
-                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2"
-                    placeholder="Ex. Biarritz"
-                  />
-                </label>
-                <label className="block text-sm font-medium text-slate-700">
-                  Région cible SEO
-                  <input
-                    value={seoTargetRegion}
-                    onChange={(event) => setSeoTargetRegion(event.target.value)}
-                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2"
-                    placeholder="Ex. Nouvelle-Aquitaine"
-                  />
-                </label>
               </div>
 
               <div className="space-y-2">
@@ -2662,7 +2843,7 @@ export default function StayDraftReviewForm({
             'relative space-y-2 p-3 pr-14',
             draftReviewSectionClass({
               required: false,
-              satisfied: videoUrls.some((u) => u.trim().length > 0)
+              satisfied: videoEntries.some((e) => e.url.trim().length > 0)
             })
           )}
         >
@@ -2677,30 +2858,33 @@ export default function StayDraftReviewForm({
           <p className="text-sm font-medium text-slate-700">Liens vidéo repérés</p>
           <p className="text-xs text-slate-500">
             Liens cliquables (YouTube, Vimeo, etc.), y compris extraits d&apos;une page (ex. liens dans du
-            JavaScript).
+            JavaScript). À droite de chaque lien, choisissez l&apos;onglet fiche publique :{' '}
+            <strong>Séjour</strong> ou <strong>Hébergement</strong>.
           </p>
-          {videoUrls.length === 0 ? (
+          {videoEntries.length === 0 ? (
             <p className="text-sm text-slate-500">Aucune vidéo — ajoutez un lien avec le bouton d&apos;ajout.</p>
           ) : (
             <div className="space-y-2">
-              {videoUrls.map((url, index) => (
+              {videoEntries.map((entry, index) => (
                 <div
                   key={`video-${index}`}
                   className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
                 >
                   <input
                     type="url"
-                    value={url}
+                    value={entry.url}
                     onChange={(event) => {
                       const value = event.target.value;
-                      setVideoUrls((current) =>
-                        current.map((item, itemIndex) => (itemIndex === index ? value : item))
+                      setVideoEntries((current) =>
+                        current.map((item, itemIndex) =>
+                          itemIndex === index ? { ...item, url: value } : item
+                        )
                       );
                     }}
                     className={cn(
                       draftReviewControlClass({
                         required: false,
-                        filled: Boolean(url.trim()),
+                        filled: Boolean(entry.url.trim()),
                         omitOuterMargin: true
                       }),
                       'min-w-0 flex-1 font-mono text-xs'
@@ -2708,10 +2892,40 @@ export default function StayDraftReviewForm({
                     spellCheck={false}
                     aria-label={`URL de la vidéo ${index + 1}`}
                   />
-                  <div className="flex shrink-0 items-center gap-2">
-                    {/^https?:\/\//i.test(url.trim()) ? (
+                  <div className="flex shrink-0 flex-wrap items-center gap-2">
+                    <div
+                      className="inline-flex rounded-lg border border-slate-200 bg-slate-50/80 p-0.5"
+                      role="group"
+                      aria-label="Emplacement sur la fiche publique"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setVideoEntryScope(index, 'stay')}
+                        className={cn(
+                          'rounded-md px-2.5 py-1 text-xs font-semibold transition',
+                          entry.scope === 'stay'
+                            ? 'bg-white text-orange-800 shadow-sm'
+                            : 'text-slate-600 hover:text-slate-900'
+                        )}
+                      >
+                        Séjour
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setVideoEntryScope(index, 'accommodation')}
+                        className={cn(
+                          'rounded-md px-2.5 py-1 text-xs font-semibold transition',
+                          entry.scope === 'accommodation'
+                            ? 'bg-white text-orange-800 shadow-sm'
+                            : 'text-slate-600 hover:text-slate-900'
+                        )}
+                      >
+                        Hébergement
+                      </button>
+                    </div>
+                    {/^https?:\/\//i.test(entry.url.trim()) ? (
                       <a
-                        href={url.trim()}
+                        href={entry.url.trim()}
                         target="_blank"
                         rel="noreferrer"
                         className="text-sm font-semibold text-emerald-700 underline"
@@ -2801,6 +3015,18 @@ export default function StayDraftReviewForm({
           aria-modal="true"
           aria-label="Aperçu des images du séjour"
         >
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              setLightboxIndex(null);
+            }}
+            className="absolute right-3 top-3 rounded-full bg-white/90 p-2 text-slate-900 shadow transition hover:bg-white"
+            aria-label="Fermer l'aperçu"
+          >
+            <X className="h-5 w-5" />
+          </button>
+
           {imagePreviewUrls.length > 1 ? (
             <button
               type="button"

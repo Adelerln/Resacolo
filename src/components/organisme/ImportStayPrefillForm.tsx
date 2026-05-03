@@ -11,6 +11,14 @@ type ImportStayPrefillFormProps = {
   actionPath?: string;
   initialDraftId?: string;
   initialImportAction?: ImportAction;
+  /**
+   * Si true, le bouton « Copier » sur la référence du brouillon n’apparaît qu’une fois
+   * `aiEnrichmentSucceeded` (ex. retour de `/api/stay-drafts/enrich` avec succès).
+   * L’import en cours (`import_progress` non terminé) masque toujours le bouton.
+   */
+  tieDraftIdCopyToAiEnrichment?: boolean;
+  /** Ex. `searchParams.ai === 'success'` après enrichissement IA. */
+  aiEnrichmentSucceeded?: boolean;
 };
 
 type ImportProgressState = {
@@ -21,6 +29,7 @@ type ImportProgressState = {
   error: string | null;
 };
 type ImportAction = 'created' | 'existing' | 'restarted';
+type ExistingDraftContext = 'visible' | 'validated' | 'published';
 
 /**
  * Lancement AJAX vers `/api/import-stay` avec suivi visuel local pendant l’attente
@@ -34,7 +43,9 @@ export default function ImportStayPrefillForm({
   accommodationOptions,
   actionPath = '/api/import-stay',
   initialDraftId = '',
-  initialImportAction
+  initialImportAction,
+  tieDraftIdCopyToAiEnrichment = false,
+  aiEnrichmentSucceeded = false
 }: ImportStayPrefillFormProps) {
   const trimmedInitialDraftId = initialDraftId.trim();
   const hasServerHydratedImportState = Boolean(trimmedInitialDraftId && initialImportAction);
@@ -56,6 +67,7 @@ export default function ImportStayPrefillForm({
       : null
   );
   const [importAction, setImportAction] = useState<ImportAction>(initialImportAction ?? 'created');
+  const [existingDraftContext, setExistingDraftContext] = useState<ExistingDraftContext | null>(null);
 
   useEffect(() => {
     if (!hasServerHydratedImportState || !initialImportAction) {
@@ -64,6 +76,7 @@ export default function ImportStayPrefillForm({
 
     setCreatedDraftId(trimmedInitialDraftId);
     setImportAction(initialImportAction);
+    setExistingDraftContext(null);
     setImportProgress({
       step: 'created',
       label: initialImportAction === 'restarted' ? 'Brouillon existant relancé' : 'Brouillon créé',
@@ -145,6 +158,7 @@ export default function ImportStayPrefillForm({
     setCreatedDraftId(null);
     setImportProgress(null);
     setImportAction('created');
+    setExistingDraftContext(null);
     setPending(true);
 
     try {
@@ -157,7 +171,13 @@ export default function ImportStayPrefillForm({
       });
 
       const payload = (await response.json().catch(() => null)) as
-        | { success?: boolean; draftId?: string; error?: string; importAction?: ImportAction }
+        | {
+            success?: boolean;
+            draftId?: string;
+            error?: string;
+            importAction?: ImportAction;
+            existingDraftContext?: ExistingDraftContext;
+          }
         | null;
 
       if (!response.ok || !payload?.success || !payload?.draftId) {
@@ -168,6 +188,7 @@ export default function ImportStayPrefillForm({
       setCreatedDraftId(payload.draftId);
       const nextImportAction: ImportAction = payload.importAction ?? 'created';
       setImportAction(nextImportAction);
+      setExistingDraftContext(payload.existingDraftContext ?? null);
       window.dispatchEvent(
         new CustomEvent('resacolo:stay-draft-created', {
           detail: { draftId: payload.draftId }
@@ -187,6 +208,10 @@ export default function ImportStayPrefillForm({
       setPending(false);
     }
   };
+
+  const showDraftReferenceCopyButton =
+    Boolean(importProgress?.completed && !importProgress?.error) &&
+    (!tieDraftIdCopyToAiEnrichment || aiEnrichmentSucceeded);
 
   return (
     <form action={actionPath} method="post" className="mt-4 space-y-4" onSubmit={handleSubmit}>
@@ -266,12 +291,16 @@ export default function ImportStayPrefillForm({
       <div>
         {createdDraftId && importAction === 'existing' ? (
           <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-            Un brouillon existait déjà pour cette URL. Il a été réutilisé automatiquement.
+            {existingDraftContext === 'published' || existingDraftContext === 'validated'
+              ? 'Une ancienne version liée à cette URL a été retrouvée en base. Elle a été rouverte automatiquement.'
+              : 'Un brouillon est déjà disponible pour cette URL. Il a été rouvert automatiquement.'}
           </p>
         ) : null}
         {createdDraftId && importAction === 'restarted' ? (
           <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-            Un brouillon en échec existait déjà pour cette URL. L&apos;import a été relancé sur ce même brouillon.
+            {existingDraftContext === 'published' || existingDraftContext === 'validated'
+              ? 'Une ancienne version liée à cette URL a été retrouvée en base. L’import a été relancé dessus pour la remettre à jour.'
+              : 'Un brouillon existait déjà pour cette URL. L’import a été relancé sur ce même brouillon pour le remettre à jour.'}
           </p>
         ) : null}
         {createdDraftId && importProgress && importAction !== 'existing' ? (
@@ -292,7 +321,10 @@ export default function ImportStayPrefillForm({
               </p>
               <span className="shrink-0 font-semibold">{importProgress.percent}%</span>
             </div>
-            <DraftReferenceCopyField value={createdDraftId} />
+            <DraftReferenceCopyField
+              value={createdDraftId}
+              showCopyButton={showDraftReferenceCopyButton}
+            />
             <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/70">
               <div
                 className={`h-full rounded-full transition-[width] duration-500 ${

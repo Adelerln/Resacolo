@@ -2,6 +2,7 @@
 
 import { OrganizerStayPreviewCard } from '@/components/organisateurs/OrganizerStayPreviewCard';
 import { getMockImageUrl, mockImages } from '@/lib/mockImages';
+import { staySessionsAppearFullyBooked } from '@/lib/stay-catalog-availability';
 import { resolveStaySeasonPicto } from '@/lib/organizer-profile-options';
 import type { Stay } from '@/types/stay';
 
@@ -11,6 +12,7 @@ interface StayCardProps {
 
 export function StayCard({ stay }: StayCardProps) {
   const season = resolveStaySeasonPicto(stay.seasonName || stay.period[0] || null);
+  const isFullyBooked = staySessionsAppearFullyBooked(stay.bookingOptions?.sessions);
 
   return (
     <div className="flex justify-center">
@@ -28,6 +30,7 @@ export function StayCard({ stay }: StayCardProps) {
         href={`/sejours/${stay.canonicalSlug}`}
         organizerLogoUrl={stay.organizer.logoUrl ?? null}
         organizerName={stay.organizer.name}
+        isFullyBooked={isFullyBooked}
       />
     </div>
   );

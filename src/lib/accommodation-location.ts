@@ -66,6 +66,13 @@ function normalizePostalCode(value?: string | null) {
   return cleaned.replace(/\s+/g, '');
 }
 
+function normalizeCity(value?: string | null) {
+  const cleaned = cleanValue(value);
+  if (!cleaned) return null;
+  const lowerCased = cleaned.toLocaleLowerCase('fr-FR');
+  return lowerCased.charAt(0).toLocaleUpperCase('fr-FR') + lowerCased.slice(1);
+}
+
 function normalizeCountry(value?: string | null) {
   const cleaned = cleanValue(value);
   if (!cleaned) return null;
@@ -159,7 +166,7 @@ export function normalizeAccommodationAddress(input: AccommodationAddressInput) 
   return {
     addressText: cleanValue(input.addressText),
     postalCode: normalizePostalCode(input.postalCode),
-    city: cleanValue(input.city),
+    city: normalizeCity(input.city),
     departmentCode: normalizeDepartmentCode(input.departmentCode),
     regionText: cleanValue(input.regionText),
     country: normalizeCountry(input.country)
@@ -192,12 +199,12 @@ export function buildAccommodationAddressLabel(input: AccommodationAddressInput)
   const country = normalized.country;
   const isFrance = !country || country.toLowerCase() === 'france';
 
-  if (normalized.city && normalized.postalCode) {
-    return `${normalized.city} (${normalized.postalCode})`;
-  }
-
   if (normalized.city && isFrance && normalized.departmentCode) {
     return `${normalized.city} (${normalized.departmentCode})`;
+  }
+
+  if (normalized.city && normalized.postalCode) {
+    return `${normalized.city} (${normalized.postalCode})`;
   }
 
   if (normalized.city && country) {

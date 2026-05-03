@@ -22,6 +22,7 @@ import {
   extractOrganizerDurationMeta,
   extractOrganizerPresentationSummary
 } from '@/lib/organizer-rich-text';
+import { staySessionsAppearFullyBooked } from '@/lib/stay-catalog-availability';
 import { getStays, getStayCanonicalPath } from '@/lib/stays';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { slugify } from '@/lib/utils';
@@ -992,9 +993,9 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
               };
               const seasonNameJoined = pickSeasonNameFromJoin(stayRow.seasons);
               const seasonDisplay = resolveStaySeasonPicto(seasonNameJoined);
-              const sessionMeta = buildFeaturedStaySessionMeta(
-                featuredSessionsByStayId.get(stay.id) ?? []
-              );
+              const featuredSessions = featuredSessionsByStayId.get(stay.id) ?? [];
+              const sessionMeta = buildFeaturedStaySessionMeta(featuredSessions);
+              const isFullyBooked = staySessionsAppearFullyBooked(featuredSessions);
               const coverUrl =
                 (stay as { coverImage?: string | null }).coverImage ??
                 coverImageByStayId.get(stay.id) ??
@@ -1019,6 +1020,7 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
                     disableBlueHoverEffect
                     compact
                     liftOnHover
+                    isFullyBooked={isFullyBooked}
                   />
                 </div>
               );

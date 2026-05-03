@@ -7,8 +7,9 @@ import { formatAccommodationType } from '@/lib/accommodation-types';
 import SavedToast from '@/components/common/SavedToast';
 import {
   buildAccessibilityInfoFromForm,
-  validateAccommodationAddress,
   extractAccommodationLocationMeta,
+  normalizeAccommodationAddress,
+  validateAccommodationAddress,
   validateAndParseAccommodationCenterCoordinates,
 } from '@/lib/accommodation-location';
 import { deleteAccommodationForOrganizer, parseAccommodationMediaUrls, replaceAccommodationMedia } from '@/lib/accommodations';
@@ -130,14 +131,14 @@ export default async function AccommodationDetailPage({ params: paramsPromise, s
     const name = String(formData.get('name') ?? '').trim();
     const accommodationType = String(formData.get('accommodation_type') ?? '').trim();
     const description = String(formData.get('description') ?? '').trim();
-    const addressInput = {
+    const addressInput = normalizeAccommodationAddress({
       addressText: String(formData.get('address_text') ?? '').trim(),
       postalCode: String(formData.get('postal_code') ?? '').trim(),
       city: String(formData.get('city') ?? '').trim(),
       departmentCode: String(formData.get('department_code') ?? '').trim(),
       regionText: String(formData.get('region_text') ?? '').trim(),
       country: String(formData.get('country') ?? '').trim()
-    };
+    });
     const now = new Date().toISOString();
     const importedFromDraft = isAccommodationImportedFromStayDraft(rowBeforeSave.ai_extracted_data);
     const nextStatus =

@@ -6,6 +6,7 @@ import OrganizerPageHeader from '@/components/organisme/OrganizerPageHeader';
 import { parseAccommodationMediaUrls, replaceAccommodationMedia } from '@/lib/accommodations';
 import {
   buildAccessibilityInfoFromForm,
+  normalizeAccommodationAddress,
   validateAccommodationAddress,
   validateAndParseAccommodationCenterCoordinates,
 } from '@/lib/accommodation-location';
@@ -44,14 +45,14 @@ export default async function NewAccommodationPage({ searchParams }: PageProps) 
     const name = String(formData.get('name') ?? '').trim();
     const accommodationType = String(formData.get('accommodation_type') ?? '').trim();
     const description = String(formData.get('description') ?? '').trim();
-    const addressInput = {
+    const addressInput = normalizeAccommodationAddress({
       addressText: String(formData.get('address_text') ?? '').trim(),
       postalCode: String(formData.get('postal_code') ?? '').trim(),
       city: String(formData.get('city') ?? '').trim(),
       departmentCode: String(formData.get('department_code') ?? '').trim(),
       regionText: String(formData.get('region_text') ?? '').trim(),
       country: String(formData.get('country') ?? '').trim()
-    };
+    });
 
     if (!name || !accommodationType) {
       redirect(withOrganizerQuery('/organisme/hebergements/new?error=missing-required-fields', selectedOrganizerId));

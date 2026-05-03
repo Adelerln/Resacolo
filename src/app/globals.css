@@ -269,11 +269,11 @@
   }
 
   .organizer-table th {
-    @apply px-4 py-3;
+    @apply px-4 py-3 align-middle;
   }
 
   .organizer-table td {
-    @apply px-4 py-3 align-top;
+    @apply px-4 py-3 align-middle;
   }
 
   .organizer-table tbody tr {

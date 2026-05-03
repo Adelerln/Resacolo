@@ -36,6 +36,144 @@ type TransportRow = {
   amount_cents: number;
 };
 type MediaRow = { id: string; url: string; position: number | null; media_type: string | null };
+type LinkedAccommodationDestinationFallback = {
+  city?: string | null;
+  postalCode?: string | null;
+  departmentCode?: string | null;
+  regionText?: string | null;
+  country?: string | null;
+  locationMode?: string | null;
+  locationCity?: string | null;
+  locationDepartmentCode?: string | null;
+  locationCountry?: string | null;
+  itinerantZone?: string | null;
+};
+
+function cleanText(value: string | null | undefined) {
+  const normalized = (value ?? '').trim();
+  return normalized || '';
+}
+
+function hasStructuredDestination(
+  payload: Pick<
+    StayDraftReviewPayload,
+    | 'destination_type'
+    | 'destination_city'
+    | 'destination_postal_code'
+    | 'destination_department_code'
+    | 'destination_region'
+    | 'destination_country'
+    | 'destination_itinerary_label'
+    | 'destination_countries'
+  >
+) {
+  return Boolean(
+    payload.destination_type ||
+      payload.destination_city ||
+      payload.destination_postal_code ||
+      payload.destination_department_code ||
+      payload.destination_region ||
+      payload.destination_country ||
+      payload.destination_itinerary_label ||
+      payload.destination_countries.length > 0
+  );
+}
+
+function buildDestinationFallbackFromAccommodation(
+  linkedAccommodation?: LinkedAccommodationDestinationFallback | null
+) {
+  if (!linkedAccommodation) return null;
+
+  const city = cleanText(linkedAccommodation.city);
+  const postalCode = cleanText(linkedAccommodation.postalCode);
+  const departmentCode = cleanText(linkedAccommodation.departmentCode);
+  const regionText = cleanText(linkedAccommodation.regionText);
+  const country = cleanText(linkedAccommodation.country);
+  const isFrance = !country || country.toLowerCase() === 'france';
+
+  if (city && isFrance) {
+    return {
+      destination_type: 'fixed_france' as const,
+      destination_city: city,
+      destination_postal_code: postalCode,
+      destination_department_code: departmentCode,
+      destination_region: regionText,
+      destination_country: country,
+      destination_itinerary_label: '',
+      destination_countries: [] as string[],
+      location_text: city,
+      region_text: regionText
+    };
+  }
+
+  if (city && country) {
+    return {
+      destination_type: 'fixed_abroad' as const,
+      destination_city: city,
+      destination_postal_code: '',
+      destination_department_code: '',
+      destination_region: '',
+      destination_country: country,
+      destination_itinerary_label: '',
+      destination_countries: [] as string[],
+      location_text: [city, country].filter(Boolean).join(', '),
+      region_text: 'Étranger'
+    };
+  }
+
+  const legacyLocationMode = cleanText(linkedAccommodation.locationMode);
+  const legacyLocationCity = cleanText(linkedAccommodation.locationCity);
+  const legacyLocationDepartmentCode = cleanText(linkedAccommodation.locationDepartmentCode);
+  const legacyLocationCountry = cleanText(linkedAccommodation.locationCountry);
+  const itinerantZone = cleanText(linkedAccommodation.itinerantZone);
+
+  if (legacyLocationMode === 'france' && legacyLocationCity) {
+    return {
+      destination_type: 'fixed_france' as const,
+      destination_city: legacyLocationCity,
+      destination_postal_code: '',
+      destination_department_code: legacyLocationDepartmentCode,
+      destination_region: '',
+      destination_country: 'France',
+      destination_itinerary_label: '',
+      destination_countries: [] as string[],
+      location_text: legacyLocationCity,
+      region_text: ''
+    };
+  }
+
+  if (legacyLocationMode === 'abroad' && (legacyLocationCity || legacyLocationCountry)) {
+    return {
+      destination_type: 'fixed_abroad' as const,
+      destination_city: legacyLocationCity,
+      destination_postal_code: '',
+      destination_department_code: '',
+      destination_region: '',
+      destination_country: legacyLocationCountry,
+      destination_itinerary_label: '',
+      destination_countries: [] as string[],
+      location_text: [legacyLocationCity, legacyLocationCountry].filter(Boolean).join(', '),
+      region_text: 'Étranger'
+    };
+  }
+
+  if (legacyLocationMode === 'itinerant' && itinerantZone) {
+    return {
+      destination_type: 'itinerant' as const,
+      destination_city: '',
+      destination_postal_code: '',
+      destination_department_code: '',
+      destination_region: '',
+      destination_country: '',
+      destination_itinerary_label: itinerantZone,
+      destination_countries: legacyLocationCountry ? [legacyLocationCountry] : [],
+      location_text: itinerantZone,
+      region_text: legacyLocationCountry ? 'Étranger' : ''
+    };
+  }
+
+  return null;
+}
 
 function sessionPriceEuros(session: SessionRow): number | null {
   const sp = session.session_prices;
@@ -63,9 +201,21 @@ export function mapPublishedStayToReviewPayload(input: {
   insuranceOptions: InsuranceRow[];
   transportOptions: TransportRow[];
   media: MediaRow[];
+  linkedAccommodationDestinationFallback?: LinkedAccommodationDestinationFallback | null;
+  /** URLs des vidéos déjà en `accommodation_media` pour l’hébergement lié au séjour. */
+  linkedAccommodationVideoUrls?: string[];
 }): StayDraftReviewPayload {
-  const { stay, sessions, reservedSessionCounts, extraOptions, insuranceOptions, transportOptions, media } =
-    input;
+  const {
+    stay,
+    sessions,
+    reservedSessionCounts,
+    extraOptions,
+    insuranceOptions,
+    transportOptions,
+    media,
+    linkedAccommodationDestinationFallback,
+    linkedAccommodationVideoUrls = []
+  } = input;
 
   const sessionsJson: Array<Record<string, unknown>> = sessions.map((s) => {
     const reserved = reservedCountForSession(s, reservedSessionCounts);
@@ -136,10 +286,11 @@ export function mapPublishedStayToReviewPayload(input: {
   const videoUrls = normalizeImportedVideoUrlList(
     media.filter((m) => (m.media_type ?? '').toLowerCase() === 'video').map((m) => m.url)
   );
+  const accommodationVideoUrls = normalizeImportedVideoUrlList(linkedAccommodationVideoUrls);
 
   const categories = normalizeStayDraftCategories(stay.categories ?? []).categories;
 
-  return {
+  const payload: StayDraftReviewPayload = {
     title: stay.title ?? '',
     summary: stay.summary ?? '',
     destination_type:
@@ -170,6 +321,7 @@ export function mapPublishedStayToReviewPayload(input: {
     accommodations_json: null,
     images: imageUrls,
     video_urls: videoUrls,
+    accommodation_video_urls: accommodationVideoUrls,
     seo_primary_keyword: sanitizeSeoPrimaryKeyword(stay.seo_primary_keyword ?? ''),
     seo_secondary_keywords: stay.seo_secondary_keywords ?? [],
     seo_target_city: stay.seo_target_city ?? '',
@@ -192,4 +344,22 @@ export function mapPublishedStayToReviewPayload(input: {
     activities_text: stay.activities_text ?? '',
     required_documents_text: stay.required_documents_text ?? ''
   };
+
+  if (!hasStructuredDestination(payload)) {
+    const fallback = buildDestinationFallbackFromAccommodation(linkedAccommodationDestinationFallback);
+    if (fallback) {
+      payload.destination_type = fallback.destination_type;
+      payload.destination_city = fallback.destination_city;
+      payload.destination_postal_code = fallback.destination_postal_code;
+      payload.destination_department_code = fallback.destination_department_code;
+      payload.destination_region = fallback.destination_region;
+      payload.destination_country = fallback.destination_country;
+      payload.destination_itinerary_label = fallback.destination_itinerary_label;
+      payload.destination_countries = fallback.destination_countries;
+      if (!payload.location_text) payload.location_text = fallback.location_text;
+      if (!payload.region_text) payload.region_text = fallback.region_text;
+    }
+  }
+
+  return payload;
 }

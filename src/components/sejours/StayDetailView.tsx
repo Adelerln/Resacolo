@@ -1130,6 +1130,54 @@ export function StayDetailView({ stay }: { stay: Stay }) {
                                 />
                               </div>
                             ) : null}
+                            {accommodation.videoUrls && accommodation.videoUrls.length > 0 ? (
+                              <div className="mt-5">
+                                <h4 className="text-lg font-semibold text-slate-900">Vidéos du lieu</h4>
+                                <div className="mt-3 grid gap-4">
+                                  {accommodation.videoUrls.map((url, vIndex) => {
+                                    const config = getVideoEmbedConfig(url);
+                                    if (!config) return null;
+                                    return (
+                                      <div
+                                        key={`${accommodation.id}-vid-${vIndex}`}
+                                        className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
+                                      >
+                                        {config.type === 'native' ? (
+                                          <video
+                                            controls
+                                            preload="metadata"
+                                            className="aspect-video w-full bg-slate-950"
+                                            src={config.src}
+                                          />
+                                        ) : config.type === 'iframe' ? (
+                                          <div className="relative aspect-video w-full">
+                                            <iframe
+                                              src={config.src}
+                                              title={`Vidéo ${vIndex + 1} — ${accommodation.name}`}
+                                              className="absolute inset-0 h-full w-full"
+                                              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                                              referrerPolicy="strict-origin-when-cross-origin"
+                                              allowFullScreen
+                                            />
+                                          </div>
+                                        ) : (
+                                          <div className="p-4">
+                                            <a
+                                              href={config.src}
+                                              target="_blank"
+                                              rel="noreferrer"
+                                              className="text-base font-semibold text-sky-900 underline-offset-2 hover:underline"
+                                            >
+                                              Voir la vidéo {vIndex + 1}
+                                            </a>
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            ) : null}
                           </article>
                         );
                       })}

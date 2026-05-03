@@ -18,6 +18,7 @@ type PageProps = {
     draftId?: string | string[];
     ai?: string | string[];
     aiDraftId?: string | string[];
+    transportCitiesDebug?: string | string[];
   }>;
 };
 
@@ -45,6 +46,7 @@ export default async function NewStayUrlPage({ searchParams }: PageProps) {
   const draftIdParam = formatRedirectValue(resolvedSearchParams?.draftId);
   const aiParam = formatRedirectValue(resolvedSearchParams?.ai);
   const aiDraftIdParam = formatRedirectValue(resolvedSearchParams?.aiDraftId);
+  const transportCitiesDebugParam = formatRedirectValue(resolvedSearchParams?.transportCitiesDebug);
   const initialImportAction =
     prefillParam === 'created' || prefillParam === 'existing' || prefillParam === 'restarted'
       ? prefillParam
@@ -101,12 +103,15 @@ export default async function NewStayUrlPage({ searchParams }: PageProps) {
             accommodationOptions={accommodationOptions}
             initialDraftId={initialImportDraftId}
             initialImportAction={initialImportAction}
+            tieDraftIdCopyToAiEnrichment
+            aiEnrichmentSucceeded={aiParam === 'success'}
           />
           <StayDraftEnrichLauncher
             organizerId={organizerId}
             initialDraftId={initialImportDraftId}
             aiDraftId={aiDraftIdParam ?? ''}
             aiSuccess={aiParam === 'success'}
+            transportCitiesDebug={transportCitiesDebugParam ?? ''}
             showOnlyWhenDraftReady
           />
         </div>

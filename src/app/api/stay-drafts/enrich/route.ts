@@ -14,6 +14,7 @@ import {
   type TransportVariantForDraft
 } from '@/lib/stay-draft-transport-display';
 import { enrichStayDraftWithAI, StayDraftAiEnrichmentError } from '@/lib/stay-draft-ai-enrichment';
+import { normalizeStayTitle } from '@/lib/stay-title';
 import { resolveAccommodationCenterCoordinates } from '@/lib/accommodation-center-geocoding';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import type { Database, Json } from '@/types/supabase';
@@ -99,6 +100,7 @@ function makeSuccessResponse(
     aiModel: string;
     aiPromptVersion: string;
     aiEnrichedAt: string | null;
+    transportDebugCities: string[];
     updatedDraft: {
       id: string;
       summary: string | null;
@@ -129,12 +131,14 @@ function makeSuccessResponse(
       ai_model: result.aiModel,
       ai_prompt_version: result.aiPromptVersion,
       ai_enriched_at: result.aiEnrichedAt,
+      transport_cities_debug: result.transportDebugCities,
       updated_draft: result.updatedDraft
     });
   }
   return redirectToOrganizerStayCreation(req, organizerId, {
     ai: 'success',
-    aiDraftId: result.draftId
+    aiDraftId: result.draftId,
+    transportCitiesDebug: JSON.stringify(result.transportDebugCities)
   });
 }
 
@@ -324,6 +328,26 @@ function countPricedTransportOptions(rows: Array<Record<string, unknown>>): numb
   }).length;
 }
 
+function normalizeTransportDebugCity(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function extractTransportDebugCities(value: unknown): string[] {
+  const cities = new Set<string>();
+
+  for (const row of asRecordArray(value)) {
+    const candidates = [row.label, row.departure_city, row.return_city];
+    for (const candidate of candidates) {
+      const city = normalizeTransportDebugCity(candidate);
+      if (city) cities.add(city);
+    }
+  }
+
+  return Array.from(cities).slice(0, 50);
+}
+
 function toTransportVariant(record: Record<string, unknown>): TransportVariantForDraft | null {
   const departureCity = String(record.departure_city ?? '').trim();
   const returnCity = String(record.return_city ?? departureCity).trim() || departureCity;
@@ -364,6 +388,7 @@ function recoverImportedTransportOptions(
 ): Array<Record<string, unknown>> {
   const variantSources = [
     ...asRecordArray(rawPayload.transport_variants),
+    ...asRecordArray(rawPayload.transport_matrix),
     ...asRecordArray(rawPayload.transport_price_debug)
   ];
   const variants = variantSources
@@ -549,7 +574,11 @@ async function buildDraftUpdateFromAi(
         }
       : null
   });
+  const normalizedTitle = normalizeStayTitle(draft.title);
 
+  if (hasText(normalizedTitle) && normalizedTitle !== String(draft.title ?? '').trim()) {
+    patch.title = normalizedTitle;
+  }
   if ((force || !hasText(draft.summary)) && hasText(extracted.summary)) patch.summary = extracted.summary;
   if (shouldReplaceDescription(draft, currentRawPayload, force) && hasText(extracted.description)) {
     patch.description = extracted.description;
@@ -878,12 +907,18 @@ export async function POST(req: Request) {
   }
 
   const aiMeta = extractAiMeta(updateResult.data.raw_payload);
+  const transportDebugCities = extractTransportDebugCities(updateResult.data.transport_options_json);
   logInfo('supabase update success', {
     draftId,
     force,
     attempt: updateResult.attempt,
     updatedAt: updateResult.data.updated_at,
     aiMeta
+  });
+  logInfo('transport cities after AI import', {
+    draftId,
+    transportCities: transportDebugCities,
+    transportCityCount: transportDebugCities.length
   });
 
   return makeSuccessResponse(req, selectedOrganizerId, {
@@ -892,6 +927,7 @@ export async function POST(req: Request) {
     aiModel: aiMeta.ai_model ?? aiResult.model,
     aiPromptVersion: aiMeta.ai_prompt_version ?? aiResult.promptVersion,
     aiEnrichedAt: aiMeta.ai_enriched_at,
+    transportDebugCities,
     updatedDraft: {
       id: updateResult.data.id,
       summary: updateResult.data.summary,

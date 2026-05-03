@@ -124,7 +124,17 @@ export default async function OrganizerStayEditTunnelPage({ params: paramsPromis
     return {
       ...accommodation,
       description: locationMeta.description,
-      locationLabel: locationMeta.locationLabel
+      locationLabel: locationMeta.locationLabel,
+      city: locationMeta.city,
+      postalCode: locationMeta.postalCode,
+      departmentCode: locationMeta.departmentCode,
+      regionText: locationMeta.regionText,
+      country: locationMeta.country,
+      locationMode: locationMeta.locationMode,
+      locationCity: locationMeta.locationCity,
+      locationDepartmentCode: locationMeta.locationDepartmentCode,
+      locationCountry: locationMeta.locationCountry,
+      itinerantZone: locationMeta.itinerantZone
     };
   });
   const stayAccommodationLinks = stayAccommodationLinksRaw ?? [];
@@ -133,6 +143,17 @@ export default async function OrganizerStayEditTunnelPage({ params: paramsPromis
     .filter((item): item is NonNullable<typeof item> => Boolean(item));
   const linkedAccommodation = linkedAccommodations[0] ?? null;
 
+  let linkedAccommodationVideoUrls: string[] = [];
+  if (linkedAccommodation?.id) {
+    const { data: accommodationMediaRows } = await supabase
+      .from('accommodation_media')
+      .select('url')
+      .eq('accommodation_id', linkedAccommodation.id);
+    linkedAccommodationVideoUrls = (accommodationMediaRows ?? [])
+      .map((row) => row.url)
+      .filter((url): url is string => Boolean(url && typeof url === 'string'));
+  }
+
   const initialPayload = mapPublishedStayToReviewPayload({
     stay,
     sessions,
@@ -140,10 +161,26 @@ export default async function OrganizerStayEditTunnelPage({ params: paramsPromis
     extraOptions: extraOptionsRaw ?? [],
     insuranceOptions: insuranceOptionsRaw ?? [],
     transportOptions: transportOptionsRaw ?? [],
-    media: mediaRaw ?? []
+    media: mediaRaw ?? [],
+    linkedAccommodationDestinationFallback: linkedAccommodation
+      ? {
+          city: linkedAccommodation.city,
+          postalCode: linkedAccommodation.postalCode,
+          departmentCode: linkedAccommodation.departmentCode,
+          regionText: linkedAccommodation.regionText,
+          country: linkedAccommodation.country,
+          locationMode: linkedAccommodation.locationMode,
+          locationCity: linkedAccommodation.locationCity,
+          locationDepartmentCode: linkedAccommodation.locationDepartmentCode,
+          locationCountry: linkedAccommodation.locationCountry,
+          itinerantZone: linkedAccommodation.itinerantZone
+        }
+      : null,
+    linkedAccommodationVideoUrls
   });
 
   const backHref = withOrganizerQuery(`/organisme/sejours/${stay.id}`, selectedOrganizerId);
+  const saveSuccessRedirectHref = withOrganizerQuery('/organisme/sejours', selectedOrganizerId);
 
   return (
     <div className="space-y-6">
@@ -167,6 +204,7 @@ export default async function OrganizerStayEditTunnelPage({ params: paramsPromis
         initialValidatedByUserId={null}
         hideTopStatusCard
         variant="published"
+        saveSuccessRedirectHref={saveSuccessRedirectHref}
         linkedAccommodation={
           linkedAccommodation
             ? {
@@ -176,6 +214,11 @@ export default async function OrganizerStayEditTunnelPage({ params: paramsPromis
               }
             : null
         }
+        organizerAccommodationPickerOptions={accommodations.map((row) => ({
+          id: row.id,
+          name: row.name,
+          accommodationType: row.accommodation_type
+        }))}
       />
     </div>
   );

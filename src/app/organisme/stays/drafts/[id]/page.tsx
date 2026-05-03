@@ -242,6 +242,7 @@ function toTransportVariant(record: Record<string, unknown>): TransportVariantFo
 function recoverImportedTransportOptions(rawPayload: Record<string, unknown>): Array<Record<string, unknown>> {
   const variants = [
     ...asRecordArray(rawPayload.transport_variants),
+    ...asRecordArray(rawPayload.transport_matrix),
     ...asRecordArray(rawPayload.transport_price_debug)
   ]
     .map(toTransportVariant)
@@ -377,9 +378,13 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
             .maybeSingle()
         ).data ?? null
       : null;
-  const fallbackVideoUrls =
-    asStringArray((rawPayload.video_urls as Json | null) ?? null).length > 0
-      ? asStringArray((rawPayload.video_urls as Json | null) ?? null)
+  const rawStayVideoUrls = asStringArray((rawPayload.video_urls as Json | null) ?? null);
+  const rawAccommodationVideoUrls = asStringArray(
+    (rawPayload.accommodation_video_urls as Json | null) ?? null
+  );
+  const fallbackStayVideoUrls =
+    rawStayVideoUrls.length > 0
+      ? rawStayVideoUrls
       : typeof rawPayload.html === 'string' && typeof draft.source_url === 'string'
         ? extractVideoUrls(rawPayload.html, draft.source_url)
         : [];
@@ -521,7 +526,8 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
     seo_generated_at: draft.seo_generated_at,
     seo_generation_source: normalizeString(draft.seo_generation_source) || null,
     images: normalizeImportedImageUrlList(asStringArray(draft.images)),
-    video_urls: normalizeImportedVideoUrlList(fallbackVideoUrls),
+    video_urls: normalizeImportedVideoUrlList(fallbackStayVideoUrls),
+    accommodation_video_urls: normalizeImportedVideoUrlList(rawAccommodationVideoUrls),
     partner_discount_percent: readPartnerDiscountPercentFromRaw(rawPayload),
     activities_text: '',
     required_documents_text: normalizeString(draft.required_documents_text)
@@ -596,6 +602,7 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
         initialValidatedAt={draft.validated_at}
         initialValidatedByUserId={draft.validated_by_user_id}
         hideTopStatusCard={manualDraft}
+        saveSuccessRedirectHref={backHref}
         linkedAccommodation={
           linkedAccommodation
             ? ({

@@ -1,6 +1,7 @@
 'use client';
 
 import { useId, useState } from 'react';
+import type { InputHTMLAttributes } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
 
 type PasswordInputProps = {
@@ -8,9 +9,17 @@ type PasswordInputProps = {
   required?: boolean;
   className?: string;
   inputClassName?: string;
-};
+  autoComplete?: string;
+} & Omit<InputHTMLAttributes<HTMLInputElement>, 'type' | 'name' | 'className' | 'required' | 'autoComplete'>;
 
-export function PasswordInput({ name, required, className, inputClassName }: PasswordInputProps) {
+export function PasswordInput({
+  name,
+  required,
+  className,
+  inputClassName,
+  autoComplete = 'current-password',
+  ...inputProps
+}: PasswordInputProps) {
   const id = useId();
   const [visible, setVisible] = useState(false);
 
@@ -23,7 +32,8 @@ export function PasswordInput({ name, required, className, inputClassName }: Pas
           type={visible ? 'text' : 'password'}
           required={required}
           className={inputClassName}
-          autoComplete="current-password"
+          autoComplete={autoComplete}
+          {...inputProps}
         />
         <button
           type="button"
@@ -37,4 +47,3 @@ export function PasswordInput({ name, required, className, inputClassName }: Pas
     </div>
   );
 }
-

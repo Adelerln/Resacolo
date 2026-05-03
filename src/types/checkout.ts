@@ -48,6 +48,7 @@ export type CheckoutPricingItem = {
   basePriceCents: number;
   transportPriceCents: number;
   transportLabel: string | null;
+  transportDisplayLine?: string | null;
   insurancePriceCents: number;
   insuranceLabel: string | null;
   extraOptionPriceCents: number;

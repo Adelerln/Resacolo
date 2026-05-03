@@ -39,6 +39,7 @@ export function buildDevMockPricing(items: CartItem[]): CheckoutPricing {
       basePriceCents: base,
       transportPriceCents: 0,
       transportLabel: null,
+      transportDisplayLine: null,
       insurancePriceCents: 0,
       insuranceLabel: null,
       extraOptionPriceCents: 0,

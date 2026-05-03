@@ -1,7 +1,7 @@
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import type { CartItem } from '@/types/cart';
 import type { Database } from '@/types/supabase';
-import type { CheckoutPricing, CheckoutPricingItem } from '@/types/checkout';
+import { formatEuroFromCents, type CheckoutPricing, type CheckoutPricingItem } from '@/types/checkout';
 
 type SessionRow = Pick<
   Database['public']['Tables']['sessions']['Row'],
@@ -74,6 +74,15 @@ function formatTransportLabel(departureCity: string | null | undefined, returnCi
   if (departure) return `Ville départ: ${departure}`;
   if (returning) return `Ville retour: ${returning}`;
   return null;
+}
+
+function buildTransportDisplaySegment(label: string, city: string | null | undefined, amountCents: number | null) {
+  const trimmedCity = city?.trim() ?? '';
+  if (!trimmedCity) return null;
+  if (amountCents != null && amountCents > 0) {
+    return `${label} : ${trimmedCity} · ${formatEuroFromCents(amountCents)}`;
+  }
+  return `${label} : ${trimmedCity}`;
 }
 
 function isInsuranceLikeLabel(label: string | null | undefined) {
@@ -247,6 +256,7 @@ export async function repriceCart(items: CartItem[]): Promise<CheckoutPricing> {
 
       let transportPriceCents = 0;
       let transportLabel: string | null = null;
+      let transportDisplayLine: string | null = null;
       if (cartItem.selection.transportOptionId) {
         const transportOption = await fetchTransportOption(cartItem.selection.transportOptionId);
         assertRowBelongsToSession(transportOption.session_id, sessionId, 'Le transport');
@@ -256,6 +266,8 @@ export async function repriceCart(items: CartItem[]): Promise<CheckoutPricing> {
           transportOption.departure_city,
           transportOption.return_city
         );
+        transportDisplayLine =
+          transportLabel ? `${transportLabel} (${formatEuroFromCents(transportPriceCents)})` : null;
       } else {
         const [departureOption, returnOption] = await Promise.all([
           cartItem.selection.departureTransportOptionId
@@ -283,6 +295,18 @@ export async function repriceCart(items: CartItem[]): Promise<CheckoutPricing> {
             cartItem.selection.returnCity ?? returnOption?.return_city ?? null
           ) ??
           formatTransportLabel(departureOption?.departure_city ?? null, returnOption?.return_city ?? null);
+
+        const departureLine = buildTransportDisplaySegment(
+          'Aller',
+          cartItem.selection.departureCity ?? departureOption?.departure_city ?? null,
+          departureOption ? computeDifferentiatedAmount(departureOption, 'outbound') : null
+        );
+        const returnLine = buildTransportDisplaySegment(
+          'Retour',
+          cartItem.selection.returnCity ?? returnOption?.return_city ?? null,
+          returnOption ? computeDifferentiatedAmount(returnOption, 'return') : null
+        );
+        transportDisplayLine = [departureLine, returnLine].filter(Boolean).join(' — ') || null;
       }
 
       let insurancePriceCents = 0;
@@ -326,6 +350,7 @@ export async function repriceCart(items: CartItem[]): Promise<CheckoutPricing> {
         basePriceCents,
         transportPriceCents,
         transportLabel,
+        transportDisplayLine,
         insurancePriceCents,
         insuranceLabel,
         extraOptionPriceCents,

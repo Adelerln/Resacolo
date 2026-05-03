@@ -148,7 +148,7 @@ export default async function LoginPage({
 
         {effectiveMode === 'family' && registered === '1' ? (
           <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-            Compte créé. Connectez-vous pour accéder à votre espace.
+            Compte créé. Vérifiez votre boîte mail et validez votre compte via le lien reçu, puis connectez-vous.
           </div>
         ) : null}
 

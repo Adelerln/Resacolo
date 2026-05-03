@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Heart,
   Mail,
@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useFavorites } from '@/components/favorites/FavoritesProvider';
+import { fetchFamilyProfileSnapshot } from '@/lib/account-profile/client';
 import { formatPhoneDisplay, parentStatusLabel } from '@/lib/account-preferences';
 import type { FamilyProfile, FamilyUpcomingReservation } from '@/types/family-profile';
 import type { Stay } from '@/types/stay';
@@ -20,6 +21,7 @@ type MonCompteClientProps = {
   initialProfile: FamilyProfile;
   upcomingReservations: FamilyUpcomingReservation[];
   favoriteStays: Stay[];
+  profileLoadError?: string | null;
 };
 
 function formatAddress(line1: string, line2: string, postalCode: string, city: string) {
@@ -39,10 +41,26 @@ function mapProfileToParent1Name(profile: FamilyProfile) {
 export default function MonCompteClient({
   initialProfile,
   upcomingReservations,
-  favoriteStays
+  favoriteStays,
+  profileLoadError
 }: MonCompteClientProps) {
-  const profile = initialProfile;
+  const [profile, setProfile] = useState<FamilyProfile>(initialProfile);
   const { favoriteIdsArray, isLoaded } = useFavorites();
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchFamilyProfileSnapshot()
+      .then((snapshot) => {
+        if (cancelled) return;
+        setProfile(snapshot.profile);
+      })
+      .catch(() => {
+        // Keep server-rendered profile as fallback.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const parent1Name = useMemo(() => mapProfileToParent1Name(profile), [profile]);
   const fullAddress = useMemo(
@@ -62,6 +80,17 @@ export default function MonCompteClient({
       ) || 'Non renseignée'
     );
   }, [profile]);
+  const showParent2 = useMemo(
+    () =>
+      Boolean(
+        profile.parent2Name ||
+          profile.parent2Phone ||
+          profile.parent2Email ||
+          profile.parent2StatusOther ||
+          profile.parent2HasDifferentAddress
+      ),
+    [profile]
+  );
   const visibleFavoriteStays = useMemo(() => {
     if (!isLoaded) return favoriteStays;
     const ids = new Set(favoriteIdsArray);
@@ -103,6 +132,11 @@ export default function MonCompteClient({
             </form>
           </div>
         </header>
+        {profileLoadError ? (
+          <p className="mt-6 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            {profileLoadError}
+          </p>
+        ) : null}
 
         <div className="mt-10 grid gap-8 lg:grid-cols-[minmax(0,2fr)_minmax(0,1.4fr)]">
           <div className="space-y-8">
@@ -226,7 +260,9 @@ export default function MonCompteClient({
                     </div>
                     <div className="flex items-start justify-between gap-3">
                       <dt className="text-slate-500">Statut</dt>
-                      <dd className="font-medium text-slate-900">Responsable légal</dd>
+                      <dd className="font-medium text-slate-900">
+                        {parentStatusLabel(profile.parent1Status, profile.parent1StatusOther)}
+                      </dd>
                     </div>
                     <div className="flex items-start justify-between gap-3">
                       <dt className="text-slate-500">Portable</dt>
@@ -243,6 +279,7 @@ export default function MonCompteClient({
                   </dl>
                 </article>
 
+                {showParent2 ? (
                 <article className="rounded-xl border border-orange-100 bg-orange-100/70 p-4">
                   <h3 className="text-sm font-semibold text-slate-900">Parent 2</h3>
                   <dl className="mt-3 space-y-2 text-sm text-slate-700 break-words">
@@ -276,6 +313,7 @@ export default function MonCompteClient({
                     )}
                   </dl>
                 </article>
+                ) : null}
               </div>
 
             </section>

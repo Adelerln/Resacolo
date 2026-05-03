@@ -228,8 +228,7 @@ export function formatPhoneDisplay(value: string) {
   if (normalized.startsWith('+33')) {
     const national = normalized.slice(3).replace(/\D/g, '').slice(0, 9);
     if (!national) return '+33';
-    const local = `0${national}`;
-    return groupDigits(local.slice(0, 10), 2, '.');
+    return `+33 ${groupDigits(national, 2, ' ')}`;
   }
 
   if (normalized.startsWith('+')) {

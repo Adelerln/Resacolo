@@ -30,6 +30,8 @@ export type FamilyProfile = {
   cseOrganization: string;
   vacafNumber: string;
   paymentMode: CheckoutContact['paymentMode'];
+  parent1Status: ParentStatus;
+  parent1StatusOther: string;
   parent2Name: string;
   parent2Status: ParentStatus;
   parent2StatusOther: string;

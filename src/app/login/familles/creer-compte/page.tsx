@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getCurrentUser } from '@/lib/auth/session';
+import { PasswordInput } from '@/components/auth/PasswordInput';
 import {
   PASSWORD_POLICY_HTML_PATTERN,
   PASSWORD_POLICY_MESSAGE,
@@ -130,14 +131,13 @@ export default async function FamilyRegisterPage({
               </div>
               <label className="block text-sm font-medium text-slate-700">
                 Mot de passe
-                <input
+                <PasswordInput
                   name="password"
-                  type="password"
+                  required
                   minLength={PASSWORD_POLICY_MIN_LENGTH}
                   pattern={PASSWORD_POLICY_HTML_PATTERN}
                   title={PASSWORD_POLICY_MESSAGE}
-                  className={INPUT_CLASS}
-                  required
+                  inputClassName={INPUT_CLASS}
                 />
               </label>
               <p className="text-xs text-slate-500">{PASSWORD_POLICY_MESSAGE}</p>

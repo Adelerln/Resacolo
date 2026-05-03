@@ -18,6 +18,17 @@ import { buildStayIntroText } from '@/lib/stay-seo';
 import { slugify } from '@/lib/utils';
 
 type TabId = 'sejour' | 'hebergement' | 'infos';
+type DiscoveryButton =
+  | { label: string; type: 'search'; q: string }
+  | {
+      label: string;
+      type: 'filters';
+      filters: {
+        season?: string[];
+        ageMin?: number;
+        ageMax?: number;
+      };
+    };
 
 const STAY_IMAGE_DISPLAY_QUALITY = 92;
 const STAY_IMAGE_REQUEST_WIDTH = 2200;
@@ -116,6 +127,66 @@ function formatInsuranceLabel(option: StayInsuranceOption) {
 
 function getUniqueStrings(values: string[]) {
   return Array.from(new Set(values.filter(Boolean)));
+}
+
+function normalizeDiscoveryText(value: string) {
+  return value
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+}
+
+function toDiscoveryButton(anchor: string): DiscoveryButton {
+  const normalized = normalizeDiscoveryText(anchor);
+
+  if (normalized.includes('colonies de vacances ete')) {
+    return {
+      label: anchor,
+      type: 'filters',
+      filters: {
+        season: ['Été']
+      }
+    };
+  }
+
+  if (normalized.includes('sejours pour 7-13 ans') || normalized.includes('sejour pour 7-13 ans')) {
+    return {
+      label: anchor,
+      type: 'filters',
+      filters: {
+        ageMin: 7,
+        ageMax: 13
+      }
+    };
+  }
+
+  return {
+    label: anchor,
+    type: 'search',
+    q: anchor
+  };
+}
+
+function handleDiscoveryClick(item: DiscoveryButton) {
+  const params = new URLSearchParams();
+
+  if (item.type === 'search') {
+    params.set('q', item.q);
+    return `/sejours?${params.toString()}`;
+  }
+
+  if (item.filters.season && item.filters.season.length > 0) {
+    params.set('season', item.filters.season.join(','));
+  }
+  if (typeof item.filters.ageMin === 'number') {
+    params.set('ageMin', String(item.filters.ageMin));
+  }
+  if (typeof item.filters.ageMax === 'number') {
+    params.set('ageMax', String(item.filters.ageMax));
+  }
+
+  return params.toString() ? `/sejours?${params.toString()}` : '/sejours';
 }
 
 function formatFrenchList(values: string[]) {
@@ -809,6 +880,10 @@ export function StayDetailView({ stay }: { stay: Stay }) {
     () => (stay.seo?.internalLinkAnchorSuggestions ?? []).filter((value) => value.trim().length > 0).slice(0, 6),
     [stay.seo?.internalLinkAnchorSuggestions]
   );
+  const discoveryButtons = useMemo(
+    () => seoInternalAnchors.map(toDiscoveryButton),
+    [seoInternalAnchors]
+  );
   const heroImageAlt = `Photo du séjour ${stay.title}${stay.location ? ` à ${stay.location}` : ''}`;
   const locationLabel = stay.displayLocation || stay.location || stay.region || 'Lieu à préciser';
 
@@ -1205,13 +1280,13 @@ export function StayDetailView({ stay }: { stay: Stay }) {
               <section className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-5 shadow-sm">
                 <h2 className="font-display text-lg font-semibold text-slate-900">Découvrir d&apos;autres séjours</h2>
                 <ul className="mt-4 flex flex-wrap gap-3 text-sm text-slate-900">
-                  {seoInternalAnchors.map((anchor) => (
-                    <li key={anchor}>
+                  {discoveryButtons.map((item) => (
+                    <li key={item.label}>
                       <Link
-                        href={`/sejours?q=${encodeURIComponent(anchor)}`}
+                        href={handleDiscoveryClick(item)}
                         className="inline-flex items-center rounded-full border border-sky-200 bg-white px-4 py-2 font-semibold text-sky-900 shadow-sm transition hover:border-sky-300 hover:bg-sky-50"
                       >
-                        {capitalizeFirstLetter(anchor)}
+                        {capitalizeFirstLetter(item.label)}
                       </Link>
                     </li>
                   ))}

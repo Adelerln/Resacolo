@@ -134,6 +134,8 @@ const patchSchema = z.discriminatedUnion('source', [
     source: z.literal('preferences'),
     profile: z.object({
       parent1Name: z.string().trim().min(2, 'Nom parent 1 requis.'),
+      parent1Status: z.enum(['pere', 'mere', 'grand-parent', 'autre']),
+      parent1StatusOther: z.string().trim().optional().default(''),
       parent1Email: z.string().trim().email('Email parent 1 invalide.'),
       parent1Phone: z.string().trim().min(8, 'Téléphone parent 1 invalide.'),
       addressLine1: z.string().trim().min(3, 'Adresse requise.'),
@@ -158,6 +160,14 @@ const patchSchema = z.discriminatedUnion('source', [
       parent2AddressLine2: z.string().trim().optional().default(''),
       parent2PostalCode: z.string().trim().optional().default(''),
       parent2City: z.string().trim().optional().default('')
+    }).superRefine((data, ctx) => {
+      if (data.parent1Status === 'autre' && !data.parent1StatusOther.trim()) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['parent1StatusOther'],
+          message: 'Précisez le statut parent 1.'
+        });
+      }
     })
   })
 ]);

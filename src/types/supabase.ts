@@ -254,6 +254,8 @@ export type Database = {
           parent1_first_name: string
           parent1_last_name: string
           parent1_phone: string
+          parent1_status: string
+          parent1_status_other: string
           parent2_address_line1: string
           parent2_address_line2: string
           parent2_city: string
@@ -288,6 +290,8 @@ export type Database = {
           parent1_first_name?: string
           parent1_last_name?: string
           parent1_phone?: string
+          parent1_status?: string
+          parent1_status_other?: string
           parent2_address_line1?: string
           parent2_address_line2?: string
           parent2_city?: string
@@ -322,6 +326,8 @@ export type Database = {
           parent1_first_name?: string
           parent1_last_name?: string
           parent1_phone?: string
+          parent1_status?: string
+          parent1_status_other?: string
           parent2_address_line1?: string
           parent2_address_line2?: string
           parent2_city?: string

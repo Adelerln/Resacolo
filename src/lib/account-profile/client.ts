@@ -77,6 +77,8 @@ export async function patchFamilyProfileParent2(input: FamilyParent2Patch) {
 
 export async function patchFamilyProfilePreferences(input: {
   parent1Name: string;
+  parent1Status: ParentStatus;
+  parent1StatusOther: string;
   parent1Email: string;
   parent1Phone: string;
   addressLine1: string;

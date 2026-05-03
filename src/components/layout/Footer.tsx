@@ -106,7 +106,7 @@ export function Footer({ hideHelpAndLegal = false }: { hideHelpAndLegal?: boolea
   ];
 
   return (
-    <footer className="relative overflow-visible bg-[color:var(--color-primary)] text-white">
+    <footer className="relative mt-12 overflow-visible bg-[color:var(--color-primary)] text-white sm:mt-16">
       <div className="pointer-events-none absolute right-0 top-0 z-10 translate-y-[-42%]" aria-hidden>
         <Image
           src="/image/footer/gouttes.png"

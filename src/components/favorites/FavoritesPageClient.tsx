@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react';
 import Link from 'next/link';
-import { Heart } from 'lucide-react';
+import { ArrowLeft, Heart } from 'lucide-react';
 import { FavoriteToggleButton } from '@/components/favorites/FavoriteToggleButton';
 import { useFavorites } from '@/components/favorites/FavoritesProvider';
 import { OrganizerStayPreviewCard } from '@/components/organisateurs/OrganizerStayPreviewCard';
@@ -20,6 +20,13 @@ export function FavoritesPageClient({ stays }: { stays: Stay[] }) {
 
   return (
     <div className="section-container py-10 sm:py-14">
+      <Link
+        href="/mon-compte"
+        className="mb-4 inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-800"
+        aria-label="Retour à mon compte"
+      >
+        <ArrowLeft className="h-3.5 w-3.5" />
+      </Link>
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Compte</p>

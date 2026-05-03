@@ -14,6 +14,17 @@ type ClientProfileInsert = Database['public']['Tables']['client_profiles']['Inse
 
 const DEFAULT_COUNTRY = 'France';
 
+function isMissingClientProfilesTableError(error: { code?: string; message?: string } | null | undefined) {
+  if (!error) return false;
+  const code = String(error.code ?? '').trim();
+  const message = String(error.message ?? '');
+  if (code === 'PGRST205') return true;
+  return (
+    message.includes('public.client_profiles') &&
+    (message.includes('schema cache') || message.includes('Could not find the table') || message.includes('does not exist'))
+  );
+}
+
 function normalizeText(value: string | null | undefined) {
   return (value ?? '').trim();
 }
@@ -339,6 +350,14 @@ async function upsertProfile(profile: FamilyProfile): Promise<FamilyProfile> {
     .single();
 
   if (error || !data) {
+    if (isMissingClientProfilesTableError(error)) {
+      const fullName = [profile.billingFirstName, profile.billingLastName].filter(Boolean).join(' ').trim();
+      await syncLegacyClientsRow({ userId: profile.userId, fullName, phone: profile.phone });
+      return {
+        ...profile,
+        updatedAt: new Date().toISOString()
+      };
+    }
     throw new Error(error?.message ?? 'Impossible de sauvegarder le profil famille.');
   }
 
@@ -356,6 +375,9 @@ export async function getFamilyProfile(userId: string): Promise<FamilyProfile | 
     .maybeSingle();
 
   if (error) {
+    if (isMissingClientProfilesTableError(error)) {
+      return null;
+    }
     throw new Error(`Impossible de lire le profil famille: ${error.message}`);
   }
   if (!data) return null;

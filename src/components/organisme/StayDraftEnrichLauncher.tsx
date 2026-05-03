@@ -10,17 +10,21 @@ type StayDraftEnrichLauncherProps = {
   initialDraftId?: string;
   aiDraftId?: string;
   aiSuccess?: boolean;
+  showOnlyWhenDraftReady?: boolean;
 };
 
 export default function StayDraftEnrichLauncher({
   organizerId,
   initialDraftId = '',
   aiDraftId = '',
-  aiSuccess = false
+  aiSuccess = false,
+  showOnlyWhenDraftReady = false
 }: StayDraftEnrichLauncherProps) {
   const [draftId, setDraftId] = useState(initialDraftId || aiDraftId || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [progress, setProgress] = useState(0);
+  const isDraftReady = draftId.trim().length > 0;
+  const shouldRender = !showOnlyWhenDraftReady || isDraftReady || (aiSuccess && aiDraftId.trim().length > 0);
 
   useEffect(() => {
     const onDraftCreated = (event: Event) => {
@@ -37,6 +41,12 @@ export default function StayDraftEnrichLauncher({
   }, []);
 
   useEffect(() => {
+    const nextDraftId = (initialDraftId || aiDraftId || '').trim();
+    if (!nextDraftId) return;
+    setDraftId(nextDraftId);
+  }, [aiDraftId, initialDraftId]);
+
+  useEffect(() => {
     if (!isSubmitting) return;
     const interval = window.setInterval(() => {
       setProgress((current) => {
@@ -48,8 +58,11 @@ export default function StayDraftEnrichLauncher({
     return () => window.clearInterval(interval);
   }, [isSubmitting]);
 
+  if (!shouldRender) return null;
+
   return (
-    <>
+    <div className="mt-6 border-t border-slate-100 pt-5">
+      <h3 className="organizer-section-title">Enrichissement par Intelligence Artificielle</h3>
       <form
         action="/api/stay-drafts/enrich"
         method="post"
@@ -112,6 +125,6 @@ export default function StayDraftEnrichLauncher({
           </Link>
         </div>
       ) : null}
-    </>
+    </div>
   );
 }

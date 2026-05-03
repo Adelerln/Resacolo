@@ -355,7 +355,15 @@ export default async function OrganizerDashboardPage({ searchParams }: PageProps
 
         {stayRows.length > 0 ? (
           <div className="overflow-x-auto">
-            <table className="organizer-table min-w-[860px]">
+            <table className="organizer-table min-w-[980px] w-full table-fixed">
+              <colgroup>
+                <col className="w-[30%]" />
+                <col className="w-[12%]" />
+                <col className="w-[10%]" />
+                <col className="w-[12%]" />
+                <col className="w-[14%]" />
+                <col className="w-[22%]" />
+              </colgroup>
               <thead>
                 <tr>
                   <th className="px-5 py-3">Séjour</th>

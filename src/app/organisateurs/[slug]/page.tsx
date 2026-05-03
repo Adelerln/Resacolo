@@ -211,7 +211,15 @@ function formatAccommodationCarouselLabel(type?: string | null, locationLabel?: 
         ? formatAccommodationType(type)
         : 'Centre de vacances';
 
-  return locationLabel ? `${typeLabel}, ${locationLabel}` : typeLabel;
+  const normalizedLocationLabel = (locationLabel ?? '').trim();
+  const locationLine = normalizedLocationLabel.startsWith('Itinérant : ')
+    ? `Circuit itinérant (${normalizedLocationLabel.replace(/^Itinérant\s*:\s*/u, '').trim()})`
+    : normalizedLocationLabel;
+
+  return {
+    typeLine: typeLabel,
+    locationLine
+  };
 }
 
 function formatOrganizerDisplayName(name: string) {
@@ -601,6 +609,9 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
     return {
       ...accommodation,
       description: locationMeta.description,
+      locationMode: locationMeta.locationMode,
+      locationCountry: locationMeta.locationCountry,
+      itinerantZone: locationMeta.itinerantZone,
       locationLabel: locationMeta.locationLabel,
       coverImage: coverImageByAccommodationId.get(accommodation.id) ?? null,
       linkedStayTitles: linkedPublishedTitlesByAccommodationId.get(accommodation.id) ?? [],
@@ -903,6 +914,10 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
                   {accommodations.map((accommodation) => {
                     const locationLabel =
                       accommodation.locationLabel ?? accommodation.linkedStayLocations.find(Boolean) ?? '';
+                    const carouselLabel = formatAccommodationCarouselLabel(
+                      accommodation.accommodation_type,
+                      locationLabel
+                    );
                     return (
                       <article
                         key={accommodation.id}
@@ -923,13 +938,15 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
                               <MapPin className="h-10 w-10" />
                             </div>
                           )}
-                          <div className="absolute inset-x-0 bottom-0 bg-white/92 px-4 py-3 backdrop-blur-sm">
-                            <p className="text-sm font-semibold text-[#505050]">
-                              {formatAccommodationCarouselLabel(
-                                accommodation.accommodation_type,
-                                locationLabel
-                              )}
+                          <div className="absolute inset-x-0 bottom-0 bg-white px-4 py-3">
+                            <p className="truncate whitespace-nowrap text-[12.5px] font-semibold text-[#505050]">
+                              {carouselLabel.typeLine}
                             </p>
+                            {carouselLabel.locationLine ? (
+                              <p className="mt-0.5 text-[12.5px] text-[#505050]">
+                                {carouselLabel.locationLine}
+                              </p>
+                            ) : null}
                           </div>
                         </div>
                       </article>
@@ -985,7 +1002,7 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
                     href={stayCanonicalPathById.get(stay.id) ?? '/sejours'}
                     organizerLogoUrl={logoUrl}
                     organizerName={organizerDisplayName}
-                    overlayAction={<FavoriteToggleButton stayId={stay.id} />}
+                    overlayAction={<FavoriteToggleButton stayId={stay.id} variant="overlay" />}
                     disableBlueHoverEffect
                     compact
                     liftOnHover

@@ -35,7 +35,6 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
     pathname.startsWith('/login/organisateur') ||
     pathname.startsWith('/checkout') ||
     isMobileViewport;
-  const hideFooterHelpAndLegal = pathname.startsWith('/contact');
   if (hidePublicShell) {
     /* Pas d’animation entre pages dans les espaces admin / organisateur / partenaire */
     return (
@@ -52,7 +51,7 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
             {disablePageTransition ? children : <PageTransition>{children}</PageTransition>}
           </Suspense>
         </main>
-        <Footer hideHelpAndLegal={hideFooterHelpAndLegal} />
+        <Footer />
         <LazyPublicChatbotWidget />
       </div>
     </FavoritesProvider>

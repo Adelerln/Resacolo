@@ -107,7 +107,7 @@ export default function NotreConceptPage() {
             </div>
           </div>
 
-          <div className="flex h-full flex-col lg:min-h-[32rem]">
+          <div className="flex h-full flex-col">
             <div className="space-y-6 text-left font-medium leading-relaxed text-slate-600">
               <p>
                 <strong className="font-semibold text-slate-800">RESACOLO</strong> est le fruit de
@@ -127,7 +127,7 @@ export default function NotreConceptPage() {
                 organisateur, sans intermédiaire ni surcoût.
               </p>
             </div>
-            <div className="mt-10 flex justify-start lg:mt-auto lg:justify-end">
+            <div className="mt-6 flex justify-center lg:mt-8">
               <a
                 href="https://resocolo.org"
                 target="_blank"
@@ -135,7 +135,7 @@ export default function NotreConceptPage() {
                 className="cta-orange-sweep inline-flex items-center rounded-[1.35rem] px-7 py-4 text-base font-bold uppercase tracking-[0.12em] text-white shadow-[0_16px_30px_-18px_rgba(250,133,0,0.9)] transition"
                 style={{ backgroundColor: ORANGE }}
               >
-                RESOCOLO.ORG
+                Découvrir ResoColo
               </a>
             </div>
           </div>

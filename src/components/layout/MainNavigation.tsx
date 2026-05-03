@@ -255,6 +255,7 @@ function MainNavigationContent({ pathname }: { pathname: string }) {
           <div className="hidden items-center gap-3 xl:flex 2xl:gap-4">
             <Link
               href="/mon-compte"
+              prefetch={false}
               className={headerIconButtonClass}
               aria-label="Mon compte"
               title="Mon compte"
@@ -394,6 +395,7 @@ function MainNavigationContent({ pathname }: { pathname: string }) {
                 <div className="flex items-center gap-2">
                   <Link
                     href="/mon-compte"
+                    prefetch={false}
                     onClick={close}
                     title="Mon compte"
                     className="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { Fragment, useEffect, useRef, useState } from 'react';
-import { Pencil, Trash2 } from 'lucide-react';
+import { ChevronDown, Pencil, Trash2 } from 'lucide-react';
 import RemainingPlacesEditor from '@/components/organisme/RemainingPlacesEditor';
 import { sessionStatusLabel, stayDraftStatusLabel, stayStatusBadgeClassName, stayStatusLabel } from '@/lib/ui/labels';
 import { withOrganizerQuery } from '@/lib/organizers';
@@ -39,6 +39,7 @@ type OrganizerStaysTableProps = {
   importDrafts?: ImportDraftListItem[];
   updateSessionRemainingPlacesAction: (formData: FormData) => void;
   deleteStayAction: (formData: FormData) => void;
+  updateStayStatusAction: (formData: FormData) => void;
   deleteImportDraftAction?: (formData: FormData) => void;
   defaultOpenStayIds?: string[];
   defaultEditingSessionId?: string | null;
@@ -86,6 +87,7 @@ export default function OrganizerStaysTable({
   importDrafts = [],
   updateSessionRemainingPlacesAction,
   deleteStayAction,
+  updateStayStatusAction,
   deleteImportDraftAction,
   defaultOpenStayIds = [],
   defaultEditingSessionId = null
@@ -94,6 +96,7 @@ export default function OrganizerStaysTable({
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [dirtySessionIds, setDirtySessionIds] = useState<Record<string, boolean>>({});
   const [statusFilter, setStatusFilter] = useState('all');
+  const [editingStatusStayId, setEditingStatusStayId] = useState<string | null>(null);
   const [completionFilter, setCompletionFilter] = useState<'all' | 'full' | 'available'>('all');
   const [locationFilter, setLocationFilter] = useState('all');
   const submittersRef = useRef<Record<string, ((nextEditSessionId?: string) => void) | undefined>>({});
@@ -296,11 +299,50 @@ export default function OrganizerStaysTable({
                     <td className="px-4 py-3 font-medium text-slate-900">{stay.title}</td>
                     <td className="px-4 py-3 text-slate-600">{stay.seasonName}</td>
                     <td className="px-4 py-3">
-                      <span
-                        className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${stayStatusBadgeClassName(stay.status)}`}
-                      >
-                        {stayStatusLabel(stay.status)}
-                      </span>
+                      {(stay.status === 'PUBLISHED' || stay.status === 'HIDDEN') &&
+                      editingStatusStayId === stay.id ? (
+                        <form action={updateStayStatusAction} className="flex items-center gap-2">
+                          <input type="hidden" name="stay_id" value={stay.id} />
+                          <select
+                            name="status"
+                            defaultValue={stay.status ?? 'PUBLISHED'}
+                            autoFocus
+                            onBlur={() => setEditingStatusStayId(null)}
+                            onChange={(event) => event.currentTarget.form?.requestSubmit()}
+                            className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-800"
+                          >
+                            <option value="PUBLISHED">Publié</option>
+                            <option value="HIDDEN">Masqué</option>
+                          </select>
+                        </form>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (stay.status === 'PUBLISHED' || stay.status === 'HIDDEN') {
+                              setEditingStatusStayId(stay.id);
+                            }
+                          }}
+                          className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
+                            stayStatusBadgeClassName(stay.status)
+                          } ${(stay.status === 'PUBLISHED' || stay.status === 'HIDDEN') ? 'cursor-pointer' : 'cursor-default'}`}
+                          aria-label={
+                            stay.status === 'PUBLISHED' || stay.status === 'HIDDEN'
+                              ? `Modifier le statut du séjour ${stay.title}`
+                              : undefined
+                          }
+                          title={
+                            stay.status === 'PUBLISHED' || stay.status === 'HIDDEN'
+                              ? 'Cliquer pour changer le statut'
+                              : undefined
+                          }
+                        >
+                          <span>{stayStatusLabel(stay.status)}</span>
+                          {stay.status === 'PUBLISHED' || stay.status === 'HIDDEN' ? (
+                            <ChevronDown className="ml-1 h-3.5 w-3.5 opacity-80" />
+                          ) : null}
+                        </button>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <span

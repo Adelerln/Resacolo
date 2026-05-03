@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { useEffect, useState, type FormEvent } from 'react';
 import DraftReferenceCopyField from '@/components/organisme/DraftReferenceCopyField';
 
@@ -10,6 +9,8 @@ type ImportStayPrefillFormProps = {
   organizerId: string;
   accommodationOptions: AccommodationOption[];
   actionPath?: string;
+  initialDraftId?: string;
+  initialImportAction?: ImportAction;
 };
 
 type ImportProgressState = {
@@ -31,13 +32,46 @@ type ImportAction = 'created' | 'existing' | 'restarted';
 export default function ImportStayPrefillForm({
   organizerId,
   accommodationOptions,
-  actionPath = '/api/import-stay'
+  actionPath = '/api/import-stay',
+  initialDraftId = '',
+  initialImportAction
 }: ImportStayPrefillFormProps) {
+  const trimmedInitialDraftId = initialDraftId.trim();
+  const hasServerHydratedImportState = Boolean(trimmedInitialDraftId && initialImportAction);
   const [pending, setPending] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [createdDraftId, setCreatedDraftId] = useState<string | null>(null);
-  const [importProgress, setImportProgress] = useState<ImportProgressState | null>(null);
-  const [importAction, setImportAction] = useState<ImportAction>('created');
+  const [createdDraftId, setCreatedDraftId] = useState<string | null>(
+    hasServerHydratedImportState ? trimmedInitialDraftId : null
+  );
+  const [importProgress, setImportProgress] = useState<ImportProgressState | null>(
+    hasServerHydratedImportState
+      ? {
+          step: 'created',
+          label:
+            initialImportAction === 'restarted' ? 'Brouillon existant relancé' : 'Brouillon créé',
+          percent: initialImportAction === 'existing' ? 100 : 5,
+          completed: initialImportAction === 'existing',
+          error: null
+        }
+      : null
+  );
+  const [importAction, setImportAction] = useState<ImportAction>(initialImportAction ?? 'created');
+
+  useEffect(() => {
+    if (!hasServerHydratedImportState || !initialImportAction) {
+      return;
+    }
+
+    setCreatedDraftId(trimmedInitialDraftId);
+    setImportAction(initialImportAction);
+    setImportProgress({
+      step: 'created',
+      label: initialImportAction === 'restarted' ? 'Brouillon existant relancé' : 'Brouillon créé',
+      percent: initialImportAction === 'existing' ? 100 : 5,
+      completed: initialImportAction === 'existing',
+      error: null
+    });
+  }, [hasServerHydratedImportState, initialImportAction, trimmedInitialDraftId]);
 
   useEffect(() => {
     if (!createdDraftId || importProgress?.completed || importAction === 'existing') {
@@ -156,39 +190,51 @@ export default function ImportStayPrefillForm({
 
   return (
     <form action={actionPath} method="post" className="mt-4 space-y-4" onSubmit={handleSubmit}>
-      <div className="space-y-3">
-        <div className="grid gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] sm:items-end">
-          <label className="block text-sm font-medium text-slate-700">
-            URL de la fiche séjour
-            <input
-              name="sourceUrl"
-              type="text"
-              inputMode="url"
-              autoComplete="url"
-              placeholder="https://exemple.com/fiche-sejour"
-              className={`organizer-input ${pending ? 'cursor-wait bg-slate-50' : ''}`}
-              required
-              readOnly={pending}
-            />
-          </label>
-          <label className="block text-sm font-medium text-slate-700">
-            Hébergement à rattacher
-            <select
-              name="selectedAccommodationId"
-              className="organizer-input"
-              defaultValue=""
-            >
-              <option value="">Créer un nouvel hébergement depuis l&apos;import</option>
-              {accommodationOptions.map((accommodation) => (
-                <option key={accommodation.id} value={accommodation.id}>
-                  {accommodation.label}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-        <div>
-          <span className="flex items-start gap-2 text-sm font-normal text-slate-600">
+      <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+        1) Collez l&apos;adresse internet du séjour. 2) Vérifiez l&apos;hébergement. 3) Cliquez sur{' '}
+        <strong>Pré-remplir</strong>.
+      </p>
+
+      <label className="block text-sm font-medium text-slate-700">
+        Adresse internet du séjour
+        <input
+          name="sourceUrl"
+          type="text"
+          inputMode="url"
+          autoComplete="url"
+          placeholder="Exemple : https://www.site.com/fiche-sejour"
+          className={`organizer-input ${pending ? 'cursor-wait bg-slate-50' : ''}`}
+          required
+          readOnly={pending}
+        />
+      </label>
+
+      <label className="block text-sm font-medium text-slate-700">
+        Hébergement du séjour (obligatoire)
+        <select
+          name="selectedAccommodationId"
+          className="organizer-input"
+          defaultValue=""
+        >
+          <option value="">Créer un nouvel hébergement automatiquement</option>
+          {accommodationOptions.map((accommodation) => (
+            <option key={accommodation.id} value={accommodation.id}>
+              {accommodation.label}
+            </option>
+          ))}
+        </select>
+        <p className="mt-1 text-xs font-normal text-slate-500">
+          L&apos;hébergement est toujours nécessaire. Laissez l&apos;option par défaut si vous ne savez pas:
+          un nouvel hébergement sera créé automatiquement.
+        </p>
+      </label>
+
+      <details className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+        <summary className="cursor-pointer text-sm font-medium text-slate-700">
+          Options avancées (facultatif)
+        </summary>
+        <div className="mt-3 space-y-3">
+          <label className="flex items-start gap-2 text-sm text-slate-700">
             <input
               name="includePricing"
               type="checkbox"
@@ -197,37 +243,35 @@ export default function ImportStayPrefillForm({
               className="mt-0.5 h-4 w-4 rounded border-slate-300 text-emerald-600"
             />
             <span>
-              Importer aussi les prix et les options de transport.
-              Si cette case est décochée, seules les sessions sont importées, sans prix ni villes
-              de transport.
+              Importer aussi les prix et le transport <strong>(recommandé)</strong>.
             </span>
-          </span>
+          </label>
+          <p className="text-xs text-slate-500">
+            Décochez seulement si vous voulez importer les sessions sans les prix ni les villes de transport.
+          </p>
         </div>
-      </div>
+      </details>
+
       <input type="hidden" name="organizerId" value={organizerId} />
       <div>
         <button
           type="submit"
           disabled={pending}
-          className="organizer-btn-primary min-h-[40px] disabled:cursor-wait disabled:opacity-90"
+          className="organizer-btn-primary min-h-[44px] disabled:cursor-wait disabled:opacity-90"
         >
-          {pending ? 'Import en cours… (patientez)' : 'Pré-remplir'}
+          {pending ? 'Import en cours…' : 'Pré-remplir'}
         </button>
         {pending ? (
           <p className="mt-2 text-xs text-slate-600">
-            Ne fermez pas cet onglet : le serveur télécharge la page et peut lancer un navigateur pour les
-            images et les tarifs.
+            Merci de patienter quelques instants.
           </p>
         ) : null}
+      </div>
+
+      <div>
         {createdDraftId && importAction === 'existing' ? (
           <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-            Un brouillon existait déjà pour cette URL. Le brouillon existant a été réutilisé.{' '}
-            <Link
-              href={`/organisme/sejours/drafts/${createdDraftId}?organizerId=${encodeURIComponent(organizerId)}`}
-              className="font-semibold underline"
-            >
-              Ouvrir ce brouillon
-            </Link>
+            Un brouillon existait déjà pour cette URL. Il a été réutilisé automatiquement.
           </p>
         ) : null}
         {createdDraftId && importAction === 'restarted' ? (
@@ -269,16 +313,6 @@ export default function ImportStayPrefillForm({
             <p className="mt-2 text-xs">
               {importProgress.error ? importProgress.error : importProgress.label}
             </p>
-            {importProgress.completed && !importProgress.error ? (
-              <p className="mt-2 text-xs font-medium">
-                <Link
-                  href={`/organisme/sejours/drafts/${createdDraftId}?organizerId=${encodeURIComponent(organizerId)}`}
-                  className="underline"
-                >
-                  Ouvrir le brouillon
-                </Link>
-              </p>
-            ) : null}
           </div>
         ) : null}
         {errorMessage ? (

@@ -11,23 +11,23 @@ export type DraftReviewControlVariant = {
 
 function draftReviewToneClasses(v: DraftReviewControlVariant): string {
   if (v.hasError) {
-    return 'border-2 border-amber-400 bg-amber-50/55 ring-1 ring-amber-200/60';
+    return 'border-2 border-rose-400 bg-rose-50/60 ring-1 ring-rose-200/60';
   }
   if (v.required) {
     return v.filled
       ? 'border-2 border-emerald-500 bg-emerald-50/35 ring-1 ring-emerald-200/50'
-      : 'border-2 border-amber-300 bg-amber-50/35 ring-1 ring-amber-200/50';
+      : 'border-2 border-rose-300 bg-rose-50/35 ring-1 ring-rose-200/50';
   }
   return v.filled
     ? 'border border-slate-200 bg-white'
-    : 'border border-slate-200 bg-slate-50/80 text-slate-900 placeholder:text-slate-400';
+    : 'border border-rose-200 bg-rose-50/40 text-slate-900 placeholder:text-slate-400';
 }
 
 /**
  * Bordure des champs dans le tunnel de review du brouillon :
  * - obligatoire rempli → vert
  * - obligatoire vide → rouge
- * - facultatif vide → gris
+ * - facultatif vide → rouge clair
  * - facultatif rempli → bordure neutre
  */
 type ControlOpts = DraftReviewControlVariant & { omitOuterMargin?: boolean };

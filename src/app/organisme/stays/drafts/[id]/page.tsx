@@ -316,17 +316,6 @@ function isManualCreationDraft(rawPayload: Record<string, unknown>): boolean {
   return false;
 }
 
-function draftStatusBadgeClass(status: string | null): string {
-  switch ((status ?? '').toLowerCase()) {
-    case 'validated':
-      return 'bg-emerald-100 text-emerald-700';
-    case 'pending':
-      return 'bg-amber-100 text-amber-700';
-    default:
-      return 'bg-slate-100 text-slate-700';
-  }
-}
-
 export default async function StayDraftReviewPage({ params: paramsPromise, searchParams }: PageProps) {
   const params = await paramsPromise;
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
@@ -533,7 +522,6 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
     <div className="space-y-6">
       <OrganizerPageHeader
         title="Relecture du brouillon séjour"
-        subtitle="Finalisez les informations puis validez la publication."
         actions={(
           <Link href={backHref} className="organizer-btn-secondary">
             Retour à la liste
@@ -566,14 +554,6 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
               </a>
             </p>
             <p>
-              <span className="font-medium text-slate-700">Statut :</span>{' '}
-              <span
-                className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold uppercase ${draftStatusBadgeClass(draft.status)}`}
-              >
-                {draft.status}
-              </span>
-            </p>
-            <p>
               <span className="font-medium text-slate-700">Créé le :</span>{' '}
               {new Date(draft.created_at).toLocaleString('fr-FR')}
             </p>
@@ -581,14 +561,18 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
               <span className="font-medium text-slate-700">Mis à jour le :</span>{' '}
               {new Date(draft.updated_at).toLocaleString('fr-FR')}
             </p>
-            <p>
-              <span className="font-medium text-slate-700">Validé le :</span>{' '}
-              {draft.validated_at ? new Date(draft.validated_at).toLocaleString('fr-FR') : '—'}
-            </p>
-            <p>
-              <span className="font-medium text-slate-700">Validé par :</span>{' '}
-              {draft.validated_by_user_id ?? '—'}
-            </p>
+            {draft.validated_at ? (
+              <p>
+                <span className="font-medium text-slate-700">Validé le :</span>{' '}
+                {new Date(draft.validated_at).toLocaleString('fr-FR')}
+              </p>
+            ) : null}
+            {draft.validated_by_user_id ? (
+              <p>
+                <span className="font-medium text-slate-700">Validé par :</span>{' '}
+                {draft.validated_by_user_id}
+              </p>
+            ) : null}
           </div>
         </div>
       ) : null}
@@ -596,7 +580,6 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
       <StayDraftReviewForm
         draftId={draft.id}
         organizerId={draft.organizer_id}
-        backHref={backHref}
         initialPayload={initialPayload}
         seasonOptions={seasonOptions}
         initialStatus={draft.status}

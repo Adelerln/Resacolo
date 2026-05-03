@@ -181,3 +181,80 @@ export async function organizerStayUpdateSessionRemainingPlaces(formData: FormDa
   revalidatePath('/sejours');
   redirect(withOrganizerQuery(`${base}?saved=1`, organizerId));
 }
+
+export async function organizerStayBulkUpdateSessionRemainingPlaces(formData: FormData) {
+  const supabase = getServerSupabaseClient();
+  const stayId = String(formData.get('stay_id') ?? '').trim();
+  const organizerId = String(formData.get('organizer_id') ?? '').trim();
+  const returnTo = String(formData.get('return_to') ?? 'detail');
+  const base = stayPath(stayId, returnTo);
+
+  await verifyStayAccess(stayId, organizerId);
+
+  const sessionIds = Array.from(
+    new Set(
+      formData
+        .getAll('session_id')
+        .map((value) => String(value ?? '').trim())
+        .filter(Boolean)
+    )
+  );
+
+  if (sessionIds.length === 0) {
+    redirect(withOrganizerQuery(base, organizerId));
+  }
+
+  const requestedRemainingPlaces = new Map<string, number>();
+  for (const sessionId of sessionIds) {
+    const remainingPlaces = Number(formData.get(`remaining_places:${sessionId}`) ?? NaN);
+    if (Number.isNaN(remainingPlaces) || remainingPlaces < 0) {
+      redirect(withOrganizerQuery(`${base}?error=invalid-session-capacity`, organizerId));
+    }
+    requestedRemainingPlaces.set(sessionId, remainingPlaces);
+  }
+
+  const { data: sessions, error: sessionsError } = await supabase
+    .from('sessions')
+    .select('id,stay_id,status')
+    .in('id', sessionIds)
+    .eq('stay_id', stayId);
+
+  if (sessionsError || !sessions || sessions.length !== sessionIds.length) {
+    redirect(withOrganizerQuery(`${base}?error=invalid-session-capacity`, organizerId));
+  }
+
+  const reservedCounts = await getReservedSessionCounts(supabase, sessionIds);
+
+  for (const sessionItem of sessions) {
+    const remainingPlaces = requestedRemainingPlaces.get(sessionItem.id);
+    if (remainingPlaces === undefined) continue;
+
+    const reservedCount = reservedCounts.get(sessionItem.id) ?? 0;
+    const capacityTotal = reservedCount + remainingPlaces;
+    const nextStatus =
+      sessionItem.status === 'COMPLETED' || sessionItem.status === 'ARCHIVED'
+        ? sessionItem.status
+        : reservedCount >= capacityTotal
+          ? 'FULL'
+          : 'OPEN';
+
+    const { error } = await supabase
+      .from('sessions')
+      .update({
+        capacity_total: capacityTotal,
+        capacity_reserved: reservedCount,
+        status: nextStatus
+      })
+      .eq('id', sessionItem.id)
+      .eq('stay_id', stayId);
+
+    if (error) {
+      console.error('Erreur Supabase (bulk update remaining places)', error.message);
+      redirect(withOrganizerQuery(`${base}?error=${encodeURIComponent(error.message)}`, organizerId));
+    }
+  }
+
+  revalidateStayPaths(stayId);
+  revalidatePath('/sejours');
+  redirect(withOrganizerQuery(`${base}?saved=1`, organizerId));
+}

@@ -1,10 +1,8 @@
-import RemainingPlacesEditor from '@/components/organisme/RemainingPlacesEditor';
 import {
   organizerStayAddSession,
+  organizerStayBulkUpdateSessionRemainingPlaces,
   organizerStayDeleteSession,
-  organizerStayUpdateSessionRemainingPlaces
 } from '@/lib/organizer-stay-session-actions';
-import { sessionStatusLabel } from '@/lib/ui/labels';
 
 type SessionItem = {
   id: string;
@@ -26,9 +24,9 @@ function getSessionPriceAmountCents(sessionItem: SessionItem) {
   return sessionItem.session_prices.amount_cents ?? null;
 }
 
-function formatReservedPlacesLabel(count: number, total: number) {
+function formatReservedPlacesLabel(count: number) {
   const reservedWord = count > 1 ? 'places réservées' : 'place réservée';
-  return `${count} ${reservedWord} /${total}`;
+  return `${count} ${reservedWord}`;
 }
 
 function formatRemainingPlacesLabel(count: number) {
@@ -49,25 +47,18 @@ export default function PublishedStaySessionsStep({
   sessions: SessionItem[];
   reservedSessionCounts: Map<string, number>;
 }) {
+  const bulkFormId = `remaining-places-form-${stayId}`;
+
   return (
     <div className="space-y-4">
       <div>
         <h3 className="text-base font-semibold text-slate-900">Sessions</h3>
-        <p className="mt-1 text-sm text-slate-600">
-          Gestion des dates, capacités et prix. Les modifications sont enregistrées immédiatement.
-        </p>
       </div>
 
       <ul className="space-y-2 text-sm text-slate-600">
         {sessions.map((sessionItem) => {
           const reservedCount = reservedSessionCounts.get(sessionItem.id) ?? 0;
           const remainingPlaces = Math.max(0, sessionItem.capacity_total - reservedCount);
-          const displayStatus =
-            sessionItem.status === 'COMPLETED' || sessionItem.status === 'ARCHIVED'
-              ? sessionItem.status
-              : remainingPlaces === 0
-                ? 'FULL'
-                : 'OPEN';
 
           return (
             <li
@@ -80,8 +71,7 @@ export default function PublishedStaySessionsStep({
                   {new Date(sessionItem.end_date).toLocaleDateString('fr-FR')}
                 </div>
                 <div className="text-xs text-slate-500">
-                  {formatReservedPlacesLabel(reservedCount, sessionItem.capacity_total)} (
-                  {sessionStatusLabel(displayStatus)})
+                  {formatReservedPlacesLabel(reservedCount)}
                 </div>
                 {getSessionPriceAmountCents(sessionItem) !== null && (
                   <div className="text-xs text-slate-500">
@@ -98,16 +88,18 @@ export default function PublishedStaySessionsStep({
                   {formatRemainingPlacesLabel(remainingPlaces)}
                 </div>
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                  <RemainingPlacesEditor
-                    action={organizerStayUpdateSessionRemainingPlaces}
-                    initialValue={remainingPlaces}
-                    hiddenFields={{
-                      session_id: sessionItem.id,
-                      stay_id: stayId,
-                      organizer_id: organizerId,
-                      return_to: returnTo
-                    }}
-                  />
+                  <label className="inline-flex items-center gap-3 text-xs font-medium text-slate-600">
+                    Places restantes
+                    <input form={bulkFormId} type="hidden" name="session_id" value={sessionItem.id} />
+                    <input
+                      form={bulkFormId}
+                      name={`remaining_places:${sessionItem.id}`}
+                      type="number"
+                      min="0"
+                      defaultValue={remainingPlaces}
+                      className="w-20 rounded border border-slate-200 bg-slate-100 px-2 py-1"
+                    />
+                  </label>
                   <form action={organizerStayDeleteSession}>
                     <input type="hidden" name="stay_id" value={stayId} />
                     <input type="hidden" name="organizer_id" value={organizerId} />
@@ -127,8 +119,25 @@ export default function PublishedStaySessionsStep({
         })}
         {sessions.length === 0 && <li>Aucune session.</li>}
       </ul>
+      {sessions.length > 0 && (
+        <form
+          id={bulkFormId}
+          action={organizerStayBulkUpdateSessionRemainingPlaces}
+          className="flex justify-end"
+        >
+          <input type="hidden" name="stay_id" value={stayId} />
+          <input type="hidden" name="organizer_id" value={organizerId} />
+          <input type="hidden" name="return_to" value={returnTo} />
+          <button
+            type="submit"
+            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-800 transition hover:border-slate-400 hover:bg-slate-50"
+          >
+            Enregistrer les places restantes
+          </button>
+        </form>
+      )}
 
-      <form action={organizerStayAddSession} className="space-y-3 border-t border-slate-100 pt-4">
+      <form action={organizerStayAddSession} className="space-y-3 pt-2">
         <input type="hidden" name="stay_id" value={stayId} />
         <input type="hidden" name="organizer_id" value={organizerId} />
         <input type="hidden" name="return_to" value={returnTo} />
@@ -177,7 +186,7 @@ export default function PublishedStaySessionsStep({
           type="submit"
           className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white"
         >
-          Ajouter session
+          Ajouter une session
         </button>
       </form>
     </div>

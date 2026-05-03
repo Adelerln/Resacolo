@@ -190,7 +190,7 @@ export default function AccommodationImportReviewFields({
         </div>
 
         <label className="block text-sm font-medium text-slate-700">
-          Description (lieu, région, infrastructures — pas couchage / sanitaires / repas / PMR)
+          Description (lieu, région, infrastructures — couchage / sanitaires / repas / PMR)
           <textarea
             className={cn(
               draftReviewControlClass({

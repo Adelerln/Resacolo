@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useState, type FormEvent } from 'react';
+import DraftReferenceCopyField from '@/components/organisme/DraftReferenceCopyField';
 
 type AccommodationOption = { id: string; label: string };
 
@@ -246,14 +247,13 @@ export default function ImportStayPrefillForm({
           >
             <div className="flex items-center justify-between gap-3">
               <p className="font-medium">
-                {importProgress.completed && !importProgress.error ? 'Import terminé' : 'Import lancé'}.
-                {' '}Le brouillon <span className="font-semibold">{createdDraftId}</span>{' '}
                 {importProgress.completed && !importProgress.error
-                  ? 'est prêt.'
-                  : 'se remplit en arrière-plan.'}
+                  ? 'Le brouillon est prêt.'
+                  : 'Import lancé. Le brouillon se remplit en arrière-plan.'}
               </p>
               <span className="shrink-0 font-semibold">{importProgress.percent}%</span>
             </div>
+            <DraftReferenceCopyField value={createdDraftId} />
             <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/70">
               <div
                 className={`h-full rounded-full transition-[width] duration-500 ${
@@ -275,7 +275,7 @@ export default function ImportStayPrefillForm({
                   href={`/organisme/sejours/drafts/${createdDraftId}?organizerId=${encodeURIComponent(organizerId)}`}
                   className="underline"
                 >
-                  Ouvrir la review
+                  Ouvrir le brouillon
                 </Link>
               </p>
             ) : null}

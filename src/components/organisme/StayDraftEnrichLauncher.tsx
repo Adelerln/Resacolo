@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import DraftReferenceCopyField from '@/components/organisme/DraftReferenceCopyField';
 import { withOrganizerQuery } from '@/lib/organizers';
 
 type StayDraftEnrichLauncherProps = {
@@ -59,11 +60,11 @@ export default function StayDraftEnrichLauncher({
         }}
       >
         <label className="block flex-1 text-sm font-medium text-slate-700">
-          ID du draft
+          Brouillon à enrichir
           <input
             name="draftId"
             type="text"
-            placeholder="UUID du stay_draft"
+            placeholder="Collez la référence du brouillon"
             value={draftId}
             onChange={(event) => setDraftId(event.target.value)}
             className="organizer-input"
@@ -96,10 +97,13 @@ export default function StayDraftEnrichLauncher({
 
       {aiSuccess && aiDraftId ? (
         <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-emerald-900">
-          <p className="text-lg font-semibold">Enrichissement IA terminé</p>
-          <p className="mt-1 text-sm">
-            ID du draft : <span className="font-semibold">{aiDraftId}</span>
-          </p>
+          <p className="text-lg font-semibold">Enrichissement par Intelligence Artificielle terminé</p>
+          <DraftReferenceCopyField
+            value={aiDraftId}
+            labelClassName="mt-2 text-xs font-semibold uppercase tracking-wide text-emerald-700"
+            codeClassName="text-emerald-900"
+            buttonClassName="border-emerald-300 text-emerald-900 hover:bg-emerald-100"
+          />
           <Link
             href={withOrganizerQuery(`/organisme/sejours/drafts/${aiDraftId}`, organizerId)}
             className="organizer-btn-primary mt-3"

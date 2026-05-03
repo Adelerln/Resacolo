@@ -145,7 +145,7 @@ export default async function OrganizerStayEditTunnelPage({ params: paramsPromis
         subtitle="Utilisez le tunnel unique pour mettre à jour la fiche publiée."
         actions={(
           <Link href={backHref} className="organizer-btn-secondary">
-            Retour à la fiche
+            Retour aux sessions
           </Link>
         )}
       />
@@ -154,7 +154,6 @@ export default async function OrganizerStayEditTunnelPage({ params: paramsPromis
         draftId={stay.id}
         organizerId={stay.organizer_id}
         seasonOptions={seasonOptions}
-        backHref={backHref}
         initialPayload={initialPayload}
         initialStatus={stay.status}
         initialValidatedAt={null}

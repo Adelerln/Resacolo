@@ -242,10 +242,19 @@ export default function OrganizerStaysTable({
         </div>
       </div>
       <div className="overflow-x-auto">
-        <table className="organizer-table min-w-[1040px]">
+        <table className="organizer-table min-w-[980px] w-full table-fixed">
+          <colgroup>
+            <col className="w-14" />
+            <col className="w-[24%]" />
+            <col className="w-[11%]" />
+            <col className="w-[11%]" />
+            <col className="w-[14%]" />
+            <col className="w-auto" />
+            <col className="w-[170px]" />
+          </colgroup>
           <thead>
             <tr>
-              <th className="w-12 px-4 py-3"></th>
+              <th className="px-4 py-3"></th>
               <th className="px-4 py-3">Séjour</th>
               <th className="px-4 py-3">Saison</th>
               <th className="px-4 py-3">Statut</th>
@@ -301,7 +310,7 @@ export default function OrganizerStaysTable({
                       </span>
                     </td>
                     <td className="px-4 py-3 text-slate-600">{stay.locationText || '-'}</td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="px-4 py-3 text-right whitespace-nowrap">
                       <div className="flex items-center justify-end gap-3">
                         <form
                           action={deleteStayAction}

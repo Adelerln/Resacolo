@@ -142,7 +142,6 @@ export default async function AdminStayDetailPage({ params }: PageProps) {
         draftId={stay.id}
         organizerId={stay.organizer_id}
         seasonOptions={seasonOptions}
-        backHref={backHref}
         initialPayload={initialPayload}
         initialStatus={stay.status}
         initialValidatedAt={null}

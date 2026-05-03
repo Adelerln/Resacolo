@@ -65,9 +65,6 @@ export default function NewStayEntryChoiceOverlay({
             <h1 id="new-stay-entry-title" className="text-2xl font-semibold text-slate-900">
               Choisis ton point de départ
             </h1>
-            <p className="text-sm text-slate-600">
-              Sélectionne un mode, puis continue sur l&apos;écran suivant.
-            </p>
           </div>
           <button
             type="button"
@@ -89,9 +86,6 @@ export default function NewStayEntryChoiceOverlay({
               <Link2 className="h-5 w-5" />
             </span>
             <span className="block text-base font-semibold text-slate-900">Import via URL</span>
-            <span className="mt-1 block text-sm text-slate-600">
-              Pré-remplis un brouillon à partir d&apos;une fiche existante.
-            </span>
           </Link>
 
           <Link
@@ -102,9 +96,6 @@ export default function NewStayEntryChoiceOverlay({
               <PenLine className="h-5 w-5" />
             </span>
             <span className="block text-base font-semibold text-slate-900">Brouillon manuel</span>
-            <span className="mt-1 block text-sm text-slate-600">
-              Crée un brouillon vide puis passe directement à la relecture.
-            </span>
           </Link>
         </div>
       </div>

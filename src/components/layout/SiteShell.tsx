@@ -29,7 +29,8 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
     pathname.startsWith('/admin') ||
     pathname.startsWith('/back-office') ||
     pathname.startsWith('/organisme') ||
-    pathname.startsWith('/partenaire');
+    pathname.startsWith('/partenaire') ||
+    pathname === '/forbidden';
   const disablePageTransition =
     pathname.startsWith('/login') ||
     pathname.startsWith('/checkout') ||

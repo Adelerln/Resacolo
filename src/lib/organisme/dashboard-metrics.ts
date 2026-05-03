@@ -49,6 +49,7 @@ export type OrganizerDashboardMetrics = {
   mediaCoverageRate: number;
   staysWithReservationsCount: number;
   fullSessionsCount: number;
+  openSessionsCount: number;
   avgReservationsPerPublishedStay: number;
   totalStayVisits: number;
   visitedStaysCount: number;
@@ -108,6 +109,7 @@ export function buildOrganizerDashboardModel({
   const capacityByStayId = new Map<string, number>();
 
   let fullSessionsCount = 0;
+  let openSessionsCount = 0;
 
   for (const sessionItem of sessions) {
     sessionCountByStayId.set(
@@ -121,11 +123,13 @@ export function buildOrganizerDashboardModel({
       (reservedCountByStayId.get(sessionItem.stay_id) ?? 0) + reservedCount
     );
 
+    if (sessionItem.status === 'ARCHIVED' || sessionItem.status === 'COMPLETED') continue;
+
+    openSessionsCount += 1;
+
     if (sessionItem.status === 'FULL' || reservedCount >= sessionItem.capacity_total) {
       fullSessionsCount += 1;
     }
-
-    if (sessionItem.status === 'ARCHIVED' || sessionItem.status === 'COMPLETED') continue;
     capacityByStayId.set(
       sessionItem.stay_id,
       (capacityByStayId.get(sessionItem.stay_id) ?? 0) + sessionItem.capacity_total
@@ -183,6 +187,7 @@ export function buildOrganizerDashboardModel({
     .filter((stay) => stay.isPublished && stay.reserved === 0)
     .sort(
       (a, b) =>
+        b.visitCount - a.visitCount ||
         b.sessionCount - a.sessionCount ||
         b.updatedAt.localeCompare(a.updatedAt) ||
         a.title.localeCompare(b.title, 'fr')
@@ -205,6 +210,7 @@ export function buildOrganizerDashboardModel({
       mediaCoverageRate,
       staysWithReservationsCount,
       fullSessionsCount,
+      openSessionsCount,
       avgReservationsPerPublishedStay,
       totalStayVisits,
       visitedStaysCount,

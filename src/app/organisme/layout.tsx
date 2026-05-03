@@ -5,8 +5,7 @@ import { ArrowLeft } from 'lucide-react';
 import { getOrganizerNavLinks } from '@/lib/organizer-access';
 import { requireOrganizerPageAccess } from '@/lib/organizer-backoffice-access.server';
 import {
-  OrganizerWorkspaceNav,
-  OrganizerWorkspaceSelector
+  OrganizerWorkspaceNav
 } from '@/components/organisme/OrganizerWorkspaceControls';
 
 function withOrganizerQuery(path: string, organizerId?: string | null) {
@@ -91,17 +90,6 @@ export default async function OrganizerLayout({ children }: { children: React.Re
           </div>
         </aside>
         <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:overflow-y-auto lg:px-8 lg:py-10">
-          <Suspense
-            fallback={<div className="mb-6 rounded-2xl border border-slate-200 bg-white px-4 py-4" />}
-          >
-            <div className="sticky top-0 z-20 bg-slate-50/95 pb-4 backdrop-blur-sm">
-              <OrganizerWorkspaceSelector
-                organizers={organizers}
-                initialSelectedOrganizerId={selectedOrganizerId}
-                accessRolesByOrganizerId={accessByOrganizerId}
-              />
-            </div>
-          </Suspense>
           {children}
         </main>
       </div>

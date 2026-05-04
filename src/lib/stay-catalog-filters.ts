@@ -3,6 +3,7 @@ import {
   buildStayDestinationSearchText,
   buildStayPrimaryDestinationFilterLabel
 } from '@/lib/stay-destination';
+import { staySessionsAppearFullyBooked } from '@/lib/stay-catalog-availability';
 import { slugify } from '@/lib/utils';
 import type { Stay } from '@/types/stay';
 
@@ -786,14 +787,28 @@ export function applyStayCatalogSort(
     return sorted;
   }
 
-  sorted.sort((left, right) => {
+  const byRandomRank = (left: Stay, right: Stay) => {
     const leftRank = fnv1aHash(`${seed}:${left.id}:${left.slug}`);
     const rightRank = fnv1aHash(`${seed}:${right.id}:${right.slug}`);
     if (leftRank !== rightRank) return leftRank - rightRank;
     return compareFallbackStable(left, right);
-  });
+  };
 
-  return sorted;
+  const available: Stay[] = [];
+  const fullyBooked: Stay[] = [];
+
+  for (const stay of sorted) {
+    if (staySessionsAppearFullyBooked(stay.bookingOptions?.sessions)) {
+      fullyBooked.push(stay);
+    } else {
+      available.push(stay);
+    }
+  }
+
+  available.sort(byRandomRank);
+  fullyBooked.sort(byRandomRank);
+
+  return [...available, ...fullyBooked];
 }
 
 export function applyStayCatalogFilters(

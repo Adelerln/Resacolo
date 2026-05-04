@@ -119,21 +119,41 @@ export async function POST(
   if (!access.ok) {
     return NextResponse.json({ error: access.error }, { status: access.status });
   }
-  const { selectedOrganizerId } = access.context;
-
   const supabase = getServerSupabaseClient();
+  const resourceId = String(params.id ?? '').trim();
 
-  const { data: draft, error: draftError } = await supabase
+  let { data: draft, error: draftError } = await supabase
     .from('stay_drafts')
     .select('*')
-    .eq('id', params.id)
-    .eq('organizer_id', selectedOrganizerId)
+    .eq('id', resourceId)
     .maybeSingle();
+
+  if (!draft && !draftError) {
+    const fallback = await supabase
+      .from('stay_drafts')
+      .select('*')
+      .eq('raw_payload->live_publication->>stay_id', resourceId)
+      .maybeSingle();
+    draft = fallback.data;
+    draftError = fallback.error;
+  }
 
   if (draftError || !draft) {
     return NextResponse.json(
-      { error: draftError?.message ?? 'Brouillon introuvable pour cet organisateur.' },
+      {
+        error:
+          draftError?.message ??
+          `Brouillon introuvable pour cet organisateur (id: ${resourceId}).`
+      },
       { status: 404 }
+    );
+  }
+
+  const draftOrganizerId = String(draft.organizer_id ?? '').trim();
+  if (!draftOrganizerId || !access.context.accessByOrganizerId[draftOrganizerId]) {
+    return NextResponse.json(
+      { error: 'Accès organisateur non autorisé.' },
+      { status: 403 }
     );
   }
 
@@ -168,8 +188,8 @@ export async function POST(
       ...generatedSeo,
       updated_at: new Date().toISOString()
     })
-    .eq('id', params.id)
-    .eq('organizer_id', selectedOrganizerId)
+    .eq('id', draft.id)
+    .eq('organizer_id', draftOrganizerId)
     .select('*')
     .maybeSingle();
 

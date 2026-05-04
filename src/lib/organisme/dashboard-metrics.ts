@@ -32,7 +32,6 @@ export type OrganizerDashboardStayRow = {
   sessionCount: number;
   reserved: number;
   capacity: number;
-  occupancy: number;
   mediaCount: number;
   isPublished: boolean;
   visitCount: number;
@@ -78,10 +77,7 @@ type BuildOrganizerDashboardInput = {
   stayVisits: StayVisitDashboardInput[];
   members: OrganizerMemberDashboardInput[];
   reservedCounts: Map<string, number>;
-  vigilanceOccupancyThreshold?: number;
 };
-
-const DEFAULT_VIGILANCE_OCCUPANCY_THRESHOLD = 25;
 
 export function buildOrganizerDashboardModel({
   stays,
@@ -89,8 +85,7 @@ export function buildOrganizerDashboardModel({
   stayMedia,
   stayVisits,
   members,
-  reservedCounts,
-  vigilanceOccupancyThreshold = DEFAULT_VIGILANCE_OCCUPANCY_THRESHOLD
+  reservedCounts
 }: BuildOrganizerDashboardInput): OrganizerDashboardViewModel {
   const mediaCountByStayId = new Map<string, number>();
   for (const media of stayMedia) {
@@ -140,7 +135,6 @@ export function buildOrganizerDashboardModel({
     .map((stay) => {
       const reserved = reservedCountByStayId.get(stay.id) ?? 0;
       const capacity = capacityByStayId.get(stay.id) ?? 0;
-      const occupancy = capacity > 0 ? (reserved / capacity) * 100 : 0;
       return {
         id: stay.id,
         title: stay.title,
@@ -149,7 +143,6 @@ export function buildOrganizerDashboardModel({
         sessionCount: sessionCountByStayId.get(stay.id) ?? 0,
         reserved,
         capacity,
-        occupancy,
         mediaCount: mediaCountByStayId.get(stay.id) ?? 0,
         isPublished: stay.status === 'PUBLISHED',
         visitCount: visitCountByStayId.get(stay.id) ?? 0
@@ -184,7 +177,7 @@ export function buildOrganizerDashboardModel({
 
   const topStays = stayRows.filter((stay) => stay.reserved > 0).slice(0, 5);
   const noTractionPublishedStays = stayRows
-    .filter((stay) => stay.isPublished && stay.reserved === 0)
+    .filter((stay) => stay.isPublished)
     .sort(
       (a, b) =>
         b.visitCount - a.visitCount ||
@@ -194,8 +187,8 @@ export function buildOrganizerDashboardModel({
     )
     .slice(0, 5);
   const vigilanceStays = stayRows
-    .filter((stay) => stay.capacity > 0 && stay.occupancy < vigilanceOccupancyThreshold)
-    .sort((a, b) => a.occupancy - b.occupancy || a.reserved - b.reserved)
+    .filter((stay) => stay.capacity === 0)
+    .sort((a, b) => b.reserved - a.reserved || a.title.localeCompare(b.title, 'fr'))
     .slice(0, 5);
 
   return {

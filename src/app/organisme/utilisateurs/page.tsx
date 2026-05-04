@@ -124,31 +124,31 @@ export default async function OrganismeUsersPage({
 
       <div className="organizer-table-shell">
         <div className="overflow-x-auto">
-          <table className="organizer-table min-w-[1200px] w-full table-fixed">
+          <table className="organizer-table w-full table-fixed">
             <colgroup>
-              <col className="w-[18%]" />
+              <col className="w-[19%]" />
               <col className="w-[14%]" />
               <col className="w-[14%]" />
-              <col className="w-[12%]" />
-              <col className="w-[22%]" />
+              <col className="w-[13%]" />
+              <col className="w-[17%]" />
               <col className="w-[10%]" />
-              <col className="w-[10%]" />
+              <col className="w-[13%]" />
             </colgroup>
             <thead>
               <tr>
-                <th className="px-4 py-3">Email</th>
-                <th className="px-4 py-3">Prénom</th>
-                <th className="px-4 py-3">Nom</th>
-                <th className="px-4 py-3">Rôle</th>
-                <th className="px-4 py-3">Mot de passe</th>
-                <th className="px-4 py-3">Ajouté le</th>
-                <th className="px-4 py-3 text-right">Actions</th>
+                <th className="px-4 py-3 text-center">Email</th>
+                <th className="px-4 py-3 text-center">Prénom</th>
+                <th className="px-4 py-3 text-center">Nom</th>
+                <th className="px-4 py-3 text-center">Rôle</th>
+                <th className="px-4 py-3 text-center">Mot de passe</th>
+                <th className="px-4 py-3 text-center">Ajouté le</th>
+                <th className="px-4 py-3 text-center">Actions</th>
               </tr>
             </thead>
             <tbody>
               {members.map((member) => (
                 <tr key={member.id} className="border-t border-slate-100">
-                  <td className="px-4 py-3 text-slate-600">{member.email ?? '—'}</td>
+                  <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{member.email ?? '—'}</td>
                   <td className="px-4 py-3 text-slate-600">
                     <input
                       form={`member-${member.id}`}
@@ -211,7 +211,7 @@ export default async function OrganismeUsersPage({
                     {new Date(member.created_at).toLocaleDateString('fr-FR')}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <div className="flex justify-end gap-2">
+                    <div className="flex flex-nowrap justify-end gap-2 whitespace-nowrap">
                       <form
                         id={`member-${member.id}`}
                         action={`/api/organisme/members/${member.id}`}

@@ -1951,9 +1951,6 @@ export default function StayDraftReviewForm({
         <div className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
           <div>
             <h3 className="text-sm font-semibold text-slate-900">Destination du séjour</h3>
-            <p className="mt-1 text-xs text-slate-500">
-              Cette destination commerciale alimente les filtres du catalogue, les cartes SVG et l&apos;affichage public.
-            </p>
           </div>
 
           <label className="block text-sm font-medium text-slate-700">

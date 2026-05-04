@@ -170,8 +170,7 @@ export default async function OrganizerDashboardPage({ searchParams }: PageProps
     stayMedia: stayMediaRaw ?? [],
     stayVisits: stayVisitsRaw ?? [],
     members: membersRaw ?? [],
-    reservedCounts,
-    vigilanceOccupancyThreshold: 25
+    reservedCounts
   });
   const { metrics, stayRows, lists } = dashboardModel;
   const teamCount = metrics.ownerCount + metrics.editorCount + metrics.reservationManagerCount;
@@ -285,7 +284,7 @@ export default async function OrganizerDashboardPage({ searchParams }: PageProps
                       {formatStayDisplayTitle(stay.title)}
                     </Link>
                     <span className="shrink-0 text-xs text-slate-500">
-                      {stay.reserved} résa · {formatPercent(stay.occupancy)}
+                      {stay.reserved} résa · {stay.reserved}/{stay.capacity}
                     </span>
                   </li>
                 ))}
@@ -337,13 +336,13 @@ export default async function OrganizerDashboardPage({ searchParams }: PageProps
                       {formatStayDisplayTitle(stay.title)}
                     </Link>
                     <span className="shrink-0 text-xs text-slate-500">
-                      {formatPercent(stay.occupancy)} · {stay.reserved}/{stay.capacity}
+                      {stay.reserved}/{stay.capacity}
                     </span>
                   </li>
                 ))}
               </ul>
             ) : (
-              <p className="mt-3 text-sm text-slate-500">Aucun séjour sous le seuil de fréquentation de 25%.</p>
+              <p className="mt-3 text-sm text-slate-500">Aucun séjour complet pour le moment.</p>
             )}
           </article>
         </div>
@@ -358,12 +357,12 @@ export default async function OrganizerDashboardPage({ searchParams }: PageProps
           <div className="overflow-x-auto">
             <table className="organizer-table min-w-[980px] w-full table-fixed">
               <colgroup>
-                <col className="w-[30%]" />
-                <col className="w-[12%]" />
-                <col className="w-[10%]" />
-                <col className="w-[12%]" />
-                <col className="w-[14%]" />
-                <col className="w-[22%]" />
+                <col className="w-[16.6667%]" />
+                <col className="w-[16.6667%]" />
+                <col className="w-[16.6667%]" />
+                <col className="w-[16.6667%]" />
+                <col className="w-[16.6667%]" />
+                <col className="w-[16.6667%]" />
               </colgroup>
               <thead>
                 <tr>
@@ -395,7 +394,7 @@ export default async function OrganizerDashboardPage({ searchParams }: PageProps
                     </td>
                     <td className="px-5 py-3 text-slate-600">{stay.sessionCount}</td>
                     <td className="px-5 py-3 text-slate-600">{stay.reserved}</td>
-                    <td className="px-5 py-3 text-slate-600">{formatPercent(stay.occupancy)}</td>
+                    <td className="px-5 py-3 text-slate-600">{stay.reserved}/{stay.capacity}</td>
                     <td className="px-5 py-3">
                       <span
                         className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${visibilityBadgeClassName(stay.isPublished, stay.mediaCount)}`}

@@ -73,6 +73,8 @@ export const checkoutContactSchema = z.object({
   vacafNumber: trimmedStringFromJson.pipe(
     z.string().regex(/^$|^\d{7}[A-Za-z]?$/, 'Le numéro allocataire doit contenir 7 chiffres, ou 7 chiffres et 1 lettre.')
   ),
+  ancvConnectMatricule: trimmedStringFromJson,
+  ancvConnectAmount: trimmedStringFromJson,
   paymentMode: z
     .union([
       z.enum(['FULL', 'DEPOSIT_200', 'CV_CONNECT', 'CV_PAPER', 'DEFERRED']),
@@ -110,6 +112,26 @@ export const checkoutContactSchema = z.object({
       code: z.ZodIssueCode.custom,
       path: ['billingCity'],
       message: 'Ville de facturation requise.'
+    });
+  }
+}).superRefine((data, ctx) => {
+  if (data.paymentMode !== 'CV_CONNECT') return;
+
+  if (!data.ancvConnectMatricule.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['ancvConnectMatricule'],
+      message: 'Matricule ANCV Connect requis.'
+    });
+  }
+
+  const normalized = data.ancvConnectAmount.replace(',', '.').trim();
+  const amount = Number(normalized);
+  if (!normalized || !Number.isFinite(amount) || amount <= 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['ancvConnectAmount'],
+      message: 'Montant ANCV Connect invalide.'
     });
   }
 });

@@ -63,6 +63,12 @@ function requiresOnlinePaymentStep(paymentMode: CheckoutContact['paymentMode']) 
   return paymentMode !== 'CV_PAPER' && paymentMode !== 'DEFERRED';
 }
 
+function parseAncvConnectAmount(value: string) {
+  const normalized = value.replace(',', '.').trim();
+  const amount = Number(normalized);
+  return Number.isFinite(amount) ? amount : NaN;
+}
+
 export default function CheckoutRecapitulatifPage() {
   const router = useRouter();
   const { items } = useCart();
@@ -133,6 +139,17 @@ export default function CheckoutRecapitulatifPage() {
     if (!contact.acceptsTerms) {
       setPaymentSubmitError('Vous devez accepter les conditions générales pour continuer.');
       return;
+    }
+    if (contact.paymentMode === 'CV_CONNECT') {
+      if (!contact.ancvConnectMatricule.trim()) {
+        setPaymentSubmitError('Veuillez renseigner votre matricule ANCV Connect.');
+        return;
+      }
+      const ancvAmount = parseAncvConnectAmount(contact.ancvConnectAmount);
+      if (!Number.isFinite(ancvAmount) || ancvAmount <= 0) {
+        setPaymentSubmitError('Veuillez renseigner un montant ANCV Connect valide.');
+        return;
+      }
     }
 
     setIsSubmittingPayment(true);
@@ -396,7 +413,17 @@ export default function CheckoutRecapitulatifPage() {
                       name="recap-payment-mode"
                       value={mode.value}
                       checked={isActive}
-                      onChange={() => patchContact({ paymentMode: mode.value })}
+                      onChange={() =>
+                        patchContact(
+                          mode.value === 'CV_CONNECT'
+                            ? { paymentMode: mode.value }
+                            : {
+                                paymentMode: mode.value,
+                                ancvConnectMatricule: '',
+                                ancvConnectAmount: ''
+                              }
+                        )
+                      }
                       className="sr-only"
                     />
                     <span className="min-w-0 flex-1 leading-snug">{mode.label}</span>
@@ -404,6 +431,34 @@ export default function CheckoutRecapitulatifPage() {
                 );
               })}
             </div>
+
+            {contact.paymentMode === 'CV_CONNECT' ? (
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="block text-sm font-medium text-slate-700">
+                  Matricule ANCV Connect *
+                  <input
+                    type="text"
+                    value={contact.ancvConnectMatricule}
+                    onChange={(event) => patchContact({ ancvConnectMatricule: event.target.value })}
+                    className={INPUT_CLASS}
+                    placeholder="Ex: 123456789"
+                    required
+                  />
+                </label>
+                <label className="block text-sm font-medium text-slate-700">
+                  Montant souhaité en règlement (€) *
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={contact.ancvConnectAmount}
+                    onChange={(event) => patchContact({ ancvConnectAmount: event.target.value })}
+                    className={INPUT_CLASS}
+                    placeholder="Ex: 150"
+                    required
+                  />
+                </label>
+              </div>
+            ) : null}
 
             <p className="text-sm leading-relaxed text-slate-600">
               Vos données personnelles seront utilisées pour traiter votre réservation, pour améliorer votre expérience

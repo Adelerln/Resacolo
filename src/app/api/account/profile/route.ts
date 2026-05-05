@@ -85,6 +85,8 @@ const checkoutProfileContactSchema = z
       .regex(/^$|^\d{7}[A-Za-z]?$/, 'Le numéro allocataire doit contenir 7 chiffres, ou 7 chiffres et 1 lettre.')
       .optional()
       .default(''),
+    ancvConnectMatricule: z.string().trim().optional().default(''),
+    ancvConnectAmount: z.string().trim().optional().default(''),
     paymentMode: z
       .enum(['FULL', 'DEPOSIT_200', 'CV_CONNECT', 'CV_PAPER', 'DEFERRED'])
       .optional()

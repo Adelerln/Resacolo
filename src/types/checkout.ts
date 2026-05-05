@@ -18,6 +18,8 @@ export type CheckoutContact = {
   billingCountry: string;
   cseOrganization: string;
   vacafNumber: string;
+  ancvConnectMatricule: string;
+  ancvConnectAmount: string;
   paymentMode: 'FULL' | 'DEPOSIT_200' | 'CV_CONNECT' | 'CV_PAPER' | 'DEFERRED';
   acceptsTerms: boolean;
   acceptsPrivacy: boolean;
@@ -84,6 +86,8 @@ export const EMPTY_CONTACT: CheckoutContact = {
   billingCountry: 'France',
   cseOrganization: '',
   vacafNumber: '',
+  ancvConnectMatricule: '',
+  ancvConnectAmount: '',
   paymentMode: 'FULL',
   acceptsTerms: false,
   acceptsPrivacy: true

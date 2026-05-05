@@ -101,6 +101,42 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
   const participantByItem = validateParticipants(input.items, input.participants);
   const pricing = await repriceCart(input.items);
 
+  const { data: existingPaymentRow } = await supabase
+    .from('payments')
+    .select('id,order_id,status,monetico_transaction_id,orders!inner(id,client_user_id,status)')
+    .eq('monetico_reference', input.checkoutId)
+    .eq('orders.client_user_id', input.clientUserId)
+    .neq('status', 'FAILED')
+    .neq('orders.status', 'CANCELLED')
+    .limit(1)
+    .maybeSingle();
+
+  if (existingPaymentRow?.id && existingPaymentRow.order_id) {
+    const transactionId =
+      existingPaymentRow.monetico_transaction_id ||
+      createMoneticoMockTransactionId(input.checkoutId, existingPaymentRow.id);
+    const moneticoMock = {
+      reference: input.checkoutId,
+      transactionId,
+      paymentUrl: `/checkout/paiement?checkoutId=${encodeURIComponent(input.checkoutId)}`,
+      testMode: true as const
+    };
+
+    if (!existingPaymentRow.monetico_transaction_id) {
+      await supabase
+        .from('payments')
+        .update({ monetico_transaction_id: transactionId })
+        .eq('id', existingPaymentRow.id);
+    }
+
+    return {
+      orderId: existingPaymentRow.order_id,
+      paymentId: existingPaymentRow.id,
+      pricing,
+      monetico: moneticoMock
+    };
+  }
+
   await createOrUpdateClientProfile(input.clientUserId, input.contact);
 
   const nowIso = new Date().toISOString();

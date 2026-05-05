@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Heart,
   Mail,
@@ -48,6 +48,13 @@ export default function MonCompteClient({
 }: MonCompteClientProps) {
   const [profile, setProfile] = useState<FamilyProfile>(initialProfile);
   const [reservationList, setReservationList] = useState<FamilyReservation[]>(reservations);
+  const reservationsColumnRef = useRef<HTMLElement | null>(null);
+  const favoritesColumnRef = useRef<HTMLElement | null>(null);
+  const favoritesListRef = useRef<HTMLDivElement | null>(null);
+  const firstFavoriteCardRef = useRef<HTMLAnchorElement | null>(null);
+  const [favoritesSectionMinHeight, setFavoritesSectionMinHeight] = useState<number | null>(null);
+  const [favoritesListMaxHeight, setFavoritesListMaxHeight] = useState<number | null>(null);
+  const [favoritesListScrollable, setFavoritesListScrollable] = useState(false);
   const { favoriteIdsArray, isLoaded } = useFavorites();
 
   useEffect(() => {
@@ -66,6 +73,50 @@ export default function MonCompteClient({
     };
   }, []);
 
+  useEffect(() => {
+    const reservationsEl = reservationsColumnRef.current;
+    const favoritesEl = favoritesColumnRef.current;
+    const listEl = favoritesListRef.current;
+    if (!reservationsEl || !favoritesEl || !listEl || visibleFavoriteStays.length === 0) {
+      setFavoritesSectionMinHeight(null);
+      setFavoritesListMaxHeight(null);
+      setFavoritesListScrollable(false);
+      return;
+    }
+
+    const recompute = () => {
+      const reservationHeight = reservationsEl.offsetHeight;
+      const favoritesNaturalHeight = favoritesEl.scrollHeight;
+      const cardHeight = firstFavoriteCardRef.current?.offsetHeight ?? 0;
+      const gap = 12; // space-y-3
+      const twoAndHalfCardsHeight = cardHeight > 0 ? Math.round(cardHeight * 2.5 + gap * 2) : null;
+
+      if (favoritesNaturalHeight < reservationHeight) {
+        setFavoritesSectionMinHeight(reservationHeight);
+        setFavoritesListMaxHeight(null);
+        setFavoritesListScrollable(false);
+        return;
+      }
+
+      if (Math.abs(favoritesNaturalHeight - reservationHeight) <= 2) {
+        setFavoritesSectionMinHeight(reservationHeight);
+        setFavoritesListMaxHeight(reservationHeight);
+        setFavoritesListScrollable(true);
+        return;
+      }
+
+      setFavoritesSectionMinHeight(null);
+      setFavoritesListMaxHeight(twoAndHalfCardsHeight);
+      setFavoritesListScrollable(Boolean(twoAndHalfCardsHeight));
+    };
+
+    recompute();
+    const observer = new ResizeObserver(recompute);
+    observer.observe(reservationsEl);
+    observer.observe(favoritesEl);
+    return () => observer.disconnect();
+  }, [visibleFavoriteStays, reservationList]);
+
   const parent1Name = useMemo(() => mapProfileToParent1Name(profile), [profile]);
   const fullAddress = useMemo(
     () =>
@@ -73,17 +124,6 @@ export default function MonCompteClient({
       'Non renseignée',
     [profile]
   );
-  const parent2Address = useMemo(() => {
-    if (!profile.parent2HasDifferentAddress) return 'Identique à l’adresse du domicile';
-    return (
-      formatAddress(
-        profile.parent2AddressLine1,
-        profile.parent2AddressLine2,
-        profile.parent2PostalCode,
-        profile.parent2City
-      ) || 'Non renseignée'
-    );
-  }, [profile]);
   const showParent2 = useMemo(
     () =>
       Boolean(
@@ -150,9 +190,45 @@ export default function MonCompteClient({
           </p>
         ) : null}
 
-        <div className="mt-10 grid gap-8 lg:grid-cols-[minmax(0,2fr)_minmax(0,1.4fr)]">
-          <div className="space-y-8">
-            <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <section className="mt-10 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="font-display text-lg font-semibold text-slate-900">Informations du compte</h2>
+          <article className="mt-4 rounded-xl border border-blue-100 bg-blue-100/70 p-3.5">
+            <h3 className="text-sm font-semibold text-slate-900">Parent 1</h3>
+            <dl className="mt-2.5 grid gap-x-8 gap-y-2.5 text-sm text-slate-700 md:grid-cols-2">
+              <div className="space-y-0.5">
+                <dt className="text-slate-500">Nom</dt>
+                <dd className="font-medium text-slate-900">{parent1Name}</dd>
+              </div>
+              <div className="space-y-0.5">
+                <dt className="text-slate-500">Statut</dt>
+                <dd className="font-medium text-slate-900">
+                  {parentStatusLabel(profile.parent1Status, profile.parent1StatusOther)}
+                </dd>
+              </div>
+              <div className="space-y-0.5">
+                <dt className="text-slate-500">Portable</dt>
+                <dd className="font-medium text-slate-900">{formatPhoneDisplay(profile.phone)}</dd>
+              </div>
+              <div className="space-y-0.5">
+                <dt className="text-slate-500">Email</dt>
+                <dd className="font-medium text-slate-900">{profile.email || 'Non renseigné'}</dd>
+              </div>
+              <div className="space-y-0.5">
+                <dt className="text-slate-500">Adresse</dt>
+                <dd className="font-medium text-slate-900">{fullAddress}</dd>
+              </div>
+              <div className="space-y-0.5">
+                <dt className="text-slate-500">Parent 2</dt>
+                <dd className="font-medium text-slate-900">
+                  {showParent2 ? profile.parent2Name || 'Non renseigné' : 'Masqué / non renseigné'}
+                </dd>
+              </div>
+            </dl>
+          </article>
+        </section>
+
+        <div className="mt-8 grid items-start gap-8 xl:grid-cols-2">
+          <section ref={reservationsColumnRef} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <h2 className="font-display text-lg font-semibold text-slate-900">Réservations</h2>
@@ -223,14 +299,13 @@ export default function MonCompteClient({
                 </ul>
               )}
 
-              <div className="mt-5 flex justify-end">
-                <Link href="/sejours" className="text-sm font-semibold text-brand-600 hover:text-brand-700">
-                  Voir tous les séjours
-                </Link>
-              </div>
-            </section>
+          </section>
 
-            <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <section
+            ref={favoritesColumnRef}
+            className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+            style={favoritesSectionMinHeight ? { minHeight: favoritesSectionMinHeight } : undefined}
+          >
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <h2 className="font-display text-lg font-semibold text-slate-900">Séjours favoris</h2>
@@ -246,40 +321,60 @@ export default function MonCompteClient({
                   Vous n&apos;avez pas encore de favoris. Cliquez sur le cœur depuis une fiche séjour pour l&apos;ajouter.
                 </p>
               ) : (
-                <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200">
-                  <div className="grid grid-cols-[minmax(0,2fr)_0.9fr_0.9fr_1.2fr] gap-3 bg-slate-100 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
-                    <span>Séjour</span>
-                    <span className="text-center">Saison</span>
-                    <span className="text-center">Âge</span>
-                    <span className="text-right">Lieu</span>
-                  </div>
-                  <div className="max-h-[18.5rem] overflow-y-auto">
-                    {visibleFavoriteStays.map((stay) => {
-                      const locationLabel =
-                        stay.displayLocation || stay.location || stay.region || 'Lieu à préciser';
-                      const seasonLabel = stay.seasonName || stay.period[0] || 'Saison à préciser';
-                      return (
-                        <Link
-                          key={stay.id}
-                          href={`/sejours/${stay.canonicalSlug}`}
-                          className="grid grid-cols-[minmax(0,2fr)_0.9fr_0.9fr_1.2fr] items-center gap-3 border-t border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 transition hover:bg-slate-50"
-                        >
-                          <span className="line-clamp-2 font-display text-base font-semibold text-slate-900">
-                            {stay.title}
-                          </span>
-                          <span className="text-center text-xs font-semibold uppercase tracking-[0.04em] text-slate-700">
-                            {seasonLabel}
-                          </span>
-                          <span className="text-center font-medium text-slate-900">
-                            {stay.ageRange || 'Tous âges'}
-                          </span>
-                          <span className="text-right font-medium text-slate-900">
-                            {locationLabel}
-                          </span>
-                        </Link>
-                      );
-                    })}
-                  </div>
+                <div
+                  ref={favoritesListRef}
+                  className={`mt-6 space-y-3 ${favoritesListScrollable ? 'overflow-y-auto pr-1' : ''}`}
+                  style={favoritesListMaxHeight ? { maxHeight: favoritesListMaxHeight } : undefined}
+                >
+                  {visibleFavoriteStays.map((stay) => {
+                    const locationLabel = stay.displayLocation || stay.location || stay.region || 'Lieu à préciser';
+                    const seasonLabel = stay.seasonName || stay.period[0] || 'Saison à préciser';
+                    const stayImage = stay.coverImage || stay.galleryImages?.[0] || '';
+                    return (
+                      <Link
+                        ref={firstFavoriteCardRef.current ? undefined : firstFavoriteCardRef}
+                        key={stay.id}
+                        href={`/sejours/${stay.canonicalSlug}`}
+                        className="block overflow-hidden rounded-xl border border-slate-200 bg-gradient-to-r from-white via-white to-blue-50/40 text-sm text-slate-700 transition hover:border-blue-200 hover:shadow-sm"
+                      >
+                        {stayImage ? (
+                          <div className="h-36 w-full overflow-hidden bg-slate-100">
+                            <img
+                              src={stayImage}
+                              alt={stay.title}
+                              className="h-full w-full object-cover transition duration-300 hover:scale-[1.02]"
+                              loading="lazy"
+                            />
+                          </div>
+                        ) : (
+                          <div className="flex h-36 w-full items-center justify-center bg-gradient-to-r from-brand-100 via-blue-100 to-cyan-100">
+                            <span className="px-4 text-center font-display text-base font-semibold text-brand-700">
+                              {stay.title}
+                            </span>
+                          </div>
+                        )}
+                        <div className="p-4">
+                        <p className="line-clamp-2 font-display text-base font-semibold text-slate-900">
+                          {stay.title}
+                        </p>
+                        <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                          <div className="rounded-lg border border-brand-100 bg-brand-50 px-3 py-2">
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-brand-700">Saison</p>
+                            <p className="mt-0.5 text-xs font-semibold text-brand-800">{seasonLabel}</p>
+                          </div>
+                          <div className="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2">
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-emerald-700">Âge</p>
+                            <p className="mt-0.5 text-xs font-semibold text-emerald-800">{stay.ageRange || 'Tous âges'}</p>
+                          </div>
+                          <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2">
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-amber-700">Lieu</p>
+                            <p className="mt-0.5 line-clamp-1 text-xs font-semibold text-amber-800">{locationLabel}</p>
+                          </div>
+                        </div>
+                        </div>
+                      </Link>
+                    );
+                  })}
                 </div>
               )}
 
@@ -290,102 +385,29 @@ export default function MonCompteClient({
                   </Link>
                 </div>
               ) : null}
-            </section>
-          </div>
-
-          <aside className="space-y-6">
-            <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <h2 className="font-display text-lg font-semibold text-slate-900">Informations du compte</h2>
-              <div className="mt-4 space-y-4">
-                <article className="rounded-xl border border-blue-100 bg-blue-100/70 p-4">
-                  <h3 className="text-sm font-semibold text-slate-900">Parent 1</h3>
-                  <dl className="mt-3 space-y-2 text-sm text-slate-700 break-words">
-                    <div className="flex items-start justify-between gap-3">
-                      <dt className="text-slate-500">Nom</dt>
-                      <dd className="font-medium text-slate-900">{parent1Name}</dd>
-                    </div>
-                    <div className="flex items-start justify-between gap-3">
-                      <dt className="text-slate-500">Statut</dt>
-                      <dd className="font-medium text-slate-900">
-                        {parentStatusLabel(profile.parent1Status, profile.parent1StatusOther)}
-                      </dd>
-                    </div>
-                    <div className="flex items-start justify-between gap-3">
-                      <dt className="text-slate-500">Portable</dt>
-                      <dd className="font-medium text-slate-900">{formatPhoneDisplay(profile.phone)}</dd>
-                    </div>
-                    <div className="flex items-start justify-between gap-3">
-                      <dt className="text-slate-500">Email</dt>
-                      <dd className="font-medium text-slate-900">{profile.email || 'Non renseigné'}</dd>
-                    </div>
-                    <div className="flex items-start justify-between gap-3">
-                      <dt className="text-slate-500">Adresse</dt>
-                      <dd className="max-w-[65%] text-right font-medium text-slate-900">{fullAddress}</dd>
-                    </div>
-                  </dl>
-                </article>
-
-                {showParent2 ? (
-                <article className="rounded-xl border border-orange-100 bg-orange-100/70 p-4">
-                  <h3 className="text-sm font-semibold text-slate-900">Parent 2</h3>
-                  <dl className="mt-3 space-y-2 text-sm text-slate-700 break-words">
-                    <div className="flex items-start justify-between gap-3">
-                      <dt className="text-slate-500">Nom</dt>
-                      <dd className="font-medium text-slate-900">{profile.parent2Name || 'Non renseigné'}</dd>
-                    </div>
-                    <div className="flex items-start justify-between gap-3">
-                      <dt className="text-slate-500">Statut</dt>
-                      <dd className="font-medium text-slate-900">
-                        {parentStatusLabel(profile.parent2Status, profile.parent2StatusOther)}
-                      </dd>
-                    </div>
-                    <div className="flex items-start justify-between gap-3">
-                      <dt className="text-slate-500">Portable</dt>
-                      <dd className="font-medium text-slate-900">
-                        {profile.parent2Phone ? formatPhoneDisplay(profile.parent2Phone) : 'Non renseigné'}
-                      </dd>
-                    </div>
-                    <div className="flex items-start justify-between gap-3">
-                      <dt className="text-slate-500">Email</dt>
-                      <dd className="font-medium text-slate-900">
-                        {profile.parent2Email || 'Non renseigné'}
-                      </dd>
-                    </div>
-                    {profile.parent2HasDifferentAddress && (
-                      <div className="flex items-start justify-between gap-3">
-                        <dt className="text-slate-500">Adresse</dt>
-                        <dd className="max-w-[65%] text-right font-medium text-slate-900">{parent2Address}</dd>
-                      </div>
-                    )}
-                  </dl>
-                </article>
-                ) : null}
-              </div>
-
-            </section>
-
-            <section className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-600">
-              <h3 className="font-display text-base font-semibold text-slate-900">Aide & confidentialité</h3>
-              <ul className="mt-3 space-y-2">
-                <li>
-                  <Link href="/bien-choisir-sa-colo" className="hover:text-brand-600">
-                    Bien choisir sa colo
-                  </Link>
-                </li>
-                <li>
-                  <Link href="/faq" className="hover:text-brand-600">
-                    FAQ
-                  </Link>
-                </li>
-                <li>
-                  <Link href="/confidentialite" className="hover:text-brand-600">
-                    Politique de confidentialité
-                  </Link>
-                </li>
-              </ul>
-            </section>
-          </aside>
+          </section>
         </div>
+
+        <section className="mt-8 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-600">
+          <h3 className="font-display text-base font-semibold text-slate-900">Aide & confidentialité</h3>
+          <ul className="mt-3 space-y-2">
+            <li>
+              <Link href="/bien-choisir-sa-colo" className="hover:text-brand-600">
+                Bien choisir sa colo
+              </Link>
+            </li>
+            <li>
+              <Link href="/faq" className="hover:text-brand-600">
+                FAQ
+              </Link>
+            </li>
+            <li>
+              <Link href="/confidentialite" className="hover:text-brand-600">
+                Politique de confidentialité
+              </Link>
+            </li>
+          </ul>
+        </section>
       </section>
     </div>
   );

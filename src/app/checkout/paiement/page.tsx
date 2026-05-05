@@ -2,39 +2,25 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { CheckoutFrame } from '@/components/checkout/CheckoutFrame';
 import { useCart } from '@/context/CartContext';
 import { useCheckout } from '@/context/CheckoutContext';
 import { confirmPaymentManually, createPaymentIntent } from '@/lib/checkout/client';
-import { buildDevMockPricing, isDevBypassCheckout } from '@/lib/checkout/dev-bypass';
-import type { CheckoutPricing } from '@/types/checkout';
+import { isDevBypassCheckout } from '@/lib/checkout/dev-bypass';
+import type { CheckoutContact } from '@/types/checkout';
 
-type PaymentInitData = {
-  orderId: string;
-  paymentId: string;
-  pricing: CheckoutPricing;
-  monetico: {
-    reference: string;
-    transactionId: string;
-    paymentUrl: string;
-    testMode: true;
-  };
-};
+function requiresOnlinePaymentStep(paymentMode: CheckoutContact['paymentMode']) {
+  return paymentMode !== 'CV_PAPER' && paymentMode !== 'DEFERRED';
+}
 
 export default function CheckoutPaiementPage() {
   const router = useRouter();
   const { items, clearCart } = useCart();
   const { hydrated, checkoutId, contact, participants, resetCheckout } = useCheckout();
-  const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [paymentData, setPaymentData] = useState<PaymentInitData | null>(null);
-
-  useEffect(() => {
-    if (!paymentData?.orderId) return;
-    router.prefetch(`/checkout/confirmation/${paymentData.orderId}`);
-  }, [paymentData?.orderId, router]);
+  const paymentRequiresOnlineStep = requiresOnlinePaymentStep(contact.paymentMode);
 
   const isContactComplete = useMemo(() => {
     return Boolean(
@@ -54,95 +40,6 @@ export default function CheckoutPaiementPage() {
       return Boolean(participant?.childFirstName && participant?.childLastName && participant?.childBirthdate);
     });
   }, [items, participants]);
-
-  useEffect(() => {
-    async function initializePayment() {
-      if (!hydrated || items.length === 0) {
-        setIsLoading(false);
-        return;
-      }
-
-      if (!isDevBypassCheckout() && (!isContactComplete || !isParticipantsComplete)) {
-        setIsLoading(false);
-        return;
-      }
-
-      if (isDevBypassCheckout()) {
-        const mockPricing = buildDevMockPricing(items);
-        setPaymentData({
-          orderId: 'dev-order',
-          paymentId: 'dev-payment',
-          pricing: mockPricing,
-          monetico: {
-            reference: 'DEV-REF',
-            transactionId: 'DEV-TXN',
-            paymentUrl: '#',
-            testMode: true
-          }
-        });
-        setIsLoading(false);
-        return;
-      }
-
-      const cacheKey = `resacolo-payment-v2-${checkoutId}`;
-
-      setErrorMessage(null);
-      setIsLoading(true);
-
-      try {
-        const cached = sessionStorage.getItem(cacheKey);
-        if (cached) {
-          const parsed = JSON.parse(cached) as Partial<PaymentInitData> | null;
-          if (
-            parsed &&
-            typeof parsed.orderId === 'string' &&
-            typeof parsed.paymentId === 'string' &&
-            parsed.pricing &&
-            parsed.monetico
-          ) {
-            setPaymentData(parsed as PaymentInitData);
-            setIsLoading(false);
-            return;
-          }
-
-          sessionStorage.removeItem(cacheKey);
-        }
-
-        const response = await createPaymentIntent({
-          checkoutId,
-          items,
-          contact,
-          participants: items.map((item) => {
-            const participant = participants[item.id];
-            return {
-              cartItemId: item.id,
-              childFirstName: participant?.childFirstName ?? '',
-              childLastName: participant?.childLastName ?? '',
-              childBirthdate: participant?.childBirthdate ?? '',
-              childGender: participant?.childGender ?? '',
-              additionalInfo: participant?.additionalInfo ?? ''
-            };
-          })
-        });
-
-        const payload: PaymentInitData = {
-          orderId: response.orderId,
-          paymentId: response.paymentId,
-          pricing: response.pricing,
-          monetico: response.monetico
-        };
-
-        setPaymentData(payload);
-        sessionStorage.setItem(cacheKey, JSON.stringify(payload));
-      } catch (error) {
-        setErrorMessage(error instanceof Error ? error.message : 'Impossible de préparer le paiement.');
-      } finally {
-        setIsLoading(false);
-      }
-    }
-
-    initializePayment();
-  }, [checkoutId, contact, hydrated, isContactComplete, isParticipantsComplete, items, participants]);
 
   if (!hydrated) {
     return (
@@ -166,7 +63,7 @@ export default function CheckoutPaiementPage() {
     );
   }
 
-  if (!isDevBypassCheckout() && (!isContactComplete || !isParticipantsComplete)) {
+  if (!isDevBypassCheckout() && (!isContactComplete || !isParticipantsComplete || !paymentRequiresOnlineStep)) {
     return (
       <CheckoutFrame
         step="paiement"
@@ -181,8 +78,6 @@ export default function CheckoutPaiementPage() {
   }
 
   async function handlePay() {
-    if (!paymentData) return;
-
     const cacheKey = `resacolo-payment-v2-${checkoutId}`;
     setErrorMessage(null);
     setIsSubmitting(true);
@@ -190,13 +85,56 @@ export default function CheckoutPaiementPage() {
     try {
       if (isDevBypassCheckout()) {
         if (typeof window !== 'undefined') {
-          sessionStorage.setItem(`resacolo-dev-bypass-paid:${paymentData.orderId}`, new Date().toISOString());
+          sessionStorage.setItem('resacolo-dev-bypass-paid:dev-order', new Date().toISOString());
         }
         sessionStorage.removeItem(cacheKey);
         clearCart();
         resetCheckout();
         router.push('/checkout/confirmation/dev-order?mode=dev-bypass');
         return;
+      }
+
+      let paymentData: {
+        orderId: string;
+        paymentId: string;
+      } | null = null;
+
+      const cached = sessionStorage.getItem(cacheKey);
+      if (cached) {
+        const parsed = JSON.parse(cached) as { orderId?: string; paymentId?: string } | null;
+        if (parsed?.orderId && parsed?.paymentId) {
+          paymentData = {
+            orderId: parsed.orderId,
+            paymentId: parsed.paymentId
+          };
+        } else {
+          sessionStorage.removeItem(cacheKey);
+        }
+      }
+
+      if (!paymentData) {
+        const response = await createPaymentIntent({
+          checkoutId,
+          items,
+          contact,
+          participants: items.map((item) => {
+            const participant = participants[item.id];
+            return {
+              cartItemId: item.id,
+              childFirstName: participant?.childFirstName ?? '',
+              childLastName: participant?.childLastName ?? '',
+              childBirthdate: participant?.childBirthdate ?? '',
+              childGender: participant?.childGender ?? '',
+              additionalInfo: participant?.additionalInfo ?? ''
+            };
+          })
+        });
+
+        paymentData = {
+          orderId: response.orderId,
+          paymentId: response.paymentId
+        };
+        sessionStorage.setItem(cacheKey, JSON.stringify(response));
       }
 
       await confirmPaymentManually({
@@ -222,26 +160,19 @@ export default function CheckoutPaiementPage() {
       title="Paiement"
       subtitle="Réglez votre commande directement sur le site."
     >
-      {isLoading ? <p className="text-sm text-slate-500">Préparation du paiement...</p> : null}
-
       {errorMessage ? (
         <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{errorMessage}</p>
       ) : null}
 
-      {!isLoading && paymentData ? (
-        <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
-          <p className="text-sm font-semibold text-slate-900">Paiement Monetico (mock)</p>
-          <p className="text-sm text-slate-600">
-            Référence: <span className="font-medium text-slate-900">{paymentData.monetico.reference}</span>
-          </p>
-          <p className="text-sm text-slate-600">
-            Transaction: <span className="font-medium text-slate-900">{paymentData.monetico.transactionId}</span>
-          </p>
-          <p className="text-xs text-slate-500">
-            Mode test local: le clic sur « Payer maintenant » simule la réponse Monetico et confirme la commande.
-          </p>
-        </div>
-      ) : null}
+      <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+        <p className="text-sm font-semibold text-slate-900">Paiement Monetico (mock)</p>
+        <p className="text-sm text-slate-600">
+          Le clic sur « Payer maintenant » prépare la commande puis simule la réponse Monetico.
+        </p>
+        <p className="text-xs text-slate-500">
+          Tant que vous ne cliquez pas sur le bouton, aucune nouvelle commande ne doit être créée.
+        </p>
+      </div>
 
       <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:justify-end">
         <Link href="/checkout/recapitulatif" className="btn btn-secondary btn-md">
@@ -251,7 +182,7 @@ export default function CheckoutPaiementPage() {
           type="button"
           onClick={handlePay}
           className="btn btn-primary btn-md"
-          disabled={isLoading || isSubmitting || !paymentData}
+          disabled={isSubmitting}
         >
           {isSubmitting ? 'Traitement...' : 'Payer maintenant'}
         </button>

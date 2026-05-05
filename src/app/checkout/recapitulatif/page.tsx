@@ -9,6 +9,7 @@ import { CheckoutFrame } from '@/components/checkout/CheckoutFrame';
 import { useCart } from '@/context/CartContext';
 import { useCheckout } from '@/context/CheckoutContext';
 import {
+  createPaymentIntent,
   createCheckoutSession,
   repriceCheckout,
   validateCheckoutContact,
@@ -51,12 +52,16 @@ const SECTION_CARD_CLASS =
 const COMPACT_LABEL_BOLD_CLASS = 'text-[11px] font-bold uppercase tracking-wide text-slate-900';
 
 const PAYMENT_MODES: Array<{ value: CheckoutContact['paymentMode']; label: string }> = [
-  { value: 'FULL', label: 'Paiement de la totalité' },
-  { value: 'DEPOSIT_200', label: "Paiement d'un acompte (200 €)" },
+  { value: 'FULL', label: 'Paiement de la totalité en CB' },
+  { value: 'DEPOSIT_200', label: "Paiement d'un acompte (200 €) en CB" },
   { value: 'CV_CONNECT', label: 'Paiement en ANCV Connect' },
   { value: 'CV_PAPER', label: 'Paiement en ANCV papier' },
   { value: 'DEFERRED', label: 'Paiement différé' }
 ];
+
+function requiresOnlinePaymentStep(paymentMode: CheckoutContact['paymentMode']) {
+  return paymentMode !== 'CV_PAPER' && paymentMode !== 'DEFERRED';
+}
 
 export default function CheckoutRecapitulatifPage() {
   const router = useRouter();
@@ -67,10 +72,13 @@ export default function CheckoutRecapitulatifPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [paymentSubmitError, setPaymentSubmitError] = useState<string | null>(null);
   const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
+  const paymentRequiresOnlineStep = requiresOnlinePaymentStep(contact.paymentMode);
 
   useEffect(() => {
-    router.prefetch('/checkout/paiement');
-  }, [router]);
+    if (paymentRequiresOnlineStep) {
+      router.prefetch('/checkout/paiement');
+    }
+  }, [paymentRequiresOnlineStep, router]);
 
   const isContactComplete = Boolean(
     contact.email &&
@@ -130,7 +138,15 @@ export default function CheckoutRecapitulatifPage() {
     setIsSubmittingPayment(true);
     try {
       if (isDevBypassCheckout()) {
-        router.push('/checkout/paiement');
+        if (paymentRequiresOnlineStep) {
+          router.push('/checkout/paiement');
+        } else {
+          router.push(
+            `/checkout/confirmation/dev-order?mode=${
+              contact.paymentMode === 'CV_PAPER' ? 'dev-bypass-cv-paper' : 'dev-bypass-deferred'
+            }`
+          );
+        }
         return;
       }
 
@@ -158,10 +174,25 @@ export default function CheckoutRecapitulatifPage() {
       await validateCheckoutParticipants(session.checkoutId, participantPayload);
       setCheckoutId(session.checkoutId);
       setContact(normalizedContact);
-      router.push('/checkout/paiement');
+
+      if (paymentRequiresOnlineStep) {
+        router.push('/checkout/paiement');
+        return;
+      }
+
+      const response = await createPaymentIntent({
+        checkoutId: session.checkoutId,
+        items,
+        contact: normalizedContact,
+        participants: participantPayload
+      });
+
+      router.push(
+        `/checkout/confirmation/${response.orderId}?mode=${contact.paymentMode === 'CV_PAPER' ? 'cv-paper' : 'deferred'}`
+      );
     } catch (error) {
       setPaymentSubmitError(
-        error instanceof Error ? error.message : 'Impossible de continuer vers le paiement.'
+        error instanceof Error ? error.message : 'Impossible de valider la commande.'
       );
     } finally {
       setIsSubmittingPayment(false);
@@ -430,7 +461,11 @@ export default function CheckoutRecapitulatifPage() {
               !contact.acceptsTerms
             }
           >
-            {isSubmittingPayment ? 'Validation...' : 'Continuer vers paiement'}
+            {isSubmittingPayment
+              ? 'Validation...'
+              : paymentRequiresOnlineStep
+                ? 'Continuer vers paiement'
+                : 'Valider la commande'}
           </button>
         </div>
       </div>

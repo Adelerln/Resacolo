@@ -31,32 +31,49 @@ export default function CheckoutConfirmationPage() {
   const [order, setOrder] = useState<OrderStatusResponse | null>(null);
   const checkoutResetDoneRef = useRef(false);
   const orderStatusRef = useRef<string | null>(null);
+  const isCvPaperMode = mode === 'cv-paper' || mode === 'dev-bypass-cv-paper';
+  const isDeferredMode = mode === 'deferred' || mode === 'dev-bypass-deferred';
+  const isOfflineConfirmationMode = isCvPaperMode || isDeferredMode;
+  const displayedSubtitle = isCvPaperMode
+    ? 'Votre commande est enregistrée. Le règlement en ANCV papier sera finalisé hors ligne.'
+    : isDeferredMode
+      ? 'Votre commande est enregistrée. Le règlement différé sera finalisé ultérieurement.'
+      : 'Votre commande est en cours de traitement.';
 
   useEffect(() => {
     if (!orderId) return;
 
     if (
-      mode === 'dev-bypass' &&
+      (mode === 'dev-bypass' || mode === 'dev-bypass-cv-paper' || mode === 'dev-bypass-deferred') &&
       (isDevBypassCheckout() || process.env.NODE_ENV === 'development')
     ) {
       const devBypassPaidStorageKey = `resacolo-dev-bypass-paid:${orderId}`;
-      const simulatedPaidAt =
-        typeof window !== 'undefined'
-          ? sessionStorage.getItem(devBypassPaidStorageKey)
-          : null;
+      const simulatedPaidAt = typeof window !== 'undefined' ? sessionStorage.getItem(devBypassPaidStorageKey) : null;
       const isSimulatedPaymentConfirmed = Boolean(simulatedPaidAt);
+      const simulatedStatus = isOfflineConfirmationMode
+        ? 'REQUESTED (SIMULÉ)'
+        : isSimulatedPaymentConfirmed
+          ? 'PAID (SIMULÉ)'
+          : 'EN ATTENTE (SIMULÉ)';
+      const simulatedPaymentStatus = isCvPaperMode
+        ? 'ANCV PAPIER (SIMULÉ)'
+        : isDeferredMode
+          ? 'PAIEMENT DIFFÉRÉ (SIMULÉ)'
+          : isSimulatedPaymentConfirmed
+            ? 'PAID (SIMULÉ)'
+            : 'NON PAYÉ';
 
       setOrder({
         orderId,
-        status: isSimulatedPaymentConfirmed ? 'PAID (SIMULÉ)' : 'EN ATTENTE (SIMULÉ)',
+        status: simulatedStatus,
         paidAt: simulatedPaidAt,
-        paymentStatus: isSimulatedPaymentConfirmed ? 'PAID (SIMULÉ)' : 'NON PAYÉ',
+        paymentStatus: simulatedPaymentStatus,
         totalCents: 0,
         currency: 'EUR'
       });
       setErrorMessage(null);
       setIsLoading(false);
-      if (isSimulatedPaymentConfirmed && !checkoutResetDoneRef.current) {
+      if ((isSimulatedPaymentConfirmed || isOfflineConfirmationMode) && !checkoutResetDoneRef.current) {
         clearCart();
         resetCheckout();
         checkoutResetDoneRef.current = true;
@@ -79,7 +96,7 @@ export default function CheckoutConfirmationPage() {
         orderStatusRef.current = response.status;
         setErrorMessage(null);
 
-        if (response.status === 'PAID' && !checkoutResetDoneRef.current) {
+        if ((response.status === 'PAID' || isOfflineConfirmationMode) && !checkoutResetDoneRef.current) {
           clearCart();
           resetCheckout();
           checkoutResetDoneRef.current = true;
@@ -108,13 +125,13 @@ export default function CheckoutConfirmationPage() {
       cancelled = true;
       if (interval) clearInterval(interval);
     };
-  }, [clearCart, mode, orderId, resetCheckout]);
+  }, [clearCart, isCvPaperMode, isDeferredMode, isOfflineConfirmationMode, mode, orderId, resetCheckout]);
 
   return (
     <CheckoutFrame
       step="confirmation"
       title="Confirmation"
-      subtitle="Votre commande est en cours de traitement."
+      subtitle={displayedSubtitle}
     >
       {isLoading ? <p className="text-sm text-slate-500">Chargement de la confirmation...</p> : null}
 
@@ -131,20 +148,35 @@ export default function CheckoutConfirmationPage() {
             Statut commande: <span className="font-semibold text-slate-900">{order.status}</span>
           </p>
           <p className="text-sm text-slate-600">
-            Statut paiement: <span className="font-semibold text-slate-900">{order.paymentStatus ?? 'En attente'}</span>
+            Statut paiement:{' '}
+            <span className="font-semibold text-slate-900">
+              {isCvPaperMode
+                ? 'En attente de règlement ANCV papier'
+                : isDeferredMode
+                  ? 'Paiement différé'
+                  : order.paymentStatus ?? 'En attente'}
+            </span>
           </p>
           <p className="text-sm text-slate-600">
             Total: <span className="font-semibold text-slate-900">{formatEuroFromCents(order.totalCents)}</span>
           </p>
           {order.paidAt ? (
             <p className="text-sm text-emerald-700">Paiement validé le {new Date(order.paidAt).toLocaleString('fr-FR')}.</p>
+          ) : isCvPaperMode ? (
+            <p className="text-sm text-amber-700">
+              Votre commande est bien enregistrée. Le règlement en ANCV papier sera traité directement avec l&apos;organisateur.
+            </p>
+          ) : isDeferredMode ? (
+            <p className="text-sm text-amber-700">
+              Votre commande est bien enregistrée. Le règlement est différé et sera finalisé ultérieurement.
+            </p>
           ) : (
             <p className="text-sm text-amber-700">Le paiement n’est pas encore confirmé. Cette page se met à jour automatiquement.</p>
           )}
           {mode === 'monetico-mock' ? (
             <p className="text-xs text-slate-500">Mode de test local: paiement Monetico mock simulé.</p>
           ) : null}
-          {mode === 'dev-bypass' ? (
+          {mode === 'dev-bypass' || mode === 'dev-bypass-cv-paper' || mode === 'dev-bypass-deferred' ? (
             <p className="text-xs text-amber-800">
               Mode dev : confirmation fictive (NEXT_PUBLIC_DEV_BYPASS_CHECKOUT=1), sans commande en base et sans
               paiement réel.

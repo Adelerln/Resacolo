@@ -8,18 +8,20 @@ import {
   CalendarDays,
   UserRound,
   ShieldCheck,
-  Settings
+  Settings,
+  Wallet
 } from 'lucide-react';
 import Link from 'next/link';
+import FamilyReservationDetailsModal from '@/components/account/FamilyReservationDetailsModal';
 import { useFavorites } from '@/components/favorites/FavoritesProvider';
 import { fetchFamilyProfileSnapshot } from '@/lib/account-profile/client';
 import { formatPhoneDisplay, parentStatusLabel } from '@/lib/account-preferences';
-import type { FamilyProfile, FamilyUpcomingReservation } from '@/types/family-profile';
+import type { FamilyProfile, FamilyReservation } from '@/types/family-profile';
 import type { Stay } from '@/types/stay';
 
 type MonCompteClientProps = {
   initialProfile: FamilyProfile;
-  upcomingReservations: FamilyUpcomingReservation[];
+  reservations: FamilyReservation[];
   favoriteStays: Stay[];
   profileLoadError?: string | null;
 };
@@ -40,11 +42,12 @@ function mapProfileToParent1Name(profile: FamilyProfile) {
 
 export default function MonCompteClient({
   initialProfile,
-  upcomingReservations,
+  reservations,
   favoriteStays,
   profileLoadError
 }: MonCompteClientProps) {
   const [profile, setProfile] = useState<FamilyProfile>(initialProfile);
+  const [reservationList, setReservationList] = useState<FamilyReservation[]>(reservations);
   const { favoriteIdsArray, isLoaded } = useFavorites();
 
   useEffect(() => {
@@ -53,6 +56,7 @@ export default function MonCompteClient({
       .then((snapshot) => {
         if (cancelled) return;
         setProfile(snapshot.profile);
+        setReservationList(snapshot.reservations);
       })
       .catch(() => {
         // Keep server-rendered profile as fallback.
@@ -96,6 +100,14 @@ export default function MonCompteClient({
     const ids = new Set(favoriteIdsArray);
     return favoriteStays.filter((stay) => ids.has(stay.id));
   }, [favoriteIdsArray, favoriteStays, isLoaded]);
+
+  const formatEuroFromCents = (cents: number, currency = 'EUR') =>
+    new Intl.NumberFormat('fr-FR', {
+      style: 'currency',
+      currency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }).format(cents / 100);
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -143,35 +155,69 @@ export default function MonCompteClient({
             <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <h2 className="font-display text-lg font-semibold text-slate-900">Prochaine réservation</h2>
+                  <h2 className="font-display text-lg font-semibold text-slate-900">Réservations</h2>
                   <p className="mt-1 text-sm text-slate-500">
-                    Retrouvez ici les séjours déjà réservés pour vos enfants.
+                    Retrouvez ici vos réservations à venir et passées.
                   </p>
                 </div>
                 <CalendarDays className="h-8 w-8 text-accent-500" />
               </div>
 
-              {upcomingReservations.length === 0 ? (
+              {reservationList.length === 0 ? (
                 <p className="mt-6 text-sm text-slate-500">
                   Vous n&apos;avez pas encore de réservation. Parcourez les séjours et ajoutez-les à votre panier.
                 </p>
               ) : (
                 <ul className="mt-6 space-y-4">
-                  {upcomingReservations.map((stay) => (
+                  {reservationList.map((reservation) => (
                     <li
-                      key={stay.orderId}
-                      className="rounded-xl border border-slate-100 bg-slate-50/60 p-4 text-sm text-slate-700"
+                      key={reservation.orderId}
+                      className={`rounded-xl border p-4 text-sm ${
+                        reservation.isPast
+                          ? 'border-slate-200 bg-slate-100/90 text-slate-500'
+                          : 'border-slate-100 bg-slate-50/60 text-slate-700'
+                      }`}
                     >
-                      <p className="font-display text-base font-semibold text-slate-900">{stay.title}</p>
-                      <p className="mt-1 flex items-center gap-2 text-xs text-slate-500">
-                        <CalendarDays className="h-4 w-4" />
-                        {stay.dates}
-                      </p>
-                      <p className="mt-1 text-xs text-slate-500">{stay.child}</p>
-                      <p className="mt-3 inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-                        <ShieldCheck className="h-3.5 w-3.5" />
-                        {stay.status}
-                      </p>
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0 flex-1">
+                          <p
+                            className={`font-display text-base font-semibold ${
+                              reservation.isPast ? 'text-slate-500' : 'text-slate-900'
+                            }`}
+                          >
+                            {reservation.title}
+                          </p>
+                          <p className={`mt-1 flex items-center gap-2 text-xs ${reservation.isPast ? 'text-slate-400' : 'text-slate-500'}`}>
+                            <CalendarDays className="h-4 w-4" />
+                            {reservation.dates}
+                          </p>
+                          <p className={`mt-1 text-xs ${reservation.isPast ? 'text-slate-400' : 'text-slate-500'}`}>
+                            {reservation.child}
+                          </p>
+                          <div className="mt-3 flex flex-wrap items-center gap-2">
+                            <p
+                              className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${
+                                reservation.isPast
+                                  ? 'bg-slate-200 text-slate-600'
+                                  : 'bg-emerald-50 text-emerald-700'
+                              }`}
+                            >
+                              <ShieldCheck className="h-3.5 w-3.5" />
+                              {reservation.status}
+                            </p>
+                            {reservation.remainingBalanceCents > 0 ? (
+                              <p className="inline-flex items-center gap-2 rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
+                                <Wallet className="h-3.5 w-3.5" />
+                                Solde restant : {formatEuroFromCents(reservation.remainingBalanceCents, reservation.currency)}
+                              </p>
+                            ) : null}
+                          </div>
+                        </div>
+
+                        <div className="shrink-0">
+                          <FamilyReservationDetailsModal reservation={reservation} />
+                        </div>
+                      </div>
                     </li>
                   ))}
                 </ul>

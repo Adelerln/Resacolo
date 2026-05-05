@@ -36,10 +36,10 @@ type ClientProfileReservationDetails = Pick<
 >;
 
 const PAYMENT_MODE_LABELS: Record<string, string> = {
-  FULL: 'Paiement intégral',
-  DEPOSIT_200: "Paiement d'un acompte (200 €)",
+  FULL: 'Paiement de la totalité en CB',
+  DEPOSIT_200: "Paiement d'un acompte (200 €) en CB",
   CV_CONNECT: 'Paiement en ANCV Connect',
-  CV_PAPER: 'Paiement en chèques-vacances',
+  CV_PAPER: 'Paiement en ANCV papier',
   DEFERRED: 'Paiement différé'
 };
 

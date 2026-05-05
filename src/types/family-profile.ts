@@ -47,17 +47,31 @@ export type FamilyProfile = {
   updatedAt: string | null;
 };
 
-export type FamilyUpcomingReservation = {
+export type FamilyReservation = {
   orderId: string;
   title: string;
   dates: string;
   child: string;
+  children: string[];
   status: string;
+  sessionStartDate: string | null;
+  sessionEndDate: string | null;
+  isPast: boolean;
+  totalCents: number;
+  currency: string;
+  paymentMode: CheckoutContact['paymentMode'];
+  paymentModeLabel: string;
+  remainingBalanceCents: number;
+  transportLine: string | null;
+  transportOutboundLine: string | null;
+  transportReturnLine: string | null;
+  insuranceLine: string | null;
+  extraLines: string[];
 };
 
 export type FamilyProfileSnapshot = {
   profile: FamilyProfile;
-  upcomingReservations: FamilyUpcomingReservation[];
+  reservations: FamilyReservation[];
 };
 
 export type FamilyParent2Patch = {

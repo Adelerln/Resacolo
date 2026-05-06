@@ -9,6 +9,8 @@ function mapLoginErrorMessage(code: string | undefined) {
   switch (code) {
     case 'invalid-credentials':
       return 'Identifiants invalides.';
+    case 'email-not-confirmed':
+      return 'Compte non validé. Vérifiez votre boîte mail et cliquez sur le lien de confirmation.';
     case 'wrong-login-space-family':
       return 'Ce compte n’appartient pas à l’espace Famille. Sélectionnez l’espace Organisateur / Partenaire.';
     case 'wrong-login-space-pro':
@@ -66,6 +68,7 @@ export default async function LoginPage({
     error?: string;
     mode?: string;
     registered?: string;
+    reset?: string;
     forceLogin?: string;
   }>;
 }) {
@@ -73,7 +76,7 @@ export default async function LoginPage({
     return null;
   }
 
-  const { redirectTo, error, mode, registered, forceLogin } = searchParams ? await searchParams : {};
+  const { redirectTo, error, mode, registered, reset, forceLogin } = searchParams ? await searchParams : {};
   const effectiveMode = normalizeMode(mode);
   const shouldBypassSessionRedirect = forceLogin === '1';
   const safeRedirectTo = sanitizeRelativePath(
@@ -118,8 +121,8 @@ export default async function LoginPage({
             href={familyHref}
             className={`flex items-center justify-center text-center rounded-lg px-3 py-2 transition ${
               effectiveMode === 'family'
-                ? 'bg-[#FA8500] text-white shadow-sm'
-                : 'text-slate-600'
+                ? 'bg-[#FA8500] text-white shadow-sm hover:text-white'
+                : 'text-slate-600 hover:text-slate-600'
             }`}
           >
             Famille
@@ -128,8 +131,8 @@ export default async function LoginPage({
             href={proHref}
             className={`flex items-center justify-center text-center rounded-lg px-3 py-2 transition ${
               effectiveMode === 'pro'
-                ? 'bg-[var(--color-primary)] text-white shadow-sm'
-                : 'text-slate-600'
+                ? 'bg-[var(--color-primary)] text-white shadow-sm hover:text-white'
+                : 'text-slate-600 hover:text-slate-600'
             }`}
           >
             Organisateur / Partenaire
@@ -149,6 +152,11 @@ export default async function LoginPage({
         {effectiveMode === 'family' && registered === '1' ? (
           <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
             Compte créé. Vérifiez votre boîte mail et validez votre compte via le lien reçu, puis connectez-vous.
+          </div>
+        ) : null}
+        {reset === '1' ? (
+          <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+            Mot de passe mis à jour. Vous pouvez maintenant vous connecter.
           </div>
         ) : null}
 
@@ -178,6 +186,11 @@ export default async function LoginPage({
               inputClassName="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 pr-11 text-sm"
             />
           </label>
+          <div className="-mt-1 text-right">
+            <Link href="/login/mot-de-passe-oublie" className="text-xs font-medium text-brand-600 hover:text-brand-700">
+              Mot de passe oublié ?
+            </Link>
+          </div>
           <label className="flex items-center gap-2 text-sm text-slate-700">
             <input
               name="rememberMe"

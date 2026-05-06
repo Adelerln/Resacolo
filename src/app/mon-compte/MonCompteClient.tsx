@@ -43,7 +43,7 @@ const ACCOUNT_PANEL_LIST_MAX_HEIGHT = '24rem';
 
 /** Hauteur réservée identique sous les deux panneaux pour aligner le début des listes de cartes. */
 const ACCOUNT_PANEL_HEADER_CLASS =
-  'flex min-h-[3.75rem] items-start justify-between gap-3 border-b border-transparent';
+  'flex min-h-[3rem] items-start justify-between gap-3 border-b border-transparent';
 
 function formatAddress(line1: string, line2: string, postalCode: string, city: string) {
   return [line1, line2, `${postalCode} ${city}`.trim()].filter(Boolean).join(', ');
@@ -272,12 +272,12 @@ export default function MonCompteClient({
               </div>
 
               {reservationList.length === 0 ? (
-                <p className="mt-6 text-sm text-slate-500">
+                <p className="mt-4 text-sm text-slate-500">
                   Vous n&apos;avez pas encore de réservation. Parcourez les séjours et ajoutez-les à votre panier.
                 </p>
               ) : (
                 <ul
-                  className={`mt-4 min-h-0 space-y-3 ${reservationsScrollable ? 'flex-1 overflow-y-auto pr-1' : ''}`}
+                  className={`mt-3 min-h-0 space-y-3 ${reservationsScrollable ? 'flex-1 overflow-y-auto pr-1' : ''}`}
                   style={reservationsScrollable ? { maxHeight: ACCOUNT_PANEL_LIST_MAX_HEIGHT } : undefined}
                 >
                   {reservationList.map((reservation) => (
@@ -351,12 +351,12 @@ export default function MonCompteClient({
               </div>
 
               {visibleFavoriteStays.length === 0 ? (
-                <p className="mt-6 text-sm text-slate-500">
+                <p className="mt-4 text-sm text-slate-500">
                   Vous n&apos;avez pas encore de favoris. Cliquez sur le cœur depuis une fiche séjour pour l&apos;ajouter.
                 </p>
               ) : (
                 <div
-                  className={`mt-4 min-h-0 space-y-3 ${favoritesScrollable ? 'flex-1 overflow-y-auto pr-1' : ''}`}
+                  className={`mt-3 min-h-0 space-y-3 ${favoritesScrollable ? 'flex-1 overflow-y-auto pr-1' : ''}`}
                   style={favoritesScrollable ? { maxHeight: ACCOUNT_PANEL_LIST_MAX_HEIGHT } : undefined}
                 >
                   {visibleFavoriteStays.map((stay) => {

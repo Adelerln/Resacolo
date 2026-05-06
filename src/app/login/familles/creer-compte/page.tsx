@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
+import { CheckCircle2, ShieldCheck, UserRound } from 'lucide-react';
 import { getCurrentUser } from '@/lib/auth/session';
 import { PasswordInput } from '@/components/auth/PasswordInput';
 import {
@@ -13,7 +14,7 @@ export const metadata = {
 };
 
 const INPUT_CLASS =
-  'mt-1.5 min-h-[42px] w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm tracking-normal text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] outline-none transition placeholder:text-slate-400 focus:border-brand-300 focus:ring-2 focus:ring-brand-100';
+  'mt-1.5 min-h-[44px] w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm tracking-normal text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] outline-none transition placeholder:text-slate-400 focus:border-brand-400 focus:ring-2 focus:ring-brand-200';
 
 function sanitizeRelativePath(value: string | undefined) {
   if (!value) return '/mon-compte';
@@ -48,8 +49,13 @@ export default async function FamilyRegisterPage({
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <div className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
-        <header className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+      <div className="relative mx-auto w-full max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-8 top-4 -z-10 h-52 rounded-[44px] bg-gradient-to-r from-brand-100/70 via-sky-100/60 to-orange-100/60 blur-3xl"
+        />
+
+        <header className="rounded-2xl border border-slate-200/90 bg-white/95 p-5 shadow-[0_16px_40px_-28px_rgba(15,23,42,0.45)] backdrop-blur-sm sm:p-7">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Espace familles</p>
           <h1 className="mt-2 font-display text-2xl font-bold text-slate-900 sm:text-3xl">
             Créer un compte
@@ -59,30 +65,45 @@ export default async function FamilyRegisterPage({
           </p>
         </header>
 
-        <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_460px]">
-          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+        <div className="mt-6 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_460px]">
+          <section className="rounded-2xl border border-slate-200/90 bg-white/95 p-5 shadow-[0_14px_34px_-26px_rgba(15,23,42,0.4)] sm:p-6">
             <h2 className="font-display text-xl font-semibold text-slate-900">Votre espace en un seul endroit</h2>
             <ul className="mt-4 space-y-3 text-sm text-slate-600">
-              <li className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
-                Retrouver vos informations parent et enfants.
+              <li className="rounded-xl border border-brand-100 bg-brand-50/70 px-4 py-3.5">
+                <p className="flex items-center gap-2 font-semibold text-slate-900">
+                  <UserRound className="h-4 w-4 text-brand-600" />
+                  Profil famille centralisé
+                </p>
+                <p className="mt-1 text-slate-600">Retrouver vos informations parent et enfants.</p>
               </li>
-              <li className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
-                Suivre les réservations de séjours depuis votre compte.
+              <li className="rounded-xl border border-emerald-100 bg-emerald-50/70 px-4 py-3.5">
+                <p className="flex items-center gap-2 font-semibold text-slate-900">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                  Suivi des séjours
+                </p>
+                <p className="mt-1 text-slate-600">Suivre les réservations de séjours depuis votre compte.</p>
               </li>
-              <li className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
-                Modifier vos données famille à tout moment.
+              <li className="rounded-xl border border-orange-100 bg-orange-50/70 px-4 py-3.5">
+                <p className="flex items-center gap-2 font-semibold text-slate-900">
+                  <ShieldCheck className="h-4 w-4 text-orange-600" />
+                  Données toujours modifiables
+                </p>
+                <p className="mt-1 text-slate-600">Modifier vos données famille à tout moment.</p>
               </li>
             </ul>
-            <p className="mt-5 text-sm text-slate-600">
-              Vous avez déjà un compte ?{' '}
-              <Link href={loginHref} className="font-semibold text-brand-600 hover:text-brand-700">
-                Se connecter
-              </Link>
-              .
-            </p>
+
+            <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3">
+              <p className="text-sm text-slate-600">
+                Vous avez déjà un compte ?{' '}
+                <Link href={loginHref} className="font-semibold text-brand-600 hover:text-brand-700">
+                  Se connecter
+                </Link>
+                .
+              </p>
+            </div>
           </section>
 
-          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+          <section className="rounded-2xl border border-slate-200/90 bg-white/95 p-5 shadow-[0_14px_34px_-26px_rgba(15,23,42,0.4)] sm:p-6">
             <h2 className="font-display text-xl font-semibold text-slate-900">Informations du compte</h2>
 
             {params.error ? (
@@ -91,7 +112,7 @@ export default async function FamilyRegisterPage({
               </p>
             ) : null}
 
-            <form className="mt-5 space-y-4" action="/api/auth/register-client" method="post">
+            <form className="mt-5 space-y-4.5" action="/api/auth/register-client" method="post">
               <input type="hidden" name="redirectTo" value={safeRedirectTo} />
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="block text-sm font-medium text-slate-700">
@@ -140,9 +161,11 @@ export default async function FamilyRegisterPage({
                   inputClassName={INPUT_CLASS}
                 />
               </label>
-              <p className="text-xs text-slate-500">{PASSWORD_POLICY_MESSAGE}</p>
+              <p className="rounded-lg border border-sky-100 bg-sky-50/80 px-3 py-2 text-xs text-sky-800">
+                {PASSWORD_POLICY_MESSAGE}
+              </p>
 
-              <details className="rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3">
+              <details className="rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3.5">
                 <summary className="cursor-pointer list-none text-sm font-semibold text-slate-900">
                   Ajouter un parent 2 (facultatif)
                 </summary>
@@ -188,7 +211,7 @@ export default async function FamilyRegisterPage({
 
               <button
                 type="submit"
-                className="inline-flex min-h-[44px] w-full items-center justify-center rounded-xl bg-accent-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-accent-600"
+                className="inline-flex min-h-[46px] w-full items-center justify-center rounded-xl bg-accent-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_12px_24px_-14px_rgba(250,133,0,0.8)] transition hover:bg-accent-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-300"
               >
                 Créer mon compte
               </button>

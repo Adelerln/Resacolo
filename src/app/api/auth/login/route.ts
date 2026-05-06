@@ -72,6 +72,19 @@ function classifyLoginError(error: unknown): string {
   return 'server';
 }
 
+function classifySignInErrorCode(error: unknown): 'email-not-confirmed' | 'invalid-credentials' {
+  const message =
+    error instanceof Error ? error.message.toLowerCase() : String(error ?? '').toLowerCase();
+  if (
+    message.includes('email not confirmed') ||
+    message.includes('email_not_confirmed') ||
+    message.includes('signup is disabled') // fallback rare tenant messages
+  ) {
+    return 'email-not-confirmed';
+  }
+  return 'invalid-credentials';
+}
+
 function buildLoginErrorUrl({
   req,
   loginPath,
@@ -153,14 +166,18 @@ export async function POST(req: Request) {
     });
 
     if (signInError || !signInData.user) {
+      const errorCode = classifySignInErrorCode(signInError);
       if (expectsJson) {
-        return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
+        if (errorCode === 'email-not-confirmed') {
+          return NextResponse.json({ error: 'Email not confirmed', code: errorCode }, { status: 403 });
+        }
+        return NextResponse.json({ error: 'Invalid credentials', code: errorCode }, { status: 401 });
       }
       return NextResponse.redirect(
         buildLoginErrorUrl({
           req,
           loginPath,
-          errorCode: 'invalid-credentials',
+          errorCode,
           redirectTo: input.redirectTo,
           loginMode: input.loginMode
         }),

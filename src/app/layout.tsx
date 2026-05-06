@@ -4,6 +4,8 @@ import './globals.css';
 import { CartProvider } from '@/context/CartContext';
 import { WebVitalsReporter } from '@/components/perf/WebVitalsReporter';
 import { SiteShell } from '@/components/layout/SiteShell';
+import { getCurrentUser } from '@/lib/auth/session';
+import { readFamilyCseAffiliation, readPublicSitePartnerBranding } from '@/lib/account-profile/server';
 
 const raleway = localFont({
   src: [
@@ -37,13 +39,28 @@ export const metadata: Metadata = {
   }
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const session = await getCurrentUser().catch(() => null);
+  const initialBranding =
+    session?.userId && session.role === 'CLIENT'
+      ? await readPublicSitePartnerBranding(session.userId).catch(() => null)
+      : null;
+  const initialHidePartnerMarketingLinks =
+    session?.userId && session.role === 'CLIENT'
+      ? Boolean(await readFamilyCseAffiliation(session.userId).catch(() => null))
+      : false;
+
   return (
     <html lang="fr" className="bg-slate-50 text-slate-900" data-scroll-behavior="smooth">
       <body className={`${raleway.variable} ${baloo.variable} font-sans bg-white`}>
         <CartProvider>
           <WebVitalsReporter />
-          <SiteShell>{children}</SiteShell>
+          <SiteShell
+            initialBranding={initialBranding}
+            initialHidePartnerMarketingLinks={initialHidePartnerMarketingLinks}
+          >
+            {children}
+          </SiteShell>
         </CartProvider>
       </body>
     </html>

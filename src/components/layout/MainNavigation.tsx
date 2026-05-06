@@ -1,5 +1,6 @@
 'use client';
 
+import type { CSSProperties } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -25,12 +26,6 @@ const links = [
   { href: '/contact', label: 'Contact' }
 ];
 
-const backOfficeLinks = [
-  { href: '/admin', label: 'Admin' },
-  { href: '/organisme', label: 'Organisateur' },
-  { href: '/partenaire', label: 'Collectivité' }
-];
-
 const headerLinkClass =
   'whitespace-nowrap text-[15px] font-bold tracking-[0.03em] !text-[color:var(--color-primary)] transition-colors hover:!text-[color:var(--resacolo-orange)] focus-visible:!text-[color:var(--resacolo-orange)] xl:text-base';
 const headerDropdownItemClass =
@@ -39,6 +34,16 @@ const headerIconButtonClass =
   'flex h-9 w-9 items-center justify-center rounded-full bg-transparent transition hover:bg-slate-50 hover:opacity-80';
 const mobileHeaderLinkClass =
   'block text-base font-semibold leading-snug !text-[color:var(--color-primary)] transition-colors hover:!text-[color:var(--resacolo-orange)] focus-visible:!text-[color:var(--resacolo-orange)]';
+
+type PublicSitePartnerBranding = {
+  collectivityId: string;
+  partnerName: string;
+  partnerLogoUrl: string | null;
+  partnerLogoScale: number;
+  partnerLogoOffsetX: number;
+  partnerLogoOffsetY: number;
+  primaryColor: string | null;
+} | null;
 
 function isLinkItem(
   item: (typeof links)[number]
@@ -52,19 +57,38 @@ function isDropdownItem(
   return 'children' in item;
 }
 
-export function MainNavigation() {
+export function MainNavigation({
+  initialBranding,
+  initialHidePartnerMarketingLinks
+}: {
+  initialBranding: PublicSitePartnerBranding;
+  initialHidePartnerMarketingLinks: boolean;
+}) {
   const pathname = usePathname();
-  return <MainNavigationContent key={pathname} pathname={pathname} />;
+  return (
+    <MainNavigationContent
+      key={pathname}
+      pathname={pathname}
+      branding={initialBranding}
+      hidePartnerMarketingLinks={initialHidePartnerMarketingLinks}
+    />
+  );
 }
 
-function MainNavigationContent({ pathname }: { pathname: string }) {
+function MainNavigationContent({
+  pathname,
+  branding,
+  hidePartnerMarketingLinks
+}: {
+  pathname: string;
+  branding: PublicSitePartnerBranding;
+  hidePartnerMarketingLinks: boolean;
+}) {
   const { count: cartCount } = useCart();
   const { favoriteIdsArray } = useFavorites();
   const [open, setOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [backOfficeOpen, setBackOfficeOpen] = useState(false);
   const dropdownCloseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const backOfficeCloseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const openDropdown = () => {
     if (dropdownCloseTimeoutRef.current) {
@@ -84,31 +108,10 @@ function MainNavigationContent({ pathname }: { pathname: string }) {
     }, 180);
   };
 
-  const openBackOffice = () => {
-    if (backOfficeCloseTimeoutRef.current) {
-      clearTimeout(backOfficeCloseTimeoutRef.current);
-      backOfficeCloseTimeoutRef.current = null;
-    }
-    setBackOfficeOpen(true);
-  };
-
-  const closeBackOffice = () => {
-    if (backOfficeCloseTimeoutRef.current) {
-      clearTimeout(backOfficeCloseTimeoutRef.current);
-    }
-    backOfficeCloseTimeoutRef.current = setTimeout(() => {
-      setBackOfficeOpen(false);
-      backOfficeCloseTimeoutRef.current = null;
-    }, 180);
-  };
-
   useEffect(() => {
     return () => {
       if (dropdownCloseTimeoutRef.current) {
         clearTimeout(dropdownCloseTimeoutRef.current);
-      }
-      if (backOfficeCloseTimeoutRef.current) {
-        clearTimeout(backOfficeCloseTimeoutRef.current);
       }
     };
   }, []);
@@ -126,25 +129,65 @@ function MainNavigationContent({ pathname }: { pathname: string }) {
 
   const toggle = () => setOpen((current) => !current);
   const close = () => setOpen(false);
+  const headerStyle = branding?.primaryColor
+    ? ({ '--color-primary': branding.primaryColor } as CSSProperties)
+    : undefined;
+  const visibleLinks = links
+    .map((link) => {
+      if (!isDropdownItem(link)) return link;
+      return {
+        ...link,
+        children: hidePartnerMarketingLinks
+          ? link.children.filter(
+              (child) => child.href !== '/rejoindre-resacolo' && child.href !== '/devenir-partenaire'
+            )
+          : link.children
+      };
+    })
+    .filter((link) => !isDropdownItem(link) || link.children.length > 0);
 
   return (
-    <header className="font-accent sticky top-0 z-[100] overflow-visible border-b border-slate-200 bg-white/90 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-white/80">
+    <header
+      className="font-accent sticky top-0 z-[100] overflow-visible border-b border-slate-200 bg-white/90 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-white/80"
+      style={headerStyle}
+    >
       <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-6 sm:py-4 lg:px-8 xl:grid xl:grid-cols-[auto_minmax(0,1fr)_auto] xl:gap-4">
         <Link href="/" className="flex shrink-0 items-center" title="Retour à l’accueil">
-          <Image
-            src="/image/accueil/images_accueil/logo-resacolo.png"
-            alt="Resacolo"
-            width={140}
-            height={40}
-            className="h-9 w-auto sm:h-10"
-            style={{ width: 'auto' }}
-            priority
-          />
+          {branding?.partnerLogoUrl ? (
+            <span className="flex items-center">
+              <span className="flex h-10 items-center justify-center sm:h-11">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={branding.partnerLogoUrl}
+                  alt={branding.partnerName}
+                  className="h-9 w-auto max-w-[160px] object-contain sm:h-10"
+                  style={{
+                    transform: `translate(${branding.partnerLogoOffsetX}%, ${branding.partnerLogoOffsetY}%) scale(${branding.partnerLogoScale})`,
+                    transformOrigin: 'center center'
+                  }}
+                />
+              </span>
+            </span>
+          ) : null}
+          {branding?.partnerLogoUrl ? (
+            <span className="mx-2.5 h-8 w-px shrink-0 self-center bg-black/80 sm:h-9" aria-hidden />
+          ) : null}
+          <span className="flex h-10 items-center justify-center sm:h-11">
+            <Image
+              src="/image/accueil/images_accueil/logo-resacolo.png"
+              alt="Resacolo"
+              width={140}
+              height={40}
+              className="h-9 w-auto sm:h-10"
+              style={{ width: 'auto' }}
+              priority
+            />
+          </span>
         </Link>
 
         <div className="hidden min-w-0 items-center justify-center xl:flex">
           <nav className="flex min-w-0 items-center gap-6 overflow-visible font-medium xl:gap-7 2xl:gap-8">
-            {links.map((link) => {
+            {visibleLinks.map((link) => {
               if (isDropdownItem(link)) {
                 const isActive = link.children.some((c) => pathname === c.href);
                 return (
@@ -213,41 +256,6 @@ function MainNavigationContent({ pathname }: { pathname: string }) {
               }
               return null;
             })}
-            <div
-              className="relative"
-              onMouseEnter={openBackOffice}
-              onMouseLeave={closeBackOffice}
-            >
-              <button
-                type="button"
-                aria-expanded={backOfficeOpen}
-                aria-haspopup="menu"
-                title="Back Office"
-                className="btn btn-sm btn-accent-outline whitespace-nowrap text-[15px] font-bold tracking-[0.03em] !border-accent-400 !bg-transparent !text-[color:var(--color-primary)] hover:!bg-accent-50 hover:!text-[color:var(--resacolo-orange)] focus-visible:!bg-accent-50 focus-visible:!text-[color:var(--resacolo-orange)] xl:text-base"
-              >
-                Back Office
-                <ChevronDown className={clsx('h-4 w-4 transition', backOfficeOpen && 'rotate-180')} />
-              </button>
-              {backOfficeOpen ? (
-                <div className="absolute left-0 top-full z-50 min-w-[200px] pt-2">
-                  <div className="rounded-xl border border-slate-200 bg-white py-2 shadow-lg">
-                    {backOfficeLinks.map((item) => (
-                      <Link
-                        key={item.href}
-                        href={item.href}
-                        title={item.label}
-                        className={clsx(
-                          'block px-4 py-2 font-bold tracking-[0.03em] text-[color:var(--color-primary)] transition-colors hover:bg-slate-50 hover:text-[color:var(--resacolo-orange)] focus-visible:text-[color:var(--resacolo-orange)]',
-                          pathname === item.href && 'bg-brand-50'
-                        )}
-                      >
-                        {item.label}
-                      </Link>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-            </div>
           </nav>
         </div>
 
@@ -321,7 +329,7 @@ function MainNavigationContent({ pathname }: { pathname: string }) {
       {open ? (
         <nav className="overflow-hidden border-t border-slate-200 bg-white px-4 py-4 sm:px-6 xl:hidden">
             <ul className="flex flex-col gap-4 font-medium text-slate-700">
-              {links.map((link) => {
+              {visibleLinks.map((link) => {
                 if (isDropdownItem(link)) {
                   return (
                     <li key={link.label}>
@@ -371,26 +379,6 @@ function MainNavigationContent({ pathname }: { pathname: string }) {
                 }
                 return null;
               })}
-              <li>
-                <span className={mobileHeaderLinkClass}>Back Office</span>
-                <ul className="mt-2 flex flex-col gap-2 pl-3">
-                  {backOfficeLinks.map((item) => (
-                    <li key={item.href}>
-                      <Link
-                        href={item.href}
-                        onClick={close}
-                        title={item.label}
-                        className={clsx(
-                          mobileHeaderLinkClass,
-                          pathname === item.href && 'opacity-100'
-                        )}
-                      >
-                        {item.label}
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              </li>
               <li className="mt-2 border-t border-slate-100 pt-4">
                 <div className="flex items-center gap-2">
                   <Link

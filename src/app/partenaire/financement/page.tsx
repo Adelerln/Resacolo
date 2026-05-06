@@ -1,55 +1,121 @@
-export default function FinancementPage() {
+import { redirect } from 'next/navigation';
+import { revalidatePath } from 'next/cache';
+import { PartnerFinancementForm } from '@/components/partner/PartnerFinancementForm';
+import { requirePartner } from '@/lib/auth/require';
+import { normalizePartnerFinanceMode } from '@/lib/partner-offers';
+import { readPartnerCollectivity } from '@/lib/partner.server';
+import { getServerSupabaseClient } from '@/lib/supabase/server';
+
+type PageProps = {
+  searchParams?: Promise<{
+    saved?: string;
+    error?: string;
+  }>;
+};
+
+function normalizeOptionalString(value: FormDataEntryValue | null) {
+  const normalized = String(value ?? '').trim();
+  return normalized || null;
+}
+
+function parsePercent(value: FormDataEntryValue | null) {
+  const parsed = Number.parseFloat(String(value ?? '').replace(',', '.'));
+  if (!Number.isFinite(parsed)) return null;
+  return Math.min(100, Math.max(0, parsed));
+}
+
+function parseEurosToCents(value: FormDataEntryValue | null) {
+  const parsed = Number.parseFloat(String(value ?? '').replace(',', '.'));
+  if (!Number.isFinite(parsed)) return null;
+  return Math.max(0, Math.round(parsed * 100));
+}
+
+function sanitizeRedirectQueryValue(value: string | undefined) {
+  return value ? decodeURIComponent(value) : null;
+}
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+export default async function FinancementPage({ searchParams }: PageProps) {
+  const session = await requirePartner();
+  const collectivityId = session.tenantId;
+  const params = searchParams ? await searchParams : undefined;
+
+  if (!collectivityId) {
+    return (
+      <div className="space-y-4">
+        <h1 className="admin-page-title">Financement</h1>
+        <p className="admin-page-subtitle mt-1">Aucune collectivité liée à ce compte.</p>
+      </div>
+    );
+  }
+
+  async function saveFinancingSettings(formData: FormData) {
+    'use server';
+
+    const session = await requirePartner();
+    const collectivityId = session.tenantId;
+    if (!collectivityId) {
+      redirect('/partenaire/financement?error=Aucune%20collectivite%20liee');
+    }
+
+    const financeMode = normalizePartnerFinanceMode(String(formData.get('finance_mode') ?? 'TOTAL'));
+    const supabase = getServerSupabaseClient();
+    const { error } = await supabase
+      .from('collectivities')
+      .update({
+        finance_mode: financeMode,
+        finance_percent_value: financeMode === 'PERCENT' ? parsePercent(formData.get('finance_percent_value')) : null,
+        finance_fixed_cents: financeMode === 'FIXED' ? parseEurosToCents(formData.get('finance_fixed_euros')) : null,
+        finance_rules_text: normalizeOptionalString(formData.get('finance_rules_text')),
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', collectivityId);
+
+    if (error) {
+      redirect(`/partenaire/financement?error=${encodeURIComponent(error.message)}`);
+    }
+
+    revalidatePath('/partenaire/financement');
+    revalidatePath('/partenaire/reservations');
+    redirect('/partenaire/financement?saved=1');
+  }
+
+  const collectivity = await readPartnerCollectivity(collectivityId);
+  const errorMessage = sanitizeRedirectQueryValue(params?.error);
+  const isSaved = params?.saved === '1';
+  const resetToken = `${params?.saved ?? ''}:${params?.error ?? ''}:${collectivity.updated_at}`;
+
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-slate-900">Financement</h1>
-        <p className="text-sm text-slate-600">
+        <h1 className="admin-page-title">Financement</h1>
+        <p className="admin-page-subtitle mt-1">
           Définissez la prise en charge des séjours pour vos bénéficiaires.
         </p>
       </div>
 
+      {errorMessage ? (
+        <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{errorMessage}</p>
+      ) : null}
+      {isSaved ? (
+        <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+          Paramètres de financement enregistrés.
+        </p>
+      ) : null}
+
       <div className="rounded-2xl border border-slate-200 bg-white p-6">
-        <form className="space-y-4">
-          <label className="block text-sm font-medium text-slate-700">
-            Mode de financement
-            <select className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2">
-              <option>Prise en charge totale</option>
-              <option>Pas de financement</option>
-              <option>Quote-part en %</option>
-              <option>Quote-part fixe</option>
-              <option>Calcul manuel</option>
-            </select>
-          </label>
-          <div className="grid gap-4 md:grid-cols-2">
-            <label className="block text-sm font-medium text-slate-700">
-              Pourcentage pris en charge
-              <input
-                type="number"
-                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-                placeholder="Ex: 40"
-              />
-            </label>
-            <label className="block text-sm font-medium text-slate-700">
-              Montant fixe (EUR)
-              <input
-                type="number"
-                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-                placeholder="Ex: 150"
-              />
-            </label>
-          </div>
-          <label className="block text-sm font-medium text-slate-700">
-            Règles personnalisées
-            <textarea
-              rows={4}
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-              placeholder="Ex: prise en charge 50% pour les revenus < 30k."
-            />
-          </label>
-          <button className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">
-            Enregistrer les règles
-          </button>
-        </form>
+        <PartnerFinancementForm
+          initialMode={collectivity.finance_mode}
+          initialPercentValue={collectivity.finance_percent_value}
+          initialFixedEuros={
+            typeof collectivity.finance_fixed_cents === 'number' ? collectivity.finance_fixed_cents / 100 : null
+          }
+          initialRulesText={collectivity.finance_rules_text}
+          saveAction={saveFinancingSettings}
+          resetToken={resetToken}
+        />
       </div>
     </div>
   );

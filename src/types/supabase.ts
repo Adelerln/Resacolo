@@ -348,28 +348,94 @@ export type Database = {
       }
       collectivities: {
         Row: {
+          address_line1: string | null
+          address_line2: string | null
+          attachment_instructions: string | null
+          brand_primary_color: string | null
+          brand_redirect_url: string | null
+          brand_welcome_text: string | null
+          city: string | null
           code: string
+          contact_email: string | null
+          contact_name: string | null
+          contact_phone: string | null
+          country: string
           created_at: string
+          description: string | null
+          finance_fixed_cents: number | null
+          finance_mode: string
+          finance_percent_value: number | null
+          finance_rules_text: string | null
           id: string
+          logo_offset_x: number
+          logo_offset_y: number
+          logo_scale: number
           logo_url: string | null
           name: string
           offer_mode: string
+          postal_code: string | null
+          updated_at: string
+          website_url: string | null
         }
         Insert: {
+          address_line1?: string | null
+          address_line2?: string | null
+          attachment_instructions?: string | null
+          brand_primary_color?: string | null
+          brand_redirect_url?: string | null
+          brand_welcome_text?: string | null
+          city?: string | null
           code: string
+          contact_email?: string | null
+          contact_name?: string | null
+          contact_phone?: string | null
+          country?: string
           created_at?: string
+          description?: string | null
+          finance_fixed_cents?: number | null
+          finance_mode?: string
+          finance_percent_value?: number | null
+          finance_rules_text?: string | null
           id?: string
+          logo_offset_x?: number
+          logo_offset_y?: number
+          logo_scale?: number
           logo_url?: string | null
           name: string
           offer_mode?: string
+          postal_code?: string | null
+          updated_at?: string
+          website_url?: string | null
         }
         Update: {
+          address_line1?: string | null
+          address_line2?: string | null
+          attachment_instructions?: string | null
+          brand_primary_color?: string | null
+          brand_redirect_url?: string | null
+          brand_welcome_text?: string | null
+          city?: string | null
           code?: string
+          contact_email?: string | null
+          contact_name?: string | null
+          contact_phone?: string | null
+          country?: string
           created_at?: string
+          description?: string | null
+          finance_fixed_cents?: number | null
+          finance_mode?: string
+          finance_percent_value?: number | null
+          finance_rules_text?: string | null
           id?: string
+          logo_offset_x?: number
+          logo_offset_y?: number
+          logo_scale?: number
           logo_url?: string | null
           name?: string
           offer_mode?: string
+          postal_code?: string | null
+          updated_at?: string
+          website_url?: string | null
         }
         Relationships: []
       }
@@ -458,6 +524,50 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "collectivity_members_collectivity_id_fkey"
+            columns: ["collectivity_id"]
+            isOneToOne: false
+            referencedRelation: "collectivities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      collectivity_contacts: {
+        Row: {
+          collectivity_id: string
+          created_at: string
+          email: string
+          full_name: string
+          id: string
+          is_primary: boolean
+          phone: string | null
+          role_label: string | null
+          updated_at: string
+        }
+        Insert: {
+          collectivity_id: string
+          created_at?: string
+          email: string
+          full_name: string
+          id?: string
+          is_primary?: boolean
+          phone?: string | null
+          role_label?: string | null
+          updated_at?: string
+        }
+        Update: {
+          collectivity_id?: string
+          created_at?: string
+          email?: string
+          full_name?: string
+          id?: string
+          is_primary?: boolean
+          phone?: string | null
+          role_label?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "collectivity_contacts_collectivity_id_fkey"
             columns: ["collectivity_id"]
             isOneToOne: false
             referencedRelation: "collectivities"

@@ -15,6 +15,10 @@ const trimmedStringMin = (min: number, message: string) =>
   stringFromUnknown.pipe(z.string().trim().min(min, message));
 const trimmedEmail = (message: string) => stringFromUnknown.pipe(z.string().trim().email(message));
 
+function joinNameParts(firstName: string, lastName: string) {
+  return [firstName.trim(), lastName.trim()].filter(Boolean).join(' ').trim();
+}
+
 const registerClientFullSchema = z
   .object({
     firstName: trimmedStringMin(2, 'Prénom requis.'),
@@ -29,7 +33,8 @@ const registerClientFullSchema = z
       (value) => isPasswordPolicyValid(value),
       PASSWORD_POLICY_MESSAGE
     ),
-    parent2Name: trimmedString().optional().default(''),
+    parent2FirstName: trimmedString().optional().default(''),
+    parent2LastName: trimmedString().optional().default(''),
     parent2Status: z.enum(['pere', 'mere', 'grand-parent', 'autre']).optional().or(z.literal('')).default(''),
     parent2StatusOther: trimmedString().optional().default(''),
     parent2Phone: trimmedString().optional().default(''),
@@ -41,7 +46,8 @@ const registerClientFullSchema = z
   })
   .superRefine((data, ctx) => {
   const hasParent2 =
-    Boolean(data.parent2Name) ||
+    Boolean(data.parent2FirstName) ||
+    Boolean(data.parent2LastName) ||
     Boolean(data.parent2Phone) ||
     Boolean(data.parent2Email) ||
     Boolean(data.parent2Status) ||
@@ -51,11 +57,19 @@ const registerClientFullSchema = z
     return;
   }
 
-  if (!data.parent2Name) {
+  if (!data.parent2LastName) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      path: ['parent2Name'],
+      path: ['parent2LastName'],
       message: 'Nom du parent 2 requis.'
+    });
+  }
+
+  if (!data.parent2FirstName) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['parent2FirstName'],
+      message: 'Prénom du parent 2 requis.'
     });
   }
 
@@ -154,6 +168,11 @@ export async function POST(req: Request) {
     }
 
     try {
+      const parent2Name =
+        fullParsed.success
+          ? joinNameParts(fullParsed.data.parent2FirstName, fullParsed.data.parent2LastName)
+          : '';
+
       await upsertFamilyProfileFromRegistration({
         userId: data.user.id,
         firstName: input.firstName,
@@ -164,7 +183,7 @@ export async function POST(req: Request) {
         addressLine2: fullParsed.success ? fullParsed.data.addressLine2 : '',
         postalCode: fullParsed.success ? fullParsed.data.postalCode : '',
         city: fullParsed.success ? fullParsed.data.city : '',
-        parent2Name: fullParsed.success ? fullParsed.data.parent2Name : '',
+        parent2Name,
         parent2Status:
           fullParsed.success && fullParsed.data.parent2Status !== '' ? fullParsed.data.parent2Status : undefined,
         parent2StatusOther: fullParsed.success ? fullParsed.data.parent2StatusOther : '',

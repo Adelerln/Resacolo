@@ -5,8 +5,10 @@ export type AccountInfo = {
   addressLine2: string;
   postalCode: string;
   city: string;
-  parent1Name: string;
-  parent2Name: string;
+  parent1FirstName: string;
+  parent1LastName: string;
+  parent2FirstName: string;
+  parent2LastName: string;
   parent1Phone: string;
   parent2Phone: string;
   parent1Email: string;
@@ -37,8 +39,10 @@ const DEFAULT_ACCOUNT_INFO: AccountInfo = {
   addressLine2: 'Bâtiment B, Appartement 23',
   postalCode: '69003',
   city: 'Lyon',
-  parent1Name: 'Marie Dupont',
-  parent2Name: 'Jean Dupont',
+  parent1FirstName: 'Marie',
+  parent1LastName: 'Dupont',
+  parent2FirstName: 'Jean',
+  parent2LastName: 'Dupont',
   parent1Phone: '06.12.34.56.78',
   parent2Phone: '06.78.90.12.34',
   parent1Email: 'parent1@example.com',
@@ -80,18 +84,40 @@ function asParentStatus(value: unknown, fallback: ParentStatus) {
   return fallback;
 }
 
+function splitName(value: unknown) {
+  const clean = typeof value === 'string' ? value.trim() : '';
+  if (!clean) {
+    return { firstName: '', lastName: '' };
+  }
+
+  const parts = clean.split(/\s+/).filter(Boolean);
+  if (parts.length === 1) {
+    return { firstName: parts[0], lastName: '' };
+  }
+
+  return {
+    firstName: parts[0],
+    lastName: parts.slice(1).join(' ')
+  };
+}
+
 function normalizeAccountInfo(value: unknown): AccountInfo {
   if (!isRecord(value)) {
     return DEFAULT_ACCOUNT_PREFERENCES.accountInfo;
   }
+
+  const parent1LegacyName = splitName(value.parent1Name);
+  const parent2LegacyName = splitName(value.parent2Name);
 
   return {
     addressLine1: asString(value.addressLine1, DEFAULT_ACCOUNT_INFO.addressLine1),
     addressLine2: asString(value.addressLine2, DEFAULT_ACCOUNT_INFO.addressLine2),
     postalCode: asString(value.postalCode, DEFAULT_ACCOUNT_INFO.postalCode),
     city: asString(value.city, DEFAULT_ACCOUNT_INFO.city),
-    parent1Name: asString(value.parent1Name, DEFAULT_ACCOUNT_INFO.parent1Name),
-    parent2Name: asString(value.parent2Name, DEFAULT_ACCOUNT_INFO.parent2Name),
+    parent1FirstName: asString(value.parent1FirstName, parent1LegacyName.firstName || DEFAULT_ACCOUNT_INFO.parent1FirstName),
+    parent1LastName: asString(value.parent1LastName, parent1LegacyName.lastName || DEFAULT_ACCOUNT_INFO.parent1LastName),
+    parent2FirstName: asString(value.parent2FirstName, parent2LegacyName.firstName || DEFAULT_ACCOUNT_INFO.parent2FirstName),
+    parent2LastName: asString(value.parent2LastName, parent2LegacyName.lastName || DEFAULT_ACCOUNT_INFO.parent2LastName),
     parent1Phone: asString(value.parent1Phone, DEFAULT_ACCOUNT_INFO.parent1Phone),
     parent2Phone: asString(value.parent2Phone, DEFAULT_ACCOUNT_INFO.parent2Phone),
     parent1Email: asString(value.parent1Email, DEFAULT_ACCOUNT_INFO.parent1Email),

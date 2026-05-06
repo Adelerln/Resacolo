@@ -1,7 +1,6 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { Suspense } from 'react';
-import { ArrowLeft } from 'lucide-react';
 import { getOrganizerNavLinks } from '@/lib/organizer-access';
 import { requireOrganizerPageAccess } from '@/lib/organizer-backoffice-access.server';
 import {
@@ -22,14 +21,7 @@ export default async function OrganizerLayout({ children }: { children: React.Re
   return (
     <div className="min-h-screen bg-slate-50">
       <div className="border-b border-slate-200 bg-white px-4 py-3 lg:hidden">
-        <div className="flex items-center justify-between gap-3">
-          <Link
-            href="/"
-            className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-800"
-          >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            Retour
-          </Link>
+        <div className="flex items-center justify-center gap-3">
           <Link href="/organisme" className="text-base font-semibold text-slate-900">
             Espace Organisateur
           </Link>
@@ -49,21 +41,10 @@ export default async function OrganizerLayout({ children }: { children: React.Re
       <div className="flex min-h-screen lg:h-screen lg:overflow-hidden">
         <aside className="hidden h-screen w-64 flex-col border-r border-slate-200 bg-white shadow-sm lg:flex">
           <div className="px-6 py-6">
-            <div className="mb-3">
-              <Link
-                href="/"
-                className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-800"
-              >
-                <ArrowLeft className="h-3.5 w-3.5" />
-                Retour
-              </Link>
-            </div>
-            <div>
-              <Link href="/organisme" className="text-lg font-semibold text-slate-900">
-                Espace Organisateur
-              </Link>
-              <p className="mt-1 text-xs text-slate-500">Gestion des séjours</p>
-            </div>
+            <Link href="/organisme" className="text-lg font-semibold text-slate-900">
+              Espace Organisateur
+            </Link>
+            <p className="mt-1 text-xs text-slate-500">Gestion des séjours</p>
           </div>
           <Suspense fallback={<div className="px-3 text-sm text-slate-500">Chargement...</div>}>
             <OrganizerWorkspaceNav

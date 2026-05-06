@@ -17,8 +17,8 @@ export default async function PartnerCatalogPage({
   if (!partnerTenantId || !season) {
     return (
       <div className="space-y-4">
-        <h1 className="text-2xl font-semibold text-slate-900">Catalogue</h1>
-        <p className="text-sm text-slate-600">Aucun catalogue disponible.</p>
+        <h1 className="admin-page-title">Catalogue</h1>
+        <p className="admin-page-subtitle mt-1">Aucun catalogue disponible.</p>
       </div>
     );
   }
@@ -41,8 +41,8 @@ export default async function PartnerCatalogPage({
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Catalogue</h1>
-          <p className="text-sm text-slate-600">Saison {season.name}</p>
+          <h1 className="admin-page-title">Catalogue</h1>
+          <p className="admin-page-subtitle mt-1">Saison {season.name}</p>
         </div>
         <form className="flex w-full items-center gap-2 sm:w-auto">
           <input
@@ -58,8 +58,8 @@ export default async function PartnerCatalogPage({
       </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white p-6">
-        <h2 className="text-lg font-semibold text-slate-900">Sélection de catalogue</h2>
-        <p className="mt-1 text-sm text-slate-600">
+        <h2 className="admin-section-title">Sélection de catalogue</h2>
+        <p className="admin-page-subtitle mt-1">
           Choisissez les séjours, organisateurs et tranches d&apos;âge à exposer.
         </p>
         <div className="mt-4 grid gap-4 md:grid-cols-2">

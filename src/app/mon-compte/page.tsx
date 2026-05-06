@@ -63,7 +63,8 @@ export default async function MonComptePage() {
 
   let snapshot: FamilyProfileSnapshot = {
     profile: fallbackProfile,
-    reservations: []
+    reservations: [],
+    cseAffiliation: null
   };
   let profileLoadError: string | null = null;
   let favoriteStays: Stay[] = [];
@@ -77,7 +78,8 @@ export default async function MonComptePage() {
     profileLoadError = error instanceof Error ? error.message : 'Impossible de charger le profil famille.';
     snapshot = {
       profile: fallbackProfile,
-      reservations: []
+      reservations: [],
+      cseAffiliation: null
     };
   }
   try {
@@ -97,6 +99,7 @@ export default async function MonComptePage() {
     <MonCompteClient
       initialProfile={snapshot.profile}
       reservations={snapshot.reservations}
+      initialCseAffiliation={snapshot.cseAffiliation}
       favoriteStays={favoriteStays}
       profileLoadError={profileLoadError}
     />

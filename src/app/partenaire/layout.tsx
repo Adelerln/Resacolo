@@ -1,74 +1,86 @@
 import Image from 'next/image';
 import Link from 'next/link';
-import { requireRole } from '@/lib/auth/require';
+import { PartnerSidebarNav } from '@/components/partner/PartnerSidebarNav';
+import { requirePartner } from '@/lib/auth/require';
+import { partnerHasMarqueBlancheAccess } from '@/lib/partner-offers';
+import { readPartnerCollectivity } from '@/lib/partner.server';
+
+const partnerNavLinksAll = [
+  { href: '/partenaire', label: 'Dashboard' },
+  { href: '/partenaire/fiche', label: 'Fiche partenaire' },
+  { href: '/partenaire/beneficiaires', label: 'Bénéficiaires' },
+  { href: '/partenaire/catalogue', label: 'Catalogue' },
+  { href: '/partenaire/financement', label: 'Financement' },
+  { href: '/partenaire/marque-blanche', label: 'Marque blanche' },
+  { href: '/partenaire/reservations', label: 'Réservations' }
+];
 
 export default async function PartnerLayout({ children }: { children: React.ReactNode }) {
-  await requireRole('PARTENAIRE');
+  const session = await requirePartner();
+  const tenantId = session.tenantId;
+
+  let partnerNavLinks = partnerNavLinksAll;
+  if (tenantId) {
+    try {
+      const collectivity = await readPartnerCollectivity(tenantId);
+      if (!partnerHasMarqueBlancheAccess(collectivity.offer_mode)) {
+        partnerNavLinks = partnerNavLinksAll.filter((item) => item.href !== '/partenaire/marque-blanche');
+      }
+    } catch {
+      partnerNavLinks = partnerNavLinksAll.filter((item) => item.href !== '/partenaire/marque-blanche');
+    }
+  } else {
+    partnerNavLinks = partnerNavLinksAll.filter((item) => item.href !== '/partenaire/marque-blanche');
+  }
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="border-b border-slate-200 bg-white">
-        <div className="section-container flex items-center justify-between gap-3 py-3 sm:py-4">
-          <Link href="/partenaire" className="flex items-center gap-3 text-lg font-semibold text-slate-900">
-            <Image
-              src="/image/accueil/images_accueil/logo-resacolo.png"
-              alt="Resacolo"
-              width={120}
-              height={32}
-              className="h-8 w-auto"
-            />
-            <span className="hidden sm:inline">Espace Partenaire</span>
+    <div className="min-h-screen bg-slate-50 lg:h-screen lg:overflow-hidden">
+      <div className="border-b border-slate-200 bg-white px-4 py-3 lg:hidden">
+        <div className="flex items-center justify-center gap-3">
+          <Link href="/partenaire" className="text-base font-semibold text-slate-900">
+            Espace Partenaire
           </Link>
-          <nav className="hidden items-center gap-5 text-sm text-slate-600 md:flex lg:gap-6">
-            <Link href="/partenaire/beneficiaires">Bénéficiaires</Link>
-            <Link href="/partenaire/catalogue">Catalogue</Link>
-            <Link href="/partenaire/financement">Financement</Link>
-            <Link href="/partenaire/marque-blanche">Marque blanche</Link>
-            <Link href="/partenaire/reservations">Réservations</Link>
-            <form action="/api/auth/logout" method="post">
-              <button className="text-sm font-semibold text-slate-600">Déconnexion</button>
-            </form>
-          </nav>
         </div>
-        <nav className="section-container flex gap-2 overflow-x-auto pb-3 md:hidden">
-          <Link
-            href="/partenaire/beneficiaires"
-            className="inline-flex shrink-0 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700"
-          >
-            Bénéficiaires
-          </Link>
-          <Link
-            href="/partenaire/catalogue"
-            className="inline-flex shrink-0 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700"
-          >
-            Catalogue
-          </Link>
-          <Link
-            href="/partenaire/financement"
-            className="inline-flex shrink-0 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700"
-          >
-            Financement
-          </Link>
-          <Link
-            href="/partenaire/marque-blanche"
-            className="inline-flex shrink-0 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700"
-          >
-            Marque blanche
-          </Link>
-          <Link
-            href="/partenaire/reservations"
-            className="inline-flex shrink-0 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700"
-          >
-            Réservations
-          </Link>
-          <form action="/api/auth/logout" method="post" className="shrink-0">
-            <button className="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700">
-              Déconnexion
-            </button>
-          </form>
+        <nav className="mt-3 flex gap-2 overflow-x-auto pb-1 text-sm text-slate-600">
+          {partnerNavLinks.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              prefetch={false}
+              className="inline-flex shrink-0 rounded-full border border-slate-200 px-3 py-1.5 font-semibold transition hover:border-slate-300 hover:text-slate-900"
+            >
+              {item.label}
+            </Link>
+          ))}
         </nav>
-      </header>
-      <main className="section-container py-6 sm:py-8 lg:py-10">{children}</main>
+      </div>
+      <div className="flex min-h-screen lg:h-screen">
+        <aside className="hidden w-64 shrink-0 flex-col border-r border-slate-200 bg-white lg:flex lg:h-screen lg:overflow-y-auto">
+          <div className="px-6 py-6">
+            <p className="text-lg font-semibold text-slate-900">Espace Partenaire</p>
+          </div>
+          <PartnerSidebarNav links={partnerNavLinks} />
+          <div className="mt-auto px-6 pb-6 pt-4">
+            <form action="/api/auth/logout" method="post">
+              <button className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 hover:border-slate-300">
+                Déconnexion
+              </button>
+            </form>
+            <div className="mt-4 flex items-center justify-start">
+              <Image
+                src="/image/accueil/images_accueil/logo-resacolo.png"
+                alt="Resacolo"
+                width={120}
+                height={32}
+                className="h-8 w-auto opacity-70"
+              />
+            </div>
+          </div>
+        </aside>
+        <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:overflow-y-auto lg:px-8 lg:py-10">
+          {children}
+        </main>
+      </div>
     </div>
   );
 }

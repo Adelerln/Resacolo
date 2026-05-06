@@ -3,7 +3,9 @@ import type {
   FamilyParent2Patch,
   ParentStatus,
   FamilyProfile,
-  FamilyProfileSnapshot
+  FamilyProfileSnapshot,
+  FamilyCseAffiliation,
+  FamilyReservation
 } from '@/types/family-profile';
 
 function readFailureMessage(status: number, payload: Record<string, unknown>) {
@@ -102,6 +104,35 @@ export async function patchFamilyProfilePreferences(input: {
     body: JSON.stringify({
       source: 'preferences',
       profile: input
+    })
+  });
+}
+
+export async function attachFamilyCseAffiliation(code: string) {
+  return fetchJson<{
+    profile: FamilyProfile;
+    reservations: FamilyReservation[];
+    cseAffiliation: FamilyCseAffiliation | null;
+  }>('/api/account/profile', {
+    method: 'PATCH',
+    body: JSON.stringify({
+      source: 'affiliation',
+      action: 'attach',
+      code
+    })
+  });
+}
+
+export async function detachFamilyCseAffiliation() {
+  return fetchJson<{
+    profile: FamilyProfile;
+    reservations: FamilyReservation[];
+    cseAffiliation: FamilyCseAffiliation | null;
+  }>('/api/account/profile', {
+    method: 'PATCH',
+    body: JSON.stringify({
+      source: 'affiliation',
+      action: 'detach'
     })
   });
 }

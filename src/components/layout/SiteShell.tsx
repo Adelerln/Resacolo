@@ -8,12 +8,30 @@ import { MainNavigation } from '@/components/layout/MainNavigation';
 import { Footer } from '@/components/layout/Footer';
 import { PageTransition } from '@/components/ui/PageTransition';
 
+type PublicSitePartnerBranding = {
+  collectivityId: string;
+  partnerName: string;
+  partnerLogoUrl: string | null;
+  partnerLogoScale: number;
+  partnerLogoOffsetX: number;
+  partnerLogoOffsetY: number;
+  primaryColor: string | null;
+} | null;
+
 const LazyPublicChatbotWidget = dynamic(
   () => import('@/components/chatbot/PublicChatbotWidget').then((mod) => mod.PublicChatbotWidget),
   { ssr: false }
 );
 
-export function SiteShell({ children }: { children: React.ReactNode }) {
+export function SiteShell({
+  children,
+  initialBranding,
+  initialHidePartnerMarketingLinks
+}: {
+  children: React.ReactNode;
+  initialBranding: PublicSitePartnerBranding;
+  initialHidePartnerMarketingLinks: boolean;
+}) {
   const pathname = usePathname();
   const [isMobileViewport, setIsMobileViewport] = useState(false);
 
@@ -45,7 +63,10 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
   return (
     <FavoritesProvider>
       <div className="flex min-h-screen flex-col">
-        <MainNavigation />
+        <MainNavigation
+          initialBranding={initialBranding}
+          initialHidePartnerMarketingLinks={initialHidePartnerMarketingLinks}
+        />
         <main className="flex-1 min-h-0">
           <Suspense fallback={<div className="min-h-screen" />}>
             {disablePageTransition ? children : <PageTransition>{children}</PageTransition>}

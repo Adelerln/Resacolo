@@ -1,19 +1,26 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Home, Save, UserRound } from 'lucide-react';
-import {
-  formatPhoneInput,
-  type AccountInfo,
-  type AccountPreferences,
-  type ParentStatus
-} from '@/lib/account-preferences';
+import { formatPhoneInput, type ParentStatus } from '@/lib/account-preferences';
 import { fetchFamilyProfileSnapshot, patchFamilyProfilePreferences } from '@/lib/account-profile/client';
 import type { FamilyProfile } from '@/types/family-profile';
 
 function inputClass() {
   return 'mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm';
+}
+
+/** Hauteur fixe alignée sur la ligne Statut / Portable (select + téléphone). */
+function rowControlClass(extra = '') {
+  return [
+    'mt-1 box-border flex h-10 min-h-[2.5rem] items-center rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900',
+    'shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] outline-none transition',
+    'focus:border-brand-300 focus:ring-2 focus:ring-brand-100',
+    extra
+  ]
+    .filter(Boolean)
+    .join(' ');
 }
 
 const DIAL_CODE_OPTIONS: Array<{ code: string; label: string }> = [
@@ -98,11 +105,98 @@ function dialCodeOptionsWithCurrent(current: string) {
   return [{ code: current, label: `Autre (${current})` }, ...DIAL_CODE_OPTIONS];
 }
 
+function splitName(value: string | null | undefined) {
+  const clean = value?.trim() ?? '';
+  if (!clean) {
+    return { firstName: '', lastName: '' };
+  }
+
+  const parts = clean.split(/\s+/).filter(Boolean);
+  if (parts.length === 1) {
+    return { firstName: parts[0], lastName: '' };
+  }
+
+  return {
+    firstName: parts[0],
+    lastName: parts.slice(1).join(' ')
+  };
+}
+
+function joinNameParts(firstName: string, lastName: string) {
+  return [firstName.trim(), lastName.trim()].filter(Boolean).join(' ').trim();
+}
+
+/** Forme réelle du formulaire. */
+type ContactPrefsAccountInfo = {
+  addressLine1: string;
+  addressLine2: string;
+  postalCode: string;
+  city: string;
+  parent1FirstName: string;
+  parent1LastName: string;
+  parent2FirstName: string;
+  parent2LastName: string;
+  parent1Phone: string;
+  parent2Phone: string;
+  parent1Email: string;
+  parent2Email: string;
+  parent1Status: ParentStatus;
+  parent2Status: ParentStatus;
+  parent1StatusOther: string;
+  parent2StatusOther: string;
+  parent2HasDifferentAddress: boolean;
+  parent2AddressLine1: string;
+  parent2AddressLine2: string;
+  parent2PostalCode: string;
+  parent2City: string;
+};
+
+type ContactPrefsForm = {
+  userName: string;
+  userEmail: string;
+  userCity: string;
+  accountInfo: ContactPrefsAccountInfo;
+};
+
 const KNOWN_DIAL_CODES_DESC = [...new Set(DIAL_CODE_OPTIONS.map((option) => option.code.replace('+', '')))].sort(
   (a, b) => b.length - a.length
 );
 
-const EMPTY_FORM: AccountPreferences = {
+function extractDialCodeFromPhone(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed.startsWith('+')) return '+33';
+  const digits = trimmed.replace(/\D/g, '');
+  if (!digits) return '+33';
+  for (const code of KNOWN_DIAL_CODES_DESC) {
+    if (digits.startsWith(code)) {
+      return `+${code}`;
+    }
+  }
+  return `+${digits.slice(0, 4)}`;
+}
+
+/** Parent 2 considéré comme non renseigné (case « Désactiver » à côté du titre). */
+function isParent2EffectivelyEmpty(accountInfo: ContactPrefsAccountInfo): boolean {
+  if (accountInfo.parent2FirstName.trim()) return false;
+  if (accountInfo.parent2LastName.trim()) return false;
+  if (accountInfo.parent2Email.trim()) return false;
+  if (accountInfo.parent2HasDifferentAddress) return false;
+  if (
+    accountInfo.parent2AddressLine1.trim() ||
+    accountInfo.parent2PostalCode.trim() ||
+    accountInfo.parent2City.trim()
+  ) {
+    return false;
+  }
+  if (accountInfo.parent2Status === 'autre' && accountInfo.parent2StatusOther.trim()) return false;
+  const dialDigits = extractDialCodeFromPhone(accountInfo.parent2Phone).replace(/\D/g, '');
+  const allDigits = accountInfo.parent2Phone.replace(/\D/g, '');
+  const national = allDigits.startsWith(dialDigits) ? allDigits.slice(dialDigits.length) : allDigits;
+  if (national.replace(/^0+/, '').length >= 6) return false;
+  return true;
+}
+
+const EMPTY_FORM: ContactPrefsForm = {
   userName: '',
   userEmail: '',
   userCity: '',
@@ -111,8 +205,10 @@ const EMPTY_FORM: AccountPreferences = {
     addressLine2: '',
     postalCode: '',
     city: '',
-    parent1Name: '',
-    parent2Name: '',
+    parent1FirstName: '',
+    parent1LastName: '',
+    parent2FirstName: '',
+    parent2LastName: '',
     parent1Phone: '',
     parent2Phone: '',
     parent1Email: '',
@@ -129,10 +225,10 @@ const EMPTY_FORM: AccountPreferences = {
   }
 };
 
-function profileToForm(profile: FamilyProfile): AccountPreferences {
-  const parent1Name = [profile.billingFirstName, profile.billingLastName].filter(Boolean).join(' ').trim();
+function profileToForm(profile: FamilyProfile): ContactPrefsForm {
+  const parent2Identity = splitName(profile.parent2Name);
   return {
-    userName: parent1Name,
+    userName: joinNameParts(profile.billingFirstName, profile.billingLastName),
     userEmail: profile.email,
     userCity: profile.city,
     accountInfo: {
@@ -140,8 +236,10 @@ function profileToForm(profile: FamilyProfile): AccountPreferences {
       addressLine2: profile.addressLine2,
       postalCode: profile.postalCode,
       city: profile.city,
-      parent1Name,
-      parent2Name: profile.parent2Name,
+      parent1FirstName: profile.billingFirstName,
+      parent1LastName: profile.billingLastName,
+      parent2FirstName: parent2Identity.firstName,
+      parent2LastName: parent2Identity.lastName,
       parent1Phone: formatPhoneInput(profile.phone),
       parent2Phone: formatPhoneInput(profile.parent2Phone),
       parent1Email: profile.email,
@@ -160,7 +258,7 @@ function profileToForm(profile: FamilyProfile): AccountPreferences {
 }
 
 export default function ContactPreferencesPage() {
-  const [form, setForm] = useState<AccountPreferences>(EMPTY_FORM);
+  const [form, setForm] = useState<ContactPrefsForm>(EMPTY_FORM);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saved'>('idle');
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -190,16 +288,21 @@ export default function ContactPreferencesPage() {
     };
   }, []);
 
-  function updateProfileField<K extends 'userName' | 'userEmail' | 'userCity'>(
-    key: K,
-    value: AccountPreferences[K]
-  ) {
+  const isParent2Empty = useMemo(
+    () => isParent2EffectivelyEmpty(form.accountInfo),
+    [form.accountInfo]
+  );
+
+  useEffect(() => {
+    if (!isParent2Empty && hideParent2) {
+      setHideParent2(false);
+    }
+  }, [hideParent2, isParent2Empty]);
+
+  function updateProfileField<K extends 'userEmail' | 'userCity'>(key: K, value: ContactPrefsForm[K]) {
     setSaveStatus('idle');
     setForm((prev) => {
       const next = { ...prev, [key]: value };
-      if (key === 'userName') {
-        next.accountInfo = { ...next.accountInfo, parent1Name: String(value) };
-      }
       if (key === 'userEmail') {
         next.accountInfo = { ...next.accountInfo, parent1Email: String(value) };
       }
@@ -210,7 +313,7 @@ export default function ContactPreferencesPage() {
     });
   }
 
-  function updateAccountField<K extends keyof AccountInfo>(key: K, value: AccountInfo[K]) {
+  function updateAccountField<K extends keyof ContactPrefsAccountInfo>(key: K, value: ContactPrefsAccountInfo[K]) {
     setSaveStatus('idle');
     setForm((prev) => ({
       ...prev,
@@ -256,7 +359,8 @@ export default function ContactPreferencesPage() {
       ...prev,
       accountInfo: {
         ...prev.accountInfo,
-        parent2Name: '',
+        parent2FirstName: '',
+        parent2LastName: '',
         parent2Status: 'pere',
         parent2StatusOther: '',
         parent2Phone: '',
@@ -276,26 +380,13 @@ export default function ContactPreferencesPage() {
     return `+${digits}`;
   }
 
-  function extractDialCode(value: string) {
-    const trimmed = value.trim();
-    if (!trimmed.startsWith('+')) return '+33';
-    const digits = trimmed.replace(/\D/g, '');
-    if (!digits) return '+33';
-    for (const code of KNOWN_DIAL_CODES_DESC) {
-      if (digits.startsWith(code)) {
-        return `+${code}`;
-      }
-    }
-    return `+${digits.slice(0, 4)}`;
-  }
-
   function applyDialCode(field: 'parent1Phone' | 'parent2Phone', dialCodeRaw: string) {
     setSaveStatus('idle');
     setForm((prev) => {
       const current = prev.accountInfo[field] ?? '';
       const dialCode = normalizeDialCodeInput(dialCodeRaw);
       const digits = current.replace(/\D/g, '');
-      const currentDialDigits = extractDialCode(current).replace('+', '');
+      const currentDialDigits = extractDialCodeFromPhone(current).replace('+', '');
       const nextDialDigits = dialCode.replace('+', '');
       const national = digits.startsWith(currentDialDigits)
         ? digits.slice(currentDialDigits.length)
@@ -316,8 +407,12 @@ export default function ContactPreferencesPage() {
     event.preventDefault();
     setSaveStatus('idle');
     setError(null);
-    if (!form.accountInfo.parent1Name.trim()) {
+    if (!form.accountInfo.parent1LastName.trim()) {
       setError('Le nom du parent 1 est requis.');
+      return;
+    }
+    if (!form.accountInfo.parent1FirstName.trim()) {
+      setError('Le prénom du parent 1 est requis.');
       return;
     }
     if (!form.accountInfo.parent1Email.trim()) {
@@ -353,7 +448,7 @@ export default function ContactPreferencesPage() {
 
     setIsSaving(true);
     const payload = {
-      parent1Name: form.accountInfo.parent1Name,
+      parent1Name: joinNameParts(form.accountInfo.parent1FirstName, form.accountInfo.parent1LastName),
       parent1Status: form.accountInfo.parent1Status,
       parent1StatusOther: form.accountInfo.parent1StatusOther,
       parent1Email: form.accountInfo.parent1Email || form.userEmail,
@@ -363,7 +458,7 @@ export default function ContactPreferencesPage() {
       postalCode: form.accountInfo.postalCode,
       city: form.accountInfo.city,
       country: 'France',
-      parent2Name: hideParent2 ? '' : form.accountInfo.parent2Name,
+      parent2Name: hideParent2 ? '' : joinNameParts(form.accountInfo.parent2FirstName, form.accountInfo.parent2LastName),
       parent2Status: hideParent2 ? 'pere' : form.accountInfo.parent2Status,
       parent2StatusOther: hideParent2 ? '' : form.accountInfo.parent2StatusOther,
       parent2Phone: hideParent2 ? '' : form.accountInfo.parent2Phone,
@@ -434,18 +529,28 @@ export default function ContactPreferencesPage() {
               Profil
             </h2>
             <div className="mt-3 grid gap-4 sm:grid-cols-2">
-              <label className="sm:col-span-2 text-sm font-medium text-slate-700">
-                Nom complet *
+              <label className="text-sm font-medium text-slate-700">
+                Nom parent 1 *
                 <input
                   type="text"
                   className={inputClass()}
-                  value={form.userName}
-                  onChange={(e) => updateProfileField('userName', e.target.value)}
+                  value={form.accountInfo.parent1LastName}
+                  onChange={(e) => updateAccountField('parent1LastName', e.target.value)}
+                  required
+                />
+              </label>
+              <label className="text-sm font-medium text-slate-700">
+                Prénom parent 1 *
+                <input
+                  type="text"
+                  className={inputClass()}
+                  value={form.accountInfo.parent1FirstName}
+                  onChange={(e) => updateAccountField('parent1FirstName', e.target.value)}
                   required
                 />
               </label>
               <label className="sm:col-span-2 text-sm font-medium text-slate-700">
-                Ville (affichage) *
+                Ville *
                 <input
                   type="text"
                   className={inputClass()}
@@ -510,20 +615,10 @@ export default function ContactPreferencesPage() {
           <section className="rounded-2xl border border-blue-100 bg-blue-100/60 p-5 shadow-sm sm:p-6">
             <h2 className="text-base font-semibold text-slate-900">Parent 1</h2>
             <div className="mt-3 grid gap-4 sm:grid-cols-2">
-              <label className="sm:col-span-2 text-sm font-medium text-slate-700">
-                Nom parent 1 *
-                <input
-                  type="text"
-                  className={inputClass()}
-                  value={form.accountInfo.parent1Name}
-                  onChange={(e) => updateAccountField('parent1Name', e.target.value)}
-                  required
-                />
-              </label>
               <label className="text-sm font-medium text-slate-700">
                 Statut parent 1
                 <select
-                  className={inputClass()}
+                  className={rowControlClass('w-full')}
                   value={form.accountInfo.parent1Status}
                   onChange={(e) => updateAccountField('parent1Status', e.target.value as ParentStatus)}
                 >
@@ -545,14 +640,15 @@ export default function ContactPreferencesPage() {
               </label>
               <label className="text-sm font-medium text-slate-700">
                 Portable parent 1 *
-                <div className="mt-1.5 flex items-center gap-2">
+                <div className="mt-1 flex gap-2">
                   <select
-                    className="min-h-[40px] w-52 rounded-lg border border-slate-200 px-2 py-2 text-sm font-semibold"
-                    value={extractDialCode(form.accountInfo.parent1Phone)}
+                    className={rowControlClass('w-[min(100%,13.75rem)] shrink-0 font-semibold')}
+                    value={extractDialCodeFromPhone(form.accountInfo.parent1Phone)}
                     onChange={(e) => applyDialCode('parent1Phone', e.target.value)}
                     aria-label="Indicatif parent 1"
                   >
-                    {dialCodeOptionsWithCurrent(extractDialCode(form.accountInfo.parent1Phone)).map((option) => (
+                    {dialCodeOptionsWithCurrent(extractDialCodeFromPhone(form.accountInfo.parent1Phone)).map(
+                      (option) => (
                       <option key={option.code} value={option.code}>
                         {option.label}
                       </option>
@@ -561,7 +657,7 @@ export default function ContactPreferencesPage() {
                 <input
                   type="tel"
                   inputMode="tel"
-                  className="min-h-[40px] w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                  className={rowControlClass('min-w-0 w-full flex-1')}
                   value={form.accountInfo.parent1Phone}
                   onChange={(e) => updateAccountField('parent1Phone', formatPhoneInput(e.target.value))}
                   placeholder="+33 6 12 34 56 78"
@@ -583,22 +679,44 @@ export default function ContactPreferencesPage() {
           </section>
 
           <section className="rounded-2xl border border-orange-100 bg-orange-100/60 p-5 shadow-sm sm:p-6">
-            <h2 className="text-base font-semibold text-slate-900">Parent 2</h2>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-base font-semibold text-slate-900">Parent 2</h2>
+              {isParent2Empty ? (
+                <label className="flex cursor-pointer select-none items-center gap-2 text-sm font-medium text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={hideParent2}
+                    onChange={(e) => handleHideParent2Change(e.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                  />
+                  Désactiver
+                </label>
+              ) : null}
+            </div>
             {!hideParent2 ? (
             <div className="mt-3 grid gap-4 sm:grid-cols-2">
-              <label className="sm:col-span-2 text-sm font-medium text-slate-700">
+              <label className="text-sm font-medium text-slate-700">
                 Nom parent 2
                 <input
                   type="text"
                   className={inputClass()}
-                  value={form.accountInfo.parent2Name}
-                  onChange={(e) => updateAccountField('parent2Name', e.target.value)}
+                  value={form.accountInfo.parent2LastName}
+                  onChange={(e) => updateAccountField('parent2LastName', e.target.value)}
+                />
+              </label>
+              <label className="text-sm font-medium text-slate-700">
+                Prénom parent 2
+                <input
+                  type="text"
+                  className={inputClass()}
+                  value={form.accountInfo.parent2FirstName}
+                  onChange={(e) => updateAccountField('parent2FirstName', e.target.value)}
                 />
               </label>
               <label className="text-sm font-medium text-slate-700">
                 Statut parent 2
                 <select
-                  className={inputClass()}
+                  className={rowControlClass('w-full')}
                   value={form.accountInfo.parent2Status}
                   onChange={(e) => updateAccountField('parent2Status', e.target.value as ParentStatus)}
                 >
@@ -619,14 +737,15 @@ export default function ContactPreferencesPage() {
               </label>
               <label className="text-sm font-medium text-slate-700">
                 Portable parent 2
-                <div className="mt-1.5 flex items-center gap-2">
+                <div className="mt-1 flex gap-2">
                   <select
-                    className="min-h-[40px] w-52 rounded-lg border border-slate-200 px-2 py-2 text-sm font-semibold"
-                    value={extractDialCode(form.accountInfo.parent2Phone)}
+                    className={rowControlClass('w-[min(100%,13.75rem)] shrink-0 font-semibold')}
+                    value={extractDialCodeFromPhone(form.accountInfo.parent2Phone)}
                     onChange={(e) => applyDialCode('parent2Phone', e.target.value)}
                     aria-label="Indicatif parent 2"
                   >
-                    {dialCodeOptionsWithCurrent(extractDialCode(form.accountInfo.parent2Phone)).map((option) => (
+                    {dialCodeOptionsWithCurrent(extractDialCodeFromPhone(form.accountInfo.parent2Phone)).map(
+                      (option) => (
                       <option key={option.code} value={option.code}>
                         {option.label}
                       </option>
@@ -635,7 +754,7 @@ export default function ContactPreferencesPage() {
                 <input
                   type="tel"
                   inputMode="tel"
-                  className="min-h-[40px] w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                  className={rowControlClass('min-w-0 w-full flex-1')}
                   value={form.accountInfo.parent2Phone}
                   onChange={(e) => updateAccountField('parent2Phone', formatPhoneInput(e.target.value))}
                   placeholder="+33 6 12 34 56 78"
@@ -706,15 +825,6 @@ export default function ContactPreferencesPage() {
               </div>
             )}
 
-            <label className="mt-4 flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
-              <input
-                type="checkbox"
-                checked={hideParent2}
-                onChange={(e) => handleHideParent2Change(e.target.checked)}
-                className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
-              />
-              Ne pas faire apparaître le parent 2
-            </label>
           </section>
 
           <div className="relative z-30 flex flex-col gap-3 sm:flex-row sm:justify-end">

@@ -4,6 +4,8 @@ import { getSession } from '@/lib/auth/session';
 import { checkoutParticipantSchema } from '@/lib/checkout/schemas';
 import { getApiErrorMessage } from '@/lib/checkout/api';
 import {
+  attachFamilyToCseByCode,
+  detachFamilyFromCse,
   getFamilyProfileSnapshot,
   patchFamilyProfileParent2,
   upsertFamilyProfileFromCheckout,
@@ -133,6 +135,11 @@ const patchSchema = z.discriminatedUnion('source', [
     parent2: parent2UpdateSchema
   }),
   z.object({
+    source: z.literal('affiliation'),
+    action: z.enum(['attach', 'detach']),
+    code: z.string().trim().optional().default('')
+  }),
+  z.object({
     source: z.literal('preferences'),
     profile: z.object({
       parent1Name: z.string().trim().min(2, 'Nom parent 1 requis.'),
@@ -220,6 +227,39 @@ export async function PATCH(req: Request) {
         sessionEmail: session.email
       });
       return NextResponse.json({ profile });
+    }
+
+    if (body.source === 'affiliation') {
+      if (body.action === 'attach') {
+        const cseAffiliation = await attachFamilyToCseByCode({
+          userId: session.userId,
+          code: body.code,
+          sessionName: session.name,
+          sessionEmail: session.email
+        });
+        const snapshot = await getFamilyProfileSnapshot({
+          userId: session.userId,
+          sessionName: session.name,
+          sessionEmail: session.email
+        });
+        return NextResponse.json({ profile: snapshot.profile, reservations: snapshot.reservations, cseAffiliation });
+      }
+
+      await detachFamilyFromCse({
+        userId: session.userId,
+        sessionName: session.name,
+        sessionEmail: session.email
+      });
+      const snapshot = await getFamilyProfileSnapshot({
+        userId: session.userId,
+        sessionName: session.name,
+        sessionEmail: session.email
+      });
+      return NextResponse.json({
+        profile: snapshot.profile,
+        reservations: snapshot.reservations,
+        cseAffiliation: snapshot.cseAffiliation
+      });
     }
 
     const profile = await patchFamilyProfilePreferences({

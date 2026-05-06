@@ -69,9 +69,24 @@ export type FamilyReservation = {
   extraLines: string[];
 };
 
+export type FamilyCseAffiliation = {
+  collectivityId: string;
+  name: string;
+  code: string;
+  offerMode: string;
+  financeMode: string;
+  brandPrimaryColor: string | null;
+  logoUrl: string | null;
+  logoScale: number | null;
+  logoOffsetX: number | null;
+  logoOffsetY: number | null;
+  isWhiteLabel: boolean;
+};
+
 export type FamilyProfileSnapshot = {
   profile: FamilyProfile;
   reservations: FamilyReservation[];
+  cseAffiliation: FamilyCseAffiliation | null;
 };
 
 export type FamilyParent2Patch = {

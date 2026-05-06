@@ -1,6 +1,7 @@
 import type { Json, Database } from '@/types/supabase';
 import type {
   FamilyCheckoutSyncInput,
+  FamilyCseAffiliation,
   FamilyParent2Patch,
   FamilyProfile,
   FamilyProfileChild,
@@ -8,9 +9,12 @@ import type {
   FamilyReservation
 } from '@/types/family-profile';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
+import { computePartnerFinanceSplit, partnerHasMarqueBlancheAccess } from '@/lib/partner-offers';
 
 type ClientProfileRow = Database['public']['Tables']['client_profiles']['Row'];
 type ClientProfileInsert = Database['public']['Tables']['client_profiles']['Insert'];
+type CollectivityRow = Database['public']['Tables']['collectivities']['Row'];
+type CollectivityContributionRow = Database['public']['Tables']['collectivity_contributions']['Row'];
 
 const DEFAULT_COUNTRY = 'France';
 const CLIENT_PROFILES_MISSING_ERROR =
@@ -54,6 +58,26 @@ function normalizeText(value: string | null | undefined) {
 
 function normalizeUpper(value: string | null | undefined) {
   return normalizeText(value).toUpperCase();
+}
+
+function normalizeCollectivityCode(value: string | null | undefined) {
+  return normalizeText(value).toUpperCase();
+}
+
+function buildFamilyCseAffiliation(collectivity: CollectivityRow): FamilyCseAffiliation {
+  return {
+    collectivityId: collectivity.id,
+    name: collectivity.name,
+    code: collectivity.code,
+    offerMode: collectivity.offer_mode,
+    financeMode: collectivity.finance_mode,
+    brandPrimaryColor: collectivity.brand_primary_color,
+    logoUrl: collectivity.logo_url,
+    logoScale: collectivity.logo_scale,
+    logoOffsetX: collectivity.logo_offset_x,
+    logoOffsetY: collectivity.logo_offset_y,
+    isWhiteLabel: partnerHasMarqueBlancheAccess(collectivity.offer_mode)
+  };
 }
 
 function normalizeParentStatus(value: string | null | undefined): FamilyProfile['parent2Status'] {
@@ -367,15 +391,124 @@ function computeRemainingBalanceCents(
   return settled ? 0 : totalCents;
 }
 
-async function syncLegacyClientsRow(input: { userId: string; fullName: string; phone: string }) {
+function computeContributionCentsFromRow(
+  row: Pick<CollectivityContributionRow, 'fixed_cents' | 'percent_value' | 'cap_cents' | 'mode'>,
+  itemTotalCents: number
+) {
+  const cappedTotal = Math.max(0, Math.round(itemTotalCents));
+  let amount = 0;
+
+  if (row.mode === 'PERCENT') {
+    const percent = Number.isFinite(row.percent_value) ? Number(row.percent_value) : 0;
+    amount = Math.round((cappedTotal * Math.max(0, percent)) / 100);
+  } else {
+    amount = Number.isFinite(row.fixed_cents) ? Number(row.fixed_cents) : 0;
+  }
+
+  if (Number.isFinite(row.cap_cents)) {
+    amount = Math.min(amount, Math.max(0, Number(row.cap_cents)));
+  }
+
+  return Math.min(Math.max(0, Math.round(amount)), cappedTotal);
+}
+
+async function readClientCollectivityId(userId: string) {
   const supabase = getServerSupabaseClient();
+  const { data } = await supabase.from('clients').select('collectivity_id').eq('user_id', userId).maybeSingle();
+  return data?.collectivity_id ?? null;
+}
+
+async function readCollectivityById(collectivityId: string) {
+  const supabase = getServerSupabaseClient();
+  const { data, error } = await supabase
+    .from('collectivities')
+    .select('*')
+    .eq('id', collectivityId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Impossible de charger la collectivité liée : ${error.message}`);
+  }
+
+  return data as CollectivityRow | null;
+}
+
+async function readCollectivityByCode(code: string) {
+  const normalizedCode = normalizeCollectivityCode(code);
+  if (!normalizedCode) return null;
+
+  const supabase = getServerSupabaseClient();
+  const { data, error } = await supabase
+    .from('collectivities')
+    .select('*')
+    .eq('code', normalizedCode)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Impossible de vérifier le code CSE : ${error.message}`);
+  }
+
+  return data as CollectivityRow | null;
+}
+
+async function listUserOrderIds(userId: string) {
+  const supabase = getServerSupabaseClient();
+  const { data, error } = await supabase
+    .from('orders')
+    .select('id')
+    .eq('client_user_id', userId)
+    .neq('status', 'CART');
+
+  if (error) {
+    throw new Error(`Impossible de charger les commandes client : ${error.message}`);
+  }
+
+  return (data ?? []).map((row) => row.id);
+}
+
+async function deleteUserCollectivityContributions(userId: string) {
+  const supabase = getServerSupabaseClient();
+  const orderIds = await listUserOrderIds(userId);
+  if (orderIds.length === 0) return;
+
+  const { data: orderItems, error: itemsError } = await supabase
+    .from('order_items')
+    .select('id')
+    .in('order_id', orderIds);
+
+  if (itemsError) {
+    throw new Error(`Impossible de charger les lignes de commande client : ${itemsError.message}`);
+  }
+
+  const orderItemIds = (orderItems ?? []).map((row) => row.id);
+  if (orderItemIds.length === 0) return;
+
+  const { error: deleteError } = await supabase
+    .from('collectivity_contributions')
+    .delete()
+    .in('order_item_id', orderItemIds);
+
+  if (deleteError) {
+    throw new Error(`Impossible de supprimer les prises en charge CSE : ${deleteError.message}`);
+  }
+}
+
+async function syncLegacyClientsRow(input: {
+  userId: string;
+  fullName: string;
+  phone: string;
+  collectivityId?: string | null;
+}) {
+  const supabase = getServerSupabaseClient();
+  const collectivityId =
+    input.collectivityId === undefined ? await readClientCollectivityId(input.userId) : input.collectivityId;
   for (let attempt = 0; attempt < LEGACY_CLIENTS_FK_RETRY_COUNT; attempt += 1) {
     const { error } = await supabase.from('clients').upsert(
       {
         user_id: input.userId,
         full_name: input.fullName || null,
         phone: input.phone || null,
-        collectivity_id: null
+        collectivity_id: collectivityId ?? null
       },
       { onConflict: 'user_id' }
     );
@@ -393,11 +526,194 @@ async function syncLegacyClientsRow(input: { userId: string; fullName: string; p
   }
 }
 
+export async function readFamilyCseAffiliation(userId: string): Promise<FamilyCseAffiliation | null> {
+  const collectivityId = await readClientCollectivityId(userId);
+  if (!collectivityId) return null;
+
+  const collectivity = await readCollectivityById(collectivityId);
+  return collectivity ? buildFamilyCseAffiliation(collectivity) : null;
+}
+
+export async function readPublicSitePartnerBranding(userId: string) {
+  const affiliation = await readFamilyCseAffiliation(userId);
+  if (!affiliation?.isWhiteLabel) return null;
+
+  return {
+    collectivityId: affiliation.collectivityId,
+    partnerName: affiliation.name,
+    partnerLogoUrl: affiliation.logoUrl,
+    partnerLogoScale: affiliation.logoScale ?? 1,
+    partnerLogoOffsetX: affiliation.logoOffsetX ?? 0,
+    partnerLogoOffsetY: affiliation.logoOffsetY ?? 0,
+    primaryColor: affiliation.brandPrimaryColor
+  };
+}
+
+async function applyFamilyCseCodeToProfile(input: {
+  userId: string;
+  code: string;
+  sessionName?: string | null;
+  sessionEmail?: string | null;
+}) {
+  const existing =
+    (await getFamilyProfile(input.userId)) ??
+    createDefaultProfile({
+      userId: input.userId,
+      sessionName: input.sessionName,
+      sessionEmail: input.sessionEmail
+    });
+
+  await upsertProfile({
+    ...existing,
+    cseOrganization: normalizeCollectivityCode(input.code)
+  });
+}
+
+async function clearFamilyCseCodeFromProfile(input: {
+  userId: string;
+  sessionName?: string | null;
+  sessionEmail?: string | null;
+}) {
+  const existing =
+    (await getFamilyProfile(input.userId)) ??
+    createDefaultProfile({
+      userId: input.userId,
+      sessionName: input.sessionName,
+      sessionEmail: input.sessionEmail
+    });
+
+  await upsertProfile({
+    ...existing,
+    cseOrganization: ''
+  });
+}
+
+export async function attachFamilyToCseByCode(input: {
+  userId: string;
+  code: string;
+  sessionName?: string | null;
+  sessionEmail?: string | null;
+}) {
+  const normalizedCode = normalizeCollectivityCode(input.code);
+  if (!normalizedCode) {
+    throw new Error('Veuillez renseigner un code CSE.');
+  }
+
+  const collectivity = await readCollectivityByCode(normalizedCode);
+  if (!collectivity) {
+    throw new Error('Code CSE invalide.');
+  }
+
+  const supabase = getServerSupabaseClient();
+  const currentAffiliation = await readFamilyCseAffiliation(input.userId);
+  if (currentAffiliation?.collectivityId === collectivity.id) {
+    await applyFamilyCseCodeToProfile({
+      userId: input.userId,
+      code: collectivity.code,
+      sessionName: input.sessionName,
+      sessionEmail: input.sessionEmail
+    });
+    return currentAffiliation;
+  }
+
+  const { error: clientError } = await supabase
+    .from('clients')
+    .upsert(
+      {
+        user_id: input.userId,
+        collectivity_id: collectivity.id
+      },
+      { onConflict: 'user_id' }
+    );
+
+  if (clientError) {
+    throw new Error(`Impossible de rattacher le client à la collectivité : ${clientError.message}`);
+  }
+
+  const { error: orderUpdateError } = await supabase
+    .from('orders')
+    .update({ collectivity_id: collectivity.id })
+    .eq('client_user_id', input.userId)
+    .neq('status', 'CART');
+
+  if (orderUpdateError) {
+    throw new Error(`Impossible de rattacher les réservations existantes : ${orderUpdateError.message}`);
+  }
+
+  await deleteUserCollectivityContributions(input.userId);
+  await applyFamilyCseCodeToProfile({
+    userId: input.userId,
+    code: collectivity.code,
+    sessionName: input.sessionName,
+    sessionEmail: input.sessionEmail
+  });
+
+  return buildFamilyCseAffiliation(collectivity);
+}
+
+export async function detachFamilyFromCse(input: {
+  userId: string;
+  sessionName?: string | null;
+  sessionEmail?: string | null;
+}) {
+  const supabase = getServerSupabaseClient();
+
+  const { error: clientError } = await supabase
+    .from('clients')
+    .upsert(
+      {
+        user_id: input.userId,
+        collectivity_id: null
+      },
+      { onConflict: 'user_id' }
+    );
+
+  if (clientError) {
+    throw new Error(`Impossible de désaffilier le client du CSE : ${clientError.message}`);
+  }
+
+  const { error: orderUpdateError } = await supabase
+    .from('orders')
+    .update({ collectivity_id: null })
+    .eq('client_user_id', input.userId)
+    .neq('status', 'CART');
+
+  if (orderUpdateError) {
+    throw new Error(`Impossible de remettre les réservations à la charge du client : ${orderUpdateError.message}`);
+  }
+
+  await deleteUserCollectivityContributions(input.userId);
+  await clearFamilyCseCodeFromProfile(input);
+}
+
+export async function resolveCheckoutCollectivityForUser(input: {
+  userId: string;
+  requestedCode?: string | null;
+}) {
+  const currentAffiliation = await readFamilyCseAffiliation(input.userId);
+  if (currentAffiliation) {
+    return currentAffiliation;
+  }
+
+  const normalizedCode = normalizeCollectivityCode(input.requestedCode);
+  if (!normalizedCode) return null;
+
+  const collectivity = await readCollectivityByCode(normalizedCode);
+  if (!collectivity) {
+    throw new Error('Code CSE invalide.');
+  }
+
+  return attachFamilyToCseByCode({
+    userId: input.userId,
+    code: collectivity.code
+  });
+}
+
 async function readReservations(userId: string): Promise<FamilyReservation[]> {
   const supabase = getServerSupabaseClient();
   const { data: orders, error: ordersError } = await supabase
     .from('orders')
-    .select('id,status,created_at,paid_at')
+    .select('id,status,created_at,paid_at,collectivity_id')
     .eq('client_user_id', userId)
     .order('created_at', { ascending: false })
     .neq('status', 'CART');
@@ -407,6 +723,9 @@ async function readReservations(userId: string): Promise<FamilyReservation[]> {
   }
 
   const orderIds = orders.map((order) => order.id);
+  const collectivityIds = Array.from(
+    new Set(orders.map((order) => order.collectivity_id).filter((value): value is string => Boolean(value)))
+  );
   const { data: items } = await supabase
     .from('order_items')
     .select(
@@ -454,52 +773,88 @@ async function readReservations(userId: string): Promise<FamilyReservation[]> {
     ? await supabase.from('stays').select('id,title').in('id', Array.from(stayIds))
     : { data: [] as Array<{ id: string; title: string }> };
   const staysById = new Map((stays ?? []).map((stay) => [stay.id, stay]));
-  const [{ data: payments }, { data: transportOptions }, { data: insuranceOptions }, { data: extraOptions }] =
-    await Promise.all([
-      supabase
-        .from('payments')
-        .select('order_id,amount_cents,currency,status,updated_at,raw_payload')
-        .in('order_id', orderIds)
-        .order('updated_at', { ascending: false }),
-      transportOptionIds.size
-        ? supabase
-            .from('transport_options')
-            .select('id,departure_city,return_city,amount_cents')
-            .in('id', Array.from(transportOptionIds))
-        : Promise.resolve({
-            data: [] as Array<{
-              id: string;
-              departure_city: string | null;
-              return_city: string | null;
-              amount_cents: number;
-            }>
-          }),
-      insuranceOptionIds.size
-        ? supabase
-            .from('insurance_options')
-            .select('id,label,amount_cents,percent_value')
-            .in('id', Array.from(insuranceOptionIds))
-        : Promise.resolve({
-            data: [] as Array<{
-              id: string;
-              label: string;
-              amount_cents: number | null;
-              percent_value: number | null;
-            }>
-          }),
-      orderItemIds.length
-        ? supabase
-            .from('order_item_extra_options')
-            .select('order_item_id,label_snapshot,amount_cents_snapshot')
-            .in('order_item_id', orderItemIds)
-        : Promise.resolve({
-            data: [] as Array<{
-              order_item_id: string;
-              label_snapshot: string;
-              amount_cents_snapshot: number;
-            }>
-          })
-    ]);
+  const [
+    { data: payments },
+    { data: transportOptions },
+    { data: insuranceOptions },
+    { data: extraOptions },
+    { data: collectivityRows },
+    { data: collectivityContributions }
+  ] = await Promise.all([
+    supabase
+      .from('payments')
+      .select('order_id,amount_cents,currency,status,updated_at,raw_payload')
+      .in('order_id', orderIds)
+      .order('updated_at', { ascending: false }),
+    transportOptionIds.size
+      ? supabase
+          .from('transport_options')
+          .select('id,departure_city,return_city,amount_cents')
+          .in('id', Array.from(transportOptionIds))
+      : Promise.resolve({
+          data: [] as Array<{
+            id: string;
+            departure_city: string | null;
+            return_city: string | null;
+            amount_cents: number;
+          }>
+        }),
+    insuranceOptionIds.size
+      ? supabase
+          .from('insurance_options')
+          .select('id,label,amount_cents,percent_value')
+          .in('id', Array.from(insuranceOptionIds))
+      : Promise.resolve({
+          data: [] as Array<{
+            id: string;
+            label: string;
+            amount_cents: number | null;
+            percent_value: number | null;
+          }>
+        }),
+    orderItemIds.length
+      ? supabase
+          .from('order_item_extra_options')
+          .select('order_item_id,label_snapshot,amount_cents_snapshot')
+          .in('order_item_id', orderItemIds)
+      : Promise.resolve({
+          data: [] as Array<{
+            order_item_id: string;
+            label_snapshot: string;
+            amount_cents_snapshot: number;
+          }>
+        }),
+    collectivityIds.length
+      ? supabase
+          .from('collectivities')
+          .select('id,finance_mode,finance_percent_value,finance_fixed_cents')
+          .in('id', collectivityIds)
+      : Promise.resolve({
+          data: [] as Array<{
+            id: string;
+            finance_mode: string;
+            finance_percent_value: number | null;
+            finance_fixed_cents: number | null;
+          }>
+        }),
+    orderItemIds.length
+      ? supabase
+          .from('collectivity_contributions')
+          .select('collectivity_id,order_item_id,mode,fixed_cents,percent_value,cap_cents,status')
+          .in('order_item_id', orderItemIds)
+          .eq('status', 'APPROVED')
+      : Promise.resolve({
+          data: [] as Array<{
+            collectivity_id: string;
+            order_item_id: string;
+            mode: string;
+            fixed_cents: number | null;
+            percent_value: number | null;
+            cap_cents: number | null;
+            status: Database['public']['Enums']['contribution_status'];
+          }>
+        })
+  ]);
 
   const paymentsByOrder = new Map<
     string,
@@ -530,6 +885,17 @@ async function readReservations(userId: string): Promise<FamilyReservation[]> {
     });
     extrasByOrderItemId.set(extra.order_item_id, existing);
   }
+  const collectivitiesById = new Map((collectivityRows ?? []).map((row) => [row.id, row]));
+  const contributionByOrderItemId = new Map<
+    string,
+    Pick<
+      CollectivityContributionRow,
+      'collectivity_id' | 'order_item_id' | 'mode' | 'fixed_cents' | 'percent_value' | 'cap_cents'
+    >
+  >();
+  for (const contribution of collectivityContributions ?? []) {
+    contributionByOrderItemId.set(contribution.order_item_id, contribution);
+  }
 
   return orders
     .map((order) => {
@@ -551,11 +917,35 @@ async function readReservations(userId: string): Promise<FamilyReservation[]> {
         itemsForOrder.reduce((sum, item) => sum + (item.total_price_cents ?? 0), 0);
       const currency = payment?.currency ?? 'EUR';
       const paymentMode = parsePaymentModeFromPayload(payment?.raw_payload);
+      const collectivity = order.collectivity_id ? collectivitiesById.get(order.collectivity_id) : null;
+      const manualPartnerCents = itemsForOrder.reduce((sum, item) => {
+        const contribution = contributionByOrderItemId.get(item.id);
+        if (!contribution) return sum;
+        if (collectivity && contribution.collectivity_id !== collectivity.id) return sum;
+        return sum + computeContributionCentsFromRow(contribution, item.total_price_cents ?? 0);
+      }, 0);
+      const financeSplit = collectivity
+        ? computePartnerFinanceSplit({
+            mode: collectivity.finance_mode,
+            totalCents,
+            percentValue: collectivity.finance_percent_value,
+            fixedCents: collectivity.finance_fixed_cents,
+            manualPartnerCents
+          })
+        : {
+            mode: 'NONE',
+            partnerCents: 0,
+            clientCents: totalCents
+          };
       const settled =
         order.status === 'PAID' ||
         order.status === 'CONFIRMED' ||
         payment?.status === 'SUCCEEDED';
-      const remainingBalanceCents = computeRemainingBalanceCents(totalCents, paymentMode, settled);
+      const remainingBalanceCents = computeRemainingBalanceCents(
+        financeSplit.clientCents,
+        paymentMode,
+        settled
+      );
 
       const extraEntries = itemsForOrder.flatMap((item) => extrasByOrderItemId.get(item.id) ?? []);
       const extraLines = Array.from(
@@ -752,8 +1142,11 @@ export async function getFamilyProfileSnapshot(input: {
       sessionName: input.sessionName,
       sessionEmail: input.sessionEmail
     });
-  const reservations = await readReservations(input.userId);
-  return { profile, reservations };
+  const [reservations, cseAffiliation] = await Promise.all([
+    readReservations(input.userId),
+    readFamilyCseAffiliation(input.userId)
+  ]);
+  return { profile, reservations, cseAffiliation };
 }
 
 export async function upsertFamilyProfileFromRegistration(input: {
@@ -829,6 +1222,7 @@ export async function upsertFamilyProfileFromCheckout(input: {
       sessionName: input.sessionName,
       sessionEmail: input.sessionEmail
     });
+  const currentAffiliation = await readFamilyCseAffiliation(input.userId);
 
   const children: FamilyProfileChild[] = input.participants.map((participant) => ({
     firstName: normalizeText(participant.childFirstName),
@@ -855,7 +1249,7 @@ export async function upsertFamilyProfileFromCheckout(input: {
     billingPostalCode: normalizeText(input.contact.billingPostalCode),
     billingCity: normalizeText(input.contact.billingCity),
     billingCountry: normalizeText(input.contact.billingCountry) || DEFAULT_COUNTRY,
-    cseOrganization: normalizeText(input.contact.cseOrganization),
+    cseOrganization: currentAffiliation?.code ?? normalizeCollectivityCode(input.contact.cseOrganization),
     vacafNumber: normalizeUpper(input.contact.vacafNumber),
     paymentMode: input.contact.paymentMode,
     parent1Status: existing.parent1Status,

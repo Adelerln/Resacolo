@@ -15,6 +15,8 @@ export type ResolvedRoleContext = {
   isClient: boolean;
 };
 
+const PARTNER_STAFF_ROLES = new Set(['PARTNER_ADMIN', 'PARTNER_AGENT', 'OWNER']);
+
 function normalizeRoleValue(value: string | null | undefined) {
   return String(value ?? '')
     .trim()
@@ -59,8 +61,16 @@ export async function resolveRoleContextForUserId(
   const organizerIds = Array.from(
     new Set((organizerRows ?? []).map((row) => row.organizer_id).filter(Boolean))
   );
+  const partnerCollectivityIds = Array.from(
+    new Set(
+      (collectivityRows ?? [])
+        .filter((row) => PARTNER_STAFF_ROLES.has(normalizeRoleValue(row.role)))
+        .map((row) => row.collectivity_id)
+        .filter(Boolean)
+    )
+  );
   const collectivityIds = Array.from(
-    new Set((collectivityRows ?? []).map((row) => row.collectivity_id).filter(Boolean))
+    new Set(partnerCollectivityIds)
   );
 
   const staffRole = mapStaffRole(staffRoles);
@@ -68,7 +78,7 @@ export async function resolveRoleContextForUserId(
     staffRole ??
     (organizerIds.length > 0
       ? 'ORGANISATEUR'
-      : collectivityIds.length > 0
+      : partnerCollectivityIds.length > 0
         ? 'PARTENAIRE'
         : 'CLIENT');
 

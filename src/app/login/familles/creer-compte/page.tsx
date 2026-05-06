@@ -147,10 +147,16 @@ export default async function FamilyRegisterPage({
                   Ajouter un parent 2 (facultatif)
                 </summary>
                 <div className="mt-4 space-y-4">
-                  <label className="block text-sm font-medium text-slate-700">
-                    Nom complet
-                    <input name="parent2Name" type="text" className={INPUT_CLASS} />
-                  </label>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <label className="block text-sm font-medium text-slate-700">
+                      Nom parent 2
+                      <input name="parent2LastName" type="text" className={INPUT_CLASS} />
+                    </label>
+                    <label className="block text-sm font-medium text-slate-700">
+                      Prénom parent 2
+                      <input name="parent2FirstName" type="text" className={INPUT_CLASS} />
+                    </label>
+                  </div>
                   <div className="grid gap-4 sm:grid-cols-2">
                     <label className="block text-sm font-medium text-slate-700">
                       Statut

@@ -2,16 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
+import { formatMoneyCentsFr } from '@/lib/format-money-fr';
 import type { FamilyReservation } from '@/types/family-profile';
-
-function formatEuroFromCents(cents: number, currency = 'EUR') {
-  return new Intl.NumberFormat('fr-FR', {
-    style: 'currency',
-    currency,
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  }).format(cents / 100);
-}
 
 function DetailRow({
   label,
@@ -66,7 +58,7 @@ export default function FamilyReservationDetailsModal({ reservation }: { reserva
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="btn btn-secondary btn-sm"
+        className="inline-flex min-h-0 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-400"
       >
         Voir les détails
       </button>
@@ -118,14 +110,14 @@ export default function FamilyReservationDetailsModal({ reservation }: { reserva
                   <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3.5">
                     <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Montant total</p>
                     <p className="mt-1.5 text-xl font-bold text-slate-900 sm:text-2xl">
-                      {formatEuroFromCents(reservation.totalCents, reservation.currency)}
+                      {formatMoneyCentsFr(reservation.totalCents, reservation.currency)}
                     </p>
                   </div>
                   {reservation.remainingBalanceCents > 0 ? (
                     <div className="rounded-2xl border border-accent-200 bg-accent-50 px-4 py-3.5">
                       <p className="text-xs font-semibold uppercase tracking-[0.14em] text-accent-700">Solde restant</p>
                       <p className="mt-1.5 text-xl font-bold text-accent-700 sm:text-2xl">
-                        {formatEuroFromCents(reservation.remainingBalanceCents, reservation.currency)}
+                        {formatMoneyCentsFr(reservation.remainingBalanceCents, reservation.currency)}
                       </p>
                     </div>
                   ) : null}

@@ -1,6 +1,5 @@
 import Image from 'next/image';
 import Link from 'next/link';
-import { ArrowLeft } from 'lucide-react';
 import { AdminSidebarNav } from '@/components/admin/AdminSidebarNav';
 import { requireRole } from '@/lib/auth/require';
 
@@ -10,7 +9,8 @@ const adminNavLinks = [
   { href: '/admin/finances', label: 'Recettes' },
   { href: '/admin/reservations', label: 'Réservations' },
   { href: '/admin/utilisateurs', label: 'Utilisateurs' },
-  { href: '/admin/organizers', label: 'Organismes' }
+  { href: '/admin/organizers', label: 'Organismes' },
+  { href: '/admin/partenaires', label: 'Partenaires' }
 ];
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -19,14 +19,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   return (
     <div className="min-h-screen bg-slate-50 lg:h-screen lg:overflow-hidden">
       <div className="border-b border-slate-200 bg-white px-4 py-3 lg:hidden">
-        <div className="flex items-center justify-between gap-3">
-          <Link
-            href="/"
-            className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-800"
-          >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            Retour
-          </Link>
+        <div className="flex items-center justify-center gap-3">
           <Link href="/admin" className="text-base font-semibold text-slate-900">
             Admin Resacolo
           </Link>
@@ -47,18 +40,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       <div className="flex min-h-screen lg:h-screen">
         <aside className="hidden w-64 shrink-0 flex-col border-r border-slate-200 bg-white lg:flex lg:h-screen lg:overflow-y-auto">
           <div className="px-6 py-6">
-            <div className="mb-3">
-              <Link
-                href="/"
-                className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-800"
-              >
-                <ArrowLeft className="h-3.5 w-3.5" />
-                Retour
-              </Link>
-            </div>
-            <div>
-              <p className="text-lg font-semibold text-slate-900">Admin Resacolo</p>
-            </div>
+            <p className="text-lg font-semibold text-slate-900">Admin Resacolo</p>
           </div>
           <AdminSidebarNav links={adminNavLinks} />
           <div className="mt-auto px-6 pb-6 pt-4">

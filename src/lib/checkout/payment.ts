@@ -1,4 +1,5 @@
 import { getServerSupabaseClient } from '@/lib/supabase/server';
+import { resolveCheckoutCollectivityForUser } from '@/lib/account-profile/server';
 import type { CartItem } from '@/types/cart';
 import type { CheckoutContact, CheckoutParticipant, CheckoutPricing } from '@/types/checkout';
 import type { Json } from '@/types/supabase';
@@ -78,7 +79,11 @@ function createMoneticoMockTransactionId(checkoutId: string, paymentId: string) 
   return `MONE-${checkoutPart}-${paymentPart}-${Date.now()}`;
 }
 
-async function createOrUpdateClientProfile(clientUserId: string, contact: CheckoutContact) {
+async function createOrUpdateClientProfile(
+  clientUserId: string,
+  contact: CheckoutContact,
+  collectivityId: string | null
+) {
   const supabase = getServerSupabaseClient();
   const fullName = [contact.billingFirstName, contact.billingLastName].filter(Boolean).join(' ').trim();
   const { error } = await supabase.from('clients').upsert(
@@ -86,7 +91,7 @@ async function createOrUpdateClientProfile(clientUserId: string, contact: Checko
       user_id: clientUserId,
       full_name: fullName || null,
       phone: contact.phone,
-      collectivity_id: null
+      collectivity_id: collectivityId
     },
     { onConflict: 'user_id' }
   );
@@ -100,6 +105,10 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
   const supabase = getServerSupabaseClient();
   const participantByItem = validateParticipants(input.items, input.participants);
   const pricing = await repriceCart(input.items);
+  const collectivity = await resolveCheckoutCollectivityForUser({
+    userId: input.clientUserId,
+    requestedCode: input.contact.cseOrganization
+  });
 
   const { data: existingPaymentRow } = await supabase
     .from('payments')
@@ -137,7 +146,7 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
     };
   }
 
-  await createOrUpdateClientProfile(input.clientUserId, input.contact);
+  await createOrUpdateClientProfile(input.clientUserId, input.contact, collectivity?.collectivityId ?? null);
 
   const nowIso = new Date().toISOString();
   const requestedAt = nowIso;
@@ -146,7 +155,7 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
     .from('orders')
     .insert({
       client_user_id: input.clientUserId,
-      collectivity_id: null,
+      collectivity_id: collectivity?.collectivityId ?? null,
       status: 'REQUESTED',
       requested_at: requestedAt
     })

@@ -347,6 +347,11 @@ export default function MonCompteClient({
                 <h2 className="min-w-0 max-w-[85%] font-display text-lg font-semibold leading-snug text-slate-900 sm:max-w-none">
                   Séjours ajoutés aux favoris
                 </h2>
+                {visibleFavoriteStays.length > 0 ? (
+                  <Link href="/account/favorites" className="text-sm font-semibold text-brand-600 hover:text-brand-700">
+                    Voir tous les favoris
+                  </Link>
+                ) : null}
                 <Heart className="h-8 w-8 shrink-0 text-accent-500" aria-hidden />
               </div>
 
@@ -412,15 +417,6 @@ export default function MonCompteClient({
                 </div>
               )}
 
-              {visibleFavoriteStays.length > 0 ? (
-                <div className="mt-3 flex min-h-[2rem] shrink-0 flex-col justify-end">
-                  <div className="flex justify-end">
-                    <Link href="/account/favorites" className="text-sm font-semibold text-brand-600 hover:text-brand-700">
-                      Voir tous les favoris
-                    </Link>
-                  </div>
-                </div>
-              ) : null}
           </section>
         </div>
 

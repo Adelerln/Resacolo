@@ -43,7 +43,7 @@ const ACCOUNT_PANEL_LIST_MAX_HEIGHT = '24rem';
 
 /** Hauteur réservée identique sous les deux panneaux pour aligner le début des listes de cartes. */
 const ACCOUNT_PANEL_HEADER_CLASS =
-  'flex min-h-[3rem] items-start justify-between gap-3 border-b border-transparent';
+  'flex min-h-[3rem] items-center justify-between gap-3 border-b border-transparent';
 
 function formatAddress(line1: string, line2: string, postalCode: string, city: string) {
   return [line1, line2, `${postalCode} ${city}`.trim()].filter(Boolean).join(', ');

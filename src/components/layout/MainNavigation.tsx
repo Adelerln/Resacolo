@@ -170,7 +170,7 @@ function MainNavigationContent({
             </span>
           ) : null}
           {branding?.partnerLogoUrl ? (
-            <span className="mx-2.5 h-8 w-px shrink-0 self-center bg-black/80 sm:h-9" aria-hidden />
+            <span className="mx-2.5 my-auto h-10 w-px shrink-0 translate-x-[3px] bg-black/80 sm:h-11" aria-hidden />
           ) : null}
           <span className="flex h-10 items-center justify-center sm:h-11">
             <Image

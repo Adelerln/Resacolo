@@ -167,6 +167,8 @@ export async function getOrderStatus(orderId: string) {
     paymentStatus: string | null;
     totalCents: number;
     currency: string;
+    organizerContactEmail: string | null;
+    organizerName: string | null;
   }>(`/api/orders/${orderId}`, {
     method: 'GET',
     cache: 'no-store'

@@ -978,6 +978,7 @@ function normalizeAccommodationAccessibility(value: string | null | undefined): 
 
 function normalizeAccommodationType(value: string | null | undefined, fallbackText: string): string {
   const raw = simplifyForMatch(sanitizeAccommodationText(value, { maxLength: 80 }) ?? '');
+  if (raw.includes('hotel')) return 'hotel';
   if (raw === 'camping') return 'camping';
   if (raw.includes('auberge')) return 'auberge de jeunesse';
   if (raw.includes('famille')) return "famille d'accueil";
@@ -986,6 +987,7 @@ function normalizeAccommodationType(value: string | null | undefined, fallbackTe
   if (raw === 'centre') return 'centre';
 
   const fallback = simplifyForMatch(fallbackText);
+  if (fallback.includes('hotel')) return 'hotel';
   if (fallback.includes('camping') || fallback.includes('tente')) return 'camping';
   if (fallback.includes('auberge')) return 'auberge de jeunesse';
   if (fallback.includes('famille d accueil')) return "famille d'accueil";

@@ -62,6 +62,7 @@ export function normalizeAccommodationTypeToken(raw: string): string | null {
   if (ALLOWED_TYPES.has(s)) return s;
   const compact = s.replace(/['’]/g, "'").replace(/\s+/g, ' ');
   if (ALLOWED_TYPES.has(compact)) return compact;
+  if (compact.includes('hôtel') || compact.includes('hotel')) return 'hotel';
   if (compact.includes('gîte')) return 'gite';
   if (compact === 'famille accueil' || compact.includes("famille d'accueil")) return "famille d'accueil";
   return null;

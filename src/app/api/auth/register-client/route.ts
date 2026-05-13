@@ -42,6 +42,9 @@ const registerClientFullSchema = z
       .optional()
       .default('')
       .refine((value) => !value || /.+@.+\..+/.test(value), 'Email parent 2 invalide.'),
+    cguAccepted: z
+      .union([z.literal('on'), z.literal('true'), z.literal(true)])
+      .transform(() => true),
     redirectTo: trimmedString().optional()
   })
   .superRefine((data, ctx) => {
@@ -132,8 +135,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Corps de requête invalide.' }, { status: 400 });
     }
 
-    const fullParsed = registerClientFullSchema.safeParse(body);
-    const input = fullParsed.success ? fullParsed.data : registerClientCheckoutSchema.parse(body);
+    const input = isFormRequest ? registerClientFullSchema.parse(body) : registerClientCheckoutSchema.parse(body);
+    const fullParsed = isFormRequest
+      ? ({ success: true, data: input } as const)
+      : registerClientFullSchema.safeParse(body);
     safeRedirectTo = sanitizeRelativePath(input.redirectTo, '/mon-compte');
     const email = input.email.toLowerCase();
     const name = `${input.firstName} ${input.lastName}`.trim();

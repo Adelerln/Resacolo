@@ -19,6 +19,7 @@ import {
   sanitizeOrganizerRichText
 } from '@/lib/organizer-rich-text';
 import { syncOrganizerProfileCompletenessPercent } from '@/lib/organizer-profile-completeness';
+import { createOrganizerCgvSignedUrl, findOrganizerCgvPath } from '@/lib/organizer-cgv';
 import { withOrganizerQuery } from '@/lib/organizers.server';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { slugify } from '@/lib/utils';
@@ -123,6 +124,9 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
         .createSignedUrl(organizer.education_project_path, 60 * 60)).data?.signedUrl ?? null
     : null;
   const hasProject = Boolean(organizer.education_project_path);
+  const cgvPath = await findOrganizerCgvPath(supabase, organizer.id);
+  const cgvUrl = await createOrganizerCgvSignedUrl(supabase, organizer.id);
+  const hasCgv = Boolean(cgvPath);
   const organizerSlug = organizer.slug ?? organizer.id;
   const currentOrganizerId = organizer.id;
   const currentOrganizerSlug = organizer.slug;
@@ -153,6 +157,7 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
     );
     const logoFile = formData.get('logo');
     const projectFile = formData.get('education_project');
+    const cgvFile = formData.get('cgv_file');
 
     const foundedYear = foundedYearRaw ? Number(foundedYearRaw) : null;
     const ageMin = ageMinRaw ? Number(ageMinRaw) : null;
@@ -238,6 +243,26 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
         .from('organizers')
         .update({ education_project_path: projectPath })
         .eq('id', currentOrganizerId);
+    }
+
+    if (cgvFile instanceof File && cgvFile.size > 0) {
+      const extension = cgvFile.name.split('.').pop()?.toLowerCase() || 'pdf';
+      const folder = `organizers/${currentOrganizerId}`;
+      const { data: existingDocs } = await supabase.storage.from('organizer-docs').list(folder, {
+        limit: 100
+      });
+      const existingCgvPaths = (existingDocs ?? [])
+        .filter((doc) => /^cgv\./i.test(doc.name))
+        .map((doc) => `${folder}/${doc.name}`);
+      if (existingCgvPaths.length > 0) {
+        await supabase.storage.from('organizer-docs').remove(existingCgvPaths);
+      }
+
+      const cgvPath = `${folder}/cgv.${extension}`;
+      const cgvBuffer = Buffer.from(await cgvFile.arrayBuffer());
+      await supabase.storage
+        .from('organizer-docs')
+        .upload(cgvPath, cgvBuffer, { upsert: true, contentType: cgvFile.type || 'application/pdf' });
     }
 
     await syncOrganizerProfileCompletenessPercent(supabase, currentOrganizerId);
@@ -377,6 +402,27 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
                   accept="application/pdf"
                   className="organizer-input bg-slate-50"
                 />
+              )}
+            </label>
+            <label className="block text-sm font-medium text-slate-700">
+              CGV organisateur (PDF)
+              <input
+                name="cgv_file"
+                type="file"
+                accept="application/pdf"
+                className="organizer-input bg-slate-50"
+              />
+              {hasCgv ? (
+                <div className="mt-2 space-y-1">
+                  <div className="text-xs text-slate-500">CGV déjà chargées</div>
+                  {cgvUrl ? (
+                    <a className="block text-sm font-medium text-brand-600" href={cgvUrl}>
+                      Télécharger les CGV actuelles
+                    </a>
+                  ) : null}
+                </div>
+              ) : (
+                <p className="mt-2 text-xs text-slate-500">Aucun fichier CGV chargé pour le moment.</p>
               )}
             </label>
           </div>

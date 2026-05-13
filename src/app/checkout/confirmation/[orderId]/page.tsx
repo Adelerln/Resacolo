@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
+import { AlertCircle, Mail } from 'lucide-react';
 import { CheckoutFrame } from '@/components/checkout/CheckoutFrame';
 import { useCart } from '@/context/CartContext';
 import { useCheckout } from '@/context/CheckoutContext';
@@ -17,6 +18,8 @@ type OrderStatusResponse = {
   paymentStatus: string | null;
   totalCents: number;
   currency: string;
+  organizerContactEmail: string | null;
+  organizerName: string | null;
 };
 
 export default function CheckoutConfirmationPage() {
@@ -69,7 +72,9 @@ export default function CheckoutConfirmationPage() {
         paidAt: simulatedPaidAt,
         paymentStatus: simulatedPaymentStatus,
         totalCents: 0,
-        currency: 'EUR'
+        currency: 'EUR',
+        organizerContactEmail: null,
+        organizerName: null
       });
       setErrorMessage(null);
       setIsLoading(false);
@@ -140,7 +145,22 @@ export default function CheckoutConfirmationPage() {
       ) : null}
 
       {order ? (
-        <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+        <div className="relative space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4 pt-16 sm:pt-4">
+          {order.organizerContactEmail ? (
+            <div className="absolute right-4 top-4">
+              <a
+                href={`mailto:${encodeURIComponent(order.organizerContactEmail)}?subject=${encodeURIComponent(
+                  `Réservation ${order.orderId} - Contact famille`
+                )}&body=${encodeURIComponent(
+                  `Bonjour${order.organizerName ? ` ${order.organizerName}` : ''},\n\nJe vous contacte concernant ma réservation ${order.orderId}.\n\nCordialement,`
+                )}`}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-brand-300 bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_24px_-12px_rgba(2,132,199,0.75)] transition hover:bg-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+              >
+                <Mail className="h-4 w-4" aria-hidden="true" />
+                Contacter l&apos;organisme par mail
+              </a>
+            </div>
+          ) : null}
           <p className="text-sm text-slate-600">
             Numéro de commande: <span className="font-semibold text-slate-900">{order.orderId}</span>
           </p>
@@ -167,9 +187,12 @@ export default function CheckoutConfirmationPage() {
               Votre commande est bien enregistrée. Le règlement en ANCV papier sera traité directement avec l&apos;organisateur.
             </p>
           ) : isDeferredMode ? (
-            <p className="text-sm text-amber-700">
-              Votre commande est bien enregistrée. Le règlement est différé et sera finalisé ultérieurement.
-            </p>
+            <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5">
+              <p className="flex items-start gap-2 text-sm font-semibold text-amber-900">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                <span>Votre commande est bien enregistrée. Le règlement est différé et sera finalisé ultérieurement.</span>
+              </p>
+            </div>
           ) : (
             <p className="text-sm text-amber-700">Le paiement n’est pas encore confirmé. Cette page se met à jour automatiquement.</p>
           )}

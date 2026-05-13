@@ -21,7 +21,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
       .limit(1),
     supabase
       .from('order_items')
-      .select('total_price_cents')
+      .select('total_price_cents,session_id')
       .eq('order_id', orderId)
   ]);
 
@@ -31,6 +31,35 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
 
   const payment = payments?.[0] ?? null;
   const totalCents = payment?.amount_cents ?? (orderItems ?? []).reduce((sum, item) => sum + item.total_price_cents, 0);
+  const firstOrderItem = (orderItems ?? [])[0] ?? null;
+
+  let organizerContactEmail: string | null = null;
+  let organizerName: string | null = null;
+  if (firstOrderItem?.session_id) {
+    const { data: sessionRow } = await supabase
+      .from('sessions')
+      .select('stay_id')
+      .eq('id', firstOrderItem.session_id)
+      .maybeSingle();
+
+    if (sessionRow?.stay_id) {
+      const { data: stayRow } = await supabase
+        .from('stays')
+        .select('organizer_id')
+        .eq('id', sessionRow.stay_id)
+        .maybeSingle();
+
+      if (stayRow?.organizer_id) {
+        const { data: organizerRow } = await supabase
+          .from('organizers')
+          .select('name,contact_email')
+          .eq('id', stayRow.organizer_id)
+          .maybeSingle();
+        organizerContactEmail = organizerRow?.contact_email ?? null;
+        organizerName = organizerRow?.name ?? null;
+      }
+    }
+  }
 
   return NextResponse.json({
     orderId: order.id,
@@ -38,6 +67,8 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
     paidAt: order.paid_at,
     paymentStatus: payment?.status ?? null,
     totalCents,
-    currency: payment?.currency ?? 'EUR'
+    currency: payment?.currency ?? 'EUR',
+    organizerContactEmail,
+    organizerName
   });
 }

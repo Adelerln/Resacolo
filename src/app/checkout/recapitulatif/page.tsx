@@ -78,7 +78,9 @@ export default function CheckoutRecapitulatifPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [paymentSubmitError, setPaymentSubmitError] = useState<string | null>(null);
   const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
+  const [organizerCgvUrl, setOrganizerCgvUrl] = useState('/cgv-organisateur');
   const paymentRequiresOnlineStep = requiresOnlinePaymentStep(contact.paymentMode);
+  const organizerId = items[0]?.organizerId ?? '';
 
   useEffect(() => {
     if (paymentRequiresOnlineStep) {
@@ -129,6 +131,32 @@ export default function CheckoutRecapitulatifPage() {
     }
     loadPricing();
   }, [hydrated, items.length, loadPricing]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadOrganizerCgvUrl() {
+      if (!organizerId) {
+        setOrganizerCgvUrl('/cgv-organisateur');
+        return;
+      }
+      try {
+        const response = await fetch(`/api/organizers/${organizerId}/cgv-url`, { cache: 'no-store' });
+        if (!response.ok) {
+          if (!cancelled) setOrganizerCgvUrl('/cgv-organisateur');
+          return;
+        }
+        const data = (await response.json()) as { url?: unknown };
+        const url = typeof data.url === 'string' && data.url.trim() ? data.url.trim() : '/cgv-organisateur';
+        if (!cancelled) setOrganizerCgvUrl(url);
+      } catch {
+        if (!cancelled) setOrganizerCgvUrl('/cgv-organisateur');
+      }
+    }
+    void loadOrganizerCgvUrl();
+    return () => {
+      cancelled = true;
+    };
+  }, [organizerId]);
 
   function patchContact(patch: Partial<CheckoutContact>) {
     setContact({ ...contact, ...patch });
@@ -484,7 +512,7 @@ export default function CheckoutRecapitulatifPage() {
                 />
                 <span>
                   J&apos;ai lu et j&apos;accepte les{' '}
-                  <Link href="/cgv" className="text-brand-500">
+                  <Link href={organizerCgvUrl} target="_blank" rel="noopener noreferrer" className="text-brand-500">
                     conditions générales
                   </Link>{' '}
                   *

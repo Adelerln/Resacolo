@@ -853,7 +853,7 @@ Schéma exact attendu :
 
 Règles pour "accommodations_json" (objet complet si un nouvel hébergement est à créer, sinon null) :
 - "title" : nom institutionnel court (ex. « Centre Pierre Brossolette », « Centre à Quillan », « Circuit itinérant : A, B et C », « Camping à … »). N'y mettre ni couchage, ni sanitaires, ni repas.
-- "accommodation_types" : 1 à 3 valeurs parmi exactement : centre, auberge de jeunesse, camping, famille d'accueil, gite, mixte. Plusieurs structures sur un circuit ⇒ plusieurs entrées ou "mixte". "accommodation_type" peut répéter le principal si besoin de compatibilité.
+- "accommodation_types" : 1 à 3 valeurs parmi exactement : centre, auberge de jeunesse, hotel, camping, famille d'accueil, gite, mixte. Plusieurs structures sur un circuit ⇒ plusieurs entrées ou "mixte". "accommodation_type" peut répéter le principal si besoin de compatibilité.
 - "location_mode" : france | abroad | itinerant selon le cas ; null si inconnu.
 - Adresse physique du centre : renseigne en priorité les champs propres "address_text", "postal_code", "city", "department_code", "region_text", "country". Ces champs décrivent l'adresse ou la localisation réelle de l'hébergement, pas la destination commerciale du séjour.
 - Les anciens champs "location_city", "location_department_code", "location_country" restent acceptés pour compatibilité mais ne doivent être qu'un miroir des champs propres quand tu les connais.

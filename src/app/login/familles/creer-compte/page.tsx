@@ -209,6 +209,27 @@ export default async function FamilyRegisterPage({
                 </div>
               </details>
 
+              <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
+                <input
+                  name="cguAccepted"
+                  type="checkbox"
+                  required
+                  className="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                />
+                <span>
+                  J&apos;accepte les{' '}
+                  <Link
+                    href="/cgu-popup"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-semibold text-brand-600 underline underline-offset-2 hover:text-brand-700"
+                  >
+                    Conditions Générales d&apos;Utilisation
+                  </Link>
+                  .
+                </span>
+              </label>
+
               <button
                 type="submit"
                 className="inline-flex min-h-[46px] w-full items-center justify-center rounded-xl bg-accent-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_12px_24px_-14px_rgba(250,133,0,0.8)] transition hover:bg-accent-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-300"

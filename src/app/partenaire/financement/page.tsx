@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { PartnerFinancementForm } from '@/components/partner/PartnerFinancementForm';
 import { requirePartner } from '@/lib/auth/require';
+import { canAccessPartnerSection, getPartnerAccessRoleFromSession } from '@/lib/partner-access';
 import { normalizePartnerFinanceMode } from '@/lib/partner-offers';
 import { readPartnerCollectivity } from '@/lib/partner.server';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
@@ -40,7 +41,12 @@ export const revalidate = 0;
 export default async function FinancementPage({ searchParams }: PageProps) {
   const session = await requirePartner();
   const collectivityId = session.tenantId;
+  const accessRole = getPartnerAccessRoleFromSession(session);
   const params = searchParams ? await searchParams : undefined;
+
+  if (!canAccessPartnerSection(accessRole, 'financing')) {
+    redirect('/partenaire');
+  }
 
   if (!collectivityId) {
     return (
@@ -56,8 +62,12 @@ export default async function FinancementPage({ searchParams }: PageProps) {
 
     const session = await requirePartner();
     const collectivityId = session.tenantId;
+    const accessRole = getPartnerAccessRoleFromSession(session);
     if (!collectivityId) {
       redirect('/partenaire/financement?error=Aucune%20collectivite%20liee');
+    }
+    if (!canAccessPartnerSection(accessRole, 'financing')) {
+      redirect('/partenaire');
     }
 
     const financeMode = normalizePartnerFinanceMode(String(formData.get('finance_mode') ?? 'TOTAL'));

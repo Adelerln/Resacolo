@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { requirePartner } from '@/lib/auth/require';
+import { canAccessPartnerSection, getPartnerAccessRoleFromSession } from '@/lib/partner-access';
 import { buildPartnerDashboardModel } from '@/lib/partner-dashboard';
 
 function formatCurrencyFromCents(value: number) {
@@ -18,6 +19,7 @@ function formatDate(value: string) {
 export default async function PartnerHome() {
   const session = await requirePartner();
   const collectivityId = session.tenantId;
+  const accessRole = getPartnerAccessRoleFromSession(session);
 
   if (!collectivityId) {
     return (
@@ -56,9 +58,11 @@ export default async function PartnerHome() {
             <Link href="/partenaire/beneficiaires" className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-semibold">
               Ouvrir les bénéficiaires
             </Link>
-            <Link href="/partenaire/fiche" className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-semibold">
-              Ouvrir la fiche partenaire
-            </Link>
+            {canAccessPartnerSection(accessRole, 'partner-profile') ? (
+              <Link href="/partenaire/fiche" className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-semibold">
+                Ouvrir la fiche partenaire
+              </Link>
+            ) : null}
           </div>
         </section>
       ) : null}

@@ -15,7 +15,12 @@ export type ResolvedRoleContext = {
   isClient: boolean;
 };
 
-const PARTNER_STAFF_ROLES = new Set(['PARTNER_ADMIN', 'PARTNER_AGENT', 'OWNER']);
+const PARTNER_STAFF_ROLES = new Set([
+  'PARTNER_ADMIN',
+  'PARTNER_BENEFICIARY_MANAGER',
+  'PARTNER_AGENT',
+  'OWNER'
+]);
 
 function normalizeRoleValue(value: string | null | undefined) {
   return String(value ?? '')

@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { requirePartner } from '@/lib/auth/require';
+import { canAccessPartnerSection, getPartnerAccessRoleFromSession } from '@/lib/partner-access';
 import {
   clampPartnerFinanceCents,
   computePartnerFinanceSplit,
@@ -82,6 +83,11 @@ export const revalidate = 0;
 export default async function PartnerReservationsPage() {
   const session = await requirePartner();
   const collectivityId = session.tenantId;
+  const accessRole = getPartnerAccessRoleFromSession(session);
+
+  if (!canAccessPartnerSection(accessRole, 'reservations')) {
+    redirect('/partenaire');
+  }
 
   if (!collectivityId) {
     return (
@@ -97,8 +103,12 @@ export default async function PartnerReservationsPage() {
 
     const session = await requirePartner();
     const collectivityId = session.tenantId;
+    const accessRole = getPartnerAccessRoleFromSession(session);
     if (!collectivityId) {
       redirect('/partenaire/reservations');
+    }
+    if (!canAccessPartnerSection(accessRole, 'reservations')) {
+      redirect('/partenaire');
     }
 
     const collectivity = await readPartnerCollectivity(collectivityId);

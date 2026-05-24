@@ -54,16 +54,13 @@ export default async function AdminPartnersPage() {
                 <th className="px-4 py-3">Offre</th>
                 <th className="px-4 py-3">Email</th>
                 <th className="px-4 py-3">Créé le</th>
+                <th className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
               {partners.map((partner) => (
                 <tr key={partner.id} className="border-t border-slate-100">
-                  <td className="px-4 py-3 font-medium text-slate-900">
-                    <Link href={`/admin/partenaires/${partner.id}`} className="hover:underline">
-                      {partner.name}
-                    </Link>
-                  </td>
+                  <td className="px-4 py-3 font-medium text-slate-900">{partner.name}</td>
                   <td className="px-4 py-3 text-slate-600">{partner.code}</td>
                   <td className="px-4 py-3 text-slate-600">
                     {PARTNER_OFFER_LABELS[normalizePartnerOffer(partner.offer_mode)]}
@@ -72,11 +69,19 @@ export default async function AdminPartnersPage() {
                   <td className="px-4 py-3 text-slate-600">
                     {new Date(partner.created_at).toLocaleDateString('fr-FR')}
                   </td>
+                  <td className="px-4 py-3 text-right">
+                    <Link
+                      href={`/admin/partenaires/${partner.id}`}
+                      className="inline-flex min-h-[36px] items-center rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:border-slate-300 hover:text-slate-900"
+                    >
+                      Gérer
+                    </Link>
+                  </td>
                 </tr>
               ))}
               {partners.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-6 text-slate-500">
+                  <td colSpan={6} className="px-4 py-6 text-slate-500">
                     Aucun partenaire enregistré.
                   </td>
                 </tr>

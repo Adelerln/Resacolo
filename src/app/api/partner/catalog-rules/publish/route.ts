@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { canAccessPartnerSection, getPartnerAccessRoleFromSession } from '@/lib/partner-access';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { requireApiAuth } from '@/lib/auth/api';
 import { parseAndValidatePartnerCatalogRules } from '@/lib/partner-catalog-rules';
@@ -8,7 +9,11 @@ export const runtime = 'nodejs';
 export async function POST() {
   const { unauthorized, session } = await requireApiAuth();
   if (unauthorized || !session) return unauthorized;
-  if (session.role !== 'PARTENAIRE' || !session.tenantId) {
+  if (
+    session.role !== 'PARTENAIRE' ||
+    !session.tenantId ||
+    !canAccessPartnerSection(getPartnerAccessRoleFromSession(session), 'catalog')
+  ) {
     return NextResponse.json({ errors: ['FORBIDDEN'] }, { status: 403 });
   }
 

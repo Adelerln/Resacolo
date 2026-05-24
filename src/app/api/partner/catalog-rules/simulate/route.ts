@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { canAccessPartnerSection, getPartnerAccessRoleFromSession } from '@/lib/partner-access';
 import { requireApiAuth } from '@/lib/auth/api';
 import {
   normalizePartnerCatalogRules,
@@ -11,7 +12,10 @@ export const runtime = 'nodejs';
 export async function POST(req: Request) {
   const { unauthorized, session } = await requireApiAuth();
   if (unauthorized || !session) return unauthorized;
-  if (session.role !== 'PARTENAIRE') {
+  if (
+    session.role !== 'PARTENAIRE' ||
+    !canAccessPartnerSection(getPartnerAccessRoleFromSession(session), 'catalog')
+  ) {
     return NextResponse.json({ errors: ['FORBIDDEN'], warnings: [] }, { status: 403 });
   }
 

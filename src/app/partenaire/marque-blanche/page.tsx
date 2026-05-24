@@ -1,6 +1,8 @@
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { requirePartner } from '@/lib/auth/require';
+import { canAccessPartnerSection, getPartnerAccessRoleFromSession } from '@/lib/partner-access';
+import PartnerHeroFieldsSection from '@/components/partner/PartnerHeroFieldsSection';
 import PartnerLogoFieldset from '@/components/partner/PartnerLogoFieldset';
 import PartnerProfileFormEnhancer from '@/components/partner/PartnerProfileFormEnhancer';
 import {
@@ -51,7 +53,12 @@ export const runtime = 'nodejs';
 export default async function MarqueBlanchePage({ searchParams }: PageProps) {
   const session = await requirePartner();
   const collectivityId = session.tenantId;
+  const accessRole = getPartnerAccessRoleFromSession(session);
   const params = searchParams ? await searchParams : undefined;
+
+  if (!canAccessPartnerSection(accessRole, 'white-label')) {
+    redirect('/partenaire');
+  }
 
   if (!collectivityId) {
     return (
@@ -72,8 +79,12 @@ export default async function MarqueBlanchePage({ searchParams }: PageProps) {
 
     const session = await requirePartner();
     const collectivityId = session.tenantId;
+    const accessRole = getPartnerAccessRoleFromSession(session);
     if (!collectivityId) {
       redirect('/partenaire/marque-blanche?error=Aucune%20collectivite%20liee');
+    }
+    if (!canAccessPartnerSection(accessRole, 'white-label')) {
+      redirect('/partenaire');
     }
 
     const collectivityGate = await readPartnerCollectivity(collectivityId);
@@ -211,61 +222,18 @@ export default async function MarqueBlanchePage({ searchParams }: PageProps) {
 
         <section className="rounded-2xl border border-slate-200 bg-white p-6">
           <h2 className="admin-section-title">Hero public</h2>
-          <div className="mt-4 grid gap-4 md:grid-cols-2">
-            <label className="md:col-span-2 inline-flex items-center gap-3 text-sm font-medium text-slate-700">
-              <input
-                type="checkbox"
-                name="hero_enabled"
-                defaultChecked={Boolean(collectivity.hero_enabled)}
-                className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-600"
-              />
-              Activer le hero CSE sous le header (pages publiques)
-            </label>
-            <label className="text-sm font-medium text-slate-700">
-              Titre
-              <input
-                type="text"
-                name="hero_title"
-                maxLength={80}
-                defaultValue={collectivity.hero_title ?? ''}
-                className={fieldClassName()}
-                placeholder="Ex: Bienvenue aux familles du CSE Horizon"
-              />
-            </label>
-            <label className="text-sm font-medium text-slate-700">
-              Libellé du bouton
-              <input
-                type="text"
-                name="hero_cta_label"
-                maxLength={40}
-                defaultValue={collectivity.hero_cta_label ?? ''}
-                className={fieldClassName()}
-                placeholder="Voir notre sélection"
-              />
-            </label>
-            <label className="md:col-span-2 text-sm font-medium text-slate-700">
-              Texte
-              <textarea
-                name="hero_body"
-                rows={4}
-                maxLength={280}
-                defaultValue={collectivity.hero_body ?? ''}
-                className={fieldClassName()}
-                placeholder="Ex: Profitez de tarifs négociés et d'une sélection pensée pour vos enfants."
-              />
-            </label>
-            <label className="md:col-span-2 text-sm font-medium text-slate-700">
-              URL du bouton (https://... ou /...)
-              <input
-                type="text"
-                name="hero_cta_url"
-                maxLength={500}
-                defaultValue={collectivity.hero_cta_url ?? ''}
-                className={fieldClassName()}
-                placeholder="/sejours"
-              />
-            </label>
-          </div>
+          <p className="mt-2 text-sm text-slate-600">
+            Ce bandeau s&apos;affiche sur les pages publiques pour les familles rattachées à votre CSE. Le bouton
+            n&apos;apparaît que si son texte et son lien sont tous les deux renseignés.
+          </p>
+          <PartnerHeroFieldsSection
+            initialHeroEnabled={Boolean(collectivity.hero_enabled)}
+            initialHeroTitle={collectivity.hero_title}
+            initialHeroBody={collectivity.hero_body}
+            initialHeroCtaLabel={collectivity.hero_cta_label}
+            initialHeroCtaUrl={collectivity.hero_cta_url}
+            resetToken={formResetToken}
+          />
         </section>
       </form>
       <PartnerProfileFormEnhancer formId="partner-white-label-form" resetToken={formResetToken} />

@@ -4,6 +4,7 @@ import type { CartItem } from '@/types/cart';
 import type { CheckoutContact, CheckoutParticipant, CheckoutPricing } from '@/types/checkout';
 import type { Json } from '@/types/supabase';
 import { CheckoutValidationError, repriceCart } from '@/lib/checkout/pricing';
+import { buildMoneticoLivePayload, getMoneticoMode, type MoneticoPayload } from '@/lib/checkout/monetico';
 
 type PrepareCheckoutPaymentInput = {
   checkoutId: string;
@@ -17,12 +18,7 @@ type PrepareCheckoutPaymentResult = {
   orderId: string;
   paymentId: string;
   pricing: CheckoutPricing;
-  monetico: {
-    reference: string;
-    transactionId: string;
-    paymentUrl: string;
-    testMode: true;
-  };
+  monetico: MoneticoPayload;
 };
 
 const HOLD_MINUTES = 30;
@@ -79,6 +75,47 @@ function createMoneticoMockTransactionId(checkoutId: string, paymentId: string) 
   return `MONE-${checkoutPart}-${paymentPart}-${Date.now()}`;
 }
 
+function createMoneticoReference(checkoutId: string, orderId: string) {
+  const left = checkoutId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 10).toUpperCase();
+  const right = orderId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 10).toUpperCase();
+  return `${left}-${right}`.slice(0, 24);
+}
+
+function createMoneticoPayload(input: {
+  checkoutId: string;
+  orderId: string;
+  paymentId: string;
+  reference: string;
+  transactionId: string;
+  amountCents: number;
+  currency: string;
+  customerEmail: string;
+}): MoneticoPayload {
+  if (getMoneticoMode() === 'live') {
+    return buildMoneticoLivePayload({
+      reference: input.reference,
+      transactionId: input.transactionId,
+      amountCents: input.amountCents,
+      currency: input.currency,
+      customerEmail: input.customerEmail,
+      orderId: input.orderId,
+      checkoutId: input.checkoutId,
+      paymentId: input.paymentId,
+      returnPath: `/checkout/confirmation/${input.orderId}`
+    });
+  }
+
+  return {
+    mode: 'mock',
+    reference: input.reference,
+    transactionId: input.transactionId,
+    paymentUrl: `/checkout/paiement?checkoutId=${encodeURIComponent(input.checkoutId)}`,
+    testMode: true,
+    formMethod: 'POST',
+    formFields: {}
+  };
+}
+
 async function createOrUpdateClientProfile(
   clientUserId: string,
   contact: CheckoutContact,
@@ -112,44 +149,50 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
 
   const { data: existingPaymentRow } = await supabase
     .from('payments')
-    .select('id,order_id,status,monetico_transaction_id,orders!inner(id,client_user_id,status)')
-    .eq('monetico_reference', input.checkoutId)
+    .select('id,order_id,status,monetico_transaction_id,monetico_reference,raw_payload,orders!inner(id,client_user_id,status)')
     .eq('orders.client_user_id', input.clientUserId)
     .neq('status', 'FAILED')
     .neq('orders.status', 'CANCELLED')
+    .filter('raw_payload->>checkoutId', 'eq', input.checkoutId)
     .limit(1)
     .maybeSingle();
 
   if (existingPaymentRow?.id && existingPaymentRow.order_id) {
+    const reference = existingPaymentRow.monetico_reference || createMoneticoReference(input.checkoutId, existingPaymentRow.order_id);
     const transactionId =
       existingPaymentRow.monetico_transaction_id ||
       createMoneticoMockTransactionId(input.checkoutId, existingPaymentRow.id);
-    const moneticoMock = {
-      reference: input.checkoutId,
-      transactionId,
-      paymentUrl: `/checkout/paiement?checkoutId=${encodeURIComponent(input.checkoutId)}`,
-      testMode: true as const
-    };
 
-    if (!existingPaymentRow.monetico_transaction_id) {
-      await supabase
-        .from('payments')
-        .update({ monetico_transaction_id: transactionId })
-        .eq('id', existingPaymentRow.id);
-    }
+    const moneticoPayload = createMoneticoPayload({
+      checkoutId: input.checkoutId,
+      orderId: existingPaymentRow.order_id,
+      paymentId: existingPaymentRow.id,
+      reference,
+      transactionId,
+      amountCents: pricing.totalCents,
+      currency: pricing.currency,
+      customerEmail: input.contact.email
+    });
+
+    await supabase
+      .from('payments')
+      .update({
+        monetico_transaction_id: transactionId,
+        monetico_reference: reference
+      })
+      .eq('id', existingPaymentRow.id);
 
     return {
       orderId: existingPaymentRow.order_id,
       paymentId: existingPaymentRow.id,
       pricing,
-      monetico: moneticoMock
+      monetico: moneticoPayload
     };
   }
 
   await createOrUpdateClientProfile(input.clientUserId, input.contact, collectivity?.collectivityId ?? null);
 
-  const nowIso = new Date().toISOString();
-  const requestedAt = nowIso;
+  const requestedAt = new Date().toISOString();
 
   const { data: order, error: orderError } = await supabase
     .from('orders')
@@ -227,6 +270,7 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
     }
   }
 
+  const reference = createMoneticoReference(input.checkoutId, order.id);
   const { data: payment, error: paymentInsertError } = await supabase
     .from('payments')
     .insert({
@@ -234,7 +278,7 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
       amount_cents: pricing.totalCents,
       currency: pricing.currency,
       status: 'PENDING',
-      monetico_reference: input.checkoutId,
+      monetico_reference: reference,
       raw_payload: {
         checkoutId: input.checkoutId,
         contact: input.contact,
@@ -253,12 +297,16 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
   }
 
   const transactionId = createMoneticoMockTransactionId(input.checkoutId, payment.id);
-  const moneticoMock = {
-    reference: input.checkoutId,
+  const moneticoPayload = createMoneticoPayload({
+    checkoutId: input.checkoutId,
+    orderId: order.id,
+    paymentId: payment.id,
+    reference,
     transactionId,
-    paymentUrl: `/checkout/paiement?checkoutId=${encodeURIComponent(input.checkoutId)}`,
-    testMode: true as const
-  };
+    amountCents: pricing.totalCents,
+    currency: pricing.currency,
+    customerEmail: input.contact.email
+  });
 
   const { error: paymentUpdateError } = await supabase
     .from('payments')
@@ -269,21 +317,35 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
         contact: input.contact,
         participants: input.participants,
         orderItemIds,
-        monetico: moneticoMock
+        monetico: moneticoPayload
       }
     })
     .eq('id', payment.id);
 
   if (paymentUpdateError) {
-    throw new Error('Impossible de synchroniser le paiement Monetico mock.');
+    throw new Error('Impossible de synchroniser le paiement Monetico.');
   }
 
   return {
     orderId: order.id,
     paymentId: payment.id,
     pricing,
-    monetico: moneticoMock
+    monetico: moneticoPayload
   };
+}
+
+export async function findPaymentByMoneticoReference(reference: string) {
+  const supabase = getServerSupabaseClient();
+  const { data, error } = await supabase
+    .from('payments')
+    .select('id,status,order_id,monetico_reference')
+    .eq('monetico_reference', reference)
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    throw new Error(`Impossible de retrouver le paiement Monetico: ${error.message}`);
+  }
+  return data;
 }
 
 export async function markOrderPaid(input: {

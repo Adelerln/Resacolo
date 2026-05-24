@@ -6,6 +6,7 @@ import { WebVitalsReporter } from '@/components/perf/WebVitalsReporter';
 import { SiteShell } from '@/components/layout/SiteShell';
 import { getCurrentUser } from '@/lib/auth/session';
 import { readFamilyCseAffiliation, readPublicSitePartnerBranding } from '@/lib/account-profile/server';
+import type { PublicSitePartnerBranding } from '@/types/partner-branding';
 
 const raleway = localFont({
   src: [
@@ -41,7 +42,7 @@ export const metadata: Metadata = {
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const session = await getCurrentUser().catch(() => null);
-  const initialBranding =
+  const initialBranding: PublicSitePartnerBranding =
     session?.userId && session.role === 'CLIENT'
       ? await readPublicSitePartnerBranding(session.userId).catch(() => null)
       : null;

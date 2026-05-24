@@ -49,6 +49,7 @@ export type FamilyProfile = {
 
 export type FamilyReservation = {
   orderId: string;
+  orderStatus: string;
   title: string;
   dates: string;
   child: string;
@@ -67,6 +68,9 @@ export type FamilyReservation = {
   transportReturnLine: string | null;
   insuranceLine: string | null;
   extraLines: string[];
+  organizerContactEmail: string | null;
+  organizerName: string | null;
+  hasSuccessfulPayment: boolean;
 };
 
 export type FamilyCseAffiliation = {
@@ -80,6 +84,11 @@ export type FamilyCseAffiliation = {
   logoScale: number | null;
   logoOffsetX: number | null;
   logoOffsetY: number | null;
+  heroEnabled: boolean;
+  heroTitle: string | null;
+  heroBody: string | null;
+  heroCtaLabel: string | null;
+  heroCtaUrl: string | null;
   isWhiteLabel: boolean;
 };
 

@@ -120,7 +120,7 @@ export default function CheckoutConfirmationPage() {
 
     interval = setInterval(() => {
       const status = orderStatusRef.current;
-      if (!status || status === 'PAID' || status === 'CANCELLED') {
+      if (!status || status === 'PAID' || status === 'CANCELLED' || status === 'FAILED') {
         return;
       }
       loadStatus();
@@ -145,41 +145,43 @@ export default function CheckoutConfirmationPage() {
       ) : null}
 
       {order ? (
-        <div className="relative space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4 pt-16 sm:pt-4">
-          {order.organizerContactEmail ? (
-            <div className="absolute right-4 top-4">
+        <div className="space-y-4 rounded-xl border border-slate-300 bg-slate-50 p-4">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-slate-600">
+              Numéro de commande: <span className="font-semibold text-slate-900">{order.orderId}</span>
+            </p>
+            {order.organizerContactEmail ? (
               <a
                 href={`mailto:${encodeURIComponent(order.organizerContactEmail)}?subject=${encodeURIComponent(
                   `Réservation ${order.orderId} - Contact famille`
                 )}&body=${encodeURIComponent(
                   `Bonjour${order.organizerName ? ` ${order.organizerName}` : ''},\n\nJe vous contacte concernant ma réservation ${order.orderId}.\n\nCordialement,`
                 )}`}
-                className="inline-flex items-center justify-center gap-2 rounded-xl border border-brand-300 bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_24px_-12px_rgba(2,132,199,0.75)] transition hover:bg-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+                className="inline-flex w-fit items-center justify-center gap-2 rounded-full border border-sky-500 bg-sky-200 px-3.5 py-2 text-sm font-semibold text-sky-950 transition hover:border-sky-600 hover:bg-sky-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 active:bg-sky-300/90"
               >
-                <Mail className="h-4 w-4" aria-hidden="true" />
+                <Mail className="h-4 w-4 text-sky-900" aria-hidden="true" />
                 Contacter l&apos;organisme par mail
               </a>
-            </div>
-          ) : null}
-          <p className="text-sm text-slate-600">
-            Numéro de commande: <span className="font-semibold text-slate-900">{order.orderId}</span>
-          </p>
-          <p className="text-sm text-slate-600">
-            Statut commande: <span className="font-semibold text-slate-900">{order.status}</span>
-          </p>
-          <p className="text-sm text-slate-600">
-            Statut paiement:{' '}
-            <span className="font-semibold text-slate-900">
-              {isCvPaperMode
-                ? 'En attente de règlement ANCV papier'
-                : isDeferredMode
-                  ? 'Paiement différé'
-                  : order.paymentStatus ?? 'En attente'}
-            </span>
-          </p>
-          <p className="text-sm text-slate-600">
-            Total: <span className="font-semibold text-slate-900">{formatEuroFromCents(order.totalCents)}</span>
-          </p>
+            ) : null}
+          </div>
+          <div className="space-y-4">
+            <p className="text-sm text-slate-600">
+              Statut commande: <span className="font-semibold text-slate-900">{order.status}</span>
+            </p>
+            <p className="text-sm text-slate-600">
+              Statut paiement:{' '}
+              <span className="font-semibold text-slate-900">
+                {isCvPaperMode
+                  ? 'En attente de règlement ANCV papier'
+                  : isDeferredMode
+                    ? 'Paiement différé'
+                    : order.paymentStatus ?? 'En attente'}
+              </span>
+            </p>
+            <p className="text-sm text-slate-600">
+              Total: <span className="font-semibold text-slate-900">{formatEuroFromCents(order.totalCents)}</span>
+            </p>
+          </div>
           {order.paidAt ? (
             <p className="text-sm text-emerald-700">Paiement validé le {new Date(order.paidAt).toLocaleString('fr-FR')}.</p>
           ) : isCvPaperMode ? (

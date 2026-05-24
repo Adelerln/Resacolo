@@ -133,10 +133,13 @@ export async function createPaymentIntent(input: {
     paymentId: string;
     pricing: CheckoutPricing;
     monetico: {
+      mode: 'mock' | 'live';
       reference: string;
       transactionId: string;
       paymentUrl: string;
-      testMode: true;
+      testMode: boolean;
+      formMethod: 'POST';
+      formFields: Record<string, string>;
     };
   }>(`/api/checkout/session/${input.checkoutId}/payment-intent`, {
     method: 'POST',

@@ -339,3 +339,99 @@ export async function listPartnerReservations(collectivityId: string, excludedUs
 }
 
 export type PartnerCollectivityProfile = Awaited<ReturnType<typeof readPartnerCollectivity>>;
+
+export async function listPartnerCatalogStays() {
+  const supabase = getServerSupabaseClient();
+  const { data: stays, error: staysError } = await supabase
+    .from('stays')
+    .select(
+      'id,title,status,season_id,categories,age_min,age_max,destination_country,destination_countries,transport_mode,required_documents_text,supervision_text,location_text,organizer_id,partner_discount_percent'
+    )
+    .eq('status', 'PUBLISHED')
+    .order('updated_at', { ascending: false })
+    .limit(300);
+
+  if (staysError) {
+    throw new Error(`Impossible de charger les séjours du catalogue : ${staysError.message}`);
+  }
+
+  const stayIds = (stays ?? []).map((stay) => stay.id);
+  const organizerIds = Array.from(new Set((stays ?? []).map((stay) => stay.organizer_id).filter(Boolean)));
+
+  const [{ data: sessions, error: sessionsError }, { data: organizers, error: organizersError }, { data: seasons }] =
+    await Promise.all([
+      stayIds.length
+        ? supabase
+            .from('sessions')
+            .select('id,stay_id,start_date,end_date,status,capacity_total')
+            .in('stay_id', stayIds)
+            .order('start_date', { ascending: true })
+        : Promise.resolve({ data: [], error: null }),
+      organizerIds.length
+        ? supabase
+            .from('organizers')
+            .select('id,name,is_resacolo_member,education_project_path')
+            .in('id', organizerIds)
+        : Promise.resolve({ data: [], error: null }),
+      supabase.from('seasons').select('id,name')
+    ]);
+
+  if (sessionsError) {
+    throw new Error(`Impossible de charger les sessions du catalogue : ${sessionsError.message}`);
+  }
+  if (organizersError) {
+    throw new Error(`Impossible de charger les organisateurs du catalogue : ${organizersError.message}`);
+  }
+
+  const sessionIds = (sessions ?? []).map((session) => session.id);
+  const { data: orderItemsBySession } = sessionIds.length
+    ? await supabase
+        .from('order_items')
+        .select('session_id,total_price_cents')
+        .in('session_id', sessionIds)
+    : { data: [] as Array<{ session_id: string; total_price_cents: number | null }> };
+
+  const priceSamplesBySession = new Map<string, number[]>();
+  for (const row of orderItemsBySession ?? []) {
+    if (typeof row.total_price_cents !== 'number') continue;
+    const existing = priceSamplesBySession.get(row.session_id) ?? [];
+    existing.push(row.total_price_cents);
+    priceSamplesBySession.set(row.session_id, existing);
+  }
+
+  const sessionsByStayId = new Map<string, Array<{ id: string; start_date: string; end_date: string; status: string; capacity_total: number; estimated_price_cents: number }>>();
+  for (const session of sessions ?? []) {
+    const existing = sessionsByStayId.get(session.stay_id) ?? [];
+    const prices = priceSamplesBySession.get(session.id) ?? [];
+    const estimatedPriceCents = prices.length > 0 ? Math.min(...prices) : 0;
+    existing.push({
+      id: session.id,
+      start_date: session.start_date,
+      end_date: session.end_date,
+      status: session.status,
+      capacity_total: session.capacity_total,
+      estimated_price_cents: estimatedPriceCents
+    });
+    sessionsByStayId.set(session.stay_id, existing);
+  }
+  const organizersById = new Map(
+    (organizers ?? []).map((organizer) => [
+      organizer.id,
+      {
+        name: organizer.name,
+        is_resacolo_member: organizer.is_resacolo_member,
+        education_project_path: organizer.education_project_path
+      }
+    ])
+  );
+  const seasonsById = new Map((seasons ?? []).map((season) => [season.id, season.name]));
+
+  return (stays ?? []).map((stay) => ({
+    ...stay,
+    season_name: seasonsById.get(stay.season_id) ?? stay.season_id,
+    organizer_name: organizersById.get(stay.organizer_id)?.name ?? 'Organisateur',
+    organizer_is_partner: organizersById.get(stay.organizer_id)?.is_resacolo_member ?? false,
+    education_project_path: organizersById.get(stay.organizer_id)?.education_project_path ?? null,
+    sessions: sessionsByStayId.get(stay.id) ?? []
+  }));
+}

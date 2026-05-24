@@ -3,11 +3,11 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
+import { isDevBypassCheckout } from '@/lib/checkout/dev-bypass';
 import { CheckoutFrame } from '@/components/checkout/CheckoutFrame';
 import { useCart } from '@/context/CartContext';
 import { useCheckout } from '@/context/CheckoutContext';
 import { confirmPaymentManually, createPaymentIntent } from '@/lib/checkout/client';
-import { isDevBypassCheckout } from '@/lib/checkout/dev-bypass';
 import type { CheckoutContact } from '@/types/checkout';
 
 function requiresOnlinePaymentStep(paymentMode: CheckoutContact['paymentMode']) {
@@ -97,19 +97,51 @@ export default function CheckoutPaiementPage() {
       let paymentData: {
         orderId: string;
         paymentId: string;
+        monetico?: {
+          mode: 'mock' | 'live';
+          paymentUrl: string;
+          formMethod: 'POST';
+          formFields: Record<string, string>;
+        };
       } | null = null;
 
       const cached = sessionStorage.getItem(cacheKey);
       if (cached) {
-        const parsed = JSON.parse(cached) as { orderId?: string; paymentId?: string } | null;
+        const parsed = JSON.parse(cached) as {
+          orderId?: string;
+          paymentId?: string;
+          monetico?: {
+            mode: 'mock' | 'live';
+            paymentUrl: string;
+            formMethod: 'POST';
+            formFields: Record<string, string>;
+          };
+        } | null;
         if (parsed?.orderId && parsed?.paymentId) {
           paymentData = {
             orderId: parsed.orderId,
-            paymentId: parsed.paymentId
+            paymentId: parsed.paymentId,
+            monetico: parsed.monetico
           };
         } else {
           sessionStorage.removeItem(cacheKey);
         }
+      }
+
+      if (paymentData?.monetico?.mode === 'live') {
+        const form = document.createElement('form');
+        form.method = paymentData.monetico.formMethod;
+        form.action = paymentData.monetico.paymentUrl;
+        for (const [key, value] of Object.entries(paymentData.monetico.formFields)) {
+          const input = document.createElement('input');
+          input.type = 'hidden';
+          input.name = key;
+          input.value = value;
+          form.appendChild(input);
+        }
+        document.body.appendChild(form);
+        form.submit();
+        return;
       }
 
       if (!paymentData) {
@@ -130,11 +162,24 @@ export default function CheckoutPaiementPage() {
           })
         });
 
-        paymentData = {
-          orderId: response.orderId,
-          paymentId: response.paymentId
-        };
+        paymentData = { orderId: response.orderId, paymentId: response.paymentId, monetico: response.monetico };
         sessionStorage.setItem(cacheKey, JSON.stringify(response));
+
+        if (response.monetico.mode === 'live') {
+          const form = document.createElement('form');
+          form.method = response.monetico.formMethod;
+          form.action = response.monetico.paymentUrl;
+          for (const [key, value] of Object.entries(response.monetico.formFields)) {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = key;
+            input.value = value;
+            form.appendChild(input);
+          }
+          document.body.appendChild(form);
+          form.submit();
+          return;
+        }
       }
 
       await confirmPaymentManually({
@@ -165,9 +210,9 @@ export default function CheckoutPaiementPage() {
       ) : null}
 
       <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
-        <p className="text-sm font-semibold text-slate-900">Paiement Monetico (mock)</p>
+        <p className="text-sm font-semibold text-slate-900">Paiement Monetico</p>
         <p className="text-sm text-slate-600">
-          Le clic sur « Payer maintenant » prépare la commande puis simule la réponse Monetico.
+          Le clic sur « Payer maintenant » prépare la commande puis vous redirige vers la page de paiement sécurisée.
         </p>
         <p className="text-xs text-slate-500">
           Tant que vous ne cliquez pas sur le bouton, aucune nouvelle commande ne doit être créée.

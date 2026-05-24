@@ -59,7 +59,11 @@ export default async function AdminPartnersPage() {
             <tbody>
               {partners.map((partner) => (
                 <tr key={partner.id} className="border-t border-slate-100">
-                  <td className="px-4 py-3 font-medium text-slate-900">{partner.name}</td>
+                  <td className="px-4 py-3 font-medium text-slate-900">
+                    <Link href={`/admin/partenaires/${partner.id}`} className="hover:underline">
+                      {partner.name}
+                    </Link>
+                  </td>
                   <td className="px-4 py-3 text-slate-600">{partner.code}</td>
                   <td className="px-4 py-3 text-slate-600">
                     {PARTNER_OFFER_LABELS[normalizePartnerOffer(partner.offer_mode)]}

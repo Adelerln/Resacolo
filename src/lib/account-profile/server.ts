@@ -76,6 +76,11 @@ function buildFamilyCseAffiliation(collectivity: CollectivityRow): FamilyCseAffi
     logoScale: collectivity.logo_scale,
     logoOffsetX: collectivity.logo_offset_x,
     logoOffsetY: collectivity.logo_offset_y,
+    heroEnabled: Boolean(collectivity.hero_enabled),
+    heroTitle: collectivity.hero_title,
+    heroBody: collectivity.hero_body,
+    heroCtaLabel: collectivity.hero_cta_label,
+    heroCtaUrl: collectivity.hero_cta_url,
     isWhiteLabel: partnerHasMarqueBlancheAccess(collectivity.offer_mode)
   };
 }
@@ -545,7 +550,12 @@ export async function readPublicSitePartnerBranding(userId: string) {
     partnerLogoScale: affiliation.logoScale ?? 1,
     partnerLogoOffsetX: affiliation.logoOffsetX ?? 0,
     partnerLogoOffsetY: affiliation.logoOffsetY ?? 0,
-    primaryColor: affiliation.brandPrimaryColor
+    primaryColor: affiliation.brandPrimaryColor,
+    heroEnabled: affiliation.heroEnabled,
+    heroTitle: affiliation.heroTitle,
+    heroBody: affiliation.heroBody,
+    heroCtaLabel: affiliation.heroCtaLabel,
+    heroCtaUrl: affiliation.heroCtaUrl
   };
 }
 
@@ -770,9 +780,16 @@ async function readReservations(userId: string): Promise<FamilyReservation[]> {
   }
 
   const { data: stays } = stayIds.size
-    ? await supabase.from('stays').select('id,title').in('id', Array.from(stayIds))
-    : { data: [] as Array<{ id: string; title: string }> };
+    ? await supabase.from('stays').select('id,title,organizer_id').in('id', Array.from(stayIds))
+    : { data: [] as Array<{ id: string; title: string; organizer_id: string | null }> };
   const staysById = new Map((stays ?? []).map((stay) => [stay.id, stay]));
+  const organizerIds = Array.from(
+    new Set((stays ?? []).map((stay) => stay.organizer_id).filter((value): value is string => Boolean(value)))
+  );
+  const { data: organizers } = organizerIds.length
+    ? await supabase.from('organizers').select('id,name,contact_email').in('id', organizerIds)
+    : { data: [] as Array<{ id: string; name: string | null; contact_email: string | null }> };
+  const organizersById = new Map((organizers ?? []).map((organizer) => [organizer.id, organizer]));
   const [
     { data: payments },
     { data: transportOptions },
@@ -903,6 +920,7 @@ async function readReservations(userId: string): Promise<FamilyReservation[]> {
       const firstItem = itemsForOrder[0];
       const session = firstItem?.session_id ? sessionsById.get(firstItem.session_id) : null;
       const stay = session?.stay_id ? staysById.get(session.stay_id) : null;
+      const organizer = stay?.organizer_id ? organizersById.get(stay.organizer_id) : null;
       const children = itemsForOrder
         .map((item) => {
           const firstName = normalizeText(item.child_first_name);
@@ -1031,6 +1049,7 @@ async function readReservations(userId: string): Promise<FamilyReservation[]> {
 
       return {
         orderId: order.id,
+        orderStatus: order.status,
         title: stay?.title ?? 'Séjour réservé',
         dates: formatDateRange(session?.start_date, session?.end_date),
         child,
@@ -1052,7 +1071,10 @@ async function readReservations(userId: string): Promise<FamilyReservation[]> {
         transportOutboundLine: Array.from(outboundTransportLines).join(' / ') || null,
         transportReturnLine: Array.from(returnTransportLines).join(' / ') || null,
         insuranceLine: insuranceLines.join(' / ') || null,
-        extraLines
+        extraLines,
+        organizerContactEmail: organizer?.contact_email ?? null,
+        organizerName: organizer?.name ?? null,
+        hasSuccessfulPayment: settled || Boolean(order.paid_at)
       } satisfies FamilyReservation;
     })
     .sort((left, right) => {

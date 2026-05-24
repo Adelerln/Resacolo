@@ -354,6 +354,9 @@ export type Database = {
           brand_primary_color: string | null
           brand_redirect_url: string | null
           brand_welcome_text: string | null
+          catalog_rules_draft: Json | null
+          catalog_rules_published: Json | null
+          catalog_rules_published_at: string | null
           city: string | null
           code: string
           contact_email: string | null
@@ -366,6 +369,11 @@ export type Database = {
           finance_mode: string
           finance_percent_value: number | null
           finance_rules_text: string | null
+          hero_body: string | null
+          hero_cta_label: string | null
+          hero_cta_url: string | null
+          hero_enabled: boolean
+          hero_title: string | null
           id: string
           logo_offset_x: number
           logo_offset_y: number
@@ -384,6 +392,9 @@ export type Database = {
           brand_primary_color?: string | null
           brand_redirect_url?: string | null
           brand_welcome_text?: string | null
+          catalog_rules_draft?: Json | null
+          catalog_rules_published?: Json | null
+          catalog_rules_published_at?: string | null
           city?: string | null
           code: string
           contact_email?: string | null
@@ -396,6 +407,11 @@ export type Database = {
           finance_mode?: string
           finance_percent_value?: number | null
           finance_rules_text?: string | null
+          hero_body?: string | null
+          hero_cta_label?: string | null
+          hero_cta_url?: string | null
+          hero_enabled?: boolean
+          hero_title?: string | null
           id?: string
           logo_offset_x?: number
           logo_offset_y?: number
@@ -414,6 +430,9 @@ export type Database = {
           brand_primary_color?: string | null
           brand_redirect_url?: string | null
           brand_welcome_text?: string | null
+          catalog_rules_draft?: Json | null
+          catalog_rules_published?: Json | null
+          catalog_rules_published_at?: string | null
           city?: string | null
           code?: string
           contact_email?: string | null
@@ -426,6 +445,11 @@ export type Database = {
           finance_mode?: string
           finance_percent_value?: number | null
           finance_rules_text?: string | null
+          hero_body?: string | null
+          hero_cta_label?: string | null
+          hero_cta_url?: string | null
+          hero_enabled?: boolean
+          hero_title?: string | null
           id?: string
           logo_offset_x?: number
           logo_offset_y?: number

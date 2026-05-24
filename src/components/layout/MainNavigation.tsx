@@ -9,6 +9,7 @@ import { ChevronDown, Menu, X } from 'lucide-react';
 import clsx from 'clsx';
 import { useFavorites } from '@/components/favorites/FavoritesProvider';
 import { useCart } from '@/context/CartContext';
+import type { PublicSitePartnerBranding } from '@/types/partner-branding';
 
 const links = [
   { href: '/sejours', label: 'Séjours' },
@@ -34,16 +35,6 @@ const headerIconButtonClass =
   'flex h-9 w-9 items-center justify-center rounded-full bg-transparent transition hover:bg-slate-50 hover:opacity-80';
 const mobileHeaderLinkClass =
   'block text-base font-semibold leading-snug !text-[color:var(--color-primary)] transition-colors hover:!text-[color:var(--resacolo-orange)] focus-visible:!text-[color:var(--resacolo-orange)]';
-
-type PublicSitePartnerBranding = {
-  collectivityId: string;
-  partnerName: string;
-  partnerLogoUrl: string | null;
-  partnerLogoScale: number;
-  partnerLogoOffsetX: number;
-  partnerLogoOffsetY: number;
-  primaryColor: string | null;
-} | null;
 
 function isLinkItem(
   item: (typeof links)[number]

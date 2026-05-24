@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { X } from 'lucide-react';
+import { Mail, X } from 'lucide-react';
 import { formatMoneyCentsFr } from '@/lib/format-money-fr';
 import type { FamilyReservation } from '@/types/family-profile';
 
@@ -36,6 +36,9 @@ function DetailRow({
 
 export default function FamilyReservationDetailsModal({ reservation }: { reservation: FamilyReservation }) {
   const [open, setOpen] = useState(false);
+  const canContactOrganizer =
+    Boolean(reservation.organizerContactEmail) &&
+    (['PAID', 'CONFIRMED', 'BOOKED', 'VALIDATED'].includes(reservation.orderStatus) || reservation.hasSuccessfulPayment);
 
   useEffect(() => {
     if (!open) return;
@@ -102,6 +105,19 @@ export default function FamilyReservationDetailsModal({ reservation }: { reserva
                   <span className="inline-flex items-center rounded-full bg-white/95 px-3.5 py-1.5 text-xs font-semibold text-slate-900 ring-1 ring-white/70">
                     {reservation.status}
                   </span>
+                  {canContactOrganizer ? (
+                    <a
+                      href={`mailto:${encodeURIComponent(reservation.organizerContactEmail ?? '')}?subject=${encodeURIComponent(
+                        `Réservation ${reservation.orderId} - Contact famille`
+                      )}&body=${encodeURIComponent(
+                        `Bonjour${reservation.organizerName ? ` ${reservation.organizerName}` : ''},\n\nJe vous contacte concernant ma réservation ${reservation.orderId}.\n\nCordialement,`
+                      )}`}
+                      className="ml-auto inline-flex items-center gap-1.5 rounded-full bg-white/95 px-3.5 py-1.5 text-xs font-semibold text-slate-900 ring-1 ring-white/70 transition hover:bg-white"
+                    >
+                      <Mail className="h-3.5 w-3.5" aria-hidden="true" />
+                      Mail organisme
+                    </a>
+                  ) : null}
                 </div>
               </div>
 

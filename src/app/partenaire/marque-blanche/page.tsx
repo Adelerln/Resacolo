@@ -9,6 +9,7 @@ import {
   uploadPartnerLogoFile
 } from '@/lib/partner-logo-storage';
 import { partnerHasMarqueBlancheAccess } from '@/lib/partner-offers';
+import { parsePartnerHeroInput } from '@/lib/partner-hero';
 import { readPartnerCollectivity } from '@/lib/partner.server';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 
@@ -81,6 +82,13 @@ export default async function MarqueBlanchePage({ searchParams }: PageProps) {
     }
 
     const supabase = getServerSupabaseClient();
+    let heroInput;
+    try {
+      heroInput = parsePartnerHeroInput(formData);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Paramètres Hero invalides';
+      redirect(`/partenaire/marque-blanche?error=${encodeURIComponent(message)}`);
+    }
     const logoFile = formData.get('logo');
     let logoUrl = normalizeOptionalString(formData.get('logo_url'));
 
@@ -110,6 +118,11 @@ export default async function MarqueBlanchePage({ searchParams }: PageProps) {
         brand_primary_color: normalizeOptionalString(formData.get('brand_primary_color')) ?? '#ea580c',
         brand_welcome_text: normalizeOptionalString(formData.get('brand_welcome_text')),
         brand_redirect_url: normalizeOptionalString(formData.get('brand_redirect_url')),
+        hero_enabled: heroInput.heroEnabled,
+        hero_title: heroInput.heroTitle,
+        hero_body: heroInput.heroBody,
+        hero_cta_label: heroInput.heroCtaLabel,
+        hero_cta_url: heroInput.heroCtaUrl,
         updated_at: new Date().toISOString()
       })
       .eq('id', collectivityId);
@@ -121,6 +134,7 @@ export default async function MarqueBlanchePage({ searchParams }: PageProps) {
     revalidatePath('/partenaire');
     revalidatePath('/partenaire/fiche');
     revalidatePath('/partenaire/marque-blanche');
+    revalidatePath('/', 'layout');
     redirect('/partenaire/marque-blanche?saved=1');
   }
 
@@ -190,6 +204,65 @@ export default async function MarqueBlanchePage({ searchParams }: PageProps) {
                 defaultValue={collectivity.brand_welcome_text ?? ''}
                 className={fieldClassName()}
                 placeholder="Ex: Bienvenue sur l'espace CSE Horizon."
+              />
+            </label>
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-6">
+          <h2 className="admin-section-title">Hero public</h2>
+          <div className="mt-4 grid gap-4 md:grid-cols-2">
+            <label className="md:col-span-2 inline-flex items-center gap-3 text-sm font-medium text-slate-700">
+              <input
+                type="checkbox"
+                name="hero_enabled"
+                defaultChecked={Boolean(collectivity.hero_enabled)}
+                className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-600"
+              />
+              Activer le hero CSE sous le header (pages publiques)
+            </label>
+            <label className="text-sm font-medium text-slate-700">
+              Titre
+              <input
+                type="text"
+                name="hero_title"
+                maxLength={80}
+                defaultValue={collectivity.hero_title ?? ''}
+                className={fieldClassName()}
+                placeholder="Ex: Bienvenue aux familles du CSE Horizon"
+              />
+            </label>
+            <label className="text-sm font-medium text-slate-700">
+              Libellé du bouton
+              <input
+                type="text"
+                name="hero_cta_label"
+                maxLength={40}
+                defaultValue={collectivity.hero_cta_label ?? ''}
+                className={fieldClassName()}
+                placeholder="Voir notre sélection"
+              />
+            </label>
+            <label className="md:col-span-2 text-sm font-medium text-slate-700">
+              Texte
+              <textarea
+                name="hero_body"
+                rows={4}
+                maxLength={280}
+                defaultValue={collectivity.hero_body ?? ''}
+                className={fieldClassName()}
+                placeholder="Ex: Profitez de tarifs négociés et d'une sélection pensée pour vos enfants."
+              />
+            </label>
+            <label className="md:col-span-2 text-sm font-medium text-slate-700">
+              URL du bouton (https://... ou /...)
+              <input
+                type="text"
+                name="hero_cta_url"
+                maxLength={500}
+                defaultValue={collectivity.hero_cta_url ?? ''}
+                className={fieldClassName()}
+                placeholder="/sejours"
               />
             </label>
           </div>

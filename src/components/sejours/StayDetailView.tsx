@@ -105,15 +105,34 @@ function formatSessionLabel(session: StaySessionOption) {
 }
 
 function formatTransportLabel(option: StayTransportOption, displayAmount?: number) {
-  const cities = [option.departureCity, option.returnCity].filter(Boolean);
+  const normalizedDeparture = normalizeTransportCityDisplay(option.departureCity);
+  const normalizedReturn = normalizeTransportCityDisplay(option.returnCity);
+  const cities = [normalizedDeparture, normalizedReturn].filter(Boolean);
   const route =
     cities.length === 0
       ? 'Transport'
-      : cities.length === 1 || option.departureCity === option.returnCity
+      : cities.length === 1 || normalizedDeparture === normalizedReturn
         ? cities[0]
-        : `${option.departureCity} / ${option.returnCity}`;
+        : `${normalizedDeparture} / ${normalizedReturn}`;
   const amount = displayAmount ?? option.amount;
   return `${route} · ${formatPrice(amount)}`;
+}
+
+function normalizeTransportCityDisplay(value: string | null | undefined) {
+  const clean = String(value ?? '')
+    .trim()
+    .replace(/\s+/g, ' ');
+  if (!clean) return '';
+
+  const parts = clean
+    .split(/\s*(?:→|\/)\s*/g)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length === 0) return clean;
+
+  const uniqueParts = Array.from(new Set(parts.map((part) => part.toUpperCase())));
+  if (uniqueParts.length === 1) return parts[0];
+  return clean;
 }
 
 function formatInsuranceLabel(option: StayInsuranceOption) {
@@ -737,13 +756,13 @@ export function StayDetailView({ stay }: { stay: Stay }) {
         const opt = selectedDepartureTransportOption;
         chunks.push(`Aller : ${formatTransportLabel(opt, opt.amount / 2)}`);
       } else if (selectedDepartureCity) {
-        chunks.push(`Aller : ${selectedDepartureCity}`);
+        chunks.push(`Aller : ${normalizeTransportCityDisplay(selectedDepartureCity)}`);
       }
       if (selectedReturnTransportOption) {
         const opt = selectedReturnTransportOption;
         chunks.push(`Retour : ${formatTransportLabel(opt, opt.amount / 2)}`);
       } else if (selectedReturnCity) {
-        chunks.push(`Retour : ${selectedReturnCity}`);
+        chunks.push(`Retour : ${normalizeTransportCityDisplay(selectedReturnCity)}`);
       }
       transportLine = chunks.length > 0 ? chunks.join(' — ') : 'Transport aller / retour';
     } else if (selectedTransportOption) {
@@ -1416,7 +1435,7 @@ export function StayDetailView({ stay }: { stay: Stay }) {
                         </option>
                         {departureCities.map((city) => (
                           <option key={city} value={city}>
-                            {city}
+                            {normalizeTransportCityDisplay(city)}
                           </option>
                         ))}
                       </select>
@@ -1441,7 +1460,7 @@ export function StayDetailView({ stay }: { stay: Stay }) {
                         </option>
                         {returnCities.map((city) => (
                           <option key={city} value={city}>
-                            {city}
+                            {normalizeTransportCityDisplay(city)}
                           </option>
                         ))}
                       </select>

@@ -1,4 +1,6 @@
+import { redirect } from 'next/navigation';
 import { requirePartner } from '@/lib/auth/require';
+import { canAccessPartnerSection, getPartnerAccessRoleFromSession } from '@/lib/partner-access';
 import { listPartnerBeneficiaries, readPartnerCollectivity } from '@/lib/partner.server';
 
 function formatDate(value: string) {
@@ -8,6 +10,11 @@ function formatDate(value: string) {
 export default async function BeneficiairesPage() {
   const session = await requirePartner();
   const collectivityId = session.tenantId;
+  const accessRole = getPartnerAccessRoleFromSession(session);
+
+  if (!canAccessPartnerSection(accessRole, 'beneficiaries')) {
+    redirect('/partenaire');
+  }
 
   if (!collectivityId) {
     return (

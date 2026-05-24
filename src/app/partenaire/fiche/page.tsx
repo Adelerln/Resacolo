@@ -1,7 +1,9 @@
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { requirePartner } from '@/lib/auth/require';
+import { canAccessPartnerSection, getPartnerAccessRoleFromSession } from '@/lib/partner-access';
 import PartnerContactsSection from '@/components/partner/PartnerContactsSection';
+import PartnerMembersSection from '@/components/partner/PartnerMembersSection';
 import PartnerOfferHelp from '@/components/partner/PartnerOfferHelp';
 import PartnerProfileFormEnhancer from '@/components/partner/PartnerProfileFormEnhancer';
 import {
@@ -16,6 +18,9 @@ type PageProps = {
   searchParams?: Promise<{
     saved?: string;
     error?: string;
+    success?: string;
+    openMemberModal?: string;
+    memberId?: string;
   }>;
 };
 
@@ -30,6 +35,17 @@ function normalizeOptionalString(value: FormDataEntryValue | null) {
 
 function sanitizeRedirectQueryValue(value: string | undefined) {
   return value ? decodeURIComponent(value) : null;
+}
+
+function splitFullName(value: string | null | undefined) {
+  const clean = (value ?? '').trim();
+  if (!clean) return { firstName: null, lastName: null };
+  const parts = clean.split(/\s+/).filter(Boolean);
+  if (parts.length === 1) return { firstName: parts[0], lastName: null };
+  return {
+    firstName: parts[0],
+    lastName: parts.slice(1).join(' ')
+  };
 }
 
 function isCollectivityContactsTableMissingError(error: { message?: string; code?: string } | null | undefined) {
@@ -77,7 +93,12 @@ export const runtime = 'nodejs';
 export default async function PartnerProfilePage({ searchParams }: PageProps) {
   const session = await requirePartner();
   const collectivityId = session.tenantId;
+  const accessRole = getPartnerAccessRoleFromSession(session);
   const params = searchParams ? await searchParams : undefined;
+
+  if (!canAccessPartnerSection(accessRole, 'partner-profile')) {
+    redirect('/partenaire');
+  }
 
   if (!collectivityId) {
     return (
@@ -93,8 +114,12 @@ export default async function PartnerProfilePage({ searchParams }: PageProps) {
 
     const session = await requirePartner();
     const collectivityId = session.tenantId;
+    const accessRole = getPartnerAccessRoleFromSession(session);
     if (!collectivityId) {
       redirect('/partenaire/fiche?error=Aucune%20collectivite%20liee');
+    }
+    if (!canAccessPartnerSection(accessRole, 'partner-profile')) {
+      redirect('/partenaire');
     }
 
     const name = String(formData.get('name') ?? '').trim();
@@ -139,8 +164,12 @@ export default async function PartnerProfilePage({ searchParams }: PageProps) {
 
     const session = await requirePartner();
     const collectivityId = session.tenantId;
+    const accessRole = getPartnerAccessRoleFromSession(session);
     if (!collectivityId) {
       redirect('/partenaire/fiche?error=Aucune%20collectivite%20liee');
+    }
+    if (!canAccessPartnerSection(accessRole, 'partner-profile')) {
+      redirect('/partenaire');
     }
 
     const fullName = String(formData.get('full_name') ?? '').trim();
@@ -213,8 +242,12 @@ export default async function PartnerProfilePage({ searchParams }: PageProps) {
 
     const session = await requirePartner();
     const collectivityId = session.tenantId;
+    const accessRole = getPartnerAccessRoleFromSession(session);
     if (!collectivityId) {
       redirect('/partenaire/fiche?error=Aucune%20collectivite%20liee');
+    }
+    if (!canAccessPartnerSection(accessRole, 'partner-profile')) {
+      redirect('/partenaire');
     }
 
     const contactId = String(formData.get('contact_id') ?? '').trim();
@@ -293,9 +326,46 @@ export default async function PartnerProfilePage({ searchParams }: PageProps) {
   const contacts = await listPartnerContacts(collectivityId);
   const contactsTableAvailable = await isPartnerContactsTableAvailable(collectivityId);
   const errorMessage = sanitizeRedirectQueryValue(params?.error);
-  const isSaved = params?.saved === '1';
+  const successParam = sanitizeRedirectQueryValue(params?.success);
   const normalizedOffer = normalizePartnerOffer(collectivity.offer_mode);
   const formResetToken = `${params?.saved ?? ''}:${params?.error ?? ''}:${collectivity.updated_at}`;
+  const openMemberModal = params?.openMemberModal === 'add' || params?.openMemberModal === 'edit' ? params.openMemberModal : null;
+  const selectedMemberId = params?.memberId ?? null;
+  const contactsByEmail = new Map(contacts.map((contact) => [contact.email.trim().toLowerCase(), contact]));
+  const supabase = getServerSupabaseClient();
+  const { data: membersRaw } = await supabase
+    .from('collectivity_members')
+    .select('id,role,user_id,created_at')
+    .eq('collectivity_id', collectivityId)
+    .order('created_at', { ascending: true });
+
+  const members = await Promise.all(
+    (membersRaw ?? []).map(async (member) => {
+      const { data: userData } = await supabase.auth.admin.getUserById(member.user_id);
+      const user = userData?.user ?? null;
+      const email = user?.email?.trim().toLowerCase() ?? null;
+      const metadataFullName =
+        user?.user_metadata?.full_name?.trim() || user?.user_metadata?.name?.trim() || null;
+      const contact = email ? contactsByEmail.get(email) ?? null : null;
+      const { firstName, lastName } = splitFullName(contact?.full_name ?? metadataFullName);
+      return {
+        ...member,
+        email,
+        first_name: firstName,
+        last_name: lastName
+      };
+    })
+  );
+  const successMessage =
+    successParam === 'member-added'
+      ? 'Utilisateur partenaire ajouté.'
+      : successParam === 'member-updated'
+        ? 'Utilisateur partenaire mis à jour.'
+        : successParam === 'member-deleted'
+          ? 'Utilisateur partenaire supprimé.'
+          : params?.saved === '1'
+            ? 'Fiche partenaire enregistrée.'
+            : null;
 
   return (
     <div className="space-y-6">
@@ -309,9 +379,9 @@ export default async function PartnerProfilePage({ searchParams }: PageProps) {
       {errorMessage ? (
         <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{errorMessage}</p>
       ) : null}
-      {isSaved ? (
+      {successMessage ? (
         <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-          Fiche partenaire enregistrée.
+          {successMessage}
         </p>
       ) : null}
 
@@ -394,6 +464,19 @@ export default async function PartnerProfilePage({ searchParams }: PageProps) {
               addContactAction={addPartnerContact}
               deleteContactAction={deletePartnerContact}
             />
+          </div>
+          <div className="mt-8 border-t border-slate-100 pt-6">
+            <h3 className="text-sm font-semibold uppercase tracking-[0.08em] text-slate-500">Accès utilisateurs</h3>
+            <p className="admin-page-subtitle mt-1">
+              Gérez ici les comptes partenaire et leur niveau d&apos;accès.
+            </p>
+            <div className="mt-4">
+              <PartnerMembersSection
+                members={members}
+                initialMode={openMemberModal}
+                initialMemberId={selectedMemberId}
+              />
+            </div>
           </div>
         </section>
 

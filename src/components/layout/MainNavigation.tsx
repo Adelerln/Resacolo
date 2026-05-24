@@ -5,7 +5,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
-import { ChevronDown, Menu, X } from 'lucide-react';
+import { ChevronDown, Heart, Menu, ShoppingCart, User, X } from 'lucide-react';
 import clsx from 'clsx';
 import { useFavorites } from '@/components/favorites/FavoritesProvider';
 import { useCart } from '@/context/CartContext';
@@ -123,6 +123,11 @@ function MainNavigationContent({
   const headerStyle = branding?.primaryColor
     ? ({ '--color-primary': branding.primaryColor } as CSSProperties)
     : undefined;
+  const useBrandedHeaderIcons = Boolean(branding?.primaryColor);
+  const headerIconClass = 'h-4 w-4 text-[color:var(--color-primary)]';
+  const headerBadgeClass = useBrandedHeaderIcons
+    ? 'bg-[color:var(--color-primary)]'
+    : 'bg-accent-500';
   const visibleLinks = links
     .map((link) => {
       if (!isDropdownItem(link)) return link;
@@ -259,13 +264,17 @@ function MainNavigationContent({
               aria-label="Mon compte"
               title="Mon compte"
             >
-              <Image
-                src="/image/header/pictos_header/icon-mon-compte.png"
-                alt=""
-                width={16}
-                height={16}
-                className="h-4 w-4 object-contain"
-              />
+              {useBrandedHeaderIcons ? (
+                <User className={headerIconClass} strokeWidth={2.25} aria-hidden />
+              ) : (
+                <Image
+                  src="/image/header/pictos_header/icon-mon-compte.png"
+                  alt=""
+                  width={16}
+                  height={16}
+                  className="h-4 w-4 object-contain"
+                />
+              )}
             </Link>
             <Link
               href="/account/favorites"
@@ -273,15 +282,24 @@ function MainNavigationContent({
               aria-label="Favoris"
               title="Favoris"
             >
-              <Image
-                src="/image/header/pictos_header/icon-favoris.png"
-                alt=""
-                width={16}
-                height={16}
-                className="h-4 w-4 object-contain"
-              />
+              {useBrandedHeaderIcons ? (
+                <Heart className={headerIconClass} strokeWidth={2.25} aria-hidden />
+              ) : (
+                <Image
+                  src="/image/header/pictos_header/icon-favoris.png"
+                  alt=""
+                  width={16}
+                  height={16}
+                  className="h-4 w-4 object-contain"
+                />
+              )}
               {favoriteIdsArray.length > 0 && (
-                <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent-500 px-1 text-[10px] font-semibold text-white">
+                <span
+                  className={clsx(
+                    'absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold text-white',
+                    headerBadgeClass
+                  )}
+                >
                   {favoriteIdsArray.length > 99 ? '99+' : favoriteIdsArray.length}
                 </span>
               )}
@@ -292,15 +310,24 @@ function MainNavigationContent({
               aria-label="Panier"
               title="Panier"
             >
-              <Image
-                src="/image/header/pictos_header/icon-panier.png"
-                alt=""
-                width={16}
-                height={16}
-                className="h-4 w-4 object-contain"
-              />
+              {useBrandedHeaderIcons ? (
+                <ShoppingCart className={headerIconClass} strokeWidth={2.25} aria-hidden />
+              ) : (
+                <Image
+                  src="/image/header/pictos_header/icon-panier.png"
+                  alt=""
+                  width={16}
+                  height={16}
+                  className="h-4 w-4 object-contain"
+                />
+              )}
               {cartCount > 0 && (
-                <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-accent-500 text-[10px] font-semibold text-white">
+                <span
+                  className={clsx(
+                    'absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-semibold text-white',
+                    headerBadgeClass
+                  )}
+                >
                   {cartCount > 99 ? '99+' : cartCount}
                 </span>
               )}

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import { requireApiAdmin } from '@/lib/auth/api';
 import { isPasswordPolicyValid, PASSWORD_POLICY_MESSAGE } from '@/lib/auth/password-policy';
+import { toStoredPartnerMembershipRole } from '@/lib/partner-access';
 import { normalizePartnerOffer } from '@/lib/partner-offers';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 
@@ -83,7 +84,10 @@ export async function POST(req: Request) {
   const { data: userData, error: userError } = await supabase.auth.admin.createUser({
     email: userEmail,
     password: tempPassword,
-    email_confirm: true
+    email_confirm: true,
+    user_metadata: {
+      full_name: primaryContactName
+    }
   });
 
   if (userError || !userData?.user) {
@@ -102,7 +106,7 @@ export async function POST(req: Request) {
   const { error: memberError } = await supabase.from('collectivity_members').insert({
     collectivity_id: collectivity.id,
     user_id: userData.user.id,
-    role: 'PARTNER_ADMIN'
+    role: toStoredPartnerMembershipRole('PARTNER_ADMIN')
   });
 
   if (memberError) {

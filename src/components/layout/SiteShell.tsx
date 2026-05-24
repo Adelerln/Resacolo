@@ -45,7 +45,7 @@ export function SiteShell({
     pathname.startsWith('/login') ||
     pathname.startsWith('/checkout') ||
     isMobileViewport;
-  const hidePartnerHero = pathname.startsWith('/login') || pathname.startsWith('/checkout');
+  const showPartnerHero = pathname === '/';
   if (hidePublicShell) {
     /* Pas d’animation entre pages dans les espaces admin / organisateur / partenaire */
     return (
@@ -60,7 +60,7 @@ export function SiteShell({
           initialBranding={initialBranding}
           initialHidePartnerMarketingLinks={initialHidePartnerMarketingLinks}
         />
-        {hidePartnerHero ? null : <PartnerHeroBanner branding={initialBranding} />}
+        {showPartnerHero ? <PartnerHeroBanner branding={initialBranding} /> : null}
         <main className="flex-1 min-h-0">
           <Suspense fallback={<div className="min-h-screen" />}>
             {disablePageTransition ? children : <PageTransition>{children}</PageTransition>}

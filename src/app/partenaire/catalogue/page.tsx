@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { requirePartner } from '@/lib/auth/require';
+import { canAccessPartnerSection, getPartnerAccessRoleFromSession } from '@/lib/partner-access';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { listPartnerCatalogStays, readPartnerCollectivity } from '@/lib/partner.server';
 import RangeField from '@/components/partner/RangeField';
@@ -366,8 +367,13 @@ export const runtime = 'nodejs';
 export default async function PartnerCatalogPage({ searchParams }: PageProps) {
   const session = await requirePartner();
   const collectivityId = session.tenantId;
+  const accessRole = getPartnerAccessRoleFromSession(session);
   const params = searchParams ? await searchParams : undefined;
   const debugMode = params?.debug === '1';
+
+  if (!canAccessPartnerSection(accessRole, 'catalog')) {
+    redirect('/partenaire');
+  }
 
   if (!collectivityId) {
     return (
@@ -381,7 +387,9 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
   async function saveDraft(formData: FormData) {
     'use server';
     const nextSession = await requirePartner();
+    const accessRole = getPartnerAccessRoleFromSession(nextSession);
     if (!nextSession.tenantId) redirect('/partenaire/catalogue?error=Aucune%20collectivite%20liee');
+    if (!canAccessPartnerSection(accessRole, 'catalog')) redirect('/partenaire');
 
     let rules: PartnerCatalogRules;
     try {
@@ -410,7 +418,9 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
   async function publishDraft() {
     'use server';
     const nextSession = await requirePartner();
+    const accessRole = getPartnerAccessRoleFromSession(nextSession);
     if (!nextSession.tenantId) redirect('/partenaire/catalogue?error=Aucune%20collectivite%20liee');
+    if (!canAccessPartnerSection(accessRole, 'catalog')) redirect('/partenaire');
 
     const supabase = getServerSupabaseClient();
     const { data, error: readError } = await supabase

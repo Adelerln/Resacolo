@@ -2,35 +2,27 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { PartnerSidebarNav } from '@/components/partner/PartnerSidebarNav';
 import { requirePartner } from '@/lib/auth/require';
+import { getPartnerAccessRoleFromSession, getPartnerNavLinks } from '@/lib/partner-access';
 import { partnerHasMarqueBlancheAccess } from '@/lib/partner-offers';
 import { readPartnerCollectivity } from '@/lib/partner.server';
-
-const partnerNavLinksAll = [
-  { href: '/partenaire', label: 'Dashboard' },
-  { href: '/partenaire/fiche', label: 'Fiche partenaire' },
-  { href: '/partenaire/beneficiaires', label: 'Bénéficiaires' },
-  { href: '/partenaire/catalogue', label: 'Catalogue' },
-  { href: '/partenaire/financement', label: 'Financement' },
-  { href: '/partenaire/marque-blanche', label: 'Marque blanche' },
-  { href: '/partenaire/reservations', label: 'Réservations' }
-];
 
 export default async function PartnerLayout({ children }: { children: React.ReactNode }) {
   const session = await requirePartner();
   const tenantId = session.tenantId;
+  const accessRole = getPartnerAccessRoleFromSession(session);
 
-  let partnerNavLinks = partnerNavLinksAll;
+  let partnerNavLinks = getPartnerNavLinks(accessRole);
   if (tenantId) {
     try {
       const collectivity = await readPartnerCollectivity(tenantId);
       if (!partnerHasMarqueBlancheAccess(collectivity.offer_mode)) {
-        partnerNavLinks = partnerNavLinksAll.filter((item) => item.href !== '/partenaire/marque-blanche');
+        partnerNavLinks = partnerNavLinks.filter((item) => item.href !== '/partenaire/marque-blanche');
       }
     } catch {
-      partnerNavLinks = partnerNavLinksAll.filter((item) => item.href !== '/partenaire/marque-blanche');
+      partnerNavLinks = partnerNavLinks.filter((item) => item.href !== '/partenaire/marque-blanche');
     }
   } else {
-    partnerNavLinks = partnerNavLinksAll.filter((item) => item.href !== '/partenaire/marque-blanche');
+    partnerNavLinks = partnerNavLinks.filter((item) => item.href !== '/partenaire/marque-blanche');
   }
 
   return (

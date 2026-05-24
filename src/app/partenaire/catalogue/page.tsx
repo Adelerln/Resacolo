@@ -4,7 +4,6 @@ import { requirePartner } from '@/lib/auth/require';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { listPartnerCatalogStays, readPartnerCollectivity } from '@/lib/partner.server';
 import RangeField from '@/components/partner/RangeField';
-import TagSelectField from '@/components/partner/TagSelectField';
 import ClickMultiSelectField from '@/components/partner/ClickMultiSelectField';
 import CountryDropdownField from '@/components/partner/CountryDropdownField';
 import {
@@ -708,18 +707,6 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
                 name="countries_excluded"
                 options={allCountryOptions}
                 initialValues={draftRules.blockingRules.countriesExcluded}
-              />
-              <TagSelectField
-                label="Activités autorisées"
-                name="activities_allowed"
-                initialValues={draftRules.blockingRules.activitiesAllowed}
-                suggestions={stayTypeOptions}
-              />
-              <TagSelectField
-                label="Activités exclues"
-                name="activities_excluded"
-                initialValues={draftRules.blockingRules.activitiesExcluded}
-                suggestions={stayTypeOptions}
               />
             </div>
 

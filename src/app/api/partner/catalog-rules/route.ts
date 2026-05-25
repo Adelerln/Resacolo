@@ -7,6 +7,7 @@ import {
   normalizePartnerCatalogRules,
   parseAndValidatePartnerCatalogRules
 } from '@/lib/partner-catalog-rules';
+import { buildFeatureActivationMessage, isMissingColumnError } from '@/lib/supabase-schema-errors';
 
 export const runtime = 'nodejs';
 
@@ -29,6 +30,18 @@ export async function GET() {
     .maybeSingle();
 
   if (error) {
+    if (
+      isMissingColumnError(error, 'catalog_rules_draft') ||
+      isMissingColumnError(error, 'catalog_rules_published') ||
+      isMissingColumnError(error, 'catalog_rules_published_at')
+    ) {
+      const fallbackRules = getDefaultPartnerCatalogRules();
+      return NextResponse.json({
+        data: { draft: fallbackRules, published: fallbackRules, publishedAt: null },
+        errors: [],
+        warnings: [buildFeatureActivationMessage('Le catalogue partenaire')]
+      });
+    }
     return NextResponse.json({ errors: [error.message] }, { status: 500 });
   }
 
@@ -83,6 +96,16 @@ export async function PUT(req: Request) {
     .eq('id', session.tenantId);
 
   if (error) {
+    if (isMissingColumnError(error, 'catalog_rules_draft')) {
+      return NextResponse.json(
+        {
+          data: null,
+          errors: [buildFeatureActivationMessage('L’enregistrement du brouillon catalogue')],
+          warnings: []
+        },
+        { status: 503 }
+      );
+    }
     return NextResponse.json({ errors: [error.message], warnings: [] }, { status: 500 });
   }
 

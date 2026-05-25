@@ -10,6 +10,7 @@ import {
   clampPartnerFinancePercent,
   normalizePartnerFinanceMode
 } from '@/lib/partner-offers';
+import { isMissingAnyColumnError } from '@/lib/supabase-schema-errors';
 
 type PrepareCheckoutPaymentInput = {
   checkoutId: string;
@@ -160,6 +161,25 @@ async function readCollectivityFinance(collectivityId: string) {
     .maybeSingle();
 
   if (error) {
+    if (isMissingAnyColumnError(error, ['finance_mode', 'finance_percent_value', 'finance_fixed_cents'])) {
+      const { data: legacyData, error: legacyError } = await supabase
+        .from('collectivities')
+        .select('id,finance_percent_value')
+        .eq('id', collectivityId)
+        .maybeSingle();
+
+      if (legacyError) {
+        throw new Error(`Impossible de charger la configuration CSE du checkout : ${legacyError.message}`);
+      }
+      if (!legacyData) return null;
+
+      return {
+        id: legacyData.id,
+        finance_mode: 'TOTAL',
+        finance_percent_value: legacyData.finance_percent_value ?? null,
+        finance_fixed_cents: null
+      } as CollectivityFinanceRow;
+    }
     throw new Error(`Impossible de charger la configuration CSE du checkout : ${error.message}`);
   }
 

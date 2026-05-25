@@ -1,7 +1,6 @@
 import { cache } from 'react';
 import { NextRequest } from 'next/server';
-import { formatAccommodationType } from '@/lib/accommodation-types';
-import { buildAccommodationAddressLabel, extractAccommodationLocationMeta } from '@/lib/accommodation-location';
+import { formatAccommodationType } from '@/components/organisme/accommodation-type';
 import { FILTER_LABELS } from '@/lib/constants';
 import { buildStayDestinationLabel, normalizeStayDestination, type StayDestinationInput } from '@/lib/stay-destination';
 import { normalizeStayCategories } from '@/lib/stay-categories';

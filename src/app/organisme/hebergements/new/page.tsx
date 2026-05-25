@@ -2,6 +2,9 @@ import { revalidatePath } from 'next/cache';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import AccommodationFormFields from '@/components/organisme/AccommodationFormFields';
+import { buildAccommodationTypeValue, parseAccommodationType } from '@/components/organisme/accommodation-type';
+import { requireRole } from '@/lib/auth/require';
+import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers.server';
 import OrganizerPageHeader from '@/components/organisme/OrganizerPageHeader';
 import { parseAccommodationMediaUrls, replaceAccommodationMedia } from '@/lib/accommodations';
 import {
@@ -49,6 +52,12 @@ export default async function NewAccommodationPage({ searchParams }: PageProps) 
     'use server';
     const supabase = getServerSupabaseClient();
     const name = String(formData.get('name') ?? '').trim();
+    const selectedAccommodationType = String(formData.get('accommodation_type') ?? '').trim();
+    const mixedAccommodationTypes = formData
+      .getAll('accommodation_type_mixed_values')
+      .map((value) => String(value).trim());
+    const accommodationType = buildAccommodationTypeValue(selectedAccommodationType, mixedAccommodationTypes);
+    const parsedAccommodationType = parseAccommodationType(accommodationType);
     const accommodationType = String(formData.get('accommodation_type') ?? '').trim();
     const description = String(formData.get('description') ?? '').trim();
     const addressInput = normalizeAccommodationAddress({
@@ -60,8 +69,11 @@ export default async function NewAccommodationPage({ searchParams }: PageProps) 
       country: String(formData.get('country') ?? '').trim()
     });
 
-    if (!name || !accommodationType) {
+    if (!name || !parsedAccommodationType.baseType) {
       redirect(withOrganizerQuery('/organisme/hebergements/new?error=missing-required-fields', selectedOrganizerId));
+    }
+    if (parsedAccommodationType.baseType === 'mixte' && parsedAccommodationType.mixedTypes.length === 0) {
+      redirect(withOrganizerQuery('/organisme/hebergements/new?error=missing-mixed-types', selectedOrganizerId));
     }
 
     const addressError = validateAccommodationAddress(addressInput);

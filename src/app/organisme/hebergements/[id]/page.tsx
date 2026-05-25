@@ -2,6 +2,11 @@ import { revalidatePath } from 'next/cache';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import AccommodationFormFields from '@/components/organisme/AccommodationFormFields';
+import {
+  buildAccommodationTypeValue,
+  formatAccommodationType,
+  parseAccommodationType
+} from '@/components/organisme/accommodation-type';
 import OrganizerPageHeader from '@/components/organisme/OrganizerPageHeader';
 import { formatAccommodationType } from '@/lib/accommodation-types';
 import SavedToast from '@/components/common/SavedToast';
@@ -155,6 +160,14 @@ export default async function AccommodationDetailPage({ params: paramsPromise, s
     }
 
     const name = String(formData.get('name') ?? '').trim();
+    const selectedAccommodationType = String(formData.get('accommodation_type') ?? '').trim();
+    const mixedAccommodationTypes = formData
+      .getAll('accommodation_type_mixed_values')
+      .map((value) => String(value).trim());
+    const accommodationType = buildAccommodationTypeValue(selectedAccommodationType, mixedAccommodationTypes);
+    const parsedAccommodationType = parseAccommodationType(accommodationType);
+
+    if (!name || !parsedAccommodationType.baseType) {
     const accommodationType = String(formData.get('accommodation_type') ?? '').trim();
     const description = String(formData.get('description') ?? '').trim();
     const addressInput = normalizeAccommodationAddress({
@@ -182,6 +195,14 @@ export default async function AccommodationDetailPage({ params: paramsPromise, s
       redirect(
         withOrganizerQuery(
           `/organisme/hebergements/${params.id}?error=missing-fields`,
+          selectedOrganizerId
+        )
+      );
+    }
+    if (parsedAccommodationType.baseType === 'mixte' && parsedAccommodationType.mixedTypes.length === 0) {
+      redirect(
+        withOrganizerQuery(
+          `/organisme/hebergements/${params.id}?error=missing-mixed-types`,
           selectedOrganizerId
         )
       );

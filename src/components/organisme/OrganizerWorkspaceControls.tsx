@@ -7,10 +7,16 @@ import {
   ORGANIZER_COOKIE_NAME,
   type OrganizerOption
 } from '@/lib/organizers';
+import {
+  ORGANIZER_ACCESS_LABELS,
+  getOrganizerNavLinks,
+  type OrganizerAccessRole
+} from '@/lib/organizer-access';
 
 type Props = {
   organizers: OrganizerOption[];
   initialSelectedOrganizerId?: string | null;
+  accessRolesByOrganizerId: Record<string, OrganizerAccessRole>;
 };
 
 const ORGANIZER_STORAGE_KEY = 'resacolo:selectedOrganizerId';
@@ -41,18 +47,17 @@ function useOrganizerSelection(
   };
 }
 
-export function OrganizerWorkspaceNav({ organizers, initialSelectedOrganizerId }: Props) {
+export function OrganizerWorkspaceNav({
+  organizers,
+  initialSelectedOrganizerId,
+  accessRolesByOrganizerId
+}: Props) {
   const { pathname, selectedOrganizerId } = useOrganizerSelection(
     organizers,
     initialSelectedOrganizerId
   );
-
-  const links = [
-    { href: '/organisme', label: 'Organisme' },
-    { href: '/organisme/sejours', label: 'Séjours' },
-    { href: '/organisme/hebergements', label: 'Hébergements' },
-    { href: '/organisme/reservations', label: 'Réservations' }
-  ];
+  const currentAccessRole = accessRolesByOrganizerId[selectedOrganizerId] ?? 'EDITOR';
+  const links = getOrganizerNavLinks(currentAccessRole);
 
   return (
     <nav className="px-3 text-sm text-slate-600">
@@ -64,8 +69,10 @@ export function OrganizerWorkspaceNav({ organizers, initialSelectedOrganizerId }
           <Link
             key={link.href}
             href={href}
-            className={`mb-1 block rounded-lg px-3 py-2 transition hover:bg-slate-100 ${
-              isActive ? 'bg-slate-100 text-slate-900' : ''
+            className={`mb-1 block rounded-lg border-l-2 px-3 py-2 text-[15px] font-semibold transition ${
+              isActive
+                ? 'border-emerald-500 bg-emerald-50 text-emerald-900'
+                : 'border-transparent text-slate-700 hover:bg-slate-100 hover:text-slate-900'
             }`}
           >
             {link.label}
@@ -76,9 +83,14 @@ export function OrganizerWorkspaceNav({ organizers, initialSelectedOrganizerId }
   );
 }
 
-export function OrganizerWorkspaceSelector({ organizers, initialSelectedOrganizerId }: Props) {
+export function OrganizerWorkspaceSelector({
+  organizers,
+  initialSelectedOrganizerId,
+  accessRolesByOrganizerId
+}: Props) {
   const { pathname, router, searchParams, organizerIdFromUrl, selectedOrganizerId } =
     useOrganizerSelection(organizers, initialSelectedOrganizerId);
+  const selectedAccessRole = accessRolesByOrganizerId[selectedOrganizerId] ?? null;
 
   useEffect(() => {
     if (!selectedOrganizerId) return;
@@ -101,31 +113,39 @@ export function OrganizerWorkspaceSelector({ organizers, initialSelectedOrganize
   }, [initialSelectedOrganizerId, organizerIdFromUrl, organizers, pathname, router, searchParams]);
 
   return (
-    <div className="mb-6 rounded-2xl border border-slate-200 bg-white px-4 py-4">
-      <label className="block text-sm font-medium text-slate-700">
-        Organisateur affiché
-        <select
-          className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
-          value={selectedOrganizerId}
-          onChange={(event) => {
-            const nextOrganizerId = event.target.value;
-            const nextParams = new URLSearchParams(searchParams.toString());
-            if (nextOrganizerId) {
-              nextParams.set('organizerId', nextOrganizerId);
-            } else {
-              nextParams.delete('organizerId');
-            }
-            const query = nextParams.toString();
-            router.replace(query ? `${pathname}?${query}` : pathname);
-          }}
-        >
-          {organizers.map((organizer) => (
-            <option key={organizer.id} value={organizer.id}>
-              {organizer.name}
-            </option>
-          ))}
-        </select>
-      </label>
+    <div className="mb-6 rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
+        <label className="block text-sm font-medium text-slate-700">
+          Organisateur affiché
+          <select
+            className="organizer-input mt-2"
+            value={selectedOrganizerId}
+            onChange={(event) => {
+              const nextOrganizerId = event.target.value;
+              const nextParams = new URLSearchParams(searchParams.toString());
+              if (nextOrganizerId) {
+                nextParams.set('organizerId', nextOrganizerId);
+              } else {
+                nextParams.delete('organizerId');
+              }
+              const query = nextParams.toString();
+              router.replace(query ? `${pathname}?${query}` : pathname);
+            }}
+          >
+            {organizers.map((organizer) => (
+              <option key={organizer.id} value={organizer.id}>
+                {organizer.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Niveau d&apos;accès</p>
+          <p className="mt-1 text-sm font-semibold text-slate-800">
+            {selectedAccessRole ? ORGANIZER_ACCESS_LABELS[selectedAccessRole] : 'Aucun accès'}
+          </p>
+        </div>
+      </div>
     </div>
   );
 }

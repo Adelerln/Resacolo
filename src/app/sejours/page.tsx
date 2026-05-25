@@ -13,12 +13,13 @@ export const revalidate = 60;
 export default async function SejoursPage({
   searchParams
 }: {
-  searchParams?: Record<string, string | string[] | undefined>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const stays = await getStays();
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
   return (
     <div style={{ fontFamily: 'Inter, var(--font-sans), sans-serif' }}>
-      <StayCatalogPage stays={stays} searchParams={searchParams} />
+      <StayCatalogPage stays={stays} searchParams={resolvedSearchParams} />
     </div>
   );
 }

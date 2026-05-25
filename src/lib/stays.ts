@@ -2,12 +2,21 @@ import { cache } from 'react';
 import { NextRequest } from 'next/server';
 import { formatAccommodationType } from '@/components/organisme/accommodation-type';
 import { FILTER_LABELS } from '@/lib/constants';
+import { buildStayDestinationLabel, normalizeStayDestination, type StayDestinationInput } from '@/lib/stay-destination';
 import { normalizeStayCategories } from '@/lib/stay-categories';
 import { deriveStayAudiences, formatStayAgeRange } from '@/lib/stay-ages';
+import { isVideoUrlCandidate } from '@/lib/stay-draft-url-extract';
+import { normalizeStayTitle } from '@/lib/stay-title';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { slugify } from '@/lib/utils';
+import {
+  extractGoogleMapsEmbedSrcFromInput,
+  readMapIframeHtmlFromAiExtractedData
+} from '@/lib/google-maps-iframe';
 import type {
   Stay,
+  StayAccommodation,
+  StayCenterLocation,
   StayDuration,
   StaySearchParams,
   StaySessionOption,
@@ -19,7 +28,10 @@ import type { Database } from '@/types/supabase';
 
 type PeriodKey = keyof typeof FILTER_LABELS.periods;
 type TransportKey = keyof typeof FILTER_LABELS.transport;
-type OrganizerRow = Pick<Database['public']['Tables']['organizers']['Row'], 'id' | 'name' | 'logo_path'>;
+type OrganizerRow = Pick<
+  Database['public']['Tables']['organizers']['Row'],
+  'id' | 'name' | 'logo_path' | 'slug' | 'website_url'
+>;
 type SeasonRow = Pick<Database['public']['Tables']['seasons']['Row'], 'id' | 'name' | 'start_date'>;
 type StayMediaRow = Pick<Database['public']['Tables']['stay_media']['Row'], 'url' | 'position' | 'media_type'>;
 type SessionRow = Pick<Database['public']['Tables']['sessions']['Row'], 'start_date' | 'end_date'>;
@@ -29,7 +41,7 @@ type SessionPriceRow = Pick<
 >;
 type TransportOptionRow = Pick<
   Database['public']['Tables']['transport_options']['Row'],
-  'id' | 'departure_city' | 'return_city' | 'amount_cents' | 'stay_id'
+  'id' | 'departure_city' | 'return_city' | 'amount_cents' | 'stay_id' | 'session_id'
 >;
 type InsuranceOptionRow = Pick<
   Database['public']['Tables']['insurance_options']['Row'],
@@ -50,18 +62,59 @@ type AccommodationRow = Pick<
   | 'id'
   | 'name'
   | 'accommodation_type'
+  | 'address_text'
+  | 'postal_code'
+  | 'city'
+  | 'department_code'
+  | 'region_text'
+  | 'country'
   | 'description'
   | 'bed_info'
   | 'bathroom_info'
   | 'catering_info'
   | 'accessibility_info'
+  | 'center_latitude'
+  | 'center_longitude'
+  | 'map_iframe_html'
+  | 'ai_extracted_data'
 >;
 type StayAccommodationRow = Pick<
   Database['public']['Tables']['stay_accommodations']['Row'],
   'stay_id' | 'accommodation_id'
 >;
+type AccommodationMediaRow = Pick<
+  Database['public']['Tables']['accommodation_media']['Row'],
+  'accommodation_id' | 'url' | 'position'
+>;
+type StayWithoutCanonical = Omit<Stay, 'canonicalSlug' | 'legacySlugs'>;
+type StaySlugResolution = {
+  stay: Stay;
+  requestedSlug: string;
+  canonicalSlug: string;
+  canonicalPath: string;
+  isCanonical: boolean;
+};
 
 const DAY_MS = 1000 * 60 * 60 * 24;
+const STAY_SLUG_SUFFIX_LENGTH = 8;
+const STAY_PATH_PREFIX = '/sejours';
+
+function getEffectiveSessionStatus(
+  session: Pick<
+    SessionWithOptionsRow,
+    'status' | 'capacity_total' | 'capacity_reserved'
+  >
+): SessionWithOptionsRow['status'] {
+  if (session.status === 'COMPLETED' || session.status === 'ARCHIVED' || session.status === 'FULL') {
+    return session.status;
+  }
+
+  if (session.capacity_reserved >= session.capacity_total) {
+    return 'FULL';
+  }
+
+  return session.status;
+}
 
 function deriveSessionDurations(sessions: SessionRow[] | null | undefined) {
   if (!sessions || sessions.length === 0) return [];
@@ -168,14 +221,37 @@ function buildSummary(title: string, description?: string | null) {
   return line ? line.trim() : description.trim();
 }
 
+const VIDEO_URL_PATTERN =
+  /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|vimeo\.com\/|dailymotion\.com\/|loom\.com\/share\/|wistia\.|\.mp4(?:$|\?)|\.webm(?:$|\?)|\.mov(?:$|\?)|\.m4v(?:$|\?))/i;
+
+function isVideoMedia(item: StayMediaRow) {
+  const mediaType = item.media_type?.trim().toLowerCase() ?? '';
+  if (mediaType.includes('video')) return true;
+  const url = item.url?.trim() ?? '';
+  return url.length > 0 && VIDEO_URL_PATTERN.test(url);
+}
+
 function buildAccommodationText(accommodations: AccommodationRow[]) {
   if (!accommodations.length) return '';
 
   return accommodations
     .map((accommodation) => {
+      const locationMeta = extractAccommodationLocationMeta(accommodation.description, {
+        addressText: accommodation.address_text,
+        postalCode: accommodation.postal_code,
+        city: accommodation.city,
+        departmentCode: accommodation.department_code,
+        regionText: accommodation.region_text,
+        country: accommodation.country
+      });
+      const accommodationType =
+        accommodation.accommodation_type?.trim().toLowerCase() === 'centre'
+          ? null
+          : formatAccommodationType(accommodation.accommodation_type);
       const details = [
-        formatAccommodationType(accommodation.accommodation_type),
-        accommodation.description,
+        accommodationType,
+        locationMeta.locationLabel,
+        locationMeta.description,
         accommodation.bed_info,
         accommodation.bathroom_info,
         accommodation.catering_info,
@@ -187,6 +263,293 @@ function buildAccommodationText(accommodations: AccommodationRow[]) {
       return [accommodation.name, details].filter(Boolean).join('\n');
     })
     .join('\n\n');
+}
+
+function buildStayDisplayLocation(destination: StayDestinationInput, accommodations: AccommodationRow[]) {
+  const destinationLabel = buildStayDestinationLabel(destination);
+  if (destinationLabel) return destinationLabel;
+
+  const locationMetas = accommodations.map((accommodation) =>
+    extractAccommodationLocationMeta(accommodation.description, {
+      addressText: accommodation.address_text,
+      postalCode: accommodation.postal_code,
+      city: accommodation.city,
+      departmentCode: accommodation.department_code,
+      regionText: accommodation.region_text,
+      country: accommodation.country
+    })
+  );
+
+  const itinerant = locationMetas.find((meta) => meta.locationMode === 'itinerant');
+  if (itinerant) {
+    const zone = itinerant.itinerantZone?.trim();
+    return zone ? `Séjour itinérant (${zone})` : 'Séjour itinérant';
+  }
+
+  return Array.from(
+    new Set(
+      locationMetas
+        .map((meta) => meta.locationLabel)
+        .filter((label): label is string => Boolean(label))
+    )
+  )[0] ?? '';
+}
+
+function isInsuranceLikeLabel(label: string | null | undefined) {
+  if (!label) return false;
+  return /(assur|annulation|rapatriement|multirisque)/i.test(label);
+}
+
+function normalizeStaySlug(value: string | null | undefined) {
+  return value?.trim().toLowerCase() ?? '';
+}
+
+function normalizeStaySeoText(value: string | null | undefined) {
+  const normalized = value?.trim() ?? '';
+  return normalized || undefined;
+}
+
+function normalizeStaySeoTags(values: string[] | null | undefined) {
+  const seen = new Set<string>();
+  const output: string[] = [];
+
+  for (const value of values ?? []) {
+    const normalized = value?.trim();
+    if (!normalized) continue;
+    const key = normalized.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    output.push(normalized);
+  }
+
+  return output;
+}
+
+function normalizeStaySeoScore(value: number | null | undefined) {
+  if (!Number.isFinite(value)) return undefined;
+  const clamped = Math.max(0, Math.min(100, Math.round(Number(value))));
+  return clamped;
+}
+
+function normalizeStaySeoChecks(value: Database['public']['Tables']['stays']['Row']['seo_checks']) {
+  if (!Array.isArray(value)) return undefined;
+  const checks = (value as unknown[])
+    .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+    .map((item) => {
+      const code = typeof item.code === 'string' ? item.code.trim() : '';
+      const level = item.level === 'ok' || item.level === 'warning' || item.level === 'info' ? item.level : null;
+      const message = typeof item.message === 'string' ? item.message.trim() : '';
+      if (!code || !level || !message) return null;
+      return { code, level, message } as const;
+    })
+    .filter((item): item is { code: string; level: 'ok' | 'warning' | 'info'; message: string } => Boolean(item));
+
+  return checks.length > 0 ? checks : undefined;
+}
+
+function buildStaySlugSuffix(stayId: string) {
+  const normalized = stayId.toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (normalized.length >= STAY_SLUG_SUFFIX_LENGTH) {
+    return normalized.slice(0, STAY_SLUG_SUFFIX_LENGTH);
+  }
+  return (normalized || 'stay').padEnd(STAY_SLUG_SUFFIX_LENGTH, '0').slice(0, STAY_SLUG_SUFFIX_LENGTH);
+}
+
+function reserveUniqueSlug(baseCandidate: string, used: Set<string>) {
+  const initial = normalizeStaySlug(baseCandidate) || 'sejour';
+  if (!used.has(initial)) {
+    used.add(initial);
+    return initial;
+  }
+
+  let suffix = 2;
+  let candidate = `${initial}-${suffix}`;
+  while (used.has(candidate)) {
+    suffix += 1;
+    candidate = `${initial}-${suffix}`;
+  }
+  used.add(candidate);
+  return candidate;
+}
+
+function applyCanonicalStaySlugs(stays: StayWithoutCanonical[]): Stay[] {
+  const byBaseSlug = new Map<string, StayWithoutCanonical[]>();
+  const sortedById = [...stays].sort((left, right) => left.id.localeCompare(right.id, 'fr'));
+
+  for (const stay of sortedById) {
+    const baseSlug = normalizeStaySlug(stay.slug) || stay.id;
+    const group = byBaseSlug.get(baseSlug) ?? [];
+    group.push(stay);
+    byBaseSlug.set(baseSlug, group);
+  }
+
+  const canonicalSlugById = new Map<string, string>();
+  const legacySlugsById = new Map<string, string[]>();
+  const reservedCanonicalSlugs = new Set<string>();
+
+  for (const [baseSlug, group] of Array.from(byBaseSlug.entries())) {
+    if (group.length === 1) {
+      const stay = group[0];
+      const canonicalSlug = reserveUniqueSlug(baseSlug, reservedCanonicalSlugs);
+      canonicalSlugById.set(stay.id, canonicalSlug);
+      const legacySlugs =
+        canonicalSlug !== baseSlug && baseSlug
+          ? [baseSlug]
+          : [];
+      legacySlugsById.set(stay.id, legacySlugs);
+      continue;
+    }
+
+    // When several stays collide on the same base slug, suffix each canonical slug
+    // with a deterministic short id to guarantee uniqueness and stability.
+    for (const stay of group) {
+      const suffix = buildStaySlugSuffix(stay.id);
+      const canonicalSlug = reserveUniqueSlug(`${baseSlug}-${suffix}`, reservedCanonicalSlugs);
+      canonicalSlugById.set(stay.id, canonicalSlug);
+      legacySlugsById.set(stay.id, []);
+    }
+
+    // Keep one deterministic alias for the legacy unsuffixed slug to preserve
+    // the old entry point with a permanent redirect.
+    const primary = group[0];
+    const primaryLegacy = legacySlugsById.get(primary.id) ?? [];
+    if (baseSlug) {
+      primaryLegacy.push(baseSlug);
+    }
+    legacySlugsById.set(primary.id, primaryLegacy);
+  }
+
+  return stays.map((stay) => {
+    const canonicalSlug =
+      canonicalSlugById.get(stay.id) ?? (normalizeStaySlug(stay.slug) || stay.id);
+    const dedupedLegacySlugs = Array.from(
+      new Set(
+        (legacySlugsById.get(stay.id) ?? [])
+          .map((slug) => normalizeStaySlug(slug))
+          .filter((slug) => slug && slug !== canonicalSlug)
+      )
+    );
+
+    return {
+      ...stay,
+      slug: canonicalSlug,
+      canonicalSlug,
+      legacySlugs: dedupedLegacySlugs
+    };
+  });
+}
+
+function validateStaysSeoCatalog(stays: Stay[]) {
+  const errors: string[] = [];
+  const canonicalSlugToStayId = new Map<string, string>();
+
+  for (const stay of stays) {
+    if (!stay.id) {
+      errors.push('Séjour sans id.');
+      continue;
+    }
+    if (!stay.canonicalSlug) {
+      errors.push(`Séjour ${stay.id}: canonicalSlug manquant.`);
+    }
+    if (!stay.title.trim()) {
+      errors.push(`Séjour ${stay.id}: title manquant.`);
+    }
+    if (!stay.summary.trim()) {
+      errors.push(`Séjour ${stay.id}: summary manquant.`);
+    }
+
+    const normalizedCanonical = normalizeStaySlug(stay.canonicalSlug);
+    if (canonicalSlugToStayId.has(normalizedCanonical)) {
+      errors.push(
+        `Conflit canonicalSlug "${stay.canonicalSlug}" entre ${canonicalSlugToStayId.get(normalizedCanonical)} et ${stay.id}.`
+      );
+    } else {
+      canonicalSlugToStayId.set(normalizedCanonical, stay.id);
+    }
+
+    if ((stay.legacySlugs ?? []).some((legacySlug) => normalizeStaySlug(legacySlug) === normalizedCanonical)) {
+      errors.push(`Séjour ${stay.id}: un legacySlug est identique au canonicalSlug.`);
+    }
+  }
+
+  if (errors.length === 0) return;
+
+  const message = `SEO séjours invalide:\n${errors.map((error) => `- ${error}`).join('\n')}`;
+  if (process.env.NODE_ENV === 'production') {
+    console.error(message);
+    return;
+  }
+  throw new Error(message);
+}
+
+function buildStaySlugIndex(stays: Stay[]) {
+  const stayById = new Map(stays.map((stay) => [stay.id, stay]));
+  const canonicalBySlug = new Map<string, Stay>();
+  for (const stay of stays) {
+    canonicalBySlug.set(normalizeStaySlug(stay.canonicalSlug), stay);
+  }
+
+  const aliasCandidates = new Map<string, string[]>();
+  for (const stay of stays) {
+    for (const aliasRaw of stay.legacySlugs ?? []) {
+      const alias = normalizeStaySlug(aliasRaw);
+      if (!alias || alias === normalizeStaySlug(stay.canonicalSlug)) continue;
+      const stayIds = aliasCandidates.get(alias) ?? [];
+      stayIds.push(stay.id);
+      aliasCandidates.set(alias, stayIds);
+    }
+  }
+
+  const aliasToStay = new Map<string, Stay>();
+  for (const [alias, stayIds] of Array.from(aliasCandidates.entries())) {
+    if (stayIds.length !== 1) continue;
+    const stay = stayById.get(stayIds[0]);
+    if (!stay) continue;
+    aliasToStay.set(alias, stay);
+  }
+
+  return { canonicalBySlug, aliasToStay };
+}
+
+export function getStayCanonicalPath(stayOrCanonicalSlug: Pick<Stay, 'canonicalSlug'> | string) {
+  const canonicalSlug =
+    typeof stayOrCanonicalSlug === 'string'
+      ? normalizeStaySlug(stayOrCanonicalSlug)
+      : normalizeStaySlug(stayOrCanonicalSlug.canonicalSlug);
+  return `${STAY_PATH_PREFIX}/${canonicalSlug}`;
+}
+
+export function resolveStayFromSlug(stays: Stay[], requestedSlug: string): StaySlugResolution | null {
+  const normalizedRequestedSlug = normalizeStaySlug(requestedSlug);
+  if (!normalizedRequestedSlug) return null;
+
+  const { canonicalBySlug, aliasToStay } = buildStaySlugIndex(stays);
+  const canonicalMatch = canonicalBySlug.get(normalizedRequestedSlug);
+  if (canonicalMatch) {
+    return {
+      stay: canonicalMatch,
+      requestedSlug: normalizedRequestedSlug,
+      canonicalSlug: canonicalMatch.canonicalSlug,
+      canonicalPath: getStayCanonicalPath(canonicalMatch),
+      isCanonical: true
+    };
+  }
+
+  const aliasMatch = aliasToStay.get(normalizedRequestedSlug);
+  if (!aliasMatch) return null;
+
+  return {
+    stay: aliasMatch,
+    requestedSlug: normalizedRequestedSlug,
+    canonicalSlug: aliasMatch.canonicalSlug,
+    canonicalPath: getStayCanonicalPath(aliasMatch),
+    isCanonical: false
+  };
+}
+
+export async function resolveStayBySlug(requestedSlug: string): Promise<StaySlugResolution | null> {
+  const stays = await getStays();
+  return resolveStayFromSlug(stays, requestedSlug);
 }
 
 async function fetchStaysFromSupabase(): Promise<Stay[]> {
@@ -213,13 +576,12 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
     { data: mediaRaw },
     { data: sessionsRaw },
     { data: stayAccommodationRows },
-    { data: accommodationsRaw },
     { data: extraOptionsRaw },
     { data: insuranceOptionsRaw },
     { data: transportOptionsRaw }
   ] = await Promise.all([
     organizerIds.length
-      ? supabase.from('organizers').select('id,name,logo_path').in('id', organizerIds)
+      ? supabase.from('organizers').select('id,name,logo_path,slug,website_url').in('id', organizerIds)
       : Promise.resolve({ data: [] as OrganizerRow[] | null }),
     seasonIds.length
       ? supabase.from('seasons').select('id,name,start_date').in('id', seasonIds)
@@ -244,11 +606,6 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
       : Promise.resolve({ data: [] as StayAccommodationRow[] | null }),
     stayIds.length
       ? supabase
-          .from('accommodations')
-          .select('id,name,accommodation_type,description,bed_info,bathroom_info,catering_info,accessibility_info')
-      : Promise.resolve({ data: [] as AccommodationRow[] | null }),
-    stayIds.length
-      ? supabase
           .from('stay_extra_options')
           .select('id,stay_id,label,amount_cents,position')
           .in('stay_id', stayIds)
@@ -263,10 +620,43 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
     stayIds.length
       ? supabase
           .from('transport_options')
-          .select('id,departure_city,return_city,amount_cents,stay_id')
+          .select('id,departure_city,return_city,amount_cents,stay_id,session_id')
           .in('stay_id', stayIds)
       : Promise.resolve({ data: [] as TransportOptionRow[] | null })
   ]);
+
+  let accommodationsRaw: AccommodationRow[] | null = [];
+  if (stayIds.length) {
+    const withMapResult = await supabase
+      .from('accommodations')
+      .select(
+        'id,name,accommodation_type,address_text,postal_code,city,department_code,region_text,country,description,bed_info,bathroom_info,catering_info,accessibility_info,center_latitude,center_longitude,map_iframe_html,ai_extracted_data'
+      );
+
+    const shouldFallbackLegacy =
+      withMapResult.error &&
+      String(withMapResult.error.message ?? '').toLowerCase().includes('map_iframe_html');
+
+    if (shouldFallbackLegacy) {
+      const legacyResult = await supabase
+        .from('accommodations')
+        .select(
+          'id,name,accommodation_type,address_text,postal_code,city,department_code,region_text,country,description,bed_info,bathroom_info,catering_info,accessibility_info,center_latitude,center_longitude,ai_extracted_data'
+        );
+      accommodationsRaw = (legacyResult.data ?? []).map((row) => ({ ...row, map_iframe_html: null }));
+    } else {
+      accommodationsRaw = withMapResult.data ?? [];
+    }
+  }
+
+  const accommodationIds = Array.from(new Set((stayAccommodationRows ?? []).map((item) => item.accommodation_id)));
+  const { data: accommodationMediaRaw } = accommodationIds.length
+    ? await supabase
+        .from('accommodation_media')
+        .select('accommodation_id,url,position')
+        .in('accommodation_id', accommodationIds)
+        .order('position', { ascending: true })
+    : { data: [] as AccommodationMediaRow[] | null };
 
   const organizersById = new Map((organizersRaw ?? []).map((organizer) => [organizer.id, organizer]));
   const seasonsById = new Map((seasonsRaw ?? []).map((season) => [season.id, season]));
@@ -277,6 +667,7 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
   const insuranceOptionsByStayId = new Map<string, InsuranceOptionRow[]>();
   const transportOptionsByStayId = new Map<string, StayTransportOption[]>();
   const accommodationsById = new Map((accommodationsRaw ?? []).map((accommodation) => [accommodation.id, accommodation]));
+  const accommodationMediaByAccommodationId = new Map<string, AccommodationMediaRow[]>();
 
   for (const item of mediaRaw ?? []) {
     const group = mediaByStayId.get(item.stay_id) ?? [];
@@ -310,7 +701,8 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
       id: item.id,
       departureCity: item.departure_city,
       returnCity: item.return_city,
-      amount: item.amount_cents / 100
+      amount: item.amount_cents / 100,
+      sessionId: item.session_id
     });
     transportOptionsByStayId.set(item.stay_id, group);
   }
@@ -319,6 +711,12 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
     const group = accommodationIdsByStayId.get(item.stay_id) ?? [];
     group.push(item.accommodation_id);
     accommodationIdsByStayId.set(item.stay_id, group);
+  }
+
+  for (const item of accommodationMediaRaw ?? []) {
+    const group = accommodationMediaByAccommodationId.get(item.accommodation_id) ?? [];
+    group.push(item);
+    accommodationMediaByAccommodationId.set(item.accommodation_id, group);
   }
 
   const logoUrlByOrganizerId = new Map<string, string | null>();
@@ -333,7 +731,7 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
     })
   );
 
-  const stays = await Promise.all(
+  const staysWithoutCanonical = await Promise.all(
     visibleStays.map(async (stay) => {
       const organizer = organizersById.get(stay.organizer_id);
       const organizerName = organizer?.name ?? 'Organisateur';
@@ -341,13 +739,122 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
       const media = [...(mediaByStayId.get(stay.id) ?? [])].sort(
         (a, b) => (a.position ?? 0) - (b.position ?? 0)
       );
+      const videoUrls = Array.from(
+        new Set(
+          media
+            .filter((item) => isVideoMedia(item))
+            .map((item) => item.url?.trim())
+            .filter((url): url is string => Boolean(url))
+        )
+      );
+      const galleryImages = Array.from(
+        new Set(
+          media
+            .filter((item) => !isVideoMedia(item))
+            .map((item) => item.url?.trim())
+            .filter((url): url is string => Boolean(url))
+        )
+      );
       const coverImage =
-        media.find((item) => item.media_type === 'cover')?.url ?? media[0]?.url ?? undefined;
+        media.find((item) => item.media_type === 'cover' && !isVideoMedia(item))?.url ??
+        galleryImages[0] ??
+        undefined;
 
       const sessionItems = sessionsByStayId.get(stay.id) ?? [];
       const stayAccommodations = [...(accommodationIdsByStayId.get(stay.id) ?? [])]
         .map((accommodationId) => accommodationsById.get(accommodationId))
         .filter((item): item is AccommodationRow => Boolean(item));
+      const destination = normalizeStayDestination({
+        destinationType: stay.destination_type,
+        destinationCity: stay.destination_city,
+        destinationPostalCode: stay.destination_postal_code,
+        destinationDepartmentCode: stay.destination_department_code,
+        destinationRegion: stay.destination_region,
+        destinationCountry: stay.destination_country,
+        destinationItineraryLabel: stay.destination_itinerary_label,
+        destinationCountries: stay.destination_countries,
+        locationText: stay.location_text,
+        regionText: stay.region_text
+      });
+      const structuredAccommodations: StayAccommodation[] = stayAccommodations.map((accommodation) => {
+        const locationMeta = extractAccommodationLocationMeta(accommodation.description, {
+          addressText: accommodation.address_text,
+          postalCode: accommodation.postal_code,
+          city: accommodation.city,
+          departmentCode: accommodation.department_code,
+          regionText: accommodation.region_text,
+          country: accommodation.country
+        });
+        const mediaForAccommodation = accommodationMediaByAccommodationId.get(accommodation.id) ?? [];
+        const imageUrls = Array.from(
+          new Set(
+            mediaForAccommodation
+              .map((item) => item.url?.trim())
+              .filter((url): url is string => Boolean(url && !isVideoUrlCandidate(url)))
+          )
+        );
+        const accommodationVideoUrls = Array.from(
+          new Set(
+            mediaForAccommodation
+              .map((item) => item.url?.trim())
+              .filter((url): url is string => Boolean(url && isVideoUrlCandidate(url)))
+          )
+        );
+
+        return {
+          id: accommodation.id,
+          name: accommodation.name,
+          accommodationType: accommodation.accommodation_type,
+          mapEmbedSrc: extractGoogleMapsEmbedSrcFromInput(
+            accommodation.map_iframe_html ?? readMapIframeHtmlFromAiExtractedData(accommodation.ai_extracted_data) ?? ''
+          ),
+          locationLabel:
+            buildAccommodationAddressLabel({
+              postalCode: accommodation.postal_code,
+              city: accommodation.city,
+              departmentCode: accommodation.department_code,
+              regionText: accommodation.region_text,
+              country: accommodation.country
+            }) ?? locationMeta.locationLabel,
+          addressText: accommodation.address_text,
+          postalCode: accommodation.postal_code,
+          city: accommodation.city,
+          departmentCode: accommodation.department_code,
+          regionText: accommodation.region_text,
+          country: accommodation.country,
+          description: locationMeta.description ?? '',
+          bedInfo: accommodation.bed_info?.trim() ?? '',
+          bathroomInfo: accommodation.bathroom_info?.trim() ?? '',
+          cateringInfo: accommodation.catering_info?.trim() ?? '',
+          accessibilityInfo: accommodation.accessibility_info?.trim() ?? '',
+          imageUrls,
+          videoUrls: accommodationVideoUrls.length > 0 ? accommodationVideoUrls : undefined
+        };
+      });
+      const centerLocations = Array.from(
+        new Map(
+          stayAccommodations
+            .filter(
+              (accommodation): accommodation is AccommodationRow & {
+                center_latitude: number;
+                center_longitude: number;
+              } =>
+                accommodation.center_latitude != null &&
+                accommodation.center_longitude != null &&
+                Number.isFinite(accommodation.center_latitude) &&
+                Number.isFinite(accommodation.center_longitude)
+            )
+            .map((accommodation) => [
+              accommodation.id,
+              {
+                id: accommodation.id,
+                name: accommodation.name,
+                latitude: accommodation.center_latitude,
+                longitude: accommodation.center_longitude
+              } satisfies StayCenterLocation
+            ])
+        ).values()
+      );
       const accommodationText = buildAccommodationText(stayAccommodations);
       const durationDays = deriveSessionDurations(sessionItems);
       const { keys: periodKeys, labels: periodLabels } = derivePeriods(sessionItems);
@@ -356,6 +863,7 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
       const transport = mapTransport(stay.transport_mode);
       const categories = normalizeStayCategories(stay.categories ?? []);
       const sharedTransportOptions = transportOptionsByStayId.get(stay.id) ?? [];
+      const displayLocation = buildStayDisplayLocation(destination, stayAccommodations);
       const visibleBookingSessionItems = sessionItems.filter(
         (sessionItem) => sessionItem.status !== 'COMPLETED' && sessionItem.status !== 'ARCHIVED'
       );
@@ -364,31 +872,51 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
           const sessionPrice = Array.isArray(sessionItem.session_prices)
             ? sessionItem.session_prices[0] ?? null
             : sessionItem.session_prices;
+          const effectiveStatus = getEffectiveSessionStatus(sessionItem);
+
+          const transportForSession = sharedTransportOptions.filter(
+            (opt) => opt.sessionId == null || opt.sessionId === sessionItem.id
+          );
 
           return {
             id: sessionItem.id,
             startDate: sessionItem.start_date,
             endDate: sessionItem.end_date,
             price: sessionPrice ? sessionPrice.amount_cents / 100 : null,
-            status: sessionItem.status,
-            transportOptions: sharedTransportOptions
+            status: effectiveStatus,
+            transportOptions: transportForSession
           };
         })
         .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());
-      const insuranceOptions: StayInsuranceOption[] = (insuranceOptionsByStayId.get(stay.id) ?? []).map(
-        (option) => ({
+      const rawInsuranceOptions = insuranceOptionsByStayId.get(stay.id) ?? [];
+      const rawExtraOptions = extraOptionsByStayId.get(stay.id) ?? [];
+
+      const insuranceOptions: StayInsuranceOption[] = [
+        ...rawInsuranceOptions.map((option) => ({
           id: option.id,
           label: option.label,
           amount: option.amount_cents != null ? option.amount_cents / 100 : null,
           percentValue: option.percent_value,
           pricingMode: option.pricing_mode
-        })
-      );
-      const extraOptions: StayExtraOption[] = (extraOptionsByStayId.get(stay.id) ?? []).map((option) => ({
-        id: option.id,
-        label: option.label,
-        amount: option.amount_cents / 100
-      }));
+        })),
+        ...rawExtraOptions
+          .filter((option) => isInsuranceLikeLabel(option.label))
+          .map((option) => ({
+            id: option.id,
+            label: option.label,
+            amount: option.amount_cents / 100,
+            percentValue: null,
+            pricingMode: 'FLAT'
+          }))
+      ];
+
+      const extraOptions: StayExtraOption[] = rawExtraOptions
+        .filter((option) => !isInsuranceLikeLabel(option.label))
+        .map((option) => ({
+          id: option.id,
+          label: option.label,
+          amount: option.amount_cents / 100
+        }));
       const sessionPrices = bookingSessions
         .filter((sessionItem) => sessionItem.status === 'OPEN')
         .map((sessionItem) => sessionItem.price)
@@ -401,24 +929,53 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
         : fallbackSessionPrices.length
           ? Math.min(...fallbackSessionPrices)
           : null;
+      const displayTitle = normalizeStayTitle(stay.title) || stay.title.trim();
+      const baseSlug = slugify(`${organizerName}-${displayTitle}`) || stay.id;
+      const seoPrimaryKeyword = normalizeStaySeoText(stay.seo_primary_keyword);
+      const seoTargetCity = normalizeStaySeoText(stay.seo_target_city);
+      const seoTargetRegion = normalizeStaySeoText(stay.seo_target_region);
+      const seoTitle = normalizeStaySeoText(stay.seo_title);
+      const seoMetaDescription = normalizeStaySeoText(stay.seo_meta_description);
+      const seoIntroText = normalizeStaySeoText(stay.seo_intro_text);
+      const seoH1Variant = normalizeStaySeoText(stay.seo_h1_variant);
+      const seoSecondaryKeywords = normalizeStaySeoTags(stay.seo_secondary_keywords);
+      const seoSearchIntents = normalizeStaySeoTags(stay.seo_search_intents);
+      const seoInternalLinkAnchorSuggestions = normalizeStaySeoTags(
+        stay.seo_internal_link_anchor_suggestions
+      );
+      const seoSlugCandidate = normalizeStaySeoText(stay.seo_slug_candidate);
+      const seoScore = normalizeStaySeoScore(stay.seo_score);
+      const seoChecks = normalizeStaySeoChecks(stay.seo_checks);
+      const seoGeneratedAt = normalizeStaySeoText(stay.seo_generated_at);
+      const seoGenerationSource = normalizeStaySeoText(stay.seo_generation_source);
 
       return {
         id: stay.id,
-        title: stay.title,
-        slug: slugify(`${organizerName}-${stay.title}`) || stay.id,
-        summary: stay.summary?.trim() || buildSummary(stay.title, stay.description),
+        title: displayTitle,
+        slug: baseSlug,
+        summary: stay.summary?.trim() || buildSummary(displayTitle, stay.description),
         description: stay.description?.trim() || stay.program_text?.trim() || '',
         seasonId: stay.season_id,
         seasonName: season?.name?.trim() || 'Saison non précisée',
         organizerId: stay.organizer_id,
         organizer: {
           name: organizerName,
-          website: '',
+          website: organizer?.website_url?.trim() || '',
+          slug: organizer?.slug?.trim() || slugify(organizerName),
           logoUrl: logoUrlByOrganizerId.get(stay.organizer_id) ?? undefined
         },
-        location: stay.location_text ?? '',
-        region: stay.region_text ?? '',
-        country: '',
+        location: stay.location_text ?? destination.destinationCity ?? destination.destinationCountry ?? '',
+        displayLocation,
+        region: stay.region_text ?? destination.destinationRegion ?? '',
+        country: destination.destinationCountry ?? '',
+        destinationType: destination.destinationType,
+        destinationCity: destination.destinationCity,
+        destinationPostalCode: destination.destinationPostalCode,
+        destinationDepartmentCode: destination.destinationDepartmentCode,
+        destinationRegion: destination.destinationRegion,
+        destinationCountry: destination.destinationCountry,
+        destinationItineraryLabel: destination.destinationItineraryLabel,
+        destinationCountries: destination.destinationCountries,
         ageMin: stay.age_min,
         ageMax: stay.age_max,
         ageRange: formatStayAgeRange(stay.ages, stay.age_min, stay.age_max),
@@ -431,11 +988,32 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
         programText: stay.program_text?.trim() ?? '',
         transportText: stay.transport_text?.trim() ?? '',
         coverImage,
+        galleryImages: galleryImages.length > 0 ? galleryImages : undefined,
+        videoUrls: videoUrls.length > 0 ? videoUrls : undefined,
         bookingOptions: {
           transportMode: stay.transport_mode ?? 'Sans transport',
           sessions: bookingSessions,
           insuranceOptions,
           extraOptions
+        },
+        accommodations: structuredAccommodations.length > 0 ? structuredAccommodations : undefined,
+        centerLocations: centerLocations.length > 0 ? centerLocations : undefined,
+        seo: {
+          primaryKeyword: seoPrimaryKeyword,
+          secondaryKeywords: seoSecondaryKeywords,
+          targetCity: seoTargetCity,
+          targetRegion: seoTargetRegion,
+          searchIntents: seoSearchIntents,
+          title: seoTitle,
+          metaDescription: seoMetaDescription,
+          introText: seoIntroText,
+          h1Variant: seoH1Variant,
+          internalLinkAnchorSuggestions: seoInternalLinkAnchorSuggestions,
+          slugCandidate: seoSlugCandidate,
+          score: seoScore,
+          checks: seoChecks,
+          generatedAt: seoGeneratedAt,
+          generationSource: seoGenerationSource
         },
         rawContext: {
           presentation: stay.description ?? '',
@@ -445,7 +1023,11 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
           encadrement: stay.supervision_text ?? '',
           documents_obligatoires: stay.required_documents_text ?? '',
           transport: stay.transport_text ?? '',
-          region: stay.region_text ?? ''
+          region: stay.region_text ?? '',
+          destination_type: stay.destination_type ?? '',
+          destination_region: stay.destination_region ?? '',
+          destination_country: stay.destination_country ?? '',
+          destination_itinerary_label: stay.destination_itinerary_label ?? ''
         },
         filters: {
           categories,
@@ -459,6 +1041,9 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
       };
     })
   );
+
+  const stays = applyCanonicalStaySlugs(staysWithoutCanonical);
+  validateStaysSeoCatalog(stays);
 
   return stays;
 }

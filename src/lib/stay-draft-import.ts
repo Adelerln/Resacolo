@@ -2,7 +2,12 @@ import { load, type CheerioAPI } from 'cheerio';
 import type { AnyNode } from 'domhandler';
 import { createHash } from 'crypto';
 import iconv from 'iconv-lite';
+import { draftSessionStableKey } from '@/lib/draft-session-keys';
 import { STAY_REGION_OPTIONS } from '@/lib/stay-regions';
+import {
+  extractVideoUrlsFromArbitraryString,
+  isVideoUrlCandidate
+} from '@/lib/stay-draft-url-extract';
 
 const REQUEST_TIMEOUT_MS = 15_000;
 const MAX_TEXT_SCAN_LENGTH = 140_000;
@@ -358,12 +363,18 @@ export type DraftSessionItem = {
   start_date: string | null;
   end_date: string | null;
   price: number | null;
-  availability: 'full' | 'available' | 'limited' | 'waitlist' | null;
+  availability: 'full' | 'available' | 'limited' | 'waitlist' | 'unknown' | null;
 };
 
 export type DraftAccommodation = {
   title: string;
   description: string;
+  address_text?: string | null;
+  postal_code?: string | null;
+  city?: string | null;
+  department_code?: string | null;
+  region_text?: string | null;
+  country?: string | null;
 };
 
 export type DraftTransportVariant = {
@@ -376,7 +387,13 @@ export type DraftTransportVariant = {
   return_label_raw?: string | null;
   page_price_cents?: number | null;
   base_price_cents?: number | null;
-  pricing_method?: 'delta_from_base' | 'absolute_price' | 'unresolved';
+  pricing_method?:
+    | 'delta_from_base'
+    | 'session_delta'
+    | 'absolute_price'
+    | 'unresolved'
+    | 'thalie_pbpdt_delta'
+    | 'thalie_option_url_delta';
   confidence?: 'high' | 'medium' | 'low';
   reason?: string;
 };
@@ -388,16 +405,57 @@ export type DraftTransportPriceDebug = {
   page_price_cents: number | null;
   base_price_cents: number | null;
   amount_cents: number | null;
-  pricing_method: 'delta_from_base' | 'absolute_price' | 'unresolved';
+  pricing_method:
+    | 'delta_from_base'
+    | 'session_delta'
+    | 'absolute_price'
+    | 'unresolved'
+    | 'thalie_pbpdt_delta'
+    | 'thalie_option_url_delta';
   confidence: 'high' | 'medium' | 'low';
   reason: string;
   departure_label_raw?: string | null;
   return_label_raw?: string | null;
 };
 
+type DraftTransportOptionItem = {
+  label: string;
+  departure_city: string;
+  return_city: string;
+  amount_cents: number;
+  price: number;
+  currency: 'EUR';
+  source_url: string;
+  excluded_session_keys: string[];
+};
+
 export type ExtractTransportVariantsResult = {
   transportVariants: DraftTransportVariant[];
   transportPriceDebug: DraftTransportPriceDebug[];
+};
+
+export type PaginatedDepartureTableData = {
+  rowCount: number;
+  sessions: DraftSessionItem[];
+  transportOptions: DraftTransportOptionItem[];
+  transportVariants: DraftTransportVariant[];
+  transportPriceDebug: DraftTransportPriceDebug[];
+  priceFrom: number | null;
+};
+
+export type ZigotoursDepartureDataResult = {
+  data: PaginatedDepartureTableData | null;
+  endpointUrl: string | null;
+  stayId: string | null;
+  rowCount: number;
+  reason:
+    | 'ok'
+    | 'missing_stay_id'
+    | 'invalid_endpoint_url'
+    | 'http_error'
+    | 'invalid_json'
+    | 'empty_rows';
+  statusCode: number | null;
 };
 
 export type FetchedHtml = {
@@ -584,32 +642,68 @@ function parseAgeRange(text: string): { ageMin: number; ageMax: number } | null 
     /\b(\d{1,2})\s*ans?\s*(?:-|–|—|à|a|\/)\s*(\d{1,2})\b/gi
   ];
   const candidates: { ageMin: number; ageMax: number; index: number }[] = [];
+  const extractRanges = (input: string) => {
+    const matches: { ageMin: number; ageMax: number; index: number }[] = [];
+    for (const pattern of patterns) {
+      pattern.lastIndex = 0;
+      let match: RegExpExecArray | null = null;
+      while ((match = pattern.exec(input)) !== null) {
+        const left = Number(match[1]);
+        const right = Number(match[2]);
+        if (!Number.isFinite(left) || !Number.isFinite(right)) continue;
+        const ageMin = Math.min(left, right);
+        const ageMax = Math.max(left, right);
+        if (ageMin < 3 || ageMax > 25) continue;
+        matches.push({ ageMin, ageMax, index: match.index });
+      }
+    }
+    return matches;
+  };
 
-  for (const pattern of patterns) {
-    pattern.lastIndex = 0;
-    let match: RegExpExecArray | null = null;
-    while ((match = pattern.exec(text)) !== null) {
-      const left = Number(match[1]);
-      const right = Number(match[2]);
-      if (!Number.isFinite(left) || !Number.isFinite(right)) continue;
-      const ageMin = Math.min(left, right);
-      const ageMax = Math.max(left, right);
-      if (ageMin < 3 || ageMax > 25) continue;
-      candidates.push({ ageMin, ageMax, index: match.index });
+  const ageSectionMatch = text.match(
+    /\b(?:ages?|âge|tranche d['’]âge)\b[\s:.-]*([^\n\r.;]{0,120})/i
+  );
+  if (ageSectionMatch?.[1]) {
+    const sectionCandidates = extractRanges(ageSectionMatch[1]);
+    if (sectionCandidates.length >= 2) {
+      return {
+        ageMin: Math.min(...sectionCandidates.map((candidate) => candidate.ageMin)),
+        ageMax: Math.max(...sectionCandidates.map((candidate) => candidate.ageMax))
+      };
+    }
+    if (sectionCandidates.length === 1) {
+      return {
+        ageMin: sectionCandidates[0].ageMin,
+        ageMax: sectionCandidates[0].ageMax
+      };
     }
   }
 
+  candidates.push(...extractRanges(text));
+
   if (candidates.length === 0) return null;
+
+  const sortByBestRange = (
+    left: { ageMin: number; ageMax: number; index: number },
+    right: { ageMin: number; ageMax: number; index: number }
+  ) => {
+    const leftSpan = left.ageMax - left.ageMin;
+    const rightSpan = right.ageMax - right.ageMin;
+    if (rightSpan !== leftSpan) return rightSpan - leftSpan;
+    if (left.ageMin !== right.ageMin) return left.ageMin - right.ageMin;
+    return left.index - right.index;
+  };
+
   const preferred = candidates
     .filter((candidate) => candidate.ageMax <= 18)
-    .sort((a, b) => a.index - b.index)[0];
+    .sort(sortByBestRange)[0];
   if (preferred) return { ageMin: preferred.ageMin, ageMax: preferred.ageMax };
 
-  const fallback = candidates.sort((a, b) => a.index - b.index)[0];
+  const fallback = candidates.sort(sortByBestRange)[0];
   return { ageMin: fallback.ageMin, ageMax: fallback.ageMax };
 }
 
-function parseFrenchAmount(raw: string): number | null {
+function parseFrenchAmount(raw: string, minEur: number = 30, maxEur: number = 20_000): number | null {
   const cleaned = raw.replace(/\u00a0/g, ' ').replace(/[^\d,.\s]/g, '').trim();
   if (!cleaned) return null;
 
@@ -632,28 +726,57 @@ function parseFrenchAmount(raw: string): number | null {
   const amount = Number(normalized);
   if (!Number.isFinite(amount)) return null;
   const rounded = Math.round(amount);
-  if (rounded < 30 || rounded > 20_000) return null;
+  if (rounded < minEur || rounded > maxEur) return null;
   return rounded;
 }
 
-function findPriceInText(text: string): number | null {
+function findPriceInTextWithMin(text: string, minEur: number): number | null {
   const fromMatch = text.match(/\b(?:à\s+partir\s+de|dès)\s*([0-9][0-9\s.,]*)\s*(?:€|euros?)/i);
   if (fromMatch?.[1]) {
-    const amount = parseFrenchAmount(fromMatch[1]);
+    const amount = parseFrenchAmount(fromMatch[1], minEur, 20_000);
     if (amount !== null) return amount;
   }
 
   const genericPattern = /\b([0-9][0-9\s.,]{1,})\s*(?:€|euros?)/gi;
   let match: RegExpExecArray | null = null;
   while ((match = genericPattern.exec(text)) !== null) {
-    const amount = parseFrenchAmount(match[1]);
+    const amount = parseFrenchAmount(match[1], minEur, 20_000);
     if (amount !== null) return amount;
   }
 
   return null;
 }
 
-function findPriceInJsonLd(blocks: unknown[]): number | null {
+function findPriceInText(text: string): number | null {
+  return findPriceInTextWithMin(text, 30);
+}
+
+function findPublicPriceInText(text: string): number | null {
+  const normalized = normalizeWhitespace(text);
+  if (!normalized) return null;
+
+  const publicPatterns = [
+    /\btarif\s+public\b[^0-9]{0,40}([0-9][0-9\s.,]*)\s*(?:€|euros?)/i,
+    /\bpublic\b[^0-9]{0,40}([0-9][0-9\s.,]*)\s*(?:€|euros?)/i
+  ];
+
+  for (const pattern of publicPatterns) {
+    const match = normalized.match(pattern);
+    if (!match?.[1]) continue;
+    const amount = parseFrenchAmount(match[1], 30, 20_000);
+    if (amount !== null) return amount;
+  }
+
+  const strippedPartnerText = normalized
+    .replace(/\btarif\s+partenaire\b[^0-9]{0,40}[0-9][0-9\s.,]*\s*(?:€|euros?)/gi, ' ')
+    .replace(/\bpartenaire\b[^0-9]{0,40}[0-9][0-9\s.,]*\s*(?:€|euros?)/gi, ' ');
+
+  return findPriceInText(strippedPartnerText);
+}
+
+/** Tous les champs `price` numériques trouvés dans le graphe JSON-LD (Offer, etc.). */
+function collectJsonLdOfferPrices(blocks: unknown[]): number[] {
+  const candidates: number[] = [];
   const stack = [...blocks];
   while (stack.length > 0) {
     const node = stack.shift();
@@ -668,10 +791,10 @@ function findPriceInJsonLd(blocks: unknown[]): number | null {
     const priceRaw = record.price;
     if (typeof priceRaw === 'number') {
       const rounded = Math.round(priceRaw);
-      if (rounded >= 30 && rounded <= 20_000) return rounded;
+      if (rounded >= 30 && rounded <= 20_000) candidates.push(rounded);
     } else if (typeof priceRaw === 'string') {
-      const parsed = parseFrenchAmount(priceRaw);
-      if (parsed !== null) return parsed;
+      const parsed = parseFrenchAmount(priceRaw, 30, 20_000);
+      if (parsed !== null) candidates.push(parsed);
     }
 
     for (const value of Object.values(record)) {
@@ -679,13 +802,33 @@ function findPriceInJsonLd(blocks: unknown[]): number | null {
     }
   }
 
-  return null;
+  return candidates;
+}
+
+/**
+ * Plusieurs offres peuvent coexister (sessions / formules). Le premier prix parcouru n’est pas fiable
+ * (ex. Thalie : 1265 € puis 1065 €). On prend le **minimum** parmi les montants « plausibles » séjour.
+ */
+function findPriceInJsonLd(blocks: unknown[]): number | null {
+  const all = collectJsonLdOfferPrices(blocks);
+  if (all.length === 0) return null;
+  const plausible = all.filter((p) => p >= 200 && p <= 25_000);
+  const pool = plausible.length > 0 ? plausible : all;
+  return Math.min(...pool);
+}
+
+/** Pour le débrief import : liste triée des prix vus dans le JSON-LD (sans appliquer le min). */
+export function extractJsonLdOfferPricesFromHtml(html: string): number[] {
+  const $ = load(html);
+  const prices = collectJsonLdOfferPrices(extractJsonLdBlocks($));
+  return Array.from(new Set(prices)).sort((a, b) => a - b);
 }
 
 function parsePrice(text: string, jsonLdBlocks: unknown[]): number | null {
-  const textPrice = findPriceInText(text);
-  if (textPrice !== null) return textPrice;
-  return findPriceInJsonLd(jsonLdBlocks);
+  /** Sur les fiches type catalogue (ex. Thalie), le gros prix à l’écran peut déjà inclure le transport ; le JSON-Ld Product/Offer porte souvent le prix séjour seul (ex. 1065 € vs 1147 € affichés). */
+  const jsonLdPrice = findPriceInJsonLd(jsonLdBlocks);
+  if (jsonLdPrice !== null) return jsonLdPrice;
+  return findPriceInText(text);
 }
 
 function parseDuration(text: string): number | null {
@@ -917,6 +1060,40 @@ function extractImages($: CheerioAPI, sourceUrl: string): string[] {
   return collectImageCandidates($, sourceUrl)
     .map((candidate) => candidate.url)
     .slice(0, MAX_IMAGES);
+}
+
+export function extractVideoUrls(html: string, sourceUrl: string): string[] {
+  const $ = load(html);
+  const values = new Set<string>();
+
+  const addCandidate = (raw: string | null | undefined) => {
+    const normalized = normalizeWhitespace(raw);
+    if (!normalized) return;
+    if (/^javascript:/i.test(normalized)) {
+      for (const embedded of extractVideoUrlsFromArbitraryString(normalized)) {
+        values.add(embedded);
+      }
+      return;
+    }
+    const absolute = toAbsoluteUrl(normalized, sourceUrl);
+    if (!absolute || !isVideoUrlCandidate(absolute)) return;
+    values.add(absolute);
+  };
+
+  $('a[href], iframe[src], video[src], source[src], [data-video], [data-video-url], [data-youtube], [data-vimeo]').each(
+    (_, element) => {
+      addCandidate($(element).attr('href'));
+      addCandidate($(element).attr('src'));
+      addCandidate($(element).attr('data-video'));
+      addCandidate($(element).attr('data-video-url'));
+      addCandidate($(element).attr('data-youtube'));
+      addCandidate($(element).attr('data-vimeo'));
+      addCandidate($(element).attr('data-src'));
+      addCandidate($(element).attr('data-url'));
+    }
+  );
+
+  return Array.from(values);
 }
 
 function buildImageSelectionContextTokens(context: ImageSelectionContext): Set<string> {
@@ -1932,7 +2109,7 @@ function toIsoDate(day: number, month: number, year: number): string | null {
   return iso;
 }
 
-function detectSessionAvailability(snippet: string): DraftSessionItem['availability'] {
+export function detectSessionAvailability(snippet: string): DraftSessionItem['availability'] {
   const normalized = simplifyForMatch(snippet);
   if (!normalized) return null;
   if (/\bcomplet|complete|sold out\b/.test(normalized)) return 'full';
@@ -1942,8 +2119,1258 @@ function detectSessionAvailability(snippet: string): DraftSessionItem['availabil
   return null;
 }
 
-function extractSessions(visibleText: string): DraftSessionItem[] | null {
+/** Normalise les libellés d’options CESL (tirets unicode, espaces). */
+function normalizeCeslPeriodOptionLabel(raw: string): string {
+  return normalizeWhitespace(
+    raw
+      .replace(/\u2013/g, '-')
+      .replace(/\u2014/g, '-')
+      .replace(/\u00A0/g, ' ')
+  );
+}
+
+export function parseSessionLabelToItem(label: string): DraftSessionItem | null {
+  const normalized = normalizeCeslPeriodOptionLabel(label);
+  if (!normalized) return null;
+
+  const sameMonth = normalized.match(
+    /\bdu\s+(\d{1,2})\s+(?:au|a|à)\s+(\d{1,2})\s+([A-Za-zÀ-ÖØ-öø-ÿ]+)\s+(\d{4})\b/i
+  );
+  if (sameMonth) {
+    const dayStart = Number(sameMonth[1]);
+    const dayEnd = Number(sameMonth[2]);
+    const month = MONTHS[simplifyForMatch(sameMonth[3])];
+    const year = Number(sameMonth[4]);
+    return {
+      label: normalized,
+      start_date: month ? toIsoDate(dayStart, month, year) : null,
+      end_date: month ? toIsoDate(dayEnd, month, year) : null,
+      price: null,
+      availability: detectSessionAvailability(normalized) ?? 'unknown'
+    };
+  }
+
+  const crossMonth = normalized.match(
+    /\bdu\s+(\d{1,2})\s+([A-Za-zÀ-ÖØ-öø-ÿ]+)\s+(?:au|a|à)\s+(\d{1,2})\s+([A-Za-zÀ-ÖØ-öø-ÿ]+)\s+(\d{4})\b/i
+  );
+  if (crossMonth) {
+    const dayStart = Number(crossMonth[1]);
+    const startMonth = MONTHS[simplifyForMatch(crossMonth[2])];
+    const dayEnd = Number(crossMonth[3]);
+    const endMonth = MONTHS[simplifyForMatch(crossMonth[4])];
+    const year = Number(crossMonth[5]);
+    return {
+      label: normalized,
+      start_date: startMonth ? toIsoDate(dayStart, startMonth, year) : null,
+      end_date: endMonth ? toIsoDate(dayEnd, endMonth, year) : null,
+      price: null,
+      availability: detectSessionAvailability(normalized) ?? 'unknown'
+    };
+  }
+
+  const numeric = normalized.match(
+    /\bdu\s*(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4})\s*(?:au|a|à)\s*(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4})\b/i
+  );
+  if (numeric) {
+    return {
+      label: normalized,
+      start_date: parseFrenchDate(numeric[1]),
+      end_date: parseFrenchDate(numeric[2]),
+      price: null,
+      availability: detectSessionAvailability(normalized) ?? 'unknown'
+    };
+  }
+
+  return null;
+}
+
+/** Même logique pour Map CESL et fusion import statique + Playwright (`mergeExtractedSessions`). */
+export function buildStaySessionMergeKey(session: DraftSessionItem): string {
+  return (session.start_date || session.end_date)
+    ? `${session.start_date ?? ''}|${session.end_date ?? ''}`
+    : simplifyForMatch(session.label);
+}
+
+function buildSessionKey(session: DraftSessionItem): string {
+  return buildStaySessionMergeKey(session);
+}
+
+function extractStructuredSessionOptions($: CheerioAPI): DraftSessionItem[] {
+  const sessions = new Map<string, DraftSessionItem>();
+
+  $('select option, .ui-selectmenu-text, [role="option"]').each((_, node) => {
+    const parsed = parseSessionLabelToItem($(node).text());
+    if (!parsed) return;
+    const key = buildSessionKey(parsed);
+    if (!key || sessions.has(key)) return;
+    sessions.set(key, parsed);
+  });
+
+  return Array.from(sessions.values()).sort((left, right) => {
+    const leftKey = left.start_date ?? left.end_date ?? left.label ?? '';
+    const rightKey = right.start_date ?? right.end_date ?? right.label ?? '';
+    return leftKey.localeCompare(rightKey, 'fr');
+  });
+}
+
+type CeslDurationJson = Record<
+  string,
+  Record<
+    string,
+    {
+      dates?: string;
+      villes?: string;
+      tarifs?: {
+        public?: { label?: string; value?: string };
+        partner?: { label?: string; value?: string };
+      };
+      attente?: string;
+      complet?: string;
+    }
+  >
+>;
+
+function extractCeslDurationJson(html: string): CeslDurationJson | null {
+  const match = html.match(/var\s+sDureesJson\s*=\s*'((?:\\.|[^'])*)'/i);
+  if (!match?.[1]) return null;
+  try {
+    const parsed = JSON.parse(match[1]) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    return parsed as CeslDurationJson;
+  } catch {
+    return null;
+  }
+}
+
+function parseCeslAvailability(entry: {
+  attente?: string;
+  complet?: string;
+}): DraftSessionItem['availability'] {
+  if (String(entry.complet ?? '').trim() === '1') return 'full';
+  if (String(entry.attente ?? '').trim() === '1') return 'waitlist';
+  return 'available';
+}
+
+/**
+ * CEI : bloc typique
+ * `<small>A partir de</small><strong>1830€</strong><small>(Prix sans transport)</small>`
+ */
+function extractCeiApartirStrongPriceDom(html: string): number | null {
+  const $ = load(html);
+  let found: number | null = null;
+  $('small').each((_, sm) => {
+    if (found != null) return;
+    const t = normalizeWhitespace($(sm).text()).toLowerCase();
+    if (!t.includes('partir')) return;
+    const strong = $(sm).nextAll('strong').first();
+    if (strong.length === 0) return;
+    const p = parseFrenchAmount(normalizeWhitespace(strong.text()), 30, 20_000);
+    if (p != null) found = p;
+  });
+  if (found != null) return found;
+  const m = html.match(/<small>[^<]*partir\s+de[^<]*<\/small>\s*<strong>([^<]+)<\/strong>/i);
+  if (m?.[1]) {
+    return parseFrenchAmount(normalizeWhitespace(m[1]), 30, 20_000);
+  }
+  return null;
+}
+
+/**
+ * Prix séjour CESL : bloc « Tarif public » (`.tarif-1`), pas partenaire (`.tarif-2`) ni transport.
+ */
+function extractCeslStayPublicPriceFromTarif1Dom(html: string): number | null {
+  const $ = load(html);
+  const labelNodes = $('.tarif-label').toArray();
+  for (const node of labelNodes) {
+    const text = normalizeWhitespace($(node).text()).toLowerCase();
+    if (!text.includes('public')) continue;
+    if (text.includes('partenaire')) continue;
+    if (text.includes('transport')) continue;
+    const block = $(node).closest('.tarif-1');
+    if (block.length === 0) continue;
+    const raw = normalizeWhitespace(block.find('.tarif-value').first().text());
+    const p = parseFrenchAmount(raw, 30, 20_000);
+    if (p != null) return p;
+  }
+  return null;
+}
+
+/** Ajoute les périodes présentes dans le &lt;select&gt; (ex. « Complet ») absentes du JSON `sDureesJson`. */
+function mergeCeslSelectPeriodOptionsIntoSessions(html: string, sessions: Map<string, DraftSessionItem>): void {
+  const $ = load(html);
+  const selector =
+    'select#sejour-periode option, select.sejour-periode option, select[name="sejour_periode"] option';
+  $(selector).each((_, el) => {
+    const value = ($(el).attr('value') ?? '').trim();
+    const label = normalizeCeslPeriodOptionLabel($(el).text());
+    if (!label) return;
+    const parsed = parseSessionLabelToItem(label);
+    if (!value && !parsed && !detectSessionAvailability(label)) return;
+    if (!parsed) {
+      mergeCeslSessionIntoMap(sessions, {
+        label,
+        start_date: null,
+        end_date: null,
+        price: null,
+        availability: detectSessionAvailability(label) ?? 'unknown'
+      });
+      return;
+    }
+
+    const fromSelect: DraftSessionItem = {
+      ...parsed,
+      label,
+      price: null,
+      availability: detectSessionAvailability(label) ?? parsed.availability ?? 'unknown'
+    };
+
+    mergeCeslSessionIntoMap(sessions, fromSelect);
+  });
+}
+
+/** Uniquement le champ JSON « public » — jamais le tarif partenaire. */
+function ceslSessionPriceFromTarifEntry(entry: {
+  tarifs?: { public?: { value?: string }; partner?: { value?: string } };
+}): number | null {
+  return parseFrenchAmount(String(entry?.tarifs?.public?.value ?? ''), 30, 20_000);
+}
+
+/**
+ * Fusionne deux lignes pour la même période. La 2e passe d’import (souvent Playwright,
+ * prix lu sous le libellé « Tarif public » CESL) remplace le prix si elle en a un.
+ */
+export function mergeDraftSessionItems(a: DraftSessionItem, b: DraftSessionItem): DraftSessionItem {
+  const pa = typeof a.price === 'number' && Number.isFinite(a.price) && a.price > 0 ? a.price : null;
+  const pb = typeof b.price === 'number' && Number.isFinite(b.price) && b.price > 0 ? b.price : null;
+  const price = pb ?? pa ?? null;
+  const label = (a.label?.length ?? 0) >= (b.label?.length ?? 0) ? a.label : b.label;
+  const availabilityA = a.availability === 'unknown' ? null : a.availability;
+  const availabilityB = b.availability === 'unknown' ? null : b.availability;
+  return {
+    ...a,
+    ...b,
+    price,
+    label,
+    availability: availabilityB ?? availabilityA ?? 'unknown'
+  };
+}
+
+function mergeCeslSessionIntoMap(map: Map<string, DraftSessionItem>, session: DraftSessionItem): void {
+  const key = buildSessionKey(session);
+  if (!key) return;
+  const existing = map.get(key);
+  map.set(key, existing ? mergeDraftSessionItems(existing, session) : session);
+}
+
+function extractCeslSessionsFromHtml(html: string): DraftSessionItem[] | null {
+  const durationJson = extractCeslDurationJson(html);
+
+  const sessions = new Map<string, DraftSessionItem>();
+  if (durationJson) {
+    for (const durationEntries of Object.values(durationJson)) {
+      if (!durationEntries || typeof durationEntries !== 'object') continue;
+      for (const entry of Object.values(durationEntries)) {
+        const dates = normalizeWhitespace(entry?.dates ?? '');
+        if (!dates) continue;
+        const parsed = parseSessionLabelToItem(dates);
+        if (!parsed) continue;
+        const price = ceslSessionPriceFromTarifEntry(
+          entry as { tarifs?: { public?: { value?: string }; partner?: { value?: string } } }
+        );
+        const session: DraftSessionItem = {
+          ...parsed,
+          label: dates,
+          price,
+          availability: parseCeslAvailability(entry) ?? 'unknown'
+        };
+        mergeCeslSessionIntoMap(sessions, session);
+      }
+    }
+  }
+
+  mergeCeslSelectPeriodOptionsIntoSessions(html, sessions);
+
+  if (sessions.size === 0) return null;
+
+  const list = Array.from(sessions.values());
+  patchCeslSessionsWhenDomPublicReplacesPartnerLikeJson(list, html);
+
+  return list.sort((left, right) => {
+    const leftKey = left.start_date ?? left.end_date ?? left.label ?? '';
+    const rightKey = right.start_date ?? right.end_date ?? right.label ?? '';
+    return leftKey.localeCompare(rightKey, 'fr');
+  });
+}
+
+/**
+ * Si le JSON met le même montant « bas » sur toutes les lignes (ex. 3100 € partenaire mal mappé)
+ * et que le DOM affiche un tarif public plus élevé (ex. 3410 € dans `.tarif-1`), on aligne les sessions.
+ */
+function patchCeslSessionsWhenDomPublicReplacesPartnerLikeJson(
+  sessions: DraftSessionItem[],
+  html: string
+): void {
+  const dom = extractCeslStayPublicPriceFromTarif1Dom(html);
+  if (dom == null || sessions.length === 0) return;
+
+  const nums = sessions
+    .map((s) => s.price)
+    .filter((p): p is number => typeof p === 'number' && Number.isFinite(p) && p > 0);
+  if (nums.length === 0) {
+    for (const s of sessions) {
+      s.price = dom;
+    }
+    return;
+  }
+  const min = Math.min(...nums);
+  const max = Math.max(...nums);
+  if (min === max && dom > min && dom - min <= 1200) {
+    for (const s of sessions) {
+      s.price = dom;
+    }
+  }
+}
+
+/**
+ * Prix public de la période **sélectionnée** dans `#sejour-periode` (pas le min sur toutes les périodes).
+ */
+function extractCeslSelectedPeriodPublicFromJson(html: string): number | null {
+  const durationJson = extractCeslDurationJson(html);
+  if (!durationJson) return null;
+  const $ = load(html);
+  const selected = $(
+    'select#sejour-periode option[selected], select[name="sejour_periode"] option[selected]'
+  ).first();
+  const periodValue = selected.attr('value')?.trim();
+  if (!periodValue) return null;
+
+  for (const durationEntries of Object.values(durationJson)) {
+    if (!durationEntries || typeof durationEntries !== 'object') continue;
+    const record = durationEntries as Record<
+      string,
+      { tarifs?: { public?: { value?: string }; partner?: { value?: string } } }
+    >;
+    const entry = record[periodValue];
+    if (entry && typeof entry === 'object') {
+      return ceslSessionPriceFromTarifEntry(entry);
+    }
+  }
+  return null;
+}
+
+export function extractCeslStructuredBookingData(
+  html: string,
+  sourceUrl: string
+): {
+  sessions: DraftSessionItem[];
+  transportOptions: Array<Record<string, unknown>>;
+  priceFrom: number | null;
+} | null {
+  const durationJson = extractCeslDurationJson(html);
+  if (!durationJson) return null;
+
+  const sessions = extractCeslSessionsFromHtml(html) ?? [];
+  const allSessionKeys = sessions.map((session, index) => draftSessionStableKey(session as Record<string, unknown>, index));
+  const cityRows = new Map<
+    string,
+    {
+      city: string;
+      amountCents: number;
+      includedSessionKeys: Set<string>;
+    }
+  >();
+
+  for (const durationEntries of Object.values(durationJson)) {
+    if (!durationEntries || typeof durationEntries !== 'object') continue;
+    for (const entry of Object.values(durationEntries)) {
+      const dates = normalizeWhitespace(entry?.dates ?? '');
+      if (!dates) continue;
+      const parsedSession = parseSessionLabelToItem(dates);
+      if (!parsedSession) continue;
+      const sessionIndex = sessions.findIndex(
+        (session) =>
+          session.start_date === parsedSession.start_date &&
+          session.end_date === parsedSession.end_date
+      );
+      const sessionKey =
+        sessionIndex >= 0
+          ? allSessionKeys[sessionIndex]
+          : draftSessionStableKey(parsedSession as Record<string, unknown>, allSessionKeys.length);
+
+      const citiesRaw = normalizeWhitespace(entry?.villes ?? '');
+      if (!citiesRaw) continue;
+      for (const chunk of citiesRaw.split(',')) {
+        const normalizedChunk = normalizeWhitespace(chunk);
+        if (!normalizedChunk) continue;
+        const separatorIndex = normalizedChunk.lastIndexOf(':');
+        if (separatorIndex <= 0) continue;
+
+        const city = normalizeTransportCityLabel(normalizedChunk.slice(0, separatorIndex));
+        const amountEur = parseFrenchAmount(normalizedChunk.slice(separatorIndex + 1), 0, 20_000);
+        if (!city || amountEur === null) continue;
+
+        const amountCents = Math.round(amountEur * 100);
+        const key = `${simplifyForMatch(city)}|${amountCents}`;
+        const existing = cityRows.get(key) ?? {
+          city,
+          amountCents,
+          includedSessionKeys: new Set<string>()
+        };
+        existing.includedSessionKeys.add(sessionKey);
+        cityRows.set(key, existing);
+      }
+    }
+  }
+
+  const transportOptions = Array.from(cityRows.values())
+    .map((row) => ({
+      label: row.city,
+      departure_city: row.city,
+      return_city: row.city,
+      amount_cents: row.amountCents,
+      price: Number((row.amountCents / 100).toFixed(2)),
+      currency: 'EUR',
+      source_url: sourceUrl,
+      excluded_session_keys: allSessionKeys.filter((sessionKey) => !row.includedSessionKeys.has(sessionKey))
+    }))
+    .sort((left, right) => String(left.label).localeCompare(String(right.label), 'fr'));
+
+  const publicPrices = sessions
+    .map((session) => session.price)
+    .filter((price): price is number => typeof price === 'number' && Number.isFinite(price) && price > 0);
+  const distinctPublicPrices = Array.from(new Set(publicPrices));
+
+  return {
+    sessions,
+    transportOptions,
+    priceFrom: distinctPublicPrices.length === 1 ? distinctPublicPrices[0] : null
+  };
+}
+
+type RawDepartureTableAjaxRow = [
+  unknown,
+  unknown,
+  unknown,
+  unknown,
+  unknown,
+  unknown?,
+  unknown?,
+  unknown?,
+  unknown?,
+  unknown?,
+  unknown?,
+  unknown?,
+  unknown?,
+  unknown?,
+  unknown?,
+  unknown?,
+  unknown?,
+  unknown?,
+  unknown?
+];
+
+function parseFrenchLongDateLabel(raw: string): string | null {
+  const normalized = normalizeWhitespace(raw).replace(/^[A-Za-zÀ-ÖØ-öø-ÿ]+\s+/, '');
+  return parseFrenchDate(normalized);
+}
+
+function parseAjaxNumericAmount(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return Math.round(value);
+  if (typeof value === 'string' && value.trim()) return parseFrenchAmount(value, 0, 20_000);
+  return null;
+}
+
+function parseAjaxDecimalAmount(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value !== 'string') return null;
+
+  const cleaned = normalizeWhitespace(value)
+    .replace(/\u00a0/g, ' ')
+    .replace(/[^\d,.\-\s]/g, '')
+    .trim();
+  if (!cleaned) return null;
+
+  let normalized = cleaned.replace(/\s+/g, '');
+  if (normalized.includes(',') && normalized.includes('.')) {
+    if (normalized.lastIndexOf(',') > normalized.lastIndexOf('.')) {
+      normalized = normalized.replace(/\./g, '').replace(',', '.');
+    } else {
+      normalized = normalized.replace(/,/g, '');
+    }
+  } else if (normalized.includes(',')) {
+    normalized = normalized.replace(',', '.');
+  } else {
+    normalized = normalized.replace(/\.(?=\d{3}(?:\.|$))/g, '');
+  }
+
+  const amount = Number(normalized);
+  if (!Number.isFinite(amount) || amount < 0 || amount > 20_000) return null;
+  return Number(amount.toFixed(2));
+}
+
+type RawZigotoursDepartureRow = Record<string, unknown>;
+
+type ZigotoursSessionParsedRow = {
+  sessionKey: string;
+  label: string;
+  startDate: string;
+  endDate: string;
+  city: string | null;
+  totalPriceEur: number | null;
+  transportEur: number | null;
+  isFull: boolean;
+  isExplicitBase: boolean;
+};
+
+function parseSlashDateToIso(raw: string, preferMonthFirst: boolean): string | null {
+  const normalized = normalizeWhitespace(raw).replace(/\./g, '/').replace(/-/g, '/');
+  const match = normalized.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!match) return null;
+  const first = Number(match[1]);
+  const second = Number(match[2]);
+  const year = Number(match[3]);
+  if (!Number.isFinite(first) || !Number.isFinite(second) || !Number.isFinite(year)) return null;
+
+  let day = first;
+  let month = second;
+  if (first <= 12 && second > 12) {
+    month = first;
+    day = second;
+  } else if (first <= 12 && second <= 12 && preferMonthFirst) {
+    month = first;
+    day = second;
+  }
+
+  return toIsoDate(day, month, year);
+}
+
+function parseZigotoursDateRangeLabel(value: string): { start: string | null; end: string | null } | null {
+  const normalized = normalizeWhitespace(value);
+  if (!normalized) return null;
+  const match = normalized.match(
+    /(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4})\s*(?:au|a|à|-)\s*(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4})/i
+  );
+  if (!match?.[1] || !match[2]) return null;
+  return {
+    start: parseFrenchDate(match[1]) ?? parseSlashDateToIso(match[1], false),
+    end: parseFrenchDate(match[2]) ?? parseSlashDateToIso(match[2], false)
+  };
+}
+
+function parseZigotoursSessionRow(row: RawZigotoursDepartureRow): ZigotoursSessionParsedRow | null {
+  const startFromDt = parseSlashDateToIso(String(row.dtDb ?? ''), true);
+  const endFromDt = parseSlashDateToIso(String(row.dtFn ?? ''), true);
+  const fromLabel = parseZigotoursDateRangeLabel(String(row.date ?? ''));
+  const startDate = startFromDt ?? fromLabel?.start ?? null;
+  const endDate = endFromDt ?? fromLabel?.end ?? null;
+  if (!startDate || !endDate) return null;
+
+  const rawCity = normalizeWhitespace(String(row.nomVille ?? row.ville ?? ''));
+  const city = normalizeTransportCityLabel(rawCity);
+  const cityKey = simplifyForMatch(city ?? rawCity);
+  const transportEur = parseAjaxDecimalAmount(row.transport);
+  const isExplicitBase =
+    cityKey.includes('sur place') ||
+    row.ville === 0 ||
+    normalizeWhitespace(String(row.ville ?? '')) === '0';
+  const isFull =
+    row.complet === true ||
+    row.complet === 1 ||
+    normalizeWhitespace(String(row.complet ?? '')) === '1';
+  const totalPriceEur = parseAjaxDecimalAmount(row.prixAvecRemise) ?? parseAjaxDecimalAmount(row.prixSansRemise);
+  const label = normalizeWhitespace(String(row.date ?? '')) || `Du ${startDate} au ${endDate}`;
+
+  return {
+    sessionKey: `${startDate}|${endDate}`,
+    label,
+    startDate,
+    endDate,
+    city,
+    totalPriceEur,
+    transportEur,
+    isFull,
+    isExplicitBase
+  };
+}
+
+function buildZigotoursDepartureDataFromRows(
+  rows: RawZigotoursDepartureRow[],
+  sourceUrl: string
+): PaginatedDepartureTableData | null {
+  if (!Array.isArray(rows) || rows.length === 0) return null;
+
+  const sessionMap = new Map<
+    string,
+    {
+      session: DraftSessionItem;
+      rows: ZigotoursSessionParsedRow[];
+    }
+  >();
+
+  for (const row of rows) {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) continue;
+    const parsedRow = parseZigotoursSessionRow(row);
+    if (!parsedRow) continue;
+
+    const existing = sessionMap.get(parsedRow.sessionKey) ?? {
+      session: {
+        label: parsedRow.label,
+        start_date: parsedRow.startDate,
+        end_date: parsedRow.endDate,
+        price: null,
+        availability: parsedRow.isFull ? 'full' : 'available'
+      } satisfies DraftSessionItem,
+      rows: []
+    };
+
+    if (existing.session.availability !== 'available' && !parsedRow.isFull) {
+      existing.session.availability = 'available';
+    }
+    existing.rows.push(parsedRow);
+    sessionMap.set(parsedRow.sessionKey, existing);
+  }
+
+  if (sessionMap.size === 0) return null;
+
+  for (const entry of Array.from(sessionMap.values())) {
+    const explicitBase = entry.rows.find((row) => row.isExplicitBase && typeof row.totalPriceEur === 'number');
+    const minTotal = entry.rows
+      .map((row) => row.totalPriceEur)
+      .filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
+      .sort((a, b) => a - b)[0];
+    const basePrice = explicitBase?.totalPriceEur ?? minTotal ?? null;
+    entry.session.price = basePrice != null ? Number(basePrice.toFixed(2)) : null;
+  }
+
+  const sessions = Array.from(sessionMap.values())
+    .map((entry) => entry.session)
+    .sort((left, right) =>
+      `${left.start_date ?? ''}|${left.end_date ?? ''}`.localeCompare(
+        `${right.start_date ?? ''}|${right.end_date ?? ''}`,
+        'fr'
+      )
+    );
+  if (sessions.length === 0) return null;
+
+  const allSessionKeys = sessions.map((session, index) =>
+    draftSessionStableKey(session as Record<string, unknown>, index)
+  );
+  const sessionIndexByPeriod = new Map<string, string>(
+    sessions.map((session, index) => [
+      `${session.start_date ?? ''}|${session.end_date ?? ''}`,
+      allSessionKeys[index] ?? `idx:${index}`
+    ])
+  );
+
+  const transportByCity = new Map<
+    string,
+    {
+      city: string;
+      includedSessionKeys: Set<string>;
+      amountCounts: Map<number, number>;
+    }
+  >();
+  const transportPriceDebug: DraftTransportPriceDebug[] = [];
+
+  for (const [sessionKey, entry] of Array.from(sessionMap.entries())) {
+    const stableSessionKey = sessionIndexByPeriod.get(sessionKey) ?? sessionKey;
+    const sessionBaseEur =
+      typeof entry.session.price === 'number' && Number.isFinite(entry.session.price)
+        ? entry.session.price
+        : null;
+
+    for (const row of entry.rows) {
+      if (row.isExplicitBase || !row.city) continue;
+
+      const deltaEur =
+        row.transportEur ??
+        (row.totalPriceEur != null && sessionBaseEur != null
+          ? Number((row.totalPriceEur - sessionBaseEur).toFixed(2))
+          : null);
+      const amountCents =
+        deltaEur != null && Number.isFinite(deltaEur) && deltaEur >= 0
+          ? Math.round(deltaEur * 100)
+          : null;
+      if (amountCents == null) continue;
+
+      const cityKey = simplifyForMatch(row.city);
+      const existing = transportByCity.get(cityKey) ?? {
+        city: row.city,
+        includedSessionKeys: new Set<string>(),
+        amountCounts: new Map<number, number>()
+      };
+      existing.includedSessionKeys.add(stableSessionKey);
+      existing.amountCounts.set(amountCents, (existing.amountCounts.get(amountCents) ?? 0) + 1);
+      transportByCity.set(cityKey, existing);
+
+      transportPriceDebug.push({
+        variant_url: sourceUrl,
+        departure_city: row.city,
+        return_city: row.city,
+        page_price_cents:
+          row.totalPriceEur != null && Number.isFinite(row.totalPriceEur)
+            ? Math.round(row.totalPriceEur * 100)
+            : null,
+        base_price_cents:
+          sessionBaseEur != null && Number.isFinite(sessionBaseEur)
+            ? Math.round(sessionBaseEur * 100)
+            : null,
+        amount_cents: amountCents,
+        pricing_method: row.transportEur != null ? 'absolute_price' : 'session_delta',
+        confidence: row.transportEur != null ? 'high' : 'medium',
+        reason: `zigotours-getDepartDetails:${stableSessionKey}`,
+        departure_label_raw: row.city,
+        return_label_raw: row.city
+      });
+    }
+  }
+
+  const transportOptions = Array.from(transportByCity.values())
+    .map((entry): DraftTransportOptionItem | null => {
+      const amountCents = Array.from(entry.amountCounts.entries()).sort((a, b) => {
+        if (b[1] !== a[1]) return b[1] - a[1];
+        return a[0] - b[0];
+      })[0]?.[0] ?? null;
+      if (amountCents == null) return null;
+      return {
+        label: entry.city,
+        departure_city: entry.city,
+        return_city: entry.city,
+        amount_cents: amountCents,
+        price: Number((amountCents / 100).toFixed(2)),
+        currency: 'EUR',
+        source_url: sourceUrl,
+        excluded_session_keys: allSessionKeys.filter((key) => !entry.includedSessionKeys.has(key))
+      };
+    })
+    .filter((row): row is DraftTransportOptionItem => row !== null)
+    .sort((left, right) => String(left.label).localeCompare(String(right.label), 'fr'));
+
+  const transportVariants = transportOptions.map((row) => ({
+    departure_city: row.departure_city,
+    return_city: row.return_city,
+    amount_cents: Number.isFinite(row.amount_cents) ? Math.round(row.amount_cents) : null,
+    currency: 'EUR' as const,
+    source_url: row.source_url || sourceUrl,
+    pricing_method: 'absolute_price' as const,
+    confidence: 'high' as const,
+    reason: 'zigotours-getDepartDetails'
+  }));
+
+  const sessionPrices = sessions
+    .map((session) => session.price)
+    .filter((price): price is number => typeof price === 'number' && Number.isFinite(price) && price > 0);
+  const distinctSessionPrices = Array.from(new Set(sessionPrices));
+
+  return {
+    rowCount: rows.length,
+    sessions,
+    transportOptions,
+    transportVariants,
+    transportPriceDebug,
+    priceFrom: distinctSessionPrices.length === 1 ? distinctSessionPrices[0] : null
+  };
+}
+
+function buildPaginatedDepartureTableDataFromRows(
+  rows: RawDepartureTableAjaxRow[],
+  sourceUrl: string
+): PaginatedDepartureTableData | null {
+  if (!Array.isArray(rows) || rows.length === 0) return null;
+
+  const sessionMap = new Map<
+    string,
+    {
+      session: DraftSessionItem;
+      rows: Array<{
+        city: string;
+        totalPriceEur: number | null;
+        basePriceEur: number | null;
+        deltaPriceEur: number | null;
+        availability: DraftSessionItem['availability'];
+        rawHtml: string;
+      }>;
+    }
+  >();
+
+  for (const row of rows) {
+    if (!Array.isArray(row)) continue;
+    const startLabel = normalizeWhitespace(String(row[0] ?? ''));
+    const endLabel = normalizeWhitespace(String(row[2] ?? ''));
+    const city = normalizeTransportCityLabel(String(row[3] ?? ''));
+    const startDate = parseFrenchLongDateLabel(startLabel);
+    const endDate = parseFrenchLongDateLabel(endLabel);
+    if (!startDate || !endDate || !city) continue;
+
+    const rawHtml = String(row[4] ?? '');
+    const totalPriceEur = parseAjaxNumericAmount(row[5]);
+    const deltaPriceEur = parseAjaxNumericAmount(row[7]);
+    const basePriceEur = parseAjaxNumericAmount(row[8]) ?? parseAjaxNumericAmount(row[16]);
+    const isFull = row[10] === true || /complet/i.test(rawHtml);
+    const availability: DraftSessionItem['availability'] = isFull ? 'full' : 'available';
+    const sessionKey = `${startDate}|${endDate}`;
+    const existing = sessionMap.get(sessionKey) ?? {
+      session: {
+        label: `Du ${startDate} au ${endDate}`,
+        start_date: startDate,
+        end_date: endDate,
+        price: null,
+        availability
+      },
+      rows: []
+    };
+
+    if (simplifyForMatch(city) === 'sur place') {
+      existing.session.price = totalPriceEur ?? basePriceEur ?? existing.session.price ?? null;
+    }
+    if (existing.session.availability !== 'available' && availability === 'available') {
+      existing.session.availability = 'available';
+    }
+
+    existing.rows.push({
+      city,
+      totalPriceEur,
+      basePriceEur,
+      deltaPriceEur,
+      availability,
+      rawHtml
+    });
+    sessionMap.set(sessionKey, existing);
+  }
+
+  const sessions = Array.from(sessionMap.values())
+    .map((entry) => entry.session)
+    .sort((left, right) =>
+      `${left.start_date ?? ''}|${left.end_date ?? ''}`.localeCompare(
+        `${right.start_date ?? ''}|${right.end_date ?? ''}`,
+        'fr'
+      )
+    );
+  if (sessions.length === 0) return null;
+
+  const allSessionKeys = sessions.map((session, index) =>
+    draftSessionStableKey(session as Record<string, unknown>, index)
+  );
+  const sessionIndexByKey = new Map<string, string>(
+    sessions.map((session, index) => [
+      `${session.start_date ?? ''}|${session.end_date ?? ''}`,
+      allSessionKeys[index] ?? `idx:${index}`
+    ])
+  );
+
+  const transportByCity = new Map<
+    string,
+    {
+      city: string;
+      includedSessionKeys: Set<string>;
+      amountCounts: Map<number, number>;
+    }
+  >();
+  const transportPriceDebug: DraftTransportPriceDebug[] = [];
+
+  for (const [sessionKey, entry] of Array.from(sessionMap.entries())) {
+    const stableSessionKey = sessionIndexByKey.get(sessionKey) ?? sessionKey;
+    const sessionBaseEur =
+      entry.rows.find((row) => simplifyForMatch(row.city) === 'sur place')?.totalPriceEur ??
+      entry.session.price ??
+      null;
+
+    for (const row of entry.rows) {
+      if (simplifyForMatch(row.city) === 'sur place') continue;
+
+      const deltaEur =
+        row.deltaPriceEur ??
+        (row.totalPriceEur != null && sessionBaseEur != null ? row.totalPriceEur - sessionBaseEur : null);
+      const amountCents =
+        deltaEur != null && Number.isFinite(deltaEur) && deltaEur >= 0
+          ? Math.round(deltaEur * 100)
+          : null;
+      const existing = transportByCity.get(simplifyForMatch(row.city)) ?? {
+        city: row.city,
+        includedSessionKeys: new Set<string>(),
+        amountCounts: new Map<number, number>()
+      };
+      existing.includedSessionKeys.add(stableSessionKey);
+      if (amountCents != null) {
+        existing.amountCounts.set(amountCents, (existing.amountCounts.get(amountCents) ?? 0) + 1);
+      }
+      transportByCity.set(simplifyForMatch(row.city), existing);
+
+      transportPriceDebug.push({
+        variant_url: sourceUrl,
+        departure_city: row.city,
+        return_city: row.city,
+        page_price_cents:
+          row.totalPriceEur != null && Number.isFinite(row.totalPriceEur)
+            ? Math.round(row.totalPriceEur * 100)
+            : null,
+        base_price_cents:
+          sessionBaseEur != null && Number.isFinite(sessionBaseEur)
+            ? Math.round(sessionBaseEur * 100)
+            : null,
+        amount_cents: amountCents,
+        pricing_method: amountCents != null ? 'session_delta' : 'unresolved',
+        confidence: amountCents != null ? 'high' : 'low',
+        reason: `datatable-ajax:${stableSessionKey}`,
+        departure_label_raw: row.city,
+        return_label_raw: row.city
+      });
+    }
+  }
+
+  const transportOptions = Array.from(transportByCity.values())
+    .map((entry): DraftTransportOptionItem | null => {
+      const amountCents = Array.from(entry.amountCounts.entries()).sort((a, b) => {
+        if (b[1] !== a[1]) return b[1] - a[1];
+        return a[0] - b[0];
+      })[0]?.[0] ?? null;
+      if (amountCents == null) return null;
+      return {
+        label: entry.city,
+        departure_city: entry.city,
+        return_city: entry.city,
+        amount_cents: amountCents,
+        price: Number((amountCents / 100).toFixed(2)),
+        currency: 'EUR',
+        source_url: sourceUrl,
+        excluded_session_keys: allSessionKeys.filter((key) => !entry.includedSessionKeys.has(key))
+      };
+    })
+    .filter((row): row is DraftTransportOptionItem => row !== null)
+    .sort((left, right) => String(left.label).localeCompare(String(right.label), 'fr'));
+
+  const transportVariants = transportOptions.map((row) => ({
+    departure_city: row.departure_city,
+    return_city: row.return_city,
+    amount_cents: Number.isFinite(row.amount_cents) ? Math.round(row.amount_cents) : null,
+    currency: 'EUR' as const,
+    source_url: row.source_url || sourceUrl,
+    pricing_method: 'session_delta' as const,
+    confidence: 'high' as const,
+    reason: 'datatable-ajax'
+  }));
+
+  const sessionPrices = sessions
+    .map((session) => session.price)
+    .filter((price): price is number => typeof price === 'number' && Number.isFinite(price) && price > 0);
+  const distinctSessionPrices = Array.from(new Set(sessionPrices));
+
+  return {
+    rowCount: rows.length,
+    sessions,
+    transportOptions,
+    transportVariants,
+    transportPriceDebug,
+    priceFrom: distinctSessionPrices.length === 1 ? distinctSessionPrices[0] : null
+  };
+}
+
+export async function fetchPaginatedDepartureTableData(
+  html: string,
+  sourceUrl: string
+): Promise<PaginatedDepartureTableData | null> {
+  const $ = load(html);
+  const pathFromLegacyField = normalizeWhitespace($('#tableSejourPath').attr('value') ?? '');
+  const pathFromTableDataset = normalizeWhitespace(
+    $('#tableSejour').attr('data-server-url') ??
+      $('table.tableSejour').first().attr('data-server-url') ??
+      ''
+  );
+  const path = pathFromLegacyField || pathFromTableDataset;
+  if (!path) return null;
+
+  const legacyStayId = normalizeWhitespace($('#tableSejourId').attr('value') ?? '');
+  let stayId = legacyStayId;
+
+  if (!stayId) {
+    const parametersRaw = normalizeWhitespace(
+      $('#tableSejour input.parameters').first().attr('value') ??
+        $('table.tableSejour input.parameters').first().attr('value') ??
+        $('input.parameters').first().attr('value') ??
+        ''
+    );
+    if (parametersRaw) {
+      try {
+        const parsedParameters = JSON.parse(parametersRaw) as Record<string, unknown>;
+        stayId = normalizeWhitespace(
+          String(parsedParameters.sejour_id ?? parsedParameters.stay_id ?? '')
+        );
+      } catch {
+        const inlineMatch = parametersRaw.match(/"(?:sejour_id|stay_id)"\s*:\s*"?(\d+)"?/i);
+        stayId = normalizeWhitespace(inlineMatch?.[1] ?? '');
+      }
+    }
+  }
+
+  if (!stayId) {
+    try {
+      const parsedSourceUrl = new URL(sourceUrl);
+      stayId = normalizeWhitespace(
+        parsedSourceUrl.searchParams.get('sejour_id') ??
+          parsedSourceUrl.searchParams.get('stay_id') ??
+          parsedSourceUrl.pathname.match(/\/tarifsejour\/(\d+)/i)?.[1] ??
+          ''
+      );
+    } catch {
+      stayId = '';
+    }
+  }
+
+  let endpointUrl: string;
+  try {
+    endpointUrl = new URL(path, sourceUrl).toString();
+  } catch {
+    return null;
+  }
+
+  const query = new URL(endpointUrl);
+  if (stayId) {
+    query.searchParams.set('sejour_id', stayId);
+  }
+  if (!normalizeWhitespace(query.searchParams.get('sejour_id') ?? '')) return null;
+  query.searchParams.set('length', '-1');
+  query.searchParams.set('draw', '0');
+  query.searchParams.set('start', '0');
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(query.toString(), {
+      method: 'GET',
+      redirect: 'follow',
+      signal: controller.signal,
+      headers: {
+        'user-agent':
+          'Mozilla/5.0 (compatible; ResacoloImportBot/1.0; +https://resacolo.com)',
+        accept: 'application/json,text/plain,*/*',
+        'accept-language': 'fr-FR,fr;q=0.9,en;q=0.8',
+        'x-requested-with': 'XMLHttpRequest'
+      }
+    });
+    if (!response.ok) return null;
+    const payload = (await response.json().catch(() => null)) as
+      | { data?: unknown; recordsFiltered?: unknown }
+      | null;
+    const dataRows = Array.isArray(payload?.data) ? (payload?.data as RawDepartureTableAjaxRow[]) : [];
+    return buildPaginatedDepartureTableDataFromRows(dataRows, query.toString());
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function detectZigotoursStayId($: CheerioAPI, sourceUrl: string): string | null {
+  const stayIdFromInput = normalizeWhitespace(
+    $('#sejourId').attr('value') ??
+      $('input#sejourId').attr('value') ??
+      $('input[name="sejour_id"]').first().attr('value') ??
+      ''
+  );
+  if (stayIdFromInput) return stayIdFromInput;
+
+  try {
+    const parsed = new URL(sourceUrl);
+    const inQuery = normalizeWhitespace(parsed.searchParams.get('sejour_id') ?? '');
+    if (inQuery) return inQuery;
+    const fromPath = normalizeWhitespace(parsed.pathname.match(/\/tarifsejour\/(\d+)/i)?.[1] ?? '');
+    if (fromPath) return fromPath;
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+function detectZigotoursEndpointPath($: CheerioAPI): string {
+  const dynamicPath = normalizeWhitespace(
+    $('.urlDepart').first().attr('value') ??
+      $('input.urlDepart').first().attr('value') ??
+      $('input[name="urlDepart"]').first().attr('value') ??
+      ''
+  );
+  return dynamicPath || '/getDepartDetails';
+}
+
+export async function fetchZigotoursDepartureData(
+  html: string,
+  sourceUrl: string
+): Promise<ZigotoursDepartureDataResult> {
+  const $ = load(html);
+  const stayId = detectZigotoursStayId($, sourceUrl);
+  if (!stayId) {
+    return {
+      data: null,
+      endpointUrl: null,
+      stayId: null,
+      rowCount: 0,
+      reason: 'missing_stay_id',
+      statusCode: null
+    };
+  }
+
+  const endpointPath = detectZigotoursEndpointPath($);
+  let endpointUrl: string;
+  try {
+    endpointUrl = new URL(endpointPath, sourceUrl).toString();
+  } catch {
+    return {
+      data: null,
+      endpointUrl: null,
+      stayId,
+      rowCount: 0,
+      reason: 'invalid_endpoint_url',
+      statusCode: null
+    };
+  }
+
+  const query = new URL(endpointUrl);
+  query.searchParams.set('sejour_id', stayId);
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(query.toString(), {
+      method: 'GET',
+      redirect: 'follow',
+      signal: controller.signal,
+      headers: {
+        'user-agent':
+          'Mozilla/5.0 (compatible; ResacoloImportBot/1.0; +https://resacolo.com)',
+        accept: 'application/json,text/plain,*/*',
+        'accept-language': 'fr-FR,fr;q=0.9,en;q=0.8',
+        'x-requested-with': 'XMLHttpRequest'
+      }
+    });
+    if (!response.ok) {
+      return {
+        data: null,
+        endpointUrl: query.toString(),
+        stayId,
+        rowCount: 0,
+        reason: 'http_error',
+        statusCode: response.status
+      };
+    }
+
+    const payload = (await response.json().catch(() => null)) as unknown;
+    const rows = Array.isArray(payload)
+      ? payload
+      : payload && typeof payload === 'object' && Array.isArray((payload as { data?: unknown }).data)
+        ? ((payload as { data: unknown[] }).data ?? [])
+        : [];
+    if (!Array.isArray(rows)) {
+      return {
+        data: null,
+        endpointUrl: query.toString(),
+        stayId,
+        rowCount: 0,
+        reason: 'invalid_json',
+        statusCode: response.status
+      };
+    }
+    if (rows.length === 0) {
+      return {
+        data: null,
+        endpointUrl: query.toString(),
+        stayId,
+        rowCount: 0,
+        reason: 'empty_rows',
+        statusCode: response.status
+      };
+    }
+
+    const parsed = buildZigotoursDepartureDataFromRows(
+      rows.filter((row): row is RawZigotoursDepartureRow => Boolean(row) && typeof row === 'object'),
+      query.toString()
+    );
+    if (!parsed) {
+      return {
+        data: null,
+        endpointUrl: query.toString(),
+        stayId,
+        rowCount: rows.length,
+        reason: 'empty_rows',
+        statusCode: response.status
+      };
+    }
+
+    return {
+      data: parsed,
+      endpointUrl: query.toString(),
+      stayId,
+      rowCount: rows.length,
+      reason: 'ok',
+      statusCode: response.status
+    };
+  } catch {
+    return {
+      data: null,
+      endpointUrl: query.toString(),
+      stayId,
+      rowCount: 0,
+      reason: 'http_error',
+      statusCode: null
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function extractReservationCallToAction(
+  $: CheerioAPI,
+  visibleText: string
+): DraftSessionItem['availability'] {
+  const pageKey = simplifyForMatch(visibleText);
+  if (!pageKey) return null;
+  if (/\bcomplet|indisponible|sold out|inscriptions closes|inscriptions fermees\b/i.test(pageKey)) {
+    return 'full';
+  }
+
+  const ctaText = $('a, button, input[type="submit"], input[type="button"]')
+    .toArray()
+    .map((node) =>
+      normalizeWhitespace(
+        [
+          $(node).text(),
+          $(node).attr('value') ?? '',
+          $(node).attr('aria-label') ?? '',
+          $(node).attr('title') ?? ''
+        ].join(' ')
+      )
+    )
+    .filter(Boolean)
+    .slice(0, 60)
+    .join(' ');
+  const ctaKey = simplifyForMatch(ctaText);
+
+  if (/\b(reserver|je reserve|inscription|s inscrire|book now|booker)\b/i.test(ctaKey)) {
+    return 'available';
+  }
+
+  return null;
+}
+
+function extractSessions($: CheerioAPI, visibleText: string, html: string): DraftSessionItem[] | null {
+  const ceslSessions = extractCeslSessionsFromHtml(html);
+  if (ceslSessions && ceslSessions.length > 0) {
+    return ceslSessions;
+  }
+
   const sessions: DraftSessionItem[] = [];
+  const defaultAvailability = extractReservationCallToAction($, visibleText);
+  const structuredSessions = extractStructuredSessionOptions($);
+
+  const sessionScore = (session: DraftSessionItem): number => {
+    let score = 0;
+    if (session.start_date) score += 20;
+    if (session.end_date) score += 20;
+    if (typeof session.price === 'number' && Number.isFinite(session.price) && session.price > 0) score += 30;
+    if (session.availability === 'available') score += 15;
+    else if (session.availability) score += 10;
+    if (session.label) score += Math.min(session.label.length, 20);
+    return score;
+  };
 
   const patternMonthSame =
     /\bdu\s+(\d{1,2})\s+(?:au|a|à)\s+(\d{1,2})\s+([A-Za-zÀ-ÖØ-öø-ÿ]+)\s+(\d{4})\b/gi;
@@ -1964,8 +3391,8 @@ function extractSessions(visibleText: string): DraftSessionItem[] | null {
       label,
       start_date: startDate,
       end_date: endDate,
-      price: findPriceInText(snippet),
-      availability: detectSessionAvailability(snippet)
+      price: findPublicPriceInText(snippet),
+      availability: detectSessionAvailability(snippet) ?? defaultAvailability ?? 'unknown'
     });
   }
 
@@ -1984,14 +3411,56 @@ function extractSessions(visibleText: string): DraftSessionItem[] | null {
       label,
       start_date: startDate,
       end_date: endDate,
-      price: findPriceInText(snippet),
-      availability: detectSessionAvailability(snippet)
+      price: findPublicPriceInText(snippet),
+      availability: detectSessionAvailability(snippet) ?? defaultAvailability ?? 'unknown'
     });
   }
 
-  const deduped = unique(
-    sessions.map((session) => JSON.stringify(session))
-  ).map((serialized) => JSON.parse(serialized) as DraftSessionItem);
+  const dedupedByPeriod = new Map<string, DraftSessionItem>();
+  for (const session of sessions) {
+    const key = buildSessionKey(session);
+    if (!key) continue;
+
+    const existing = dedupedByPeriod.get(key);
+    if (!existing || sessionScore(session) > sessionScore(existing)) {
+      dedupedByPeriod.set(key, session);
+    }
+  }
+
+  const deduped = Array.from(dedupedByPeriod.values()).sort((left, right) => {
+    const leftKey = left.start_date ?? left.end_date ?? left.label ?? '';
+    const rightKey = right.start_date ?? right.end_date ?? right.label ?? '';
+    return leftKey.localeCompare(rightKey, 'fr');
+  });
+
+  if (structuredSessions.length > 1) {
+    const inferredByPeriod = new Map(deduped.map((session) => [buildSessionKey(session), session] as const));
+    const mergedByPeriod = new Map<string, DraftSessionItem>();
+
+    for (const session of structuredSessions) {
+      const inferred = inferredByPeriod.get(buildSessionKey(session));
+      const merged = {
+        ...session,
+        price: inferred?.price ?? null,
+        availability: session.availability ?? inferred?.availability ?? defaultAvailability ?? 'unknown'
+      };
+      mergedByPeriod.set(buildSessionKey(merged), merged);
+    }
+
+    for (const session of deduped) {
+      const key = buildSessionKey(session);
+      const existing = mergedByPeriod.get(key);
+      if (!existing || sessionScore(session) > sessionScore(existing)) {
+        mergedByPeriod.set(key, session);
+      }
+    }
+
+    return Array.from(mergedByPeriod.values()).sort((left, right) => {
+      const leftKey = left.start_date ?? left.end_date ?? left.label ?? '';
+      const rightKey = right.start_date ?? right.end_date ?? right.label ?? '';
+      return leftKey.localeCompare(rightKey, 'fr');
+    });
+  }
 
   return deduped.length > 0 ? deduped : null;
 }
@@ -2000,16 +3469,18 @@ function detectTransportMode(transportText: string | null, visibleText: string):
   const source = simplifyForMatch([transportText, visibleText].filter(Boolean).join(' '));
   if (!source) return null;
 
-  const modes = new Set<string>();
-  if (/\btrain\b/.test(source)) modes.add('train');
-  if (/\bavion\b/.test(source)) modes.add('avion');
-  if (/\bbus\b/.test(source)) modes.add('bus');
-  if (/\bcar\b/.test(source)) modes.add('car');
-  if (/\b(depose|deposee|depose sur|depose centre|rendez vous sur place|sur place)\b/.test(source)) {
-    modes.add('dépose centre');
-  }
+  const hasTrain = /\btrain\b/.test(source);
+  const hasPlane = /\bavion\b/.test(source);
+  const hasCoach = /\b(bus|car)\b/.test(source);
+  const hasOnSite = /\b(depose|deposee|depose sur|depose centre|rendez vous sur place|sur place)\b/.test(source);
 
-  return modes.size === 1 ? Array.from(modes)[0] : null;
+  if (hasTrain && hasCoach) return 'train puis car';
+  if (hasPlane && hasCoach) return 'avion puis car';
+  if (hasTrain) return 'train';
+  if (hasPlane) return 'avion';
+  if (hasCoach) return 'car';
+  if (hasOnSite) return 'arrivée sur place';
+  return null;
 }
 
 type TransportSelectDirection = 'outbound' | 'return' | 'generic';
@@ -2056,7 +3527,12 @@ const TRANSPORT_PLACEHOLDER_KEYS = [
   'aucun transport',
   'sans transport',
   'none',
-  'tous'
+  'tous',
+  'transport aller retour',
+  'transport aerien',
+  'transport aerien aller retour',
+  'transport aérien',
+  'transport aérien aller retour'
 ];
 
 const TRANSPORT_BASE_REFERENCE_KEYS = [
@@ -2082,6 +3558,12 @@ function sanitizeTransportLabel(value: string | null | undefined): string {
     .replace(/\u00A0/g, ' ')
     .replace(/\s*[\(\[]?\+?\s*[0-9][0-9\s.,]*\s*(?:€|euros?)[^\)\]]*[\)\]]?/gi, '')
     .replace(/\s*-\s*\+?\s*[0-9][0-9\s.,]*\s*(?:€|euros?)/gi, '')
+    .replace(
+      /^transport\s+accompagn[ée]\s+(?:aller|retour)\s+(?:depuis|de|vers|jusqu(?:e|['’])?a?)\s+/i,
+      ''
+    )
+    .replace(/^transport\s+accompagn[ée]\s+/i, '')
+    .replace(/^(?:aller|retour)\s+(?:depuis|de|vers|jusqu(?:e|['’])?a?)\s+/i, '')
     .replace(/^transport\s*(aller|retour)?\s*[:\-]\s*/i, '')
     .trim();
 }
@@ -2092,6 +3574,9 @@ function normalizeTransportCityLabel(value: string | null | undefined): string |
   const key = simplifyForMatch(normalized);
   if (!key) return null;
   if (TRANSPORT_PLACEHOLDER_KEYS.some((item) => key.includes(simplifyForMatch(item)))) {
+    return null;
+  }
+  if (key.includes('transport') && /\b(aerien|aerienne|aeroport|aller retour)\b/.test(key)) {
     return null;
   }
   return normalized.length > 80 ? normalized.slice(0, 80).trim() : normalized;
@@ -2120,6 +3605,11 @@ function detectTransportDirection(context: string): TransportSelectDirection | n
   if (hasOutbound && !hasReturn) return 'outbound';
   if (hasReturn && !hasOutbound) return 'return';
   if (hasTransport) return 'generic';
+
+  if (/pdtopt|optvalueid|optvalue|hubville|villedepart|ville_depart|choixville/i.test(key)) {
+    return 'generic';
+  }
+
   return null;
 }
 
@@ -2133,7 +3623,9 @@ function buildTransportSelectContext($: CheerioAPI, select: AnyNode): string {
   const linkedLabel = id
     ? normalizeWhitespace($(`label[for="${id}"]`).first().text())
     : '';
-  const parentText = normalizeWhitespace(node.closest('td,th,tr,div,fieldset,section,form').first().text());
+  const parentText = normalizeWhitespace(
+    node.closest('td,th,tr,div,fieldset,section,form').first().text().slice(0, 1400)
+  );
 
   return normalizeWhitespace([id, name, ariaLabel, title, className, linkedLabel, parentText].join(' '));
 }
@@ -2214,12 +3706,72 @@ function getTransportSelectCandidates(
 }
 
 function extractCurrentPriceEur($: CheerioAPI, visibleText: string): number | null {
+  const publicTariffBlocks = $('.tarif-1, [class*="tarif-1"], .tarif-public, [class*="tarif-public"]')
+    .toArray()
+    .map((node) => normalizeWhitespace($(node).text()))
+    .filter((text) => {
+      const key = simplifyForMatch(text);
+      return key.includes('tarif public') && !key.includes('tarif partenaire');
+    });
+
+  for (const content of publicTariffBlocks) {
+    const price = findPriceInTextWithMin(content, 0);
+    if (price !== null) return price;
+  }
+
+  const labeledPublicTariffs = $('.tarif-label')
+    .toArray()
+    .map((node) => $(node).parent())
+    .map((parent) => normalizeWhitespace(parent.text()))
+    .filter((text) => {
+      const key = simplifyForMatch(text);
+      return key.includes('tarif public') && !key.includes('tarif partenaire');
+    });
+
+  for (const content of labeledPublicTariffs) {
+    const price = findPriceInTextWithMin(content, 0);
+    if (price !== null) return price;
+  }
+
+  const directTransportSelectors = [
+    '.tarif-label + .badge .sejour-tarif.active',
+    '.tarif-label + .badge .sejour-tarif',
+    '.badge .sejour-tarif.active',
+    '.badge .sejour-tarif',
+    '.sejour-tarif.active',
+    '.sejour-tarif'
+  ];
+
+  for (const selector of directTransportSelectors) {
+    const nodes = $(selector).toArray().slice(0, 10);
+    for (const node of nodes) {
+      const content = normalizeWhitespace(
+        [
+          $(node).attr('content') ?? '',
+          $(node).attr('value') ?? '',
+          $(node).text()
+        ].join(' ')
+      );
+      if (!content) continue;
+      const containerText = normalizeWhitespace($(node).closest('div, td, li, article, section').text());
+      const contentKey = simplifyForMatch(`${content} ${containerText}`);
+      if (contentKey.includes('tarif partenaire')) continue;
+      const price = findPriceInTextWithMin(content, 0);
+      if (price !== null) return price;
+    }
+  }
+
   const selectors = [
     '[itemprop="price"]',
     '[class*="prix"]',
     '[id*="prix"]',
     '[class*="price"]',
     '[id*="price"]',
+    '[class*="tarif"]',
+    '[id*="tarif"]',
+    '[class*="montant"]',
+    '[data-price]',
+    '[data-testid*="price" i]',
     '.prix',
     '.price'
   ];
@@ -2235,12 +3787,15 @@ function extractCurrentPriceEur($: CheerioAPI, visibleText: string): number | nu
         ].join(' ')
       );
       if (!content) continue;
-      const price = findPriceInText(content);
+      const containerText = normalizeWhitespace($(node).closest('div, td, li, article, section').text());
+      const contentKey = simplifyForMatch(`${content} ${containerText}`);
+      if (contentKey.includes('tarif partenaire')) continue;
+      const price = findPriceInTextWithMin(content, 0);
       if (price !== null) return price;
     }
   }
 
-  return findPriceInText(visibleText);
+  return findPriceInTextWithMin(visibleText, 0);
 }
 
 function extractCurrentPriceCents($: CheerioAPI, visibleText: string): number | null {
@@ -2293,13 +3848,20 @@ function parseTransportPage(html: string, sourceUrl: string): ParsedTransportPag
   return parsed;
 }
 
-function isTransportBaseReference(value: string | null | undefined): boolean {
+export function isTransportBaseReference(value: string | null | undefined): boolean {
   const key = simplifyForMatch(value ?? '');
   if (!key) return false;
   return TRANSPORT_BASE_REFERENCE_KEYS.some((candidate) =>
     key.includes(simplifyForMatch(candidate))
   );
 }
+
+export {
+  buildDraftTransportOptionsFromVariants,
+  collapseTransportDraftOptionsJson,
+  collapseTransportVariantsForDraft,
+  pickPrimaryTransportCityLabel
+} from './stay-draft-transport-display';
 
 function normalizeTransportPair(page: ParsedTransportPage): {
   departureCity: string | null;
@@ -2386,11 +3948,444 @@ function toTransportConfidence(
   departureCity: string | null,
   returnCity: string | null
 ): DraftTransportPriceDebug['confidence'] {
-  if (pricingMethod === 'delta_from_base' && amountCents !== null) {
+  if (
+    (pricingMethod === 'delta_from_base' || pricingMethod === 'session_delta') &&
+    amountCents !== null
+  ) {
+    if (pricingMethod === 'session_delta') return 'high';
     if (departureCity && returnCity) return 'high';
     return 'medium';
   }
   return 'low';
+}
+
+/** Prix de référence du séjour (hors transport) pour dériver le supplément transport (ex. Thalie : total affiché − prix session). */
+export function pickImportedSessionReferencePriceCents(
+  data: Pick<ExtractedStayData, 'sessionsJson' | 'priceFrom'>
+): number | null {
+  const sessions = data.sessionsJson;
+  const sessionCents = (sessions ?? [])
+    .map((s) =>
+      s.price != null && Number.isFinite(s.price) && s.price >= 0 ? Math.round(s.price * 100) : null
+    )
+    .filter((v): v is number => v != null);
+  const distinctSessionCents = Array.from(new Set(sessionCents));
+  /** Plusieurs tarifs session différents : aucune référence unique (évite de prendre le min JSON-LD ou la 1re ligne). */
+  if (distinctSessionCents.length > 1) {
+    return null;
+  }
+  if (distinctSessionCents.length === 1) {
+    return distinctSessionCents[0];
+  }
+  if (data.priceFrom != null && Number.isFinite(data.priceFrom) && data.priceFrom >= 0) {
+    return Math.round(data.priceFrom * 100);
+  }
+  if (sessions) {
+    for (const session of sessions) {
+      if (session.price != null && Number.isFinite(session.price) && session.price >= 0) {
+        return Math.round(session.price * 100);
+      }
+    }
+  }
+  return null;
+}
+
+export type ThalieSessionBaseline = {
+  date_index: number;
+  date_label: string;
+  /** Total catalogue à l’option ville « référence » (index 0), ex. dépose centre — prix séjour pour cette date. */
+  baseline_total_cents: number | null;
+};
+
+type ThaliePbOption = {
+  value: string;
+  label: string;
+  url: string | null;
+  selected: boolean;
+};
+
+export type ThalieOptionUrlPricingResult = {
+  sessionBaselines: ThalieSessionBaseline[];
+  transportVariants: DraftTransportVariant[];
+  transportPriceDebug: DraftTransportPriceDebug[];
+  transportMode: 'Aller/Retour similaire' | 'Aller/Retour différencié' | '';
+};
+
+function parseThaliePbOptions(html: string, pageUrl: string, selectName: string): ThaliePbOption[] {
+  const $ = load(html);
+  const select = $(`select[name="${selectName}"]`).first();
+  if (!select.length) return [];
+
+  return select
+    .find('option')
+    .toArray()
+    .map((option) => {
+      const node = $(option);
+      const label = normalizeWhitespace(node.text());
+      const rawUrl = normalizeWhitespace(node.attr('url') ?? '');
+      return {
+        value: normalizeWhitespace(node.attr('value') ?? ''),
+        label,
+        url: rawUrl ? toAbsoluteUrl(rawUrl, pageUrl) : null,
+        selected: node.attr('selected') !== undefined
+      };
+    })
+    .filter((option) => option.label.length > 0);
+}
+
+function parseThalieOfferTotalCents(html: string): number | null {
+  const $ = load(html);
+  const offers = $('td[itemprop="offers"], [itemprop="offers"]').first();
+  if (!offers.length) return null;
+
+  const meta = normalizeWhitespace(offers.find('meta[itemprop="price"]').first().attr('content') ?? '');
+  if (meta) {
+    const value = Number(meta.replace(/\s/g, '').replace(',', '.'));
+    if (Number.isFinite(value) && value >= 0 && value < 80_000) {
+      return Math.round(value * 100);
+    }
+  }
+
+  const priceText = normalizeWhitespace(offers.find('span.PBSalesPrice').first().text());
+  if (!priceText) return null;
+  const amount = findPriceInText(priceText);
+  return amount !== null ? Math.round(amount * 100) : null;
+}
+
+function chooseAggregatedThalieAmount(samples: number[]): { amountCents: number | null; confidence: 'high' | 'medium' | 'low' } {
+  if (samples.length === 0) {
+    return { amountCents: null, confidence: 'low' };
+  }
+
+  const counts = new Map<number, number>();
+  for (const sample of samples) {
+    counts.set(sample, (counts.get(sample) ?? 0) + 1);
+  }
+
+  const ranked = Array.from(counts.entries()).sort((left, right) => {
+    if (right[1] !== left[1]) return right[1] - left[1];
+    return left[0] - right[0];
+  });
+
+  const [amountCents, hitCount] = ranked[0];
+  if (ranked.length === 1) {
+    return { amountCents, confidence: 'high' };
+  }
+  return { amountCents, confidence: hitCount >= 2 ? 'medium' : 'low' };
+}
+
+/**
+ * Logique dédiée Thalie / PB :
+ * - prix session = prix affiché sur l'URL de la date, avec les options par défaut
+ * - prix transport aller = total de la ville - prix session
+ * - prix transport global = aller * 2
+ */
+export async function extractThalieOptionUrlPricing(
+  sourceHtml: string,
+  sourceUrl: string
+): Promise<ThalieOptionUrlPricingResult> {
+  const dateOptions = parseThaliePbOptions(sourceHtml, sourceUrl, 'PDTOPTVALUEID0');
+  const transportMode =
+    parseThaliePbOptions(sourceHtml, sourceUrl, 'PDTOPTVALUEID1').length > 0 &&
+    parseThaliePbOptions(sourceHtml, sourceUrl, 'PDTOPTVALUEID2').length > 0
+      ? 'Aller/Retour différencié'
+      : parseThaliePbOptions(sourceHtml, sourceUrl, 'PDTOPTVALUEID1').length > 0
+        ? 'Aller/Retour similaire'
+        : '';
+
+  const sessionBaselines: ThalieSessionBaseline[] = [];
+  const transportPriceDebug: DraftTransportPriceDebug[] = [];
+  const samplesByCity = new Map<
+    string,
+    {
+      city: string;
+      amounts: number[];
+      sampleSourceUrls: string[];
+    }
+  >();
+
+  const effectiveDateOptions =
+    dateOptions.length > 0
+      ? dateOptions
+      : [
+          {
+            value: '',
+            label: normalizeWhitespace(sourceUrl.split('/').pop() ?? 'session'),
+            url: sourceUrl,
+            selected: true
+          }
+        ];
+
+  for (let dateIndex = 0; dateIndex < effectiveDateOptions.length; dateIndex += 1) {
+    const dateOption = effectiveDateOptions[dateIndex];
+    const dateUrl = dateOption.url ?? sourceUrl;
+    let datePage: FetchedHtml | null = null;
+
+    try {
+      datePage = await fetchHtml(dateUrl);
+    } catch {
+      sessionBaselines.push({
+        date_index: dateIndex,
+        date_label: dateOption.label,
+        baseline_total_cents: null
+      });
+      continue;
+    }
+
+    const baselineTotalCents = parseThalieOfferTotalCents(datePage.html);
+    sessionBaselines.push({
+      date_index: dateIndex,
+      date_label: dateOption.label,
+      baseline_total_cents: baselineTotalCents
+    });
+
+    const outboundOptions = parseThaliePbOptions(datePage.html, datePage.finalUrl, 'PDTOPTVALUEID1');
+    for (const outboundOption of outboundOptions) {
+      const city = normalizeTransportCityLabel(outboundOption.label);
+      if (!city || isTransportBaseReference(city)) continue;
+      if (!outboundOption.url) continue;
+
+      let cityPage: FetchedHtml | null = null;
+      try {
+        cityPage = await fetchHtml(outboundOption.url);
+      } catch {
+        transportPriceDebug.push({
+          variant_url: outboundOption.url,
+          departure_city: city,
+          return_city: null,
+          page_price_cents: null,
+          base_price_cents: baselineTotalCents,
+          amount_cents: null,
+          pricing_method: 'thalie_option_url_delta',
+          confidence: 'low',
+          reason: `thalie-option-url-fetch-failed:${dateIndex}`,
+          departure_label_raw: outboundOption.label,
+          return_label_raw: dateOption.label
+        });
+        continue;
+      }
+
+      const totalCents = parseThalieOfferTotalCents(cityPage.html);
+      const oneWayCents =
+        typeof baselineTotalCents === 'number' &&
+        typeof totalCents === 'number' &&
+        totalCents >= baselineTotalCents
+          ? totalCents - baselineTotalCents
+          : null;
+      const roundTripCents = oneWayCents !== null ? oneWayCents * 2 : null;
+
+      transportPriceDebug.push({
+        variant_url: cityPage.finalUrl,
+        departure_city: city,
+        return_city: null,
+        page_price_cents: totalCents,
+        base_price_cents: baselineTotalCents,
+        amount_cents: roundTripCents,
+        pricing_method: 'thalie_option_url_delta',
+        confidence: roundTripCents !== null ? 'high' : 'low',
+        reason: `thalie-option-url:date[${dateIndex}]`,
+        departure_label_raw: outboundOption.label,
+        return_label_raw: dateOption.label
+      });
+
+      if (roundTripCents === null) continue;
+
+      const key = simplifyForMatch(city);
+      const existing = samplesByCity.get(key) ?? {
+        city,
+        amounts: [],
+        sampleSourceUrls: []
+      };
+      existing.amounts.push(roundTripCents);
+      existing.sampleSourceUrls.push(cityPage.finalUrl);
+      samplesByCity.set(key, existing);
+    }
+  }
+
+  const transportVariants: DraftTransportVariant[] = [];
+  for (const entry of Array.from(samplesByCity.values())) {
+    const aggregate = chooseAggregatedThalieAmount(entry.amounts);
+    if (aggregate.amountCents === null) continue;
+    transportVariants.push({
+      departure_city: entry.city,
+      return_city: entry.city,
+      amount_cents: aggregate.amountCents,
+      currency: 'EUR',
+      source_url: entry.sampleSourceUrls[0] ?? sourceUrl,
+      departure_label_raw: entry.city,
+      return_label_raw: null,
+      pricing_method: 'thalie_option_url_delta',
+      confidence: aggregate.confidence,
+      reason: `thalie-option-url:aggregated:${entry.amounts.length}`
+    });
+  }
+  transportVariants.sort((left, right) => left.departure_city.localeCompare(right.departure_city, 'fr'));
+
+  return {
+    sessionBaselines,
+    transportVariants,
+    transportPriceDebug,
+    transportMode
+  };
+}
+
+/**
+ * Applique les totaux session lus sur la fiche dynamique (Thalie PBP) aux lignes `sessionsJson` quand c’est possible.
+ */
+export function mergeThalieSessionBaselinesIntoSessions(
+  sessions: DraftSessionItem[] | null,
+  baselines: ThalieSessionBaseline[]
+): DraftSessionItem[] | null {
+  if (baselines.length === 0) return sessions;
+
+  const priceEur = (cents: number | null): number | null => {
+    if (cents == null || !Number.isFinite(cents) || cents < 0) return null;
+    return Math.round(cents) / 100;
+  };
+
+  const parseBaselineDates = (label: string): { startDate: string | null; endDate: string | null } => {
+    const normalized = normalizeWhitespace(label);
+    const sameMonth = normalized.match(
+      /\bdu\s+(\d{1,2})\s+(?:au|a|à)\s+(\d{1,2})\s+([A-Za-zÀ-ÖØ-öø-ÿ]+)\s+(\d{4})\b/i
+    );
+    if (sameMonth) {
+      const dayStart = Number(sameMonth[1]);
+      const dayEnd = Number(sameMonth[2]);
+      const month = MONTHS[simplifyForMatch(sameMonth[3])];
+      const year = Number(sameMonth[4]);
+      return {
+        startDate: month ? toIsoDate(dayStart, month, year) : null,
+        endDate: month ? toIsoDate(dayEnd, month, year) : null
+      };
+    }
+
+    const crossMonth = normalized.match(
+      /\bdu\s+(\d{1,2})\s+([A-Za-zÀ-ÖØ-öø-ÿ]+)\s+(?:au|a|à)\s+(\d{1,2})\s+([A-Za-zÀ-ÖØ-öø-ÿ]+)\s+(\d{4})\b/i
+    );
+    if (crossMonth) {
+      const year = Number(crossMonth[5]);
+      return {
+        startDate: toIsoDate(Number(crossMonth[1]), MONTHS[simplifyForMatch(crossMonth[2])] ?? 0, year),
+        endDate: toIsoDate(Number(crossMonth[3]), MONTHS[simplifyForMatch(crossMonth[4])] ?? 0, year)
+      };
+    }
+
+    return { startDate: null, endDate: null };
+  };
+
+  const existingSessions = sessions ?? [];
+  const matchedSessionIndexes = new Set<number>();
+
+  const findMatchingSession = (baseline: ThalieSessionBaseline): { index: number; session: DraftSessionItem } | null => {
+    const baselineKey = simplifyForMatch(baseline.date_label);
+    const baselineDates = parseBaselineDates(baseline.date_label);
+
+    for (let index = 0; index < existingSessions.length; index += 1) {
+      if (matchedSessionIndexes.has(index)) continue;
+      const session = existingSessions[index];
+      const sessionKey = simplifyForMatch(session.label);
+      if (baselineKey && sessionKey && (baselineKey.includes(sessionKey) || sessionKey.includes(baselineKey))) {
+        matchedSessionIndexes.add(index);
+        return { index, session };
+      }
+      if (
+        baselineDates.startDate &&
+        baselineDates.endDate &&
+        session.start_date === baselineDates.startDate &&
+        session.end_date === baselineDates.endDate
+      ) {
+        matchedSessionIndexes.add(index);
+        return { index, session };
+      }
+    }
+
+    return null;
+  };
+
+  if (!sessions || sessions.length === 0) {
+    return baselines.map((b) => {
+      const dates = parseBaselineDates(b.date_label);
+      return {
+        label: b.date_label,
+        start_date: dates.startDate,
+        end_date: dates.endDate,
+        price: priceEur(b.baseline_total_cents),
+        availability: 'unknown'
+      };
+    });
+  }
+
+  const mergedSessions = existingSessions.map((session) => ({ ...session }));
+  const extraSessions: DraftSessionItem[] = [];
+
+  for (const baseline of baselines) {
+    const matched = findMatchingSession(baseline);
+    const baselineDates = parseBaselineDates(baseline.date_label);
+    const p = priceEur(baseline.baseline_total_cents);
+    if (matched) {
+      mergedSessions[matched.index] = {
+        ...matched.session,
+        price: p ?? matched.session.price ?? null,
+        availability: matched.session.availability ?? 'unknown'
+      };
+      continue;
+    }
+
+    extraSessions.push({
+      label: baseline.date_label,
+      start_date: baselineDates.startDate,
+      end_date: baselineDates.endDate,
+      price: p,
+      availability: 'unknown'
+    });
+  }
+
+  return [...mergedSessions, ...extraSessions].sort((left, right) => {
+    const leftKey = left.start_date ?? left.end_date ?? left.label ?? '';
+    const rightKey = right.start_date ?? right.end_date ?? right.label ?? '';
+    return leftKey.localeCompare(rightKey, 'fr');
+  });
+}
+
+const INSURANCE_ANNULATION_LINE_KEYS = ['annulation', 'annuler', 'remboursement'];
+
+/**
+ * Montant fixe d’assurance annulation souvent inclus dans le total affiché sur la fiche réservation
+ * (à retrancher du prix par ville pour obtenir le supplément transport seul).
+ */
+export function pickImportedCancellationInsuranceCents(
+  data: Pick<ExtractedStayData, 'rawText'> & { htmlExcerpt?: string | null }
+): number | null {
+  const chunks: string[] = [];
+  if (data.rawText) chunks.push(data.rawText);
+  if (data.htmlExcerpt) {
+    chunks.push(data.htmlExcerpt.replace(/<script[\s\S]*?<\/script>/gi, ' ').replace(/<[^>]+>/g, ' '));
+  }
+  const merged = normalizeWhitespace(chunks.join('\n'));
+  if (!merged) return null;
+
+  const foundEuros: number[] = [];
+  for (const fragment of merged.split(/[\n\r]+|<\/(?:p|div|li|tr)>/i)) {
+    const line = normalizeWhitespace(fragment);
+    if (!line) continue;
+    const key = simplifyForMatch(line);
+    if (!key) continue;
+    const hasAnnul = INSURANCE_ANNULATION_LINE_KEYS.some((w) => key.includes(simplifyForMatch(w)));
+    const hasAssur =
+      key.includes('assurance') ||
+      key.includes('insurance') ||
+      key.includes('garantie') ||
+      key.includes('mutuelle');
+    if (!hasAnnul || !hasAssur) continue;
+    const amount = findPriceInText(line);
+    if (amount === null) continue;
+    if (amount < 3 || amount > 400) continue;
+    foundEuros.push(amount);
+  }
+
+  if (foundEuros.length === 0) return null;
+  const maxEur = Math.max(...foundEuros);
+  return Math.round(maxEur * 100);
 }
 
 function buildTransportDebugRows(
@@ -2514,6 +4509,69 @@ export async function extractTransportVariants(
   html: string,
   sourceUrl: string
 ): Promise<ExtractTransportVariantsResult> {
+  const ceslDurationJson = extractCeslDurationJson(html);
+  if (ceslDurationJson) {
+    const byCity = new Map<string, DraftTransportVariant>();
+    const transportPriceDebug: DraftTransportPriceDebug[] = [];
+
+    for (const durationEntries of Object.values(ceslDurationJson)) {
+      if (!durationEntries || typeof durationEntries !== 'object') continue;
+      for (const entry of Object.values(durationEntries)) {
+        const citiesRaw = normalizeWhitespace(entry?.villes ?? '');
+        if (!citiesRaw) continue;
+
+        for (const chunk of citiesRaw.split(',')) {
+          const normalizedChunk = normalizeWhitespace(chunk);
+          if (!normalizedChunk) continue;
+          const separatorIndex = normalizedChunk.lastIndexOf(':');
+          if (separatorIndex <= 0) continue;
+
+          const city = normalizeTransportCityLabel(normalizedChunk.slice(0, separatorIndex));
+          const amountEur = parseFrenchAmount(normalizedChunk.slice(separatorIndex + 1), 0, 20_000);
+          if (!city || amountEur === null) continue;
+
+          const amountCents = amountEur * 100;
+          transportPriceDebug.push({
+            variant_url: sourceUrl,
+            departure_city: city,
+            return_city: city,
+            page_price_cents: amountCents,
+            base_price_cents: null,
+            amount_cents: amountCents,
+            pricing_method: 'absolute_price',
+            confidence: 'high',
+            reason: `cesl-duration-json:${entry?.dates ?? 'unknown'}`
+          });
+
+          const key = simplifyForMatch(city);
+          const next: DraftTransportVariant = {
+            departure_city: city,
+            return_city: city,
+            amount_cents: amountCents,
+            currency: 'EUR',
+            source_url: sourceUrl,
+            page_price_cents: amountCents,
+            base_price_cents: null,
+            pricing_method: 'absolute_price',
+            confidence: 'high',
+            reason: `cesl-duration-json:${entry?.dates ?? 'unknown'}`
+          };
+          const existing = byCity.get(key);
+          if (!existing || amountCents > (existing.amount_cents ?? -1)) {
+            byCity.set(key, next);
+          }
+        }
+      }
+    }
+
+    return {
+      transportVariants: Array.from(byCity.values()).sort((a, b) =>
+        a.departure_city.localeCompare(b.departure_city, 'fr')
+      ),
+      transportPriceDebug
+    };
+  }
+
   const cache = new Map<string, FetchedHtml | null>();
   const visitedUrls = new Set<string>();
   const queuedUrls = new Set<string>();
@@ -2645,16 +4703,39 @@ export async function extractTransportVariants(
   };
 }
 
-function extractAccommodation(sections: SectionBlock[]): DraftAccommodation | null {
-  const section = findSection(sections, ['hebergement', 'logement', 'residence', 'camping']);
+function extractAccommodation(
+  sections: SectionBlock[],
+  addressHints: AddressHint[]
+): DraftAccommodation | null {
+  const section = findSection(sections, [
+    'hebergement',
+    'hébergement',
+    'logement',
+    'residence',
+    'résidence',
+    'camping',
+    'hebergement et restauration',
+    'hébergement et restauration',
+    'votre hebergement',
+    'votre hébergement',
+    'cadre de vie',
+    'lieu de vie'
+  ]);
   if (!section) return null;
 
   const description = normalizeParagraph(section.text);
   if (!description) return null;
+  const primaryAddressHint = addressHints[0] ?? null;
 
   return {
     title: section.heading,
-    description
+    description,
+    address_text: primaryAddressHint?.street ?? null,
+    postal_code: primaryAddressHint?.postalCode ?? null,
+    city: primaryAddressHint?.locality ?? null,
+    department_code: null,
+    region_text: primaryAddressHint?.region ?? primaryAddressHint?.department ?? null,
+    country: null
   };
 }
 
@@ -2712,7 +4793,11 @@ export function extractStayData(html: string, sourceUrl: string): ExtractedStayD
   const scanText = normalizeWhitespace([title, description, visibleText].filter(Boolean).join(' '));
 
   const ageRange = parseAgeRange(scanText);
-  const priceFrom = parsePrice(scanText, jsonLdBlocks);
+  const priceFrom =
+    extractCeiApartirStrongPriceDom(html) ??
+    extractCeslStayPublicPriceFromTarif1Dom(html) ??
+    extractCeslSelectedPeriodPublicFromJson(html) ??
+    (extractCeslDurationJson(html) ? null : parsePrice(scanText, jsonLdBlocks));
   const durationDays = parseDuration(scanText);
   const images = extractImages($, sourceUrl);
   const cityFromTitleOrDescription = extractCityFromTitleOrDescription(title, description);
@@ -2747,8 +4832,8 @@ export function extractStayData(html: string, sourceUrl: string): ExtractedStayD
   const requiredDocumentsText = normalizeParagraph(requiredDocumentsSection?.text ?? null);
   const transportText = normalizeParagraph(transportSection?.text ?? null);
   const transportMode = detectTransportMode(transportText, visibleText);
-  const sessionsJson = extractSessions(visibleText);
-  const accommodationsJson = extractAccommodation(sections);
+  const sessionsJson = extractSessions($, visibleText, html);
+  const accommodationsJson = extractAccommodation(sections, addressHints);
 
   return {
     title,

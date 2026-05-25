@@ -1,39 +1,25 @@
 import Link from 'next/link';
 import { requireRole } from '@/lib/auth/require';
+import { AdminOrganizersTable } from '@/components/admin/AdminOrganizersTable';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
+import type { Database } from '@/types/supabase';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-type OrganizerRow = {
-  id: string;
-  name: string;
-  contact_email: string | null;
-  created_at: string;
-  slug: string | null;
-  membersCount?: number;
-};
+type OverviewRow = Database['public']['Views']['organizer_admin_overview']['Row'];
 
 export default async function AdminOrganizersPage() {
-  requireRole('ADMIN');
+  await requireRole('ADMIN');
   const supabase = getServerSupabaseClient();
   const hasServiceRole = Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY);
 
   const { data, error } = await supabase
-    .from('organizers')
-    .select('id,name,contact_email,created_at,slug')
-    .order('created_at', { ascending: false });
+    .from('organizer_admin_overview')
+    .select('*')
+    .order('name', { ascending: true });
 
-  const organizersBase = (data ?? []) as OrganizerRow[];
-  const organizers = await Promise.all(
-    organizersBase.map(async (organizer) => {
-      const { count } = await supabase
-        .from('organizer_members')
-        .select('id', { count: 'exact', head: true })
-        .eq('organizer_id', organizer.id);
-      return { ...organizer, membersCount: count ?? 0 };
-    })
-  );
+  const rows = (data ?? []) as OverviewRow[];
   const loadError = error?.message ?? null;
 
   return (
@@ -46,61 +32,23 @@ export default async function AdminOrganizersPage() {
       )}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Organisateurs</h1>
-          <p className="text-sm text-slate-600">Gérer les organismes et leurs membres.</p>
+          <h1 className="admin-page-title">Organismes</h1>
+          <p className="admin-page-subtitle mt-1">Suivi des paramètres business et facturation.</p>
         </div>
         <Link
-          href="/admin/organisateurs/new"
+          href="/admin/organizers/new"
           className="inline-flex min-h-[44px] items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white"
         >
-          Créer un organisateur
+          Créer un organisme
         </Link>
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-        <div className="overflow-x-auto">
-          <table className="min-w-[720px] w-full text-left text-sm">
-            <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-              <tr>
-                <th className="px-4 py-3">Organisateur</th>
-                <th className="px-4 py-3">Email contact</th>
-                <th className="px-4 py-3">Membres</th>
-                <th className="px-4 py-3">Créé le</th>
-                <th className="px-4 py-3"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {organizers.map((organizer) => (
-                <tr key={organizer.id} className="border-t border-slate-100">
-                  <td className="px-4 py-3 font-medium text-slate-900">{organizer.name}</td>
-                  <td className="px-4 py-3 text-slate-600">{organizer.contact_email ?? '-'}</td>
-                  <td className="px-4 py-3 text-slate-600">
-                    {organizer.membersCount ?? 0}
-                  </td>
-                  <td className="px-4 py-3 text-slate-600">
-                    {new Date(organizer.created_at).toLocaleDateString('fr-FR')}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <Link
-                      href={`/admin/organisateurs/${organizer.slug ?? organizer.id}`}
-                      className="text-emerald-600"
-                    >
-                      Voir
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-              {organizers.length === 0 && (
-                <tr>
-                  <td className="px-4 py-6 text-slate-500" colSpan={5}>
-                    {loadError ? `Erreur: ${loadError}` : 'Aucun organisateur.'}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+      {loadError && (
+        <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          Erreur vue organizer_admin_overview : {loadError}
         </div>
-      </div>
+      )}
+      {!loadError && <AdminOrganizersTable rows={rows} />}
     </div>
   );
 }

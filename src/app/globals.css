@@ -1,4 +1,4 @@
-@import 'leaflet/dist/leaflet.css';
+@import '../styles/baloo2.css';
 
 @tailwind base;
 @tailwind components;
@@ -6,7 +6,7 @@
 
 @layer components {
   .btn {
-    @apply inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl font-semibold transition-colors;
+    @apply inline-flex min-h-[44px] cursor-pointer items-center justify-center gap-2 rounded-xl font-semibold transition-colors disabled:cursor-not-allowed;
   }
 
   .btn-md {
@@ -18,7 +18,7 @@
   }
 
   .btn-primary {
-    @apply bg-accent-500 text-white shadow-md hover:bg-accent-600;
+    @apply text-white shadow-md;
   }
 
   .btn-secondary {
@@ -27,6 +27,257 @@
 
   .btn-accent-outline {
     @apply rounded-full border border-accent-400 text-accent-500 hover:bg-accent-500 hover:text-white;
+  }
+
+  .cta-orange-sweep,
+  .btn-primary {
+    position: relative;
+    z-index: 0;
+    overflow: hidden;
+    background-color: var(--resacolo-orange);
+    color: #fff;
+    isolation: isolate;
+  }
+
+  .cta-orange-sweep::before,
+  .btn-primary::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    width: 0;
+    border-radius: inherit;
+    background-color: #37b5f5;
+    transition: width 0.5s ease;
+    z-index: -1;
+    pointer-events: none;
+  }
+
+  .cta-orange-sweep:not(:disabled):not([aria-disabled='true']):hover::before,
+  .cta-orange-sweep:not(:disabled):not([aria-disabled='true']):focus-visible::before,
+  .btn-primary:not(:disabled):not([aria-disabled='true']):hover::before,
+  .btn-primary:not(:disabled):not([aria-disabled='true']):focus-visible::before {
+    width: 100%;
+  }
+
+  .cta-orange-sweep:hover,
+  .cta-orange-sweep:focus-visible,
+  .btn-primary:hover,
+  .btn-primary:focus-visible {
+    color: #fff;
+  }
+
+  .cta-orange-sweep:active,
+  .cta-orange-sweep:active > *,
+  .btn-primary:active,
+  .btn-primary:active > * {
+    color: #fff;
+  }
+
+  a:active.cta-orange-sweep,
+  a:active.cta-orange-sweep > *,
+  a:active .cta-orange-sweep,
+  a:active .cta-orange-sweep > * {
+    color: #fff;
+  }
+
+  .cta-orange-sweep > *,
+  .btn-primary > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  .card-blue-vertical-sweep {
+    position: relative;
+    z-index: 0;
+    overflow: hidden;
+    isolation: isolate;
+  }
+
+  .card-blue-vertical-sweep::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: scaleY(0);
+    transform-origin: top;
+    background-color: #6dc7fe;
+    transition: transform 0.45s ease;
+    z-index: 0;
+  }
+
+  .card-blue-vertical-sweep:hover::before,
+  .card-blue-vertical-sweep:focus-visible::before,
+  .card-blue-vertical-sweep:focus-within::before {
+    transform: scaleY(1);
+  }
+
+  .card-blue-vertical-sweep > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  .contact-step-title {
+    @apply text-xs font-bold uppercase tracking-[0.08em] text-slate-700;
+  }
+
+  .contact-input {
+    @apply w-full rounded-[14px] border-2 border-white bg-white px-4 py-3 text-slate-800 shadow-[0_2px_5px_1px_rgba(0,0,0,0.1)] placeholder:text-slate-400;
+    transition:
+      border-color var(--flow-fast) var(--flow-ease),
+      box-shadow var(--flow-fast) var(--flow-ease);
+  }
+
+  .contact-input:hover {
+    @apply border-brand-500;
+  }
+
+  .contact-input:focus-visible {
+    @apply border-brand-500 outline-none;
+    box-shadow:
+      0 0 0 3px rgb(55 181 245 / 0.18),
+      0 2px 5px 1px rgb(0 0 0 / 0.1);
+  }
+
+  .contact-faq-item {
+    @apply self-start overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm;
+    transition:
+      border-color var(--flow-fast) var(--flow-ease),
+      box-shadow var(--flow-fast) var(--flow-ease);
+  }
+
+  .contact-faq-item[open] {
+    @apply border-slate-300 shadow-md;
+  }
+
+  .contact-faq-summary {
+    @apply flex list-none cursor-pointer items-center justify-between gap-4 px-5 py-4 text-left text-sm font-semibold text-slate-700 marker:hidden;
+  }
+
+  .contact-faq-summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .contact-faq-summary:hover {
+    @apply bg-slate-50;
+  }
+
+  .contact-faq-answer {
+    @apply border-t border-slate-100 px-5 py-4 text-sm leading-relaxed text-slate-600;
+  }
+
+  .admin-page-title {
+    @apply text-2xl font-semibold text-slate-900 sm:text-3xl;
+  }
+
+  .admin-page-subtitle {
+    @apply text-sm font-medium text-slate-600;
+  }
+
+  .admin-section-title {
+    @apply text-lg font-semibold text-slate-900;
+  }
+
+  .admin-kpi-label {
+    @apply text-xs font-semibold uppercase tracking-wide text-slate-500;
+  }
+
+  .organizer-page-title {
+    @apply text-2xl font-semibold text-slate-900 sm:text-3xl;
+  }
+
+  .organizer-page-subtitle {
+    @apply text-sm font-medium text-slate-600;
+  }
+
+  .organizer-page-header {
+    @apply flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between;
+  }
+
+  .organizer-page-header-actions {
+    @apply flex flex-wrap items-center gap-2;
+  }
+
+  .organizer-section-title {
+    @apply text-lg font-semibold text-slate-900;
+  }
+
+  .organizer-kpi-label {
+    @apply text-xs font-semibold uppercase tracking-wide text-slate-500;
+  }
+
+  .organizer-card {
+    @apply rounded-2xl border border-slate-200 bg-white shadow-sm;
+  }
+
+  .organizer-card-subtle {
+    @apply rounded-2xl border border-slate-200 bg-slate-50/60 shadow-sm;
+  }
+
+  .organizer-input {
+    @apply mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 transition;
+  }
+
+  .organizer-input:focus-visible {
+    @apply border-brand-500 outline-none ring-2 ring-brand-100;
+  }
+
+  .organizer-alert-info {
+    @apply rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900;
+  }
+
+  .organizer-alert-success {
+    @apply rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800;
+  }
+
+  .organizer-alert-warning {
+    @apply rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900;
+  }
+
+  .organizer-alert-error {
+    @apply rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700;
+  }
+
+  .organizer-btn {
+    @apply inline-flex min-h-[44px] items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2;
+  }
+
+  .organizer-btn-primary {
+    @apply organizer-btn bg-emerald-600 text-white hover:bg-emerald-700 focus-visible:ring-emerald-300;
+  }
+
+  .organizer-btn-secondary {
+    @apply organizer-btn border border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50 focus-visible:ring-slate-300;
+  }
+
+  .organizer-btn-danger {
+    @apply organizer-btn border border-rose-200 bg-white text-rose-700 hover:bg-rose-50 focus-visible:ring-rose-300;
+  }
+
+  .organizer-btn-warning {
+    @apply organizer-btn border border-amber-200 bg-white text-amber-700 hover:bg-amber-50 focus-visible:ring-amber-300;
+  }
+
+  .organizer-table-shell {
+    @apply overflow-hidden rounded-2xl border border-slate-200 bg-white;
+  }
+
+  .organizer-table {
+    @apply min-w-full text-left text-sm;
+  }
+
+  .organizer-table thead {
+    @apply bg-slate-50 text-xs uppercase text-slate-500;
+  }
+
+  .organizer-table th {
+    @apply px-4 py-3 align-middle;
+  }
+
+  .organizer-table td {
+    @apply px-4 py-3 align-middle;
+  }
+
+  .organizer-table tbody tr {
+    @apply border-t border-slate-100;
   }
 }
 
@@ -41,16 +292,39 @@
   --resacolo-orange-strong: #f48200;
   --resacolo-surface: #f8f8f8;
   --resacolo-ink: #404040;
+  --color-primary: #37b5f5;
+  /* Accent UI (header nav, etc.) — Baloo 2 via `src/styles/baloo2.css` */
+  --font-accent: 'Baloo 2', Arial, sans-serif;
 
   /* Design tokens */
   --hero-gradient: linear-gradient(135deg, #f2fbff 0%, #def4ff 42%, #ffffff 100%);
   --card-shadow: 0 2px 18px -4px rgb(82 176 234 / 0.14);
   --card-shadow-hover: 0 10px 36px -8px rgb(82 176 234 / 0.18);
   --financing-watermark: rgb(110 199 255 / 0.18);
+
+  /* Footer : léger recul pour rapprocher le « R » du texte (PNG avec marge + picto à gauche) */
+  --footer-logo-r-align-shift: 1.125rem;
 }
 
+@media (min-width: 640px) {
+  :root {
+    --footer-logo-r-align-shift: 1.25rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  :root {
+    --footer-logo-r-align-shift: 1.375rem;
+  }
+}
+
+.footer-logo-resacolo-link {
+  margin-left: calc(-1 * var(--footer-logo-r-align-shift));
+}
+
+/* ~90 % du précédent : proche d’un zoom navigateur à 90 %, tout en restant à 100 % de zoom */
 html {
-  font-size: clamp(16px, 0.45vw + 14.5px, 18px);
+  font-size: clamp(14.4px, 0.405vw + 13.05px, 16.2px);
   scroll-behavior: smooth;
   overflow-x: clip;
 }
@@ -65,6 +339,28 @@ body {
 a {
   @apply text-brand-500 no-underline hover:text-brand-600;
   transition: color var(--flow-fast) var(--flow-ease);
+}
+
+a.btn-primary,
+a.cta-orange-sweep,
+a.btn-primary:hover,
+a.cta-orange-sweep:hover,
+a.btn-primary:focus-visible,
+a.cta-orange-sweep:focus-visible,
+a.btn-primary:active,
+a.cta-orange-sweep:active {
+  color: #fff;
+}
+
+a.btn-primary > *,
+a.cta-orange-sweep > *,
+a.btn-primary:hover > *,
+a.cta-orange-sweep:hover > *,
+a.btn-primary:focus-visible > *,
+a.cta-orange-sweep:focus-visible > *,
+a.btn-primary:active > *,
+a.cta-orange-sweep:active > * {
+  color: #fff;
 }
 
 main {

@@ -1,18 +1,21 @@
 'use client';
 
 import Image from 'next/image';
-import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { Compass, Clock3, Filter, MapPin, Search, ShoppingCart, Sun, X } from 'lucide-react';
+import { Compass, Filter, Search, X } from 'lucide-react';
+import { FavoriteToggleButton } from '@/components/favorites/FavoriteToggleButton';
+import { OrganizerStayPreviewCard } from '@/components/organisateurs/OrganizerStayPreviewCard';
+import { staySessionsAppearFullyBooked } from '@/lib/stay-catalog-availability';
 import { getMockImageUrl, mockImages } from '@/lib/mockImages';
+import { resolveStaySeasonPicto } from '@/lib/organizer-profile-options';
+import { mapToCanonicalStayRegion } from '@/lib/stay-regions';
 import {
   Accordion,
   AccordionContent,
   AccordionItem,
   AccordionTrigger
 } from '@/components/ui/accordion';
-import { Card, CardContent, CardDescription, CardTitle } from '@/components/ui/card';
 import {
   EMPTY_STAY_CATALOG_FILTERS,
   DEFAULT_STAY_CATALOG_SORT,
@@ -20,9 +23,11 @@ import {
   applyStayCatalogFilters,
   applyStayCatalogSort,
   buildStayCatalogFilterOptions,
+  buildStaySearchIndex,
   countActiveStayCatalogFilters,
   parseStayCatalogFiltersFromSearchParams,
   parseStayCatalogSortFromSearchParams,
+  parseSearchQuery,
   serializeStayCatalogFiltersToSearchParams,
   stayCatalogFilterStateKey,
   type StayCatalogFilterOption,
@@ -32,9 +37,100 @@ import {
 import type { Stay } from '@/types/stay';
 
 type SearchParamInput = Record<string, string | string[] | undefined> | undefined;
-type MultiFilterKey = Exclude<keyof StayCatalogFilterState, 'q'>;
+type MultiFilterKey =
+  | 'seasonIds'
+  | 'categories'
+  | 'ageBands'
+  | 'destinationTypes'
+  | 'destinations'
+  | 'organizerIds';
 
-const ACCORDION_DEFAULT_OPEN = ['seasonIds', 'categories', 'ageBands', 'destinations', 'organizerIds'];
+const ACCORDION_DEFAULT_OPEN = [
+  'priceRange',
+  'ageRange',
+  'seasonIds',
+  'categories',
+  'destinationTypes',
+  'destinations',
+  'organizerIds'
+];
+
+function clampNumber(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function formatEuros(value: number) {
+  return `${Math.round(value).toLocaleString('fr-FR')}€`;
+}
+
+function formatAge(value: number) {
+  return `${Math.round(value)} ans`;
+}
+
+function RangeSlider({
+  min,
+  max,
+  valueMin,
+  valueMax,
+  onChange,
+  format
+}: {
+  min: number;
+  max: number;
+  valueMin: number;
+  valueMax: number;
+  onChange: (next: { min: number; max: number }) => void;
+  format: (value: number) => string;
+}) {
+  const safeMin = clampNumber(valueMin, min, max);
+  const safeMax = clampNumber(valueMax, min, max);
+  const left = ((Math.min(safeMin, safeMax) - min) / Math.max(1, max - min)) * 100;
+  const right = ((Math.max(safeMin, safeMax) - min) / Math.max(1, max - min)) * 100;
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between gap-3 text-[11px] font-medium text-slate-600">
+        <span>{format(Math.min(safeMin, safeMax))}</span>
+        <span>{format(Math.max(safeMin, safeMax))}</span>
+      </div>
+      <div className="relative h-8 overflow-visible px-2">
+        <div className="absolute left-2 right-2 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-slate-200" />
+        <div
+          className="absolute top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-accent-500"
+          style={{
+            left: `calc(${left}% + 0.5rem)`,
+            right: `calc(${100 - right}% + 0.5rem)`
+          }}
+        />
+
+        <input
+          type="range"
+          min={min}
+          max={max}
+          value={Math.min(safeMin, safeMax)}
+          onChange={(event) => {
+            const nextMin = Number(event.target.value);
+            onChange({ min: nextMin, max: Math.max(nextMin, safeMax) });
+          }}
+          className="pointer-events-none absolute left-0 top-0 z-20 h-8 w-full appearance-none bg-transparent [&::-moz-range-thumb]:pointer-events-auto [&::-moz-range-thumb]:h-3.5 [&::-moz-range-thumb]:w-3.5 [&::-moz-range-thumb]:cursor-pointer [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-white [&::-moz-range-thumb]:shadow-md [&::-moz-range-thumb]:ring-2 [&::-moz-range-thumb]:ring-accent-500 [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-md [&::-webkit-slider-thumb]:ring-2 [&::-webkit-slider-thumb]:ring-accent-500"
+          aria-label="Valeur minimale"
+        />
+        <input
+          type="range"
+          min={min}
+          max={max}
+          value={Math.max(safeMin, safeMax)}
+          onChange={(event) => {
+            const nextMax = Number(event.target.value);
+            onChange({ min: Math.min(safeMin, nextMax), max: nextMax });
+          }}
+          className="pointer-events-none absolute left-0 top-0 z-30 h-8 w-full appearance-none bg-transparent [&::-moz-range-thumb]:pointer-events-auto [&::-moz-range-thumb]:h-3.5 [&::-moz-range-thumb]:w-3.5 [&::-moz-range-thumb]:cursor-pointer [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-white [&::-moz-range-thumb]:shadow-md [&::-moz-range-thumb]:ring-2 [&::-moz-range-thumb]:ring-accent-500 [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-md [&::-webkit-slider-thumb]:ring-2 [&::-webkit-slider-thumb]:ring-accent-500"
+          aria-label="Valeur maximale"
+        />
+      </div>
+    </div>
+  );
+}
 
 function toUrlSearchParams(input: SearchParamInput) {
   const params = new URLSearchParams();
@@ -54,20 +150,6 @@ function toUrlSearchParams(input: SearchParamInput) {
   return params;
 }
 
-function useDebouncedValue<TValue>(value: TValue, delayMs = 240) {
-  const [debouncedValue, setDebouncedValue] = useState(value);
-
-  useEffect(() => {
-    const timeout = window.setTimeout(() => {
-      setDebouncedValue(value);
-    }, delayMs);
-
-    return () => window.clearTimeout(timeout);
-  }, [delayMs, value]);
-
-  return debouncedValue;
-}
-
 function toggleListValue<TValue extends string>(list: TValue[], value: TValue) {
   if (list.includes(value)) {
     return list.filter((item) => item !== value);
@@ -76,88 +158,58 @@ function toggleListValue<TValue extends string>(list: TValue[], value: TValue) {
 }
 
 function StayCard({ stay }: { stay: Stay }) {
-  const organizerLogo = stay.organizer.logoUrl ?? '/image/accueil/images_accueil/logo-resacolo.png';
-  const priceLabel =
-    typeof stay.priceFrom === 'number' ? `À partir de ${stay.priceFrom} €` : 'Sur demande';
-  const locationLabel = stay.location || stay.region || 'Lieu à préciser';
-  const seasonLabel = stay.seasonName || (stay.period[0] ?? 'À venir');
-  const description = stay.summary || stay.description || 'Informations à venir';
+  const season = resolveStaySeasonPicto(stay.seasonName || stay.period[0] || null);
+  const isFullyBooked = staySessionsAppearFullyBooked(stay.bookingOptions?.sessions);
 
   return (
-    <Link href={`/sejours/${stay.slug}`} className="block transition-opacity hover:opacity-95">
-      <Card className="overflow-hidden rounded-3xl border-slate-200/90 shadow-[0_14px_30px_-24px_rgba(15,23,42,0.42)]">
-        <div className="relative h-56 w-full">
-          <Image
-            src={stay.coverImage || getMockImageUrl(mockImages.sejours.fallbackCover, 1200, 80)}
-            alt={stay.title}
-            fill
-            className="object-cover"
-            sizes="(max-width: 768px) 100vw, 33vw"
-          />
-          <div className="absolute right-3 top-3 h-11 w-11 overflow-hidden rounded-full border-2 border-white bg-white shadow">
-            <Image
-              src={organizerLogo}
-              alt="Organisateur"
-              fill
-              className="object-contain p-1"
-              sizes="44px"
-            />
-          </div>
-          <span className="absolute bottom-3 left-3 rounded-full bg-accent-500 px-3 py-1 text-xs font-semibold text-white">
-            {stay.ageRange || 'Tous âges'}
-          </span>
-          <span className="absolute bottom-3 right-3 inline-flex items-center gap-1 rounded-full bg-white px-3 py-1 text-xs font-semibold text-accent-500">
-            <Sun className="h-3.5 w-3.5" />
-            {seasonLabel}
-          </span>
-        </div>
-
-        <CardContent className="space-y-4 p-4 pt-5 sm:pt-6">
-          <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-medium text-brand-600">
-            <span className="inline-flex min-w-0 items-center gap-1.5">
-              <MapPin className="h-3.5 w-3.5" />
-              <span className="min-w-0 truncate">{locationLabel}</span>
-            </span>
-            <span className="inline-flex shrink-0 items-center gap-1.5">
-              <Clock3 className="h-3.5 w-3.5" />
-              {stay.duration || 'Durée à venir'}
-            </span>
-          </div>
-
-          <div className="space-y-2 pt-1 text-center">
-            <CardTitle className="text-lg font-bold text-slate-900 sm:text-xl">{stay.title}</CardTitle>
-            <CardDescription className="text-sm text-slate-500">{stay.organizer.name}</CardDescription>
-            <p
-              className="text-sm leading-6 text-slate-600"
-              style={{
-                display: '-webkit-box',
-                WebkitLineClamp: 3,
-                WebkitBoxOrient: 'vertical',
-                overflow: 'hidden'
-              }}
-            >
-              {description}
-            </p>
-          </div>
-          <p className="text-center text-xl font-bold text-accent-500">{priceLabel}</p>
-        </CardContent>
-      </Card>
-    </Link>
+    <div className="flex justify-center">
+      <OrganizerStayPreviewCard
+        title={stay.title}
+        summary={stay.summary}
+        description={stay.description}
+        locationLabel={stay.displayLocation || stay.location || stay.region || 'Lieu à préciser'}
+        ageRangeLabel={stay.ageRange || 'Tous âges'}
+        seasonIconSrc={season.iconPath}
+        seasonBadge={season.badgeText}
+        durationLabel={stay.duration || 'Durée à venir'}
+        priceFromEuros={stay.priceFrom}
+        coverUrl={stay.coverImage || getMockImageUrl(mockImages.sejours.fallbackCover, 1200, 80)}
+        href={`/sejours/${stay.canonicalSlug}`}
+        organizerLogoUrl={stay.organizer.logoUrl ?? null}
+        organizerName={stay.organizer.name}
+        overlayAction={<FavoriteToggleButton stayId={stay.id} variant="overlay" />}
+        disableBlueHoverEffect
+        compact
+        liftOnHover
+        isFullyBooked={isFullyBooked}
+      />
+    </div>
   );
 }
 
 function FiltersPanel({
   value,
   options,
+  bounds,
   onSearchChange,
   onToggle,
+  onDestinationsChange,
+  onAgeRangeChange,
+  onPriceRangeChange,
   onReset,
   className
 }: {
   value: StayCatalogFilterState;
   options: ReturnType<typeof buildStayCatalogFilterOptions>;
+  bounds: {
+    age: { min: number; max: number };
+    price: { min: number; max: number };
+  };
   onSearchChange: (value: string) => void;
   onToggle: (key: MultiFilterKey, option: string) => void;
+  onDestinationsChange: (value: string | null) => void;
+  onAgeRangeChange: (value: { min: number; max: number } | null) => void;
+  onPriceRangeChange: (value: { min: number; max: number } | null) => void;
   onReset: () => void;
   className?: string;
 }) {
@@ -168,84 +220,193 @@ function FiltersPanel({
   }> = [
     { key: 'seasonIds', label: 'SAISON', options: options.seasons },
     { key: 'categories', label: 'TYPE DE SÉJOUR', options: options.categories },
-    {
-      key: 'ageBands',
-      label: 'ÂGE DU PARTICIPANT',
-      options: options.ageBands as unknown as StayCatalogFilterOption[]
-    },
+    { key: 'destinationTypes', label: 'FORMAT DE DESTINATION', options: options.destinationTypes },
     { key: 'destinations', label: 'DESTINATIONS', options: options.destinations },
     { key: 'organizerIds', label: 'ORGANISATEURS', options: options.organizers }
   ];
 
+  const renderFilterGroup = (groupKey: MultiFilterKey) => {
+    const group = filterGroups.find((entry) => entry.key === groupKey);
+    if (!group) return null;
+
+    const selectedCount = value[group.key].length;
+    const selectedValues = value[group.key] as string[];
+    const selectedDestination = group.key === 'destinations' ? (selectedValues[0] ?? '') : '';
+
+    const groupedDestinationOptions =
+      group.key === 'destinations'
+        ? group.options.reduce(
+            (acc, option) => {
+              const canonical = mapToCanonicalStayRegion(option.label);
+              if (canonical && canonical !== 'Étranger') {
+                acc.france.push(option);
+              } else {
+                acc.foreign.push(option);
+              }
+              return acc;
+            },
+            {
+              france: [] as StayCatalogFilterOption[],
+              foreign: [] as StayCatalogFilterOption[]
+            }
+          )
+        : null;
+
+    return (
+      <AccordionItem key={group.key} value={group.key}>
+        <AccordionTrigger className="py-2.5 text-[12px] tracking-[0.07em] text-slate-900">
+          <span className="inline-flex items-center gap-2">
+            {group.label}
+            {selectedCount > 0 && (
+              <span className="inline-flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-brand-100 px-1 text-[10px] font-bold text-brand-700">
+                {selectedCount}
+              </span>
+            )}
+          </span>
+        </AccordionTrigger>
+        <AccordionContent className="pb-1.5">
+          {group.options.length === 0 ? (
+            <p className="text-[11px] text-slate-500">Aucune option disponible.</p>
+          ) : group.key === 'destinations' && groupedDestinationOptions ? (
+            <div className="space-y-1.5">
+              <select
+                value={selectedDestination}
+                onChange={(event) => onDestinationsChange(event.target.value ? event.target.value : null)}
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-[13px] font-semibold text-slate-700 outline-none transition focus:border-brand-500"
+                aria-label="Choisir une destination"
+              >
+                <option value="">Toutes destinations</option>
+                {groupedDestinationOptions.france.length > 0 ? (
+                  <optgroup label="France (régions)">
+                    {groupedDestinationOptions.france.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label} ({option.count})
+                      </option>
+                    ))}
+                  </optgroup>
+                ) : null}
+                {groupedDestinationOptions.foreign.length > 0 ? (
+                  <optgroup label="Étranger (pays)">
+                    {groupedDestinationOptions.foreign.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label} ({option.count})
+                      </option>
+                    ))}
+                  </optgroup>
+                ) : null}
+              </select>
+              <p className="text-[11px] text-slate-500">Une seule destination sélectionnable à la fois.</p>
+            </div>
+          ) : (
+            <ul className="space-y-1">
+              {group.options.map((option) => (
+                <li key={option.value}>
+                  <label className="flex items-start gap-2 rounded-lg px-1 py-0.5 text-[13px] text-slate-700">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 h-3.5 w-3.5 rounded border-slate-300 text-brand-600"
+                      checked={selectedValues.includes(option.value)}
+                      onChange={() => onToggle(group.key, option.value)}
+                    />
+                    <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
+                      <span className="min-w-0 truncate">{option.label}</span>
+                      <span className="shrink-0 text-[11px] text-slate-500">{option.count}</span>
+                    </span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+          )}
+        </AccordionContent>
+      </AccordionItem>
+    );
+  };
+
   return (
     <aside
-      className={`rounded-[1.6rem] border border-slate-200/85 bg-white p-4 shadow-[0_14px_30px_-24px_rgba(15,23,42,0.45)] sm:p-5 ${className ?? ''}`}
+      className={`rounded-[1.25rem] border border-slate-200/85 bg-white p-3.5 shadow-[0_14px_30px_-24px_rgba(15,23,42,0.45)] sm:p-4 ${className ?? ''}`}
     >
-      <h2 className="text-2xl font-semibold text-slate-900">
+      <h2 className="text-lg font-semibold text-slate-900">
         Filtrez <span className="text-accent-500">les séjours</span>
       </h2>
 
-      <div className="relative mt-4">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-brand-600" />
+      <div className="relative mt-3">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-brand-600" />
         <input
           type="search"
           value={value.q}
           onChange={(event) => onSearchChange(event.target.value)}
           placeholder="Titre, destination, activité, organisateur..."
-          className="w-full rounded-xl border border-slate-200 bg-slate-50/60 py-2.5 pl-9 pr-3 text-sm text-slate-700 outline-none transition focus:border-brand-500 focus:bg-white"
+          className="w-full rounded-xl border border-slate-200 bg-slate-50/60 py-2 pl-10 pr-3 text-[13px] text-slate-700 outline-none transition focus:border-brand-500 focus:bg-white"
         />
       </div>
 
-      <Accordion type="multiple" defaultValue={ACCORDION_DEFAULT_OPEN} className="mt-4">
-        {filterGroups.map((group) => {
-          const selectedCount = value[group.key].length;
-          const selectedValues = value[group.key] as string[];
+      <Accordion type="multiple" defaultValue={ACCORDION_DEFAULT_OPEN} className="mt-3">
+        {renderFilterGroup('seasonIds')}
+        {renderFilterGroup('categories')}
+        {renderFilterGroup('destinationTypes')}
 
-          return (
-            <AccordionItem key={group.key} value={group.key}>
-              <AccordionTrigger className="py-3 text-[13px] tracking-[0.08em] text-slate-900">
-                <span className="inline-flex items-center gap-2">
-                  {group.label}
-                  {selectedCount > 0 && (
-                    <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-brand-100 px-1.5 text-[11px] font-bold text-brand-700">
-                      {selectedCount}
-                    </span>
-                  )}
+        <AccordionItem value="ageRange">
+          <AccordionTrigger className="py-2.5 text-[12px] tracking-[0.07em] text-slate-900">
+            <span className="inline-flex items-center gap-2">
+              ÂGE
+              {(value.ageMin != null || value.ageMax != null) && (
+                <span className="inline-flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-brand-100 px-1 text-[10px] font-bold text-brand-700">
+                  1
                 </span>
-              </AccordionTrigger>
-              <AccordionContent className="pb-2">
-                {group.options.length === 0 ? (
-                  <p className="text-xs text-slate-500">Aucune option disponible.</p>
-                ) : (
-                  <ul className="space-y-2">
-                    {group.options.map((option) => (
-                      <li key={option.value}>
-                        <label className="flex items-start gap-2.5 rounded-lg px-1 py-1 text-sm text-slate-700">
-                          <input
-                            type="checkbox"
-                            className="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-600"
-                            checked={selectedValues.includes(option.value)}
-                            onChange={() => onToggle(group.key, option.value)}
-                          />
-                          <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
-                            <span className="min-w-0 truncate">{option.label}</span>
-                            <span className="shrink-0 text-xs text-slate-500">{option.count}</span>
-                          </span>
-                        </label>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </AccordionContent>
-            </AccordionItem>
-          );
-        })}
+              )}
+            </span>
+          </AccordionTrigger>
+          <AccordionContent className="pb-1.5">
+            <RangeSlider
+              min={bounds.age.min}
+              max={bounds.age.max}
+              valueMin={value.ageMin ?? bounds.age.min}
+              valueMax={value.ageMax ?? bounds.age.max}
+              format={formatAge}
+              onChange={(next) => {
+                const isDefault = next.min === bounds.age.min && next.max === bounds.age.max;
+                onAgeRangeChange(isDefault ? null : next);
+              }}
+            />
+          </AccordionContent>
+        </AccordionItem>
+
+        {renderFilterGroup('destinations')}
+
+        <AccordionItem value="priceRange">
+          <AccordionTrigger className="py-2.5 text-[12px] tracking-[0.07em] text-slate-900">
+            <span className="inline-flex items-center gap-2">
+              TARIF
+              {(value.priceMin != null || value.priceMax != null) && (
+                <span className="inline-flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-brand-100 px-1 text-[10px] font-bold text-brand-700">
+                  1
+                </span>
+              )}
+            </span>
+          </AccordionTrigger>
+          <AccordionContent className="pb-1.5">
+            <RangeSlider
+              min={bounds.price.min}
+              max={bounds.price.max}
+              valueMin={value.priceMin ?? bounds.price.min}
+              valueMax={value.priceMax ?? bounds.price.max}
+              format={formatEuros}
+              onChange={(next) => {
+                const isDefault = next.min === bounds.price.min && next.max === bounds.price.max;
+                onPriceRangeChange(isDefault ? null : next);
+              }}
+            />
+          </AccordionContent>
+        </AccordionItem>
+
+        {renderFilterGroup('organizerIds')}
       </Accordion>
 
       <button
         type="button"
         onClick={onReset}
-        className="mt-5 inline-flex w-full items-center justify-center rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-brand-300 hover:text-brand-700"
+        className="mt-4 inline-flex w-full items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-[13px] font-semibold text-slate-700 transition hover:border-brand-300 hover:text-brand-700"
       >
         Réinitialisez vos choix
       </button>
@@ -266,6 +427,7 @@ export function StayCatalogPage({
   const runtimeSearchParams = useSearchParams();
 
   const filterOptions = useMemo(() => buildStayCatalogFilterOptions(stays), [stays]);
+  const indexedStays = useMemo(() => stays.map(buildStaySearchIndex), [stays]);
   const initialSearchParams = useMemo(() => toUrlSearchParams(searchParams), [searchParams]);
   const initialFilters = useMemo(
     () => parseStayCatalogFiltersFromSearchParams(initialSearchParams, filterOptions),
@@ -277,7 +439,27 @@ export function StayCatalogPage({
   );
   const [filters, setFilters] = useState<StayCatalogFilterState>(initialFilters);
   const [sort, setSort] = useState<StayCatalogSortValue>(initialSort);
-  const [randomSeed, setRandomSeed] = useState<number | null>(null);
+  const [randomSeed] = useState<number>(() => Math.floor(Math.random() * 2_147_483_647));
+  const deferredFilters = useDeferredValue(filters);
+  const deferredSearchQuery = useMemo(() => parseSearchQuery(deferredFilters.q), [deferredFilters.q]);
+
+  const sliderBounds = useMemo(() => {
+    const ageMins = stays.map((s) => s.ageMin).filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
+    const ageMaxs = stays.map((s) => s.ageMax).filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
+    const priceValues = stays
+      .map((s) => s.priceFrom)
+      .filter((v): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0);
+
+    const ageMin = ageMins.length ? Math.max(0, Math.min(...ageMins)) : 3;
+    const ageMax = ageMaxs.length ? Math.max(...ageMaxs) : 25;
+    const priceMin = priceValues.length ? Math.max(0, Math.min(...priceValues)) : 0;
+    const priceMax = priceValues.length ? Math.max(...priceValues) : 5000;
+
+    return {
+      age: { min: Math.floor(ageMin), max: Math.ceil(Math.max(ageMin, ageMax)) },
+      price: { min: Math.floor(priceMin), max: Math.ceil(Math.max(priceMin, priceMax)) }
+    };
+  }, [stays]);
 
   const runtimeFilters = useMemo(
     () => parseStayCatalogFiltersFromSearchParams(runtimeSearchParams, filterOptions),
@@ -291,51 +473,69 @@ export function StayCatalogPage({
   const runtimeQuery = runtimeSearchParams.toString();
 
   useEffect(() => {
-    setFilters((previous) =>
-      stayCatalogFilterStateKey(previous) === runtimeFiltersKey ? previous : runtimeFilters
-    );
-  }, [runtimeFilters, runtimeFiltersKey]);
-
-  useEffect(() => {
-    setSort((previous) => (previous === runtimeSort ? previous : runtimeSort));
-  }, [runtimeSort]);
-
-  useEffect(() => {
-    setRandomSeed(Math.floor(Math.random() * 2_147_483_647));
-  }, []);
-
-  useEffect(() => {
-    setFilters((previous) => {
-      const next: StayCatalogFilterState = {
-        ...previous,
-        seasonIds: previous.seasonIds.filter((value) =>
-          filterOptions.seasons.some((option) => option.value === value)
-        ),
-        categories: previous.categories.filter((value) =>
-          filterOptions.categories.some((option) => option.value === value)
-        ),
-        ageBands: previous.ageBands.filter((value) =>
-          filterOptions.ageBands.some((option) => option.value === value)
-        ),
-        destinations: previous.destinations.filter((value) =>
-          filterOptions.destinations.some((option) => option.value === value)
-        ),
-        organizerIds: previous.organizerIds.filter((value) =>
-          filterOptions.organizers.some((option) => option.value === value)
-        )
-      };
-
-      return stayCatalogFilterStateKey(previous) === stayCatalogFilterStateKey(next) ? previous : next;
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setFilters((previous) =>
+        stayCatalogFilterStateKey(previous) === runtimeFiltersKey ? previous : runtimeFilters
+      );
+      setSort((previous) => (previous === runtimeSort ? previous : runtimeSort));
     });
-  }, [filterOptions]);
+    return () => {
+      cancelled = true;
+    };
+  }, [runtimeFilters, runtimeFiltersKey, runtimeSort]);
 
-  const debouncedQuery = useDebouncedValue(filters.q);
   const urlFilters = useMemo(
-    () => ({
-      ...filters,
-      q: debouncedQuery
-    }),
-    [debouncedQuery, filters]
+    () => {
+      const ageMin = filters.ageMin;
+      const ageMax = filters.ageMax;
+      const priceMin = filters.priceMin;
+      const priceMax = filters.priceMax;
+
+      const ageIsDefault =
+        ageMin != null &&
+        ageMax != null &&
+        ageMin === sliderBounds.age.min &&
+        ageMax === sliderBounds.age.max;
+
+      const priceIsDefault =
+        priceMin != null &&
+        priceMax != null &&
+        priceMin === sliderBounds.price.min &&
+        priceMax === sliderBounds.price.max;
+
+      return {
+        q: filters.q,
+        seasonIds: filters.seasonIds,
+        categories: filters.categories,
+        destinationTypes: filters.destinationTypes,
+        destinations: filters.destinations,
+        organizerIds: filters.organizerIds,
+        ageBands: filters.ageBands,
+        ageMin: ageIsDefault ? null : ageMin,
+        ageMax: ageIsDefault ? null : ageMax,
+        priceMin: priceIsDefault ? null : priceMin,
+        priceMax: priceIsDefault ? null : priceMax
+      };
+    },
+    [
+      filters.q,
+      filters.categories,
+      filters.destinationTypes,
+      filters.destinations,
+      filters.organizerIds,
+      filters.seasonIds,
+      filters.ageBands,
+      filters.ageMin,
+      filters.ageMax,
+      filters.priceMin,
+      filters.priceMax,
+      sliderBounds.age.min,
+      sliderBounds.age.max,
+      sliderBounds.price.min,
+      sliderBounds.price.max
+    ]
   );
   const urlFiltersKey = useMemo(
     () => stayCatalogFilterStateKey(urlFilters),
@@ -358,9 +558,61 @@ export function StayCatalogPage({
   }, [sort, urlFilters, urlFiltersKey, pathname, router, runtimeQuery]);
 
   const filteredStays = useMemo(
-    () => applyStayCatalogFilters(stays, filters),
-    [stays, filters]
+    () => applyStayCatalogFilters(indexedStays, deferredFilters, deferredSearchQuery),
+    [indexedStays, deferredFilters, deferredSearchQuery]
   );
+  const panelOptions = useMemo(() => {
+    function withSelectedFallbacks<TOption extends StayCatalogFilterOption>(
+      computed: TOption[],
+      fallback: TOption[],
+      selectedValues: string[]
+    ) {
+      if (selectedValues.length === 0) return computed;
+
+      const computedValues = new Set(computed.map((option) => option.value));
+      const extras = selectedValues
+        .filter((selectedValue) => !computedValues.has(selectedValue))
+        .map((selectedValue) => fallback.find((option) => option.value === selectedValue))
+        .filter((option): option is TOption => Boolean(option))
+        .map((option) => ({ ...option, count: 0 } as TOption));
+
+      if (extras.length === 0) return computed;
+      return [...computed, ...extras];
+    }
+
+    const seasonBase = buildStayCatalogFilterOptions(
+      applyStayCatalogFilters(indexedStays, { ...deferredFilters, seasonIds: [] }, deferredSearchQuery)
+    ).seasons;
+    const categoryBase = buildStayCatalogFilterOptions(
+      applyStayCatalogFilters(indexedStays, { ...deferredFilters, categories: [] }, deferredSearchQuery)
+    ).categories;
+    const ageBandBase = buildStayCatalogFilterOptions(
+      applyStayCatalogFilters(indexedStays, { ...deferredFilters, ageBands: [] }, deferredSearchQuery)
+    ).ageBands;
+    const destinationTypeBase = buildStayCatalogFilterOptions(
+      applyStayCatalogFilters(indexedStays, { ...deferredFilters, destinationTypes: [] }, deferredSearchQuery)
+    ).destinationTypes;
+    const destinationBase = buildStayCatalogFilterOptions(
+      applyStayCatalogFilters(indexedStays, { ...deferredFilters, destinations: [] }, deferredSearchQuery)
+    ).destinations;
+    const organizerBase = buildStayCatalogFilterOptions(
+      applyStayCatalogFilters(indexedStays, { ...deferredFilters, organizerIds: [] }, deferredSearchQuery)
+    ).organizers;
+
+    return {
+      ...filterOptions,
+      seasons: withSelectedFallbacks(seasonBase, filterOptions.seasons, filters.seasonIds),
+      categories: withSelectedFallbacks(categoryBase, filterOptions.categories, filters.categories),
+      ageBands: withSelectedFallbacks(ageBandBase, filterOptions.ageBands, filters.ageBands),
+      destinationTypes: withSelectedFallbacks(
+        destinationTypeBase,
+        filterOptions.destinationTypes,
+        filters.destinationTypes
+      ),
+      destinations: withSelectedFallbacks(destinationBase, filterOptions.destinations, filters.destinations),
+      organizers: withSelectedFallbacks(organizerBase, filterOptions.organizers, filters.organizerIds)
+    };
+  }, [deferredFilters, deferredSearchQuery, filterOptions, indexedStays]);
   const sortedStays = useMemo(
     () => applyStayCatalogSort(filteredStays, sort, { randomSeed }),
     [filteredStays, randomSeed, sort]
@@ -370,6 +622,30 @@ export function StayCatalogPage({
     setFilters((previous) => ({
       ...previous,
       [key]: toggleListValue(previous[key], optionValue)
+    }));
+  };
+
+  const setDestination = (next: string | null) => {
+    setFilters((previous) => ({
+      ...previous,
+      destinations: next ? [next] : []
+    }));
+  };
+
+  const setAgeRange = (next: { min: number; max: number } | null) => {
+    setFilters((previous) => ({
+      ...previous,
+      ageMin: next ? next.min : null,
+      ageMax: next ? next.max : null,
+      ageBands: []
+    }));
+  };
+
+  const setPriceRange = (next: { min: number; max: number } | null) => {
+    setFilters((previous) => ({
+      ...previous,
+      priceMin: next ? next.min : null,
+      priceMax: next ? next.max : null
     }));
   };
 
@@ -391,7 +667,7 @@ export function StayCatalogPage({
           <div className="absolute inset-0 bg-slate-900/60" />
         </div>
 
-        <div className="relative mx-auto max-w-7xl px-4 py-14 sm:px-6 sm:py-20 md:py-24">
+        <div className="relative mx-auto max-w-7xl px-4 py-12 sm:px-6 sm:py-16 md:py-20">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/90">
             <span className="relative inline-flex items-center gap-3">
               <span className="relative z-10 inline-flex items-center gap-2">
@@ -404,16 +680,16 @@ export function StayCatalogPage({
               />
             </span>
           </p>
-          <h1 className="mt-4 max-w-3xl text-3xl font-extrabold leading-tight text-white sm:text-4xl md:text-5xl">
+          <h1 className="mt-3 max-w-3xl text-2xl font-extrabold leading-tight text-white sm:text-3xl md:text-4xl">
             Colonies de vacances et séjours jeunes adultes
           </h1>
-          <p className="mt-4 max-w-2xl text-base text-white/85 md:text-lg">
+          <p className="mt-3 max-w-2xl text-sm text-white/85 md:text-base">
             Consultez les offres et trouvez la colonie idéale en quelques clics.
           </p>
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10">
+      <section className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-9">
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3 xl:hidden">
           <button
             type="button"
@@ -430,19 +706,23 @@ export function StayCatalogPage({
           </button>
         </div>
 
-        <div className="grid grid-cols-1 gap-6 xl:grid-cols-[320px_minmax(0,1fr)] xl:gap-8">
+        <div className="grid grid-cols-1 gap-5 xl:grid-cols-[304px_minmax(0,1fr)] xl:gap-7">
           <div className="hidden xl:block">
             <FiltersPanel
               value={filters}
-              options={filterOptions}
+              options={panelOptions}
+              bounds={sliderBounds}
               onSearchChange={(nextValue) => setFilters((previous) => ({ ...previous, q: nextValue }))}
               onToggle={updateMultiFilter}
+              onDestinationsChange={setDestination}
+              onAgeRangeChange={setAgeRange}
+              onPriceRangeChange={setPriceRange}
               onReset={resetFilters}
             />
           </div>
 
           <div>
-            <div className="mb-5 flex flex-col gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="mb-5 flex flex-col gap-3 rounded-xl border border-slate-200 bg-white px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-sm text-slate-600">
                 {sortedStays.length} séjour{sortedStays.length > 1 ? 's' : ''} trouvé
                 {sortedStays.length > 1 ? 's' : ''} sur {stays.length}
@@ -473,7 +753,7 @@ export function StayCatalogPage({
                 </p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3">
+              <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
                 {sortedStays.map((stay) => (
                   <StayCard key={stay.id} stay={stay} />
                 ))}
@@ -505,10 +785,14 @@ export function StayCatalogPage({
             </div>
             <FiltersPanel
               value={filters}
-              options={filterOptions}
+              options={panelOptions}
+              bounds={sliderBounds}
               className="border-none p-0 shadow-none"
               onSearchChange={(nextValue) => setFilters((previous) => ({ ...previous, q: nextValue }))}
               onToggle={updateMultiFilter}
+              onDestinationsChange={setDestination}
+              onAgeRangeChange={setAgeRange}
+              onPriceRangeChange={setPriceRange}
               onReset={resetFilters}
             />
             <button
@@ -522,16 +806,6 @@ export function StayCatalogPage({
         </div>
       )}
 
-      <button
-        type="button"
-        className="fixed bottom-4 right-4 z-[110] flex h-12 w-12 items-center justify-center rounded-full bg-accent-500 text-white shadow-xl transition hover:bg-accent-600 sm:bottom-6 sm:right-6 sm:h-14 sm:w-14"
-        aria-label="Panier"
-      >
-        <ShoppingCart className="h-5 w-5 sm:h-6 sm:w-6" />
-        <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-brand-600 text-xs font-semibold text-white">
-          0
-        </span>
-      </button>
     </div>
   );
 }

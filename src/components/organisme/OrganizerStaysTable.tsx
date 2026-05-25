@@ -1,10 +1,10 @@
 'use client';
 
 import Link from 'next/link';
-import { Fragment, useEffect, useState } from 'react';
-import { ChevronDown, Pencil } from 'lucide-react';
+import { Fragment, useEffect, useRef, useState } from 'react';
+import { ChevronDown, Pencil, Trash2 } from 'lucide-react';
 import RemainingPlacesEditor from '@/components/organisme/RemainingPlacesEditor';
-import { sessionStatusLabel, stayStatusLabel } from '@/lib/ui/labels';
+import { sessionStatusLabel, stayDraftStatusLabel, stayStatusBadgeClassName, stayStatusLabel } from '@/lib/ui/labels';
 import { withOrganizerQuery } from '@/lib/organizers';
 
 type StaySessionListItem = {
@@ -21,14 +21,28 @@ type StayListItem = {
   title: string;
   status: string | null;
   seasonName: string;
+  locationText: string;
+  availability: 'AVAILABLE' | 'PARTIALLY_AVAILABLE' | 'FULL';
   sessions: StaySessionListItem[];
+};
+
+type ImportDraftListItem = {
+  id: string;
+  title: string;
+  status: string | null;
+  updatedAt: string;
 };
 
 type OrganizerStaysTableProps = {
   stays: StayListItem[];
   organizerId?: string | null;
+  importDrafts?: ImportDraftListItem[];
   updateSessionRemainingPlacesAction: (formData: FormData) => void;
+  deleteStayAction: (formData: FormData) => void;
+  updateStayStatusAction: (formData: FormData) => void;
+  deleteImportDraftAction?: (formData: FormData) => void;
   defaultOpenStayIds?: string[];
+  defaultEditingSessionId?: string | null;
 };
 
 function formatReservedPlacesLabel(count: number, total: number) {
@@ -45,35 +59,215 @@ function formatDateRange(startDate: string, endDate: string) {
   return `${new Date(startDate).toLocaleDateString('fr-FR')} - ${new Date(endDate).toLocaleDateString('fr-FR')}`;
 }
 
+function availabilityLabel(availability: StayListItem['availability']) {
+  switch (availability) {
+    case 'AVAILABLE':
+      return 'DISPONIBLE';
+    case 'PARTIALLY_AVAILABLE':
+      return 'PARTIELLEMENT DISPONIBLE';
+    case 'FULL':
+      return 'COMPLET';
+  }
+}
+
+function availabilityClassName(availability: StayListItem['availability']) {
+  switch (availability) {
+    case 'AVAILABLE':
+      return 'bg-emerald-100 text-emerald-700';
+    case 'PARTIALLY_AVAILABLE':
+      return 'bg-amber-100 text-amber-700';
+    case 'FULL':
+      return 'bg-rose-100 text-rose-700';
+  }
+}
+
 export default function OrganizerStaysTable({
   stays,
   organizerId,
+  importDrafts = [],
   updateSessionRemainingPlacesAction,
-  defaultOpenStayIds = []
+  deleteStayAction,
+  updateStayStatusAction,
+  deleteImportDraftAction,
+  defaultOpenStayIds = [],
+  defaultEditingSessionId = null
 }: OrganizerStaysTableProps) {
   const [openStayIds, setOpenStayIds] = useState<string[]>(defaultOpenStayIds);
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+  const [dirtySessionIds, setDirtySessionIds] = useState<Record<string, boolean>>({});
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [editingStatusStayId, setEditingStatusStayId] = useState<string | null>(null);
+  const [completionFilter, setCompletionFilter] = useState<'all' | 'full' | 'available'>('all');
+  const [locationFilter, setLocationFilter] = useState('all');
+  const submittersRef = useRef<Record<string, ((nextEditSessionId?: string) => void) | undefined>>({});
 
   useEffect(() => {
     setOpenStayIds(defaultOpenStayIds);
   }, [defaultOpenStayIds]);
 
+  useEffect(() => {
+    setEditingSessionId(defaultEditingSessionId);
+  }, [defaultEditingSessionId]);
+
+  const locationOptions = Array.from(
+    new Set(
+      stays
+        .map((stay) => stay.locationText.trim())
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b, 'fr'))
+    )
+  );
+  const statusOptions = Array.from(
+    new Set(
+      stays
+        .map((stay) => stay.status)
+        .filter((status): status is string => typeof status === 'string' && status.trim().length > 0)
+    )
+  );
+
+  const filteredStays = stays.filter((stay) => {
+    if (statusFilter !== 'all' && (stay.status ?? '') !== statusFilter) return false;
+    if (completionFilter === 'full' && stay.availability !== 'FULL') return false;
+    if (completionFilter === 'available' && stay.availability === 'FULL') return false;
+    if (locationFilter !== 'all' && stay.locationText.trim() !== locationFilter) return false;
+    return true;
+  });
+
   return (
-    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+    <div className="space-y-6">
+      {importDrafts.length > 0 && (
+        <div className="overflow-hidden rounded-2xl border border-amber-200 bg-amber-50/40">
+          <div className="border-b border-amber-200/80 bg-amber-100/50 px-4 py-3">
+            <h2 className="text-sm font-semibold text-amber-950">Brouillons d&apos;import</h2>
+          </div>
+          <ul className="divide-y divide-amber-200/60">
+            {importDrafts.map((draft) => (
+              <li key={draft.id} className="px-4 py-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-slate-900">{draft.title || 'Sans titre'}</p>
+                    <p className="text-xs text-slate-500">
+                      Mis à jour le {new Date(draft.updatedAt).toLocaleString('fr-FR')}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-end gap-2 sm:flex-shrink-0 sm:flex-nowrap">
+                    <span className="inline-flex rounded-full bg-white px-3 py-1 text-xs font-semibold text-amber-950 ring-1 ring-amber-300/80">
+                      {stayDraftStatusLabel(draft.status)}
+                    </span>
+                    <Link
+                      href={withOrganizerQuery(`/organisme/sejours/drafts/${draft.id}`, organizerId)}
+                      className="organizer-btn-secondary min-h-[36px] px-3 py-1.5 text-xs"
+                    >
+                      Modifier brouillon
+                    </Link>
+                    {deleteImportDraftAction ? (
+                      <form
+                        action={deleteImportDraftAction}
+                        onSubmit={(event) => {
+                          if (
+                            !window.confirm(
+                              `Supprimer définitivement le brouillon d'import « ${draft.title || 'Sans titre'} » ?`
+                            )
+                          ) {
+                            event.preventDefault();
+                          }
+                        }}
+                      >
+                        <input type="hidden" name="draft_id" value={draft.id} />
+                        {organizerId ? (
+                          <input type="hidden" name="organizer_id" value={organizerId} />
+                        ) : null}
+                        <button
+                          type="submit"
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-rose-200 text-rose-600 transition hover:bg-rose-50"
+                          aria-label={`Supprimer le brouillon ${draft.title || 'Sans titre'}`}
+                          title="Supprimer ce brouillon"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </form>
+                    ) : null}
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+    <div className="organizer-table-shell">
+      <div className="border-b border-slate-200 bg-slate-50/70 px-4 py-4">
+        <div className="grid gap-3 md:grid-cols-3">
+          <label className="block text-sm font-medium text-slate-700">
+            Statut
+            <select
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value)}
+              className="organizer-input"
+            >
+              <option value="all">Tous les statuts</option>
+              {statusOptions.map((status) => (
+                <option key={status} value={status}>
+                  {stayStatusLabel(status)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block text-sm font-medium text-slate-700">
+            Disponibilité
+            <select
+              value={completionFilter}
+              onChange={(event) =>
+                setCompletionFilter(event.target.value as 'all' | 'full' | 'available')
+              }
+              className="organizer-input"
+            >
+              <option value="all">Tous les séjours</option>
+              <option value="full">Séjours complets</option>
+              <option value="available">Séjours non complets</option>
+            </select>
+          </label>
+          <label className="block text-sm font-medium text-slate-700">
+            Lieu
+            <select
+              value={locationFilter}
+              onChange={(event) => setLocationFilter(event.target.value)}
+              className="organizer-input"
+            >
+              <option value="all">Tous les lieux</option>
+              {locationOptions.map((location) => (
+                <option key={location} value={location}>
+                  {location}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      </div>
       <div className="overflow-x-auto">
-        <table className="min-w-[820px] w-full text-left text-sm">
-          <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+        <table className="organizer-table min-w-[980px] w-full table-fixed">
+          <colgroup>
+            <col className="w-14" />
+            <col className="w-[24%]" />
+            <col className="w-[11%]" />
+            <col className="w-[11%]" />
+            <col className="w-[14%]" />
+            <col className="w-auto" />
+            <col className="w-[170px]" />
+          </colgroup>
+          <thead>
             <tr>
-              <th className="w-12 px-4 py-3"></th>
+              <th className="px-4 py-3"></th>
               <th className="px-4 py-3">Séjour</th>
               <th className="px-4 py-3">Saison</th>
               <th className="px-4 py-3">Statut</th>
-              <th className="px-4 py-3">Qualité</th>
+              <th className="px-4 py-3">Disponibilité</th>
+              <th className="px-4 py-3">Lieu</th>
               <th className="px-4 py-3"></th>
             </tr>
           </thead>
           <tbody>
-            {stays.map((stay) => {
+            {filteredStays.map((stay) => {
               const isOpen = openStayIds.includes(stay.id);
 
               return (
@@ -86,41 +280,116 @@ export default function OrganizerStaysTable({
                           setOpenStayIds((current) =>
                             current.includes(stay.id)
                               ? current.filter((id) => id !== stay.id)
-                              : [...current, stay.id]
+                              : [stay.id]
                           );
                           setEditingSessionId(null);
                         }}
-                        className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:border-slate-300 hover:text-slate-900"
+                        className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-slate-500 transition hover:border-slate-300 hover:bg-white hover:text-slate-900"
                         aria-label={isOpen ? 'Masquer les sessions' : 'Afficher les sessions'}
                       >
-                        <ChevronDown className={`h-4 w-4 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                        <span
+                          aria-hidden="true"
+                          className={`relative block h-3 w-3 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
+                        >
+                          <span className="absolute left-[1px] top-[5px] h-0.5 w-[7px] rotate-45 rounded-full bg-current" />
+                          <span className="absolute right-[1px] top-[5px] h-0.5 w-[7px] -rotate-45 rounded-full bg-current" />
+                        </span>
                       </button>
                     </td>
                     <td className="px-4 py-3 font-medium text-slate-900">{stay.title}</td>
                     <td className="px-4 py-3 text-slate-600">{stay.seasonName}</td>
-                    <td className="px-4 py-3 text-slate-600">{stayStatusLabel(stay.status)}</td>
-                    <td className="px-4 py-3 text-slate-600">-</td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="px-4 py-3">
+                      {(stay.status === 'PUBLISHED' || stay.status === 'HIDDEN') &&
+                      editingStatusStayId === stay.id ? (
+                        <form action={updateStayStatusAction} className="flex items-center gap-2">
+                          <input type="hidden" name="stay_id" value={stay.id} />
+                          <select
+                            name="status"
+                            defaultValue={stay.status ?? 'PUBLISHED'}
+                            autoFocus
+                            onBlur={() => setEditingStatusStayId(null)}
+                            onChange={(event) => event.currentTarget.form?.requestSubmit()}
+                            className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-800"
+                          >
+                            <option value="PUBLISHED">Publié</option>
+                            <option value="HIDDEN">Masqué</option>
+                          </select>
+                        </form>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (stay.status === 'PUBLISHED' || stay.status === 'HIDDEN') {
+                              setEditingStatusStayId(stay.id);
+                            }
+                          }}
+                          className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
+                            stayStatusBadgeClassName(stay.status)
+                          } ${(stay.status === 'PUBLISHED' || stay.status === 'HIDDEN') ? 'cursor-pointer' : 'cursor-default'}`}
+                          aria-label={
+                            stay.status === 'PUBLISHED' || stay.status === 'HIDDEN'
+                              ? `Modifier le statut du séjour ${stay.title}`
+                              : undefined
+                          }
+                          title={
+                            stay.status === 'PUBLISHED' || stay.status === 'HIDDEN'
+                              ? 'Cliquer pour changer le statut'
+                              : undefined
+                          }
+                        >
+                          <span>{stayStatusLabel(stay.status)}</span>
+                          {stay.status === 'PUBLISHED' || stay.status === 'HIDDEN' ? (
+                            <ChevronDown className="ml-1 h-3.5 w-3.5 opacity-80" />
+                          ) : null}
+                        </button>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${availabilityClassName(stay.availability)}`}
+                      >
+                        {availabilityLabel(stay.availability)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-slate-600">{stay.locationText || '-'}</td>
+                    <td className="px-4 py-3 text-right whitespace-nowrap">
                       <div className="flex items-center justify-end gap-3">
-                        <Link
-                          href={withOrganizerQuery(`/organisme/sejours/${stay.id}`, organizerId)}
-                          className="text-emerald-600"
+                        <form
+                          action={deleteStayAction}
+                          onSubmit={(event) => {
+                            if (
+                              !window.confirm(
+                                `Supprimer définitivement le séjour "${stay.title}" ?`
+                              )
+                            ) {
+                              event.preventDefault();
+                            }
+                          }}
                         >
-                          Ouvrir
-                        </Link>
+                          <input type="hidden" name="stay_id" value={stay.id} />
+                          <button
+                            type="submit"
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-rose-200 text-rose-600 transition hover:bg-rose-50"
+                            aria-label={`Supprimer le séjour ${stay.title}`}
+                            title="Supprimer le séjour"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </form>
                         <Link
-                          href={withOrganizerQuery(`/organisme/sejours/${stay.id}`, organizerId)}
-                          className="rounded-lg border border-emerald-200 px-3 py-1 text-xs font-semibold text-emerald-700"
+                          href={withOrganizerQuery(`/organisme/sejours/${stay.id}/edit`, organizerId)}
+                          className="organizer-btn-secondary min-h-[36px] gap-1 border-orange-200 px-3 py-1 text-xs text-orange-700 hover:border-orange-300 hover:bg-orange-50"
                         >
+                          <Pencil className="h-3.5 w-3.5" />
                           Éditer
                         </Link>
                       </div>
                     </td>
                   </tr>
                   {isOpen && (
-                    <tr key={`${stay.id}-sessions`} className="border-t border-slate-100 bg-slate-50/70">
-                      <td colSpan={6} className="px-4 py-4">
-                        <div className="rounded-xl border border-slate-200 bg-white">
+                    <tr key={`${stay.id}-sessions`} className="border-t border-slate-100 bg-slate-100/80">
+                      <td colSpan={7} className="px-4 py-4">
+                        <div className="rounded-xl border border-slate-200 bg-slate-50">
                           <div className="border-b border-slate-100 px-4 py-3 text-sm font-medium text-slate-900">
                             Sessions ouvertes
                           </div>
@@ -171,17 +440,46 @@ export default function OrganizerStaysTable({
                                           initialValue={remainingPlaces}
                                           hiddenFields={{
                                             session_id: sessionItem.id,
-                                            stay_id: stay.id
+                                            stay_id: stay.id,
+                                            next_edit_session_id: ''
                                           }}
                                           inputClassName="w-24 rounded-lg border border-slate-200 px-3 py-2 text-sm"
                                           labelClassName="text-xs font-medium text-slate-600"
                                           buttonLabel="Enregistrer"
+                                          onDirtyChange={(isDirty) => {
+                                            setDirtySessionIds((current) => {
+                                              if (current[sessionItem.id] === isDirty) return current;
+                                              return {
+                                                ...current,
+                                                [sessionItem.id]: isDirty
+                                              };
+                                            });
+                                          }}
+                                          registerSubmit={(submit) => {
+                                            if (submit) {
+                                              submittersRef.current[sessionItem.id] = submit;
+                                              return;
+                                            }
+                                            delete submittersRef.current[sessionItem.id];
+                                          }}
                                         />
                                       ) : (
                                         <button
                                           type="button"
-                                          onClick={() => setEditingSessionId(sessionItem.id)}
-                                          className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:border-slate-300 hover:text-slate-900"
+                                          onClick={() => {
+                                            if (
+                                              editingSessionId &&
+                                              editingSessionId !== sessionItem.id &&
+                                              dirtySessionIds[editingSessionId] &&
+                                              submittersRef.current[editingSessionId]
+                                            ) {
+                                              submittersRef.current[editingSessionId]?.(sessionItem.id);
+                                              return;
+                                            }
+
+                                            setEditingSessionId(sessionItem.id);
+                                          }}
+                                          className="organizer-btn-secondary min-h-[36px] gap-2 px-3 py-2 text-sm font-medium"
                                         >
                                           <span>{formatRemainingPlacesLabel(remainingPlaces)}</span>
                                           <Pencil className="h-3.5 w-3.5" />
@@ -204,9 +502,19 @@ export default function OrganizerStaysTable({
                 </Fragment>
               );
             })}
+            {filteredStays.length === 0 && (
+              <tr>
+                <td colSpan={7} className="px-4 py-8 text-sm text-slate-500">
+                  {stays.length === 0
+                    ? 'Aucun séjour déclaré pour le moment.'
+                    : 'Aucun séjour ne correspond aux filtres sélectionnés.'}
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
+    </div>
     </div>
   );
 }

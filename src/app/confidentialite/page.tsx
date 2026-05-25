@@ -1,102 +1,125 @@
 export default function ConfidentialitePage() {
   return (
-    <section className="mx-auto max-w-3xl space-y-8 px-6 py-16 text-sm leading-7 text-slate-600">
-      <h1 className="text-3xl font-bold text-slate-900">Politique de confidentialité</h1>
-      <p>
-        <strong>Définitions</strong>
-      </p>
-      <p>
-        L’Éditeur : La personne, physique ou morale, qui édite les services de communication au public en ligne.
-      </p>
-      <p>
-        Le Site : L’ensemble des sites, pages Internet et services en ligne proposés par RESACOLO | Colonie de
-        vacances, référencement et réservations.
-      </p>
-      <p>L’Utilisateur : La personne utilisant le Site et les services.</p>
+    <div className="bg-white">
+      <section className="bg-[#6ec7ff]">
+        <div className="section-container relative py-10 sm:py-12 lg:py-14">
+          <div className="relative z-[1] max-w-[58rem]">
+            <p className="text-[0.7rem] font-extrabold uppercase tracking-[0.18em] text-white/80 sm:text-[0.75rem]">
+              Informations légales
+            </p>
+            <h1 className="mt-5 max-w-[16ch] font-display text-4xl font-bold leading-[1.08] text-white sm:max-w-[18ch] sm:text-5xl lg:max-w-[20ch] lg:text-[4rem]">
+              Politique de confidentialité
+            </h1>
+            <div className="mt-7 max-w-[56rem] whitespace-pre-line text-sm font-bold leading-[1.6] text-white/95 sm:text-[0.95rem]">
+              <p>
+                Consultez ici les modalités de collecte, d’utilisation, de conservation et de
+                protection des données personnelles traitées par Resacolo.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
 
-      <div className="space-y-6">
-        <section className="space-y-3">
-          <h2 className="text-2xl font-bold text-slate-900">1- Nature des données collectées</h2>
-          <p>
-            Dans le cadre de l’utilisation du Site, l’Éditeur est susceptible de collecter les catégories de données
-            suivantes concernant ses Utilisateurs : Données d’état-civil, d’identité, d’identification…
-          </p>
-        </section>
+      <section className="section-container py-12 sm:py-14 lg:py-16">
+        <div className="max-w-none space-y-8 text-justify text-sm leading-7 text-slate-600">
+          <section className="space-y-2">
+            <h2 className="text-2xl font-bold text-slate-900">Définitions</h2>
+            <p>
+              L’Éditeur : La personne, physique ou morale, qui édite les services de communication au public en ligne.
+            </p>
+            <p>
+              Le Site : L’ensemble des sites, pages Internet et services en ligne proposés par RESACOLO | Colonie de
+              vacances, référencement et réservations.
+            </p>
+            <p>L’Utilisateur : La personne utilisant le Site et les services.</p>
+          </section>
 
-        <section className="space-y-3">
-          <h2 className="text-2xl font-bold text-slate-900">
-            2- Communication des données personnelles à des tiers
-          </h2>
-          <p>
-            <strong>Communication aux autorités sur la base des obligations légales</strong>
-          </p>
-          <p>
-            Sur la base des obligations légales, vos données personnelles pourront être divulguées en application
-            d’une loi, d’un règlement ou en vertu d’une décision d’une autorité réglementaire ou judiciaire
-            compétente. De manière générale, nous nous engageons à nous conformer à toutes les règles légales qui
-            pourraient empêcher, limiter ou règlementer la diffusion d’informations ou de données et notamment à se
-            conformer à la loi n° 78-17 du 6 janvier 1978 relative à l’informatique, aux fichiers et aux libertés.
-          </p>
-          <p>
-            <strong>Communication à des tiers avec restrictions liées aux destinataires</strong>
-          </p>
-          <p>
-            Les données personnelles que vous nous communiquez lors de votre commande sont transmises aux organisateurs
-            de séjours partenaire de la plateforme pour le traitement de celle-ci. Ces informations sont considérées
-            par nos organisateurs comme étant strictement confidentielles.
-          </p>
-        </section>
+          <div className="space-y-6">
+            <section className="space-y-3">
+              <h2 className="text-2xl font-bold text-slate-900">1- Nature des données collectées</h2>
+              <p>
+                Dans le cadre de l’utilisation du Site, l’Éditeur est susceptible de collecter les catégories de
+                données suivantes concernant ses Utilisateurs : Données d’état-civil, d’identité, d’identification…
+              </p>
+            </section>
 
-        <section className="space-y-3">
-          <h2 className="text-2xl font-bold text-slate-900">
-            3- Viralité des conditions de réutilisation des données personnelles
-          </h2>
-          <p>
-            <strong>Pas d’engagement sur la viralité des conditions de réutilisation</strong>
-          </p>
-          <p>
-            En cas de communication de vos données personnelles à un tiers, les conditions de confidentialité du tiers
-            s’appliquent.
-          </p>
-        </section>
+            <section className="space-y-3">
+              <h2 className="text-2xl font-bold text-slate-900">
+                2- Communication des données personnelles à des tiers
+              </h2>
+              <p>
+                <strong>Communication aux autorités sur la base des obligations légales</strong>
+              </p>
+              <p>
+                Sur la base des obligations légales, vos données personnelles pourront être divulguées en application
+                d’une loi, d’un règlement ou en vertu d’une décision d’une autorité réglementaire ou judiciaire
+                compétente. De manière générale, nous nous engageons à nous conformer à toutes les règles légales qui
+                pourraient empêcher, limiter ou règlementer la diffusion d’informations ou de données et notamment à se
+                conformer à la loi n° 78-17 du 6 janvier 1978 relative à l’informatique, aux fichiers et aux libertés.
+              </p>
+              <p>
+                <strong>Communication à des tiers avec restrictions liées aux destinataires</strong>
+              </p>
+              <p>
+                Les données personnelles que vous nous communiquez lors de votre commande sont transmises aux
+                organisateurs de séjours partenaire de la plateforme pour le traitement de celle-ci. Ces informations
+                sont considérées par nos organisateurs comme étant strictement confidentielles.
+              </p>
+            </section>
 
-        <section className="space-y-3">
-          <h2 className="text-2xl font-bold text-slate-900">
-            4- Information préalable pour la communication des données personnelles à des tiers en cas de fusion /
-            absorption
-          </h2>
-          <p>
-            <strong>Information préalable et possibilité d’opt-out avant et après la fusion / acquisition.</strong>
-          </p>
-          <p>
-            Dans le cas où nous prendrions part à une opération de fusion, d’acquisition ou à toute autre forme de
-            cession d’actifs, nous nous engageons à garantir la confidentialité de vos données personnelles et à vous
-            informer avant que celles-ci ne soient transférées ou soumises à de nouvelles règles de confidentialité.
-          </p>
-        </section>
+            <section className="space-y-3">
+              <h2 className="text-2xl font-bold text-slate-900">
+                3- Viralité des conditions de réutilisation des données personnelles
+              </h2>
+              <p>
+                <strong>Pas d’engagement sur la viralité des conditions de réutilisation</strong>
+              </p>
+              <p>
+                En cas de communication de vos données personnelles à un tiers, les conditions de confidentialité du
+                tiers s’appliquent.
+              </p>
+            </section>
 
-        <section className="space-y-3">
-          <h2 className="text-2xl font-bold text-slate-900">5- Agrégation des données</h2>
-          <p>
-            <strong>Agrégation avec des données non personnelles</strong>
-          </p>
-          <p>
-            Nous pouvons publier, divulguer et utiliser les informations agrégées (informations relatives à tous nos
-            Utilisateurs ou à des groupes ou catégories spécifiques d’Utilisateurs que nous combinons de manière à ce
-            qu’un Utilisateur individuel ne puisse plus être identifié ou mentionné) et les informations non
-            personnelles à des fins d’analyse du secteur et du marché, de profilage démographique, à des fins
-            promotionnelles et publicitaires et à d’autres fins commerciales.
-          </p>
-          <p>
-            <strong>Agrégation avec des données personnelles disponibles sur les comptes sociaux de l’Utilisateur</strong>
-          </p>
-          <p>
-            Si vous connectez votre compte à un compte d’un autre service afin de faire des envois croisés, ledit
-            service pourra nous communiquer vos informations de profil, de connexion, ainsi que toute autre information
-            dont vous avez autorisé la divulgation. Nous pouvons agréger les informations relatives à tous nos autres
-            Utilisateurs, groupes, comptes, aux données personnelles disponibles sur l’Utilisateur.
-          </p>
-        </section>
+            <section className="space-y-3">
+              <h2 className="text-2xl font-bold text-slate-900">
+                4- Information préalable pour la communication des données personnelles à des tiers en cas de fusion /
+                absorption
+              </h2>
+              <p>
+                <strong>Information préalable et possibilité d’opt-out avant et après la fusion / acquisition.</strong>
+              </p>
+              <p>
+                Dans le cas où nous prendrions part à une opération de fusion, d’acquisition ou à toute autre forme de
+                cession d’actifs, nous nous engageons à garantir la confidentialité de vos données personnelles et à
+                vous informer avant que celles-ci ne soient transférées ou soumises à de nouvelles règles de
+                confidentialité.
+              </p>
+            </section>
+
+            <section className="space-y-3">
+              <h2 className="text-2xl font-bold text-slate-900">5- Agrégation des données</h2>
+              <p>
+                <strong>Agrégation avec des données non personnelles</strong>
+              </p>
+              <p>
+                Nous pouvons publier, divulguer et utiliser les informations agrégées (informations relatives à tous
+                nos Utilisateurs ou à des groupes ou catégories spécifiques d’Utilisateurs que nous combinons de
+                manière à ce qu’un Utilisateur individuel ne puisse plus être identifié ou mentionné) et les
+                informations non personnelles à des fins d’analyse du secteur et du marché, de profilage
+                démographique, à des fins promotionnelles et publicitaires et à d’autres fins commerciales.
+              </p>
+              <p>
+                <strong>
+                  Agrégation avec des données personnelles disponibles sur les comptes sociaux de l’Utilisateur
+                </strong>
+              </p>
+              <p>
+                Si vous connectez votre compte à un compte d’un autre service afin de faire des envois croisés, ledit
+                service pourra nous communiquer vos informations de profil, de connexion, ainsi que toute autre
+                information dont vous avez autorisé la divulgation. Nous pouvons agréger les informations relatives à
+                tous nos autres Utilisateurs, groupes, comptes, aux données personnelles disponibles sur l’Utilisateur.
+              </p>
+            </section>
 
         <section className="space-y-3">
           <h2 className="text-2xl font-bold text-slate-900">6- Collecte des données d’identité</h2>
@@ -309,10 +332,12 @@ export default function ConfidentialitePage() {
             aisément réutilisable.
           </p>
         </section>
-      </div>
-      <p>
-        <strong>Version en vigueur :</strong> 20 février 2026
-      </p>
-    </section>
+          </div>
+          <p>
+            <strong>Version en vigueur :</strong> 20 février 2026
+          </p>
+        </div>
+      </section>
+    </div>
   );
 }

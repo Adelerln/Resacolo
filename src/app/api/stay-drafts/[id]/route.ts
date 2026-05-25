@@ -1,12 +1,23 @@
+import { revalidatePath } from 'next/cache';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { getSession } from '@/lib/auth/session';
-import { resolveOrganizerSelection } from '@/lib/organizers.server';
-import { mockOrganizerTenant } from '@/lib/mocks';
-import { publishStayDraftToLive, PublishStayDraftError } from '@/lib/publish-stay-draft';
+import { requireOrganizerApiAccess } from '@/lib/organizer-backoffice-access.server';
+import {
+  publishStayDraftToLive,
+  PublishStayDraftError,
+  syncStayDraftPreviewAccommodation
+} from '@/lib/publish-stay-draft';
 import { normalizeStayDraftCategories } from '@/lib/stay-categories';
+import {
+  expandDraftAges,
+  normalizeStaySummary,
+  normalizeStayTransportLogisticsMode
+} from '@/lib/stay-draft-content';
+import { writeDraftDestinationFields } from '@/lib/stay-draft-destination';
 import { mapToCanonicalStayRegion } from '@/lib/stay-regions';
+import { sanitizeSeoPrimaryKeyword, sanitizeSeoTags, sanitizeSeoText } from '@/lib/stay-seo';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
+import { normalizeStayTitle } from '@/lib/stay-title';
 import type { Database, Json } from '@/types/supabase';
 import type { StayDraftReviewFieldErrors, StayDraftReviewPayload } from '@/types/stay-draft-review';
 
@@ -18,10 +29,22 @@ const arrayOfObjectsSchema = z.array(z.record(z.unknown())).optional().default([
 const bodySchema = z.object({
   organizerId: z.string().optional(),
   title: z.string().trim().min(1, 'Le titre est requis.'),
+  season_ids: z.array(z.string().trim().min(1)).optional().default([]),
+  season_names: z.array(z.string().trim().min(1)).optional().default([]),
   summary: textFieldSchema,
+  destination_type: z.enum(['fixed_france', 'fixed_abroad', 'itinerant', '']).optional().default(''),
+  destination_city: textFieldSchema,
+  destination_postal_code: textFieldSchema,
+  destination_department_code: textFieldSchema,
+  destination_region: textFieldSchema,
+  destination_country: textFieldSchema,
+  destination_itinerary_label: textFieldSchema,
+  destination_countries: z.array(z.string()).optional().default([]),
   location_text: textFieldSchema,
   region_text: textFieldSchema,
   description: textFieldSchema,
+  activities_text: textFieldSchema,
+  required_documents_text: textFieldSchema,
   program_text: textFieldSchema,
   supervision_text: textFieldSchema,
   transport_text: textFieldSchema,
@@ -35,7 +58,32 @@ const bodySchema = z.object({
   extra_options_json: arrayOfObjectsSchema,
   transport_options_json: arrayOfObjectsSchema,
   accommodations_json: z.record(z.unknown()).nullable().optional().default(null),
-  images: z.array(z.string()).optional().default([])
+  images: z.array(z.string()).optional().default([]),
+  seo_primary_keyword: z.string().optional().default(''),
+  seo_secondary_keywords: z.array(z.string()).optional().default([]),
+  seo_target_city: z.string().optional().default(''),
+  seo_target_region: z.string().optional().default(''),
+  seo_search_intents: z.array(z.string()).optional().default([]),
+  seo_title: z.string().optional().default(''),
+  seo_meta_description: z.string().optional().default(''),
+  seo_intro_text: z.string().optional().default(''),
+  seo_h1_variant: z.string().optional().default(''),
+  seo_internal_link_anchor_suggestions: z.array(z.string()).optional().default([]),
+  seo_slug_candidate: z.string().optional().default(''),
+  seo_score: z.number().int().min(0).max(100).nullable().optional().default(null),
+  seo_checks: z
+    .array(
+      z.object({
+        code: z.string().trim().min(1),
+        level: z.enum(['ok', 'warning', 'info']),
+        message: z.string().trim().min(1)
+      })
+    )
+    .optional()
+    .default([]),
+  video_urls: z.array(z.string()).optional().default([]),
+  accommodation_video_urls: z.array(z.string()).optional().default([]),
+  partner_discount_percent: z.number().min(0).max(100).nullable().optional().default(null)
 });
 
 type StayDraftRow = Database['public']['Tables']['stay_drafts']['Row'];
@@ -55,10 +103,6 @@ function normalizeString(value: string | null | undefined): string {
 function toNullableString(value: string | null | undefined): string | null {
   const normalized = normalizeString(value);
   return normalized.length > 0 ? normalized : null;
-}
-
-function normalizeAges(values: number[]): number[] {
-  return Array.from(new Set(values.filter((value) => Number.isFinite(value) && value >= 0))).sort((a, b) => a - b);
 }
 
 function asObject(value: Json | null): Record<string, unknown> {
@@ -82,6 +126,156 @@ function asObject(value: Json | null): Record<string, unknown> {
 
 function normalizeStatus(value: string | null | undefined): string {
   return normalizeString(value).toLowerCase();
+}
+
+function isMissingSeoColumnsError(message: string | null | undefined): boolean {
+  const normalized = String(message ?? '').toLowerCase();
+  if (!normalized) return false;
+  return normalized.includes('column') && normalized.includes('seo_') && normalized.includes('does not exist');
+}
+
+function removeSeoFields(payload: Record<string, unknown>): Record<string, unknown> {
+  const nextPayload = { ...payload };
+  for (const key of Object.keys(nextPayload)) {
+    if (key.startsWith('seo_')) {
+      delete nextPayload[key];
+    }
+  }
+  return nextPayload;
+}
+
+function parseIsoDateAtUtcMidnight(value: unknown): Date | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return null;
+  const parsed = new Date(`${trimmed}T00:00:00Z`);
+  return Number.isFinite(parsed.getTime()) ? parsed : null;
+}
+
+function seasonNameFromUtcDate(date: Date): string | null {
+  const month = date.getUTCMonth() + 1;
+  const day = date.getUTCDate();
+
+  if ((month === 12 && day >= 15) || (month === 1 && day <= 15)) return "Fin d'année";
+  if ((month === 1 && day >= 20) || month === 2 || (month === 3 && day <= 15)) return 'Hiver';
+  if ((month === 3 && day >= 20) || month === 4 || (month === 5 && day <= 10)) return 'Printemps';
+  if ((month === 6 && day >= 20) || month === 7 || month === 8 || (month === 9 && day <= 10)) return 'Été';
+  if (month === 10 || (month === 11 && day <= 10)) return 'Toussaint';
+
+  return null;
+}
+
+function normalizeSeasonKey(value: string | null | undefined): string {
+  const normalized = (value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+
+  if (!normalized) return '';
+  if (normalized.includes('fin') && normalized.includes('annee')) return 'fin_annee';
+  if (
+    normalized.includes('toussaint') ||
+    normalized.includes('octobre') ||
+    normalized.includes('automne')
+  ) {
+    return 'toussaint';
+  }
+  if (normalized.includes('hiver')) return 'hiver';
+  if (normalized.includes('printemps')) return 'printemps';
+  if (normalized.includes('ete')) return 'ete';
+  return normalized;
+}
+
+function inferProtectedSeasonNamesFromSessions(
+  sessions: Array<Record<string, unknown>>
+): string[] {
+  const required = new Set<string>();
+
+  for (const session of sessions) {
+    const start = parseIsoDateAtUtcMidnight(session.start_date);
+    const end = parseIsoDateAtUtcMidnight(session.end_date);
+    if (!start || !end) continue;
+
+    const cursor = new Date(start.getTime());
+    const limit = end.getTime();
+    while (cursor.getTime() <= limit) {
+      const seasonName = seasonNameFromUtcDate(cursor);
+      if (seasonName) required.add(seasonName);
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+    }
+  }
+
+  return Array.from(required);
+}
+
+export async function GET(
+  req: Request,
+  context: { params: Promise<{ id: string }> }
+) {
+  const { id } = await context.params;
+  const searchParams = new URL(req.url).searchParams;
+  const access = await requireOrganizerApiAccess({
+    requestedOrganizerId: searchParams.get('organizerId') ?? undefined,
+    requiredSection: 'stays'
+  });
+  if (!access.ok) {
+    return NextResponse.json({ error: access.error }, { status: access.status });
+  }
+  const { selectedOrganizerId } = access.context;
+
+  const supabase = getServerSupabaseClient();
+  const { data: draft, error } = await supabase
+    .from('stay_drafts')
+    .select('id,status,updated_at,raw_payload')
+    .eq('id', id)
+    .eq('organizer_id', selectedOrganizerId)
+    .maybeSingle();
+
+  if (error || !draft) {
+    return NextResponse.json(
+      { error: error?.message ?? 'Brouillon introuvable.' },
+      { status: 404 }
+    );
+  }
+
+  const rawPayload = asObject(draft.raw_payload);
+  const progressRaw =
+    rawPayload.import_progress &&
+    typeof rawPayload.import_progress === 'object' &&
+    !Array.isArray(rawPayload.import_progress)
+      ? (rawPayload.import_progress as Record<string, unknown>)
+      : null;
+
+  const rawPercent = progressRaw?.percent;
+  const percent =
+    typeof rawPercent === 'number' && Number.isFinite(rawPercent)
+      ? Math.max(0, Math.min(100, Math.round(rawPercent)))
+      : normalizeStatus(draft.status) === 'pending'
+        ? 5
+        : 100;
+
+  return NextResponse.json({
+    success: true,
+    draft: {
+      id: draft.id,
+      status: draft.status,
+      updated_at: draft.updated_at
+    },
+    importProgress: {
+      step: typeof progressRaw?.step === 'string' ? progressRaw.step : 'created',
+      label:
+        typeof progressRaw?.label === 'string' && progressRaw.label.trim().length > 0
+          ? progressRaw.label
+          : 'Import en cours',
+      percent,
+      completed: Boolean(progressRaw?.completed),
+      error: typeof progressRaw?.error === 'string' ? progressRaw.error : null,
+      updated_at:
+        typeof progressRaw?.updated_at === 'string' ? progressRaw.updated_at : draft.updated_at
+    }
+  });
 }
 
 async function updateDraftPublicationMetadata(input: {
@@ -161,28 +355,75 @@ async function parseBody(req: Request): Promise<{ payload: StayDraftReviewPayloa
 
   const data = parsed.data;
   const categories = normalizeStayDraftCategories(data.categories).categories;
-  const ages = normalizeAges(data.ages);
+  const ages = expandDraftAges(data.ages);
+
   const payload: StayDraftReviewPayload = {
-    title: normalizeString(data.title),
-    summary: normalizeString(data.summary),
+    title: normalizeStayTitle(data.title),
+    season_ids: data.season_ids.map((value) => normalizeString(value)).filter(Boolean),
+    season_names: data.season_names.map((value) => normalizeString(value)).filter(Boolean),
+    season_name: normalizeString(data.season_names[0] ?? data.season_names.join(', ')),
+    summary: normalizeStaySummary(data.summary),
+    destination_type: data.destination_type,
+    destination_city: normalizeString(data.destination_city),
+    destination_postal_code: normalizeString(data.destination_postal_code),
+    destination_department_code: normalizeString(data.destination_department_code),
+    destination_region: mapToCanonicalStayRegion(data.destination_region) ?? normalizeString(data.destination_region),
+    destination_country: normalizeString(data.destination_country),
+    destination_itinerary_label: normalizeString(data.destination_itinerary_label),
+    destination_countries: data.destination_countries.map((value) => normalizeString(value)).filter(Boolean),
     location_text: normalizeString(data.location_text),
     region_text: mapToCanonicalStayRegion(data.region_text) ?? '',
     description: normalizeString(data.description),
+    activities_text: normalizeString(data.activities_text),
+    required_documents_text: normalizeString(data.required_documents_text),
     program_text: normalizeString(data.program_text),
     supervision_text: normalizeString(data.supervision_text),
     transport_text: normalizeString(data.transport_text),
-    transport_mode: normalizeString(data.transport_mode),
+    transport_mode: normalizeStayTransportLogisticsMode(data.transport_mode),
     categories,
     ages,
     sessions_json: data.sessions_json,
     extra_options_json: data.extra_options_json,
     transport_options_json: data.transport_options_json,
     accommodations_json: data.accommodations_json,
-    images: data.images.map((image) => normalizeString(image)).filter(Boolean)
+    images: data.images.map((image) => normalizeString(image)).filter(Boolean),
+    seo_primary_keyword: sanitizeSeoPrimaryKeyword(data.seo_primary_keyword),
+    seo_secondary_keywords: sanitizeSeoTags(data.seo_secondary_keywords),
+    seo_target_city: sanitizeSeoText(data.seo_target_city),
+    seo_target_region: sanitizeSeoText(data.seo_target_region),
+    seo_search_intents: sanitizeSeoTags(data.seo_search_intents),
+    seo_title: sanitizeSeoText(data.seo_title),
+    seo_meta_description: sanitizeSeoText(data.seo_meta_description),
+    seo_intro_text: sanitizeSeoText(data.seo_intro_text),
+    seo_h1_variant: sanitizeSeoText(data.seo_h1_variant),
+    seo_internal_link_anchor_suggestions: sanitizeSeoTags(data.seo_internal_link_anchor_suggestions),
+    seo_slug_candidate: sanitizeSeoText(data.seo_slug_candidate),
+    seo_score: data.seo_score,
+    seo_checks: data.seo_checks,
+    video_urls: data.video_urls.map((url) => normalizeString(url)).filter(Boolean),
+    accommodation_video_urls: data.accommodation_video_urls
+      .map((url) => normalizeString(url))
+      .filter(Boolean),
+    partner_discount_percent:
+      data.partner_discount_percent != null && Number.isFinite(data.partner_discount_percent)
+        ? data.partner_discount_percent
+        : null
   };
 
   if (!payload.title) {
     return { errors: { title: 'Le titre est requis.' } };
+  }
+  const protectedSeasonNames = inferProtectedSeasonNamesFromSessions(payload.sessions_json);
+  const selectedSeasonKeys = new Set((payload.season_names ?? []).map((seasonName) => normalizeSeasonKey(seasonName)));
+  const missingProtectedSeasonNames = protectedSeasonNames.filter(
+    (seasonName) => !selectedSeasonKeys.has(normalizeSeasonKey(seasonName))
+  );
+  if (missingProtectedSeasonNames.length > 0) {
+    return {
+      errors: {
+        season_ids: 'Impossible de retirer une saison couverte par au moins une date de session.'
+      }
+    };
   }
   return {
     payload,
@@ -191,13 +432,6 @@ async function parseBody(req: Request): Promise<{ payload: StayDraftReviewPayloa
 }
 
 async function handleUpdate(req: Request, params: { id: string }, mode: 'save' | 'validate') {
-  const isMockMode = process.env.MOCK_UI === '1' || process.env.DISABLE_AUTH === '1';
-  const session = getSession();
-
-  if (!isMockMode && (!session || session.role !== 'ORGANISATEUR')) {
-    return NextResponse.json({ error: 'Non authentifié.' }, { status: 401 });
-  }
-
   const parsedBody = await parseBody(req);
   if ('errors' in parsedBody) {
     return NextResponse.json(
@@ -206,28 +440,36 @@ async function handleUpdate(req: Request, params: { id: string }, mode: 'save' |
     );
   }
 
-  const fallbackOrganizerId = isMockMode ? mockOrganizerTenant.id : session?.tenantId ?? null;
-  const { selectedOrganizerId } = await resolveOrganizerSelection(
-    parsedBody.organizerId,
-    fallbackOrganizerId
-  );
-
-  if (!selectedOrganizerId) {
-    return NextResponse.json({ error: 'Aucun organisateur disponible.' }, { status: 400 });
+  const access = await requireOrganizerApiAccess({
+    requestedOrganizerId: parsedBody.organizerId,
+    requiredSection: 'stays'
+  });
+  if (!access.ok) {
+    return NextResponse.json({ error: access.error }, { status: access.status });
   }
+  const { selectedOrganizerId, session } = access.context;
 
   const supabase = getServerSupabaseClient();
   const now = new Date().toISOString();
-  const ages = normalizeAges(parsedBody.payload.ages);
+  const ages = expandDraftAges(parsedBody.payload.ages);
   const categories = normalizeStayDraftCategories(parsedBody.payload.categories).categories;
   const validatedByUserId = isUuid(session?.userId) ? session?.userId : null;
+  const { data: currentDraft } = await supabase
+    .from('stay_drafts')
+    .select('raw_payload')
+    .eq('id', params.id)
+    .eq('organizer_id', selectedOrganizerId)
+    .maybeSingle();
+  const currentRawPayload = asObject(currentDraft?.raw_payload ?? null);
 
   const updatePayload: Record<string, unknown> = {
-    title: parsedBody.payload.title,
+    title: normalizeStayTitle(parsedBody.payload.title),
     summary: toNullableString(parsedBody.payload.summary),
     location_text: toNullableString(parsedBody.payload.location_text),
     region_text: toNullableString(parsedBody.payload.region_text),
     description: toNullableString(parsedBody.payload.description),
+    activities_text: toNullableString(parsedBody.payload.activities_text),
+    required_documents_text: toNullableString(parsedBody.payload.required_documents_text),
     program_text: toNullableString(parsedBody.payload.program_text),
     supervision_text: toNullableString(parsedBody.payload.supervision_text),
     transport_text: toNullableString(parsedBody.payload.transport_text),
@@ -241,7 +483,45 @@ async function handleUpdate(req: Request, params: { id: string }, mode: 'save' |
     transport_options_json: parsedBody.payload.transport_options_json,
     accommodations_json: parsedBody.payload.accommodations_json,
     images: parsedBody.payload.images.length > 0 ? parsedBody.payload.images : null,
+    seo_primary_keyword: toNullableString(parsedBody.payload.seo_primary_keyword),
+    seo_secondary_keywords: parsedBody.payload.seo_secondary_keywords,
+    seo_target_city: toNullableString(parsedBody.payload.seo_target_city),
+    seo_target_region: toNullableString(parsedBody.payload.seo_target_region),
+    seo_search_intents: parsedBody.payload.seo_search_intents,
+    seo_title: toNullableString(parsedBody.payload.seo_title),
+    seo_meta_description: toNullableString(parsedBody.payload.seo_meta_description),
+    seo_intro_text: toNullableString(parsedBody.payload.seo_intro_text),
+    seo_h1_variant: toNullableString(parsedBody.payload.seo_h1_variant),
+    seo_internal_link_anchor_suggestions: parsedBody.payload.seo_internal_link_anchor_suggestions,
+    seo_slug_candidate: toNullableString(parsedBody.payload.seo_slug_candidate),
+    seo_score: parsedBody.payload.seo_score,
+    seo_checks: parsedBody.payload.seo_checks,
+    raw_payload: writeDraftDestinationFields(currentRawPayload, {
+      destination_type: parsedBody.payload.destination_type,
+      destination_city: parsedBody.payload.destination_city,
+      destination_postal_code: parsedBody.payload.destination_postal_code,
+      destination_department_code: parsedBody.payload.destination_department_code,
+      destination_region: parsedBody.payload.destination_region,
+      destination_country: parsedBody.payload.destination_country,
+      destination_itinerary_label: parsedBody.payload.destination_itinerary_label,
+      destination_countries: parsedBody.payload.destination_countries
+    }),
     updated_at: now
+  };
+
+  updatePayload.raw_payload = {
+    ...(updatePayload.raw_payload as Record<string, unknown>),
+      draft_season_ids:
+        (parsedBody.payload.season_ids ?? []).length > 0 ? parsedBody.payload.season_ids : null,
+      draft_season_names:
+        (parsedBody.payload.season_names ?? []).length > 0 ? parsedBody.payload.season_names : null,
+      video_urls:
+        parsedBody.payload.video_urls.length > 0 ? parsedBody.payload.video_urls : null,
+      accommodation_video_urls:
+        parsedBody.payload.accommodation_video_urls.length > 0
+          ? parsedBody.payload.accommodation_video_urls
+          : null,
+      partner_discount_percent: parsedBody.payload.partner_discount_percent
   };
 
   if (mode === 'validate') {
@@ -250,7 +530,7 @@ async function handleUpdate(req: Request, params: { id: string }, mode: 'save' |
     updatePayload.validated_by_user_id = validatedByUserId;
   }
 
-  const { data: updatedDraft, error } = await supabase
+  let { data: updatedDraft, error } = await supabase
     .from('stay_drafts')
     .update(updatePayload)
     .eq('id', params.id)
@@ -258,10 +538,27 @@ async function handleUpdate(req: Request, params: { id: string }, mode: 'save' |
     .select(REVIEW_DRAFT_SELECT)
     .maybeSingle();
 
+  if ((error || !updatedDraft) && isMissingSeoColumnsError(error?.message)) {
+    const fallbackPayload = removeSeoFields(updatePayload);
+    const fallback = await supabase
+      .from('stay_drafts')
+      .update(fallbackPayload)
+      .eq('id', params.id)
+      .eq('organizer_id', selectedOrganizerId)
+      .select(REVIEW_DRAFT_SELECT)
+      .maybeSingle();
+    updatedDraft = fallback.data;
+    error = fallback.error;
+  }
+
   if (error || !updatedDraft) {
     return NextResponse.json(
-      { error: error?.message ?? 'Impossible de mettre à jour le brouillon.' },
-      { status: 500 }
+      {
+        error:
+          error?.message ??
+          "Brouillon introuvable. L'édition d'un séjour publié doit passer par la route dédiée au live."
+      },
+      { status: updatedDraft ? 500 : 404 }
     );
   }
 
@@ -272,6 +569,11 @@ async function handleUpdate(req: Request, params: { id: string }, mode: 'save' |
     status: updatedDraft.status,
     validatedAt: updatedDraft.validated_at
   });
+
+  revalidatePath('/organisme/sejours');
+  revalidatePath('/organisme/stays');
+  revalidatePath(`/organisme/sejours/drafts/${params.id}`);
+  revalidatePath(`/organisme/stays/drafts/${params.id}`);
 
   const { data: freshDraft, error: freshDraftError } = await supabase
     .from('stay_drafts')
@@ -287,7 +589,14 @@ async function handleUpdate(req: Request, params: { id: string }, mode: 'save' |
     );
   }
 
-  let responseDraft = freshDraft as StayDraftRow;
+  let workingDraft = freshDraft as StayDraftRow;
+  try {
+    workingDraft = await syncStayDraftPreviewAccommodation(supabase, workingDraft);
+  } catch (previewError) {
+    console.error('[stay-drafts/review] sync preview accommodation', previewError);
+  }
+
+  let responseDraft = workingDraft;
   let published = false;
   let liveStayId: string | null = null;
   let publicationMeta:
@@ -298,34 +607,35 @@ async function handleUpdate(req: Request, params: { id: string }, mode: 'save' |
       }
     | null = null;
 
-  const shouldAttemptPublish =
-    normalizeStatus(freshDraft.status) === 'validated' || Boolean(freshDraft.validated_at);
+  // Important: ne republie pas automatiquement sur une simple sauvegarde.
+  // Un draft déjà validé/publié peut être ré-enregistré (PATCH) sans déclencher de publication live.
+  const shouldAttemptPublish = mode === 'validate';
 
   console.info('[stay-drafts/review] décision publication', {
-    draftId: freshDraft.id,
+    draftId: workingDraft.id,
     mode,
-    status: freshDraft.status,
-    validatedAt: freshDraft.validated_at,
+    status: workingDraft.status,
+    validatedAt: workingDraft.validated_at,
     shouldAttemptPublish
   });
 
   if (shouldAttemptPublish) {
     console.info('[stay-drafts/review] publication live déclenchée', {
-      draftId: freshDraft.id,
+      draftId: workingDraft.id,
       organizerId: selectedOrganizerId
     });
 
     try {
       console.info('[stay-drafts/review] étape publication: appel service', {
-        draftId: freshDraft.id
+        draftId: workingDraft.id
       });
       const publishResult = await publishStayDraftToLive({
         supabase,
-        draft: freshDraft as StayDraftRow
+        draft: workingDraft
       });
 
       console.info('[stay-drafts/review] étape publication: persistance métadonnées', {
-        draftId: freshDraft.id,
+        draftId: workingDraft.id,
         stayId: publishResult.stayId,
         publishedAt: publishResult.publishedAt,
         syncedTables: publishResult.syncedTables
@@ -370,7 +680,7 @@ async function handleUpdate(req: Request, params: { id: string }, mode: 'save' |
         message
       });
 
-      const currentRawPayload = asObject(freshDraft.raw_payload);
+      const currentRawPayload = asObject(workingDraft.raw_payload);
       const failedRawPayload = {
         ...currentRawPayload,
         publish_error: `${step}: ${message}`,
@@ -402,7 +712,7 @@ async function handleUpdate(req: Request, params: { id: string }, mode: 'save' |
           mode,
           published: false,
           publication: null,
-          draft: failedPersistedDraft ?? freshDraft
+          draft: failedPersistedDraft ?? workingDraft
         },
         { status: 502 }
       );
@@ -421,14 +731,14 @@ async function handleUpdate(req: Request, params: { id: string }, mode: 'save' |
 
 export async function PATCH(
   req: Request,
-  context: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
-  return handleUpdate(req, context.params, 'save');
+  return handleUpdate(req, await context.params, 'save');
 }
 
 export async function POST(
   req: Request,
-  context: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
-  return handleUpdate(req, context.params, 'validate');
+  return handleUpdate(req, await context.params, 'validate');
 }

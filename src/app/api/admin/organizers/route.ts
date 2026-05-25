@@ -1,13 +1,25 @@
 import { NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
+import { requireApiAdmin } from '@/lib/auth/api';
+import { isPasswordPolicyValid, PASSWORD_POLICY_MESSAGE } from '@/lib/auth/password-policy';
+import {
+  ensurePrismaUserForOrganizerAccess,
+  removePrismaUserIfExists,
+  syncBackofficeAccessFromOrganizerMember
+} from '@/lib/organizer-backoffice-sync.server';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { slugify } from '@/lib/utils';
 
 export const runtime = 'nodejs';
 
 export async function POST(req: Request) {
+  const unauthorized = await requireApiAdmin(req);
+  if (unauthorized) return unauthorized;
+
   const formData = await req.formData();
   const name = String(formData.get('name') ?? '').trim();
   const contactEmail = String(formData.get('contact_email') ?? '').trim();
+  const heroIntroText = String(formData.get('hero_intro_text') ?? '').trim();
   const description = String(formData.get('description') ?? '').trim();
   const foundedYearRaw = String(formData.get('founded_year') ?? '').trim();
   const ageMinRaw = String(formData.get('age_min') ?? '').trim();
@@ -21,12 +33,19 @@ export async function POST(req: Request) {
 
   if (!name || !contactEmail || !userEmail || !tempPassword || !firstName || !lastName) {
     return NextResponse.redirect(
-      new URL('/admin/organisateurs/new?error=Tous%20les%20champs%20sont%20requis', req.url),
+      new URL('/admin/organizers/new?error=Tous%20les%20champs%20sont%20requis', req.url),
+      303
+    );
+  }
+  if (!isPasswordPolicyValid(tempPassword)) {
+    return NextResponse.redirect(
+      new URL(`/admin/organizers/new?error=${encodeURIComponent(PASSWORD_POLICY_MESSAGE)}`, req.url),
       303
     );
   }
 
   const supabase = getServerSupabaseClient();
+  let createdPrismaUserId: string | null = null;
   const slug = slugify(name);
 
   const foundedYear = foundedYearRaw ? Number(foundedYearRaw) : null;
@@ -38,11 +57,14 @@ export async function POST(req: Request) {
     .insert({
       name,
       contact_email: contactEmail,
+      hero_intro_text: heroIntroText || null,
       description: description || null,
       founded_year: foundedYear,
       age_min: ageMin,
       age_max: ageMax,
-      slug
+      slug,
+      is_founding_member: false,
+      is_resacolo_member: false
     })
     .select('id')
     .single();
@@ -50,7 +72,7 @@ export async function POST(req: Request) {
   if (organizerError || !organizer) {
     return NextResponse.redirect(
       new URL(
-        `/admin/organisateurs/new?error=${encodeURIComponent(
+        `/admin/organizers/new?error=${encodeURIComponent(
           organizerError?.message ?? "Impossible de créer l'organisateur"
         )}`,
         req.url
@@ -70,7 +92,7 @@ export async function POST(req: Request) {
       await supabase.from('organizers').delete().eq('id', organizer.id);
       return NextResponse.redirect(
         new URL(
-          `/admin/organisateurs/new?error=${encodeURIComponent(
+          `/admin/organizers/new?error=${encodeURIComponent(
             logoError.message ?? 'Impossible de téléverser le logo'
           )}`,
           req.url
@@ -92,7 +114,7 @@ export async function POST(req: Request) {
       await supabase.from('organizers').delete().eq('id', organizer.id);
       return NextResponse.redirect(
         new URL(
-          `/admin/organisateurs/new?error=${encodeURIComponent(
+          `/admin/organizers/new?error=${encodeURIComponent(
             projectError.message ?? 'Impossible de téléverser le projet éducatif'
           )}`,
           req.url
@@ -116,8 +138,30 @@ export async function POST(req: Request) {
     await supabase.from('organizers').delete().eq('id', organizer.id);
     return NextResponse.redirect(
       new URL(
-        `/admin/organisateurs/new?error=${encodeURIComponent(
+        `/admin/organizers/new?error=${encodeURIComponent(
           userError?.message ?? "Impossible de créer l'utilisateur"
+        )}`,
+        req.url
+      ),
+      303
+    );
+  }
+  try {
+    const prismaUser = await ensurePrismaUserForOrganizerAccess({
+      email: userEmail,
+      tempPassword,
+      displayName: `${firstName} ${lastName}`.trim()
+    });
+    if (prismaUser.created) {
+      createdPrismaUserId = prismaUser.id;
+    }
+  } catch (prismaError) {
+    await supabase.auth.admin.deleteUser(userData.user.id);
+    await supabase.from('organizers').delete().eq('id', organizer.id);
+    return NextResponse.redirect(
+      new URL(
+        `/admin/organizers/new?error=${encodeURIComponent(
+          prismaError instanceof Error ? prismaError.message : 'Impossible de créer le compte applicatif'
         )}`,
         req.url
       ),
@@ -136,9 +180,10 @@ export async function POST(req: Request) {
   if (memberError) {
     await supabase.auth.admin.deleteUser(userData.user.id);
     await supabase.from('organizers').delete().eq('id', organizer.id);
+    await removePrismaUserIfExists(createdPrismaUserId);
     return NextResponse.redirect(
       new URL(
-        `/admin/organisateurs/new?error=${encodeURIComponent(
+        `/admin/organizers/new?error=${encodeURIComponent(
           memberError.message ?? "Impossible de lier l'utilisateur"
         )}`,
         req.url
@@ -146,6 +191,35 @@ export async function POST(req: Request) {
       303
     );
   }
+  try {
+    await syncBackofficeAccessFromOrganizerMember({
+      organizerId: organizer.id,
+      supabaseUserId: userData.user.id,
+      role: 'OWNER',
+      emailHint: userEmail
+    });
+  } catch (syncError) {
+    await supabase
+      .from('organizer_members')
+      .delete()
+      .eq('organizer_id', organizer.id)
+      .eq('user_id', userData.user.id);
+    await supabase.auth.admin.deleteUser(userData.user.id);
+    await supabase.from('organizers').delete().eq('id', organizer.id);
+    await removePrismaUserIfExists(createdPrismaUserId);
+    return NextResponse.redirect(
+      new URL(
+        `/admin/organizers/new?error=${encodeURIComponent(
+          syncError instanceof Error ? syncError.message : 'Impossible de synchroniser les accès back-office'
+        )}`,
+        req.url
+      ),
+      303
+    );
+  }
 
-  return NextResponse.redirect(new URL(`/admin/organisateurs/${slug}?success=1`, req.url), 303);
+  revalidatePath('/organisateurs');
+  revalidatePath(`/organisateurs/${slug}`);
+
+  return NextResponse.redirect(new URL(`/admin/organizers/${slug}?success=1`, req.url), 303);
 }

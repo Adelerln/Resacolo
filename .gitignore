@@ -66,6 +66,9 @@ pip-log.txt
 .pytest_cache/
 .mypy_cache/
 
+# Playwright traces (souvent > 100 Mo — ne pas versionner)
+tmp/pw-traces/
+
 node_modules/
 
 __pycache__/

@@ -1,11 +1,15 @@
 'use client';
 
+import { useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { MapPin, Clock, Trash2, ShoppingBag } from 'lucide-react';
+import { Bus, Calendar, Layers, MapPin, Shield, Trash2, Users } from 'lucide-react';
 import { useCart } from '@/context/CartContext';
+import { createCheckoutSession } from '@/lib/checkout/client';
 import { getMockImageUrl, mockImages } from '@/lib/mockImages';
+import type { CartItem } from '@/types/cart';
+import type { CheckoutPricingItem } from '@/types/checkout';
 
 function formatPrice(price?: number | null) {
   if (!price) return 'Sur demande';
@@ -17,18 +21,93 @@ function formatPrice(price?: number | null) {
   }).format(price);
 }
 
+type SelectionRow = { Icon: typeof Calendar; label: string; text: string };
+
+function getPanierSelectionRows(item: CartItem, priced?: CheckoutPricingItem): SelectionRow[] {
+  const L = item.selectionLabels;
+  const sel = item.selection;
+  const rows: SelectionRow[] = [];
+
+  const sessionText =
+    L?.sessionLine?.trim() ||
+    (sel.sessionId
+      ? 'Session enregistrée. Rouvrez la fiche du séjour puis ajoutez-le à nouveau au panier pour afficher les dates.'
+      : '');
+  if (sessionText) {
+    rows.push({ Icon: Calendar, label: 'Session', text: sessionText });
+  }
+
+  const transportText =
+    priced?.transportDisplayLine?.trim() ||
+    L?.transportLine?.trim() ||
+    (sel.transportMode === 'Sans transport'
+      ? 'Sans transport'
+      : [sel.departureCity, sel.returnCity].filter(Boolean).join(' → ') || sel.transportMode);
+  if (transportText) {
+    rows.push({ Icon: Bus, label: 'Transport', text: transportText });
+  }
+
+  const insuranceText =
+    L?.insuranceLine?.trim() || (sel.insuranceOptionId ? 'Assurance sélectionnée.' : '');
+  if (insuranceText) {
+    rows.push({ Icon: Shield, label: 'Assurance', text: insuranceText });
+  }
+
+  const extraText =
+    L?.extraLine?.trim() || (sel.extraOptionId ? 'Option complémentaire sélectionnée.' : '');
+  if (extraText) {
+    rows.push({ Icon: Layers, label: 'Option complémentaire', text: extraText });
+  }
+
+  return rows;
+}
+
 export default function PanierPage() {
   const router = useRouter();
   const { items, removeItemByIndex } = useCart();
+  const [pricedItems, setPricedItems] = useState<Record<string, CheckoutPricingItem>>({});
 
-  const total = items.reduce((sum, s) => sum + (s.priceFrom ?? 0), 0);
-  const hasTotal = items.every((s) => s.priceFrom != null);
+  const total = items.reduce((sum, item) => sum + (item.unitPrice ?? 0), 0);
+  const hasTotal = items.every((item) => item.unitPrice != null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (items.length === 0) {
+      return;
+    }
+
+    void createCheckoutSession(items)
+      .then(({ pricing }) => {
+        if (cancelled) return;
+        setPricedItems(
+          Object.fromEntries(pricing.items.map((pricedItem) => [pricedItem.cartItemId, pricedItem]))
+        );
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setPricedItems({});
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [items]);
+
+  const pricedItemsById = useMemo(() => pricedItems, [pricedItems]);
 
   if (items.length === 0) {
     return (
       <div className="mx-auto max-w-3xl px-4 py-16 text-center sm:px-6">
-        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-slate-100 text-slate-400">
-          <ShoppingBag className="h-8 w-8" />
+        <div className="mx-auto flex h-20 w-20 items-center justify-center">
+          <Image
+            src="/image/header/pictos_header/icon-panier.png"
+            alt="Panier vide"
+            width={80}
+            height={80}
+            className="h-16 w-16 object-contain opacity-50"
+            priority
+          />
         </div>
         <h1 className="font-display mt-6 text-2xl font-bold text-slate-900">Votre panier est vide</h1>
         <p className="mt-2 text-slate-600">
@@ -52,14 +131,16 @@ export default function PanierPage() {
       </p>
 
       <div className="mt-10 space-y-6">
-        {items.map((stay, index) => (
+        {items.map((item, index) => {
+          const selectionRows = getPanierSelectionRows(item, pricedItemsById[item.id]);
+          return (
           <article
-            key={`${stay.slug}-${index}`}
+            key={`${item.id}-${index}`}
             className="flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm sm:flex-row"
           >
             <div className="relative h-40 w-full shrink-0 sm:h-36 sm:w-48">
               <Image
-                src={stay.coverImage || getMockImageUrl(mockImages.sejours.fallbackCover, 400, 80)}
+                src={item.coverImage || getMockImageUrl(mockImages.sejours.fallbackCover, 400, 80)}
                 alt=""
                 fill
                 className="object-cover"
@@ -69,26 +150,42 @@ export default function PanierPage() {
             <div className="flex flex-1 flex-col justify-between p-4 sm:p-5">
               <div>
                 <Link
-                  href={`/sejours/${stay.slug}`}
+                  href={`/sejours/${item.slug}`}
                   className="font-display text-lg font-semibold text-slate-900 hover:text-brand-600"
                 >
-                  {stay.title}
+                  {item.title}
                 </Link>
-                <p className="mt-1 text-xs font-medium text-brand-600">{stay.organizer.name}</p>
+                <p className="mt-1 text-xs font-medium text-brand-600">{item.organizerName}</p>
                 <div className="mt-2 flex flex-wrap gap-3 text-sm text-slate-500">
                   <span className="flex items-center gap-1">
                     <MapPin className="h-3.5 w-3.5" />
-                    {stay.location}
+                    {item.location}
                   </span>
                   <span className="flex items-center gap-1">
-                    <Clock className="h-3.5 w-3.5" />
-                    {stay.duration} · {stay.ageRange}
+                    <Users className="h-3.5 w-3.5" />
+                    {item.ageRange}
                   </span>
                 </div>
+                {selectionRows.length > 0 ? (
+                  <ul className="mt-4 space-y-2.5 border-t border-slate-100 pt-4">
+                    {selectionRows.map((row) => {
+                      const RowIcon = row.Icon;
+                      return (
+                        <li key={row.label} className="flex gap-2.5 text-sm text-slate-600">
+                          <RowIcon className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" aria-hidden />
+                          <div>
+                            <span className="font-semibold text-slate-700">{row.label}</span>
+                            <span className="block text-slate-600">{row.text}</span>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : null}
               </div>
               <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-4">
                 <p className="text-lg font-semibold text-accent-600">
-                  {formatPrice(stay.priceFrom)}
+                  {formatPrice(item.unitPrice)}
                 </p>
                 <button
                   type="button"
@@ -102,7 +199,8 @@ export default function PanierPage() {
               </div>
             </div>
           </article>
-        ))}
+          );
+        })}
       </div>
 
       <div className="mt-10 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -122,7 +220,7 @@ export default function PanierPage() {
             </Link>
             <button
               type="button"
-              onClick={() => router.push('/contact')}
+              onClick={() => router.push('/checkout/informations')}
               className="btn btn-primary btn-md"
             >
               Valider le panier

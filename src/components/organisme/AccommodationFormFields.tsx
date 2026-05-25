@@ -3,6 +3,15 @@ export {
   ACCOMMODATION_TYPE_OPTIONS,
   formatAccommodationType
 } from '@/components/organisme/accommodation-type';
+'use client';
+
+import GoogleMapsCityInput from '@/components/common/GoogleMapsCityInput';
+import {
+  stripStockPmrPhraseFromAccessibility,
+} from '@/lib/accommodation-location';
+import { ACCOMMODATION_TYPE_OPTIONS, formatAccommodationType } from '@/lib/accommodation-types';
+
+export { ACCOMMODATION_TYPE_OPTIONS, formatAccommodationType };
 
 type AccommodationFormValues = {
   name?: string | null;
@@ -12,6 +21,16 @@ type AccommodationFormValues = {
   bathroom_info?: string | null;
   catering_info?: string | null;
   accessibility_info?: string | null;
+  address_text?: string | null;
+  postal_code?: string | null;
+  city?: string | null;
+  department_code?: string | null;
+  region_text?: string | null;
+  country?: string | null;
+  center_latitude?: number | string | null;
+  center_longitude?: number | string | null;
+  media_urls?: string[] | null;
+  map_iframe_html?: string | null;
 };
 
 type AccommodationFormFieldsProps = {
@@ -38,6 +57,90 @@ export default function AccommodationFormFields({
         <AccommodationTypeField defaultValue={values.accommodation_type ?? ''} />
       </div>
 
+      <div className="rounded-xl border border-slate-100 p-4">
+        <h3 className="text-sm font-semibold text-slate-900">Adresse physique du centre</h3>
+        <p className="mt-2 text-sm text-slate-500">
+          Adresse réelle du centre ou de l&apos;hébergement, stockée proprement dans la base.
+        </p>
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <label className="block text-sm font-medium text-slate-700 md:col-span-2">
+            Adresse
+            <input
+              name="address_text"
+              defaultValue={values.address_text ?? ''}
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+            />
+          </label>
+          <label className="block text-sm font-medium text-slate-700">
+            Code postal
+            <input
+              name="postal_code"
+              defaultValue={values.postal_code ?? ''}
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+            />
+          </label>
+          <GoogleMapsCityInput
+            name="city"
+            label="Ville"
+            defaultValue={values.city ?? ''}
+            className="block text-sm font-medium text-slate-700"
+          />
+          <label className="block text-sm font-medium text-slate-700">
+            Département
+            <input
+              name="department_code"
+              defaultValue={values.department_code ?? ''}
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+            />
+          </label>
+          <label className="block text-sm font-medium text-slate-700">
+            Région
+            <input
+              name="region_text"
+              defaultValue={values.region_text ?? ''}
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+            />
+          </label>
+          <label className="block text-sm font-medium text-slate-700 md:col-span-2">
+            Pays
+            <input
+              name="country"
+              defaultValue={values.country ?? ''}
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+            />
+          </label>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-slate-100 p-4">
+        <h3 className="text-sm font-semibold text-slate-900">Coordonnées du centre (interne)</h3>
+        <p className="mt-2 text-sm text-slate-500">
+          Coordonnées exactes stockées en interne ; affichage public approximatif sur la carte.
+        </p>
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <label className="block text-sm font-medium text-slate-700">
+            Latitude
+            <input
+              name="center_latitude"
+              defaultValue={values.center_latitude ?? ''}
+              placeholder="Ex. 46.2276"
+              inputMode="decimal"
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+            />
+          </label>
+          <label className="block text-sm font-medium text-slate-700">
+            Longitude
+            <input
+              name="center_longitude"
+              defaultValue={values.center_longitude ?? ''}
+              placeholder="Ex. 2.2137"
+              inputMode="decimal"
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+            />
+          </label>
+        </div>
+      </div>
+
       <label className="block text-sm font-medium text-slate-700">
         Description
         <textarea
@@ -47,6 +150,23 @@ export default function AccommodationFormFields({
           className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
         />
       </label>
+
+      <div className="rounded-xl border border-slate-100 p-4">
+        <h3 className="text-sm font-semibold text-slate-900">Carte Google Maps (iframe)</h3>
+        <p className="mt-2 text-sm text-slate-500">
+          Collez le code iframe Google Maps (ou l&apos;URL embed) pour afficher la carte de ce lieu.
+        </p>
+        <label className="mt-3 block text-sm font-medium text-slate-700">
+          Code iframe
+          <textarea
+            name="map_iframe_html"
+            rows={4}
+            defaultValue={values.map_iframe_html ?? ''}
+            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 font-mono text-xs"
+            placeholder={'<iframe src="https://www.google.com/maps/d/u/2/embed?mid=..." width="640" height="480"></iframe>'}
+          />
+        </label>
+      </div>
 
       <div className="rounded-xl border border-slate-100 p-4">
         <h3 className="text-sm font-semibold text-slate-900">Couchage</h3>
@@ -89,26 +209,48 @@ export default function AccommodationFormFields({
 
       <div className="rounded-xl border border-slate-100 p-4">
         <h3 className="text-sm font-semibold text-slate-900">Accessibilité</h3>
-        <label className="mt-3 block text-sm font-medium text-slate-700">
-          Informations accessibilité
-          <textarea
-            name="accessibility_info"
-            rows={3}
-            defaultValue={values.accessibility_info ?? ''}
-            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+        <label className="mt-4 flex cursor-pointer items-start gap-3 text-sm font-medium text-slate-800">
+          <input
+            type="checkbox"
+            name="pmr_accessible"
+            defaultChecked={Boolean(
+              values.accessibility_info &&
+                /mobilité réduite|PMR/i.test(values.accessibility_info) &&
+                /Repéré comme accessible/i.test(values.accessibility_info)
+            )}
+            className="mt-1 h-4 w-4 rounded border-slate-300"
           />
-          <span className="mt-1 block text-xs font-normal text-slate-500">
-            Cette rubrique sert à mentionner si le lieu d&apos;hébergement est accessible aux
-            personnes à mobilité réduite (PMR)
-          </span>
+          <span>Établissement repéré comme accessible aux personnes à mobilité réduite (PMR)</span>
+        </label>
+        <label className="mt-4 block text-sm font-medium text-slate-700">
+          Précisions (optionnel)
+          <textarea
+            name="accessibility_extra"
+            rows={3}
+            defaultValue={stripStockPmrPhraseFromAccessibility(values.accessibility_info ?? '')}
+            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+            placeholder="Ascenseur, chambre adaptée, plain-pied, etc."
+          />
         </label>
       </div>
 
       <div className="rounded-xl border border-slate-100 p-4">
         <h3 className="text-sm font-semibold text-slate-900">Médias</h3>
         <p className="mt-2 text-sm text-slate-500">
-          Les photos seront rattachées à la fiche une fois l&apos;hébergement créé.
+          Renseigne une URL d&apos;image par ligne pour alimenter le carrousel public de l&apos;hébergement.
+          <br />
+          <strong>Attention, merci de revenir à la ligne entre chaque URL</strong>
         </p>
+        <label className="mt-3 block text-sm font-medium text-slate-700">
+          URLs des photos
+          <textarea
+            name="media_urls"
+            rows={5}
+            defaultValue={(values.media_urls ?? []).join('\n')}
+            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+            placeholder={'https://...\nhttps://...'}
+          />
+        </label>
       </div>
 
       <div className="flex justify-end">

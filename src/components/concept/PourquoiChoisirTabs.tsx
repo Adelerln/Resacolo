@@ -99,7 +99,7 @@ export function PourquoiChoisirTabs() {
         </h3>
         <div className="h-0.5 w-full bg-slate-300" aria-hidden />
       </div>
-      <div className="space-y-4 text-left font-medium leading-relaxed text-slate-600 sm:text-justify">
+      <div className="space-y-4 text-left font-medium leading-relaxed text-slate-600">
         {tab.content}
       </div>
     </>
@@ -114,8 +114,8 @@ export function PourquoiChoisirTabs() {
             type="button"
             onClick={() => setActiveId(tab.id)}
             className={`
-              flex items-center gap-4 rounded-xl px-4 py-4 text-left transition
-              ${activeId === tab.id ? 'bg-white py-5 shadow-md' : 'bg-transparent hover:bg-slate-50'}
+              flex min-h-[72px] items-center gap-4 rounded-xl px-4 py-4 text-left transition
+              ${activeId === tab.id ? 'bg-white shadow-md' : 'bg-transparent hover:bg-slate-50'}
             `}
           >
             <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center">

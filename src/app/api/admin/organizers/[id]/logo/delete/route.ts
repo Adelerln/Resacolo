@@ -1,21 +1,27 @@
 import { NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
+import { requireApiAdmin } from '@/lib/auth/api';
+import { syncOrganizerProfileCompletenessPercent } from '@/lib/organizer-profile-completeness';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 
 export const runtime = 'nodejs';
 
-export async function POST(req: Request, context: { params: { id: string } }) {
-  const { id: slug } = context.params;
+export async function POST(req: Request, context: { params: Promise<{ id: string }> }) {
+  const unauthorized = await requireApiAdmin(req);
+  if (unauthorized) return unauthorized;
+
+  const { id: slug } = await context.params;
   const supabase = getServerSupabaseClient();
 
   let { data: organizer } = await supabase
     .from('organizers')
-    .select('id,logo_path')
+    .select('id,slug,logo_path')
     .eq('slug', slug)
     .maybeSingle();
   if (!organizer) {
     const { data: byId } = await supabase
       .from('organizers')
-      .select('id,logo_path')
+      .select('id,slug,logo_path')
       .eq('id', slug)
       .maybeSingle();
     organizer = byId ?? null;
@@ -23,7 +29,7 @@ export async function POST(req: Request, context: { params: { id: string } }) {
 
   if (!organizer) {
     return NextResponse.redirect(
-      new URL(`/admin/organisateurs/${slug}?error=Organisateur%20introuvable`, req.url),
+      new URL(`/admin/organizers/${slug}?error=Organisateur%20introuvable`, req.url),
       303
     );
   }
@@ -35,7 +41,7 @@ export async function POST(req: Request, context: { params: { id: string } }) {
     if (removeError) {
       return NextResponse.redirect(
         new URL(
-          `/admin/organisateurs/${slug}?error=${encodeURIComponent(
+          `/admin/organizers/${slug}?error=${encodeURIComponent(
             removeError.message ?? 'Impossible de supprimer le logo'
           )}`,
           req.url
@@ -51,7 +57,7 @@ export async function POST(req: Request, context: { params: { id: string } }) {
     if (updateError) {
       return NextResponse.redirect(
         new URL(
-          `/admin/organisateurs/${slug}?error=${encodeURIComponent(
+          `/admin/organizers/${slug}?error=${encodeURIComponent(
             updateError.message ?? 'Impossible de mettre a jour le logo'
           )}`,
           req.url
@@ -61,5 +67,9 @@ export async function POST(req: Request, context: { params: { id: string } }) {
     }
   }
 
-  return NextResponse.redirect(new URL(`/admin/organisateurs/${slug}?success=1`, req.url), 303);
+  await syncOrganizerProfileCompletenessPercent(supabase, organizer.id);
+  revalidatePath('/organisateurs');
+  revalidatePath(`/organisateurs/${organizer.slug ?? slug}`);
+
+  return NextResponse.redirect(new URL(`/admin/organizers/${slug}?success=1`, req.url), 303);
 }

@@ -1,59 +1,79 @@
-import crypto from 'crypto';
+import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
+import type { Database } from '@/types/supabase';
+import {
+  resolveRoleContextForUserId,
+  type AppRole,
+  type ResolvedRoleContext
+} from '@/lib/auth/roles';
 
-export type AppRole = 'ADMIN' | 'ORGANISATEUR' | 'PARTENAIRE';
+export type { AppRole } from '@/lib/auth/roles';
 
 export type SessionPayload = {
   userId: string;
   email: string;
   name?: string | null;
-  role: AppRole;
+  role: Exclude<AppRole, 'ANONYME'>;
   tenantId?: string | null;
+  organizerIds: string[];
+  collectivityIds: string[];
+  organizerRolesById: Record<string, string>;
+  collectivityRolesById: Record<string, string>;
+  staffRoles: string[];
+  isClient: boolean;
 };
 
-const COOKIE_NAME = 'resacolo_session';
-const SECRET = process.env.AUTH_SECRET ?? 'dev-secret-change-me';
+function buildSessionPayload(
+  user: { id: string; email?: string | null; user_metadata?: { full_name?: string; name?: string } | null },
+  roleContext: ResolvedRoleContext
+): SessionPayload {
+  const metadataName =
+    user.user_metadata?.full_name?.trim() || user.user_metadata?.name?.trim() || null;
 
-function sign(data: string) {
-  return crypto.createHmac('sha256', SECRET).update(data).digest('hex');
+  return {
+    userId: user.id,
+    email: user.email?.trim().toLowerCase() ?? '',
+    name: metadataName,
+    role: roleContext.role,
+    tenantId:
+      roleContext.role === 'ORGANISATEUR'
+        ? roleContext.organizerIds[0] ?? null
+        : roleContext.role === 'PARTENAIRE'
+          ? roleContext.collectivityIds[0] ?? null
+          : null,
+    organizerIds: roleContext.organizerIds,
+    collectivityIds: roleContext.collectivityIds,
+    organizerRolesById: roleContext.organizerRolesById,
+    collectivityRolesById: roleContext.collectivityRolesById,
+    staffRoles: roleContext.staffRoles,
+    isClient: roleContext.isClient
+  };
 }
 
-export function createSessionToken(payload: SessionPayload) {
-  const json = JSON.stringify(payload);
-  const data = Buffer.from(json).toString('base64url');
-  const signature = sign(data);
-  return `${data}.${signature}`;
-}
+export async function getCurrentUser(): Promise<SessionPayload | null> {
+  const cookieStore = await cookies();
+  const cookieAccess = (() => cookieStore) as unknown as typeof cookies;
+  const supabase = createServerComponentClient<Database>({
+    cookies: cookieAccess
+  });
+  const {
+    data: { user },
+    error
+  } = await supabase.auth.getUser();
 
-export function verifySessionToken(token: string): SessionPayload | null {
-  const [data, signature] = token.split('.');
-  if (!data || !signature) return null;
-  const expected = sign(data);
-  if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) return null;
-  try {
-    const json = Buffer.from(data, 'base64url').toString('utf-8');
-    return JSON.parse(json) as SessionPayload;
-  } catch {
+  if (error || !user) {
     return null;
   }
+
+  const roleContext = await resolveRoleContextForUserId(user.id);
+  return buildSessionPayload(user, roleContext);
 }
 
-export function setSessionCookie(payload: SessionPayload) {
-  const token = createSessionToken(payload);
-  cookies().set(COOKIE_NAME, token, {
-    httpOnly: true,
-    sameSite: 'lax',
-    path: '/',
-    secure: process.env.NODE_ENV === 'production'
-  });
+export async function getCurrentUserRole(): Promise<AppRole> {
+  const session = await getCurrentUser();
+  return session?.role ?? 'ANONYME';
 }
 
-export function clearSessionCookie() {
-  cookies().set(COOKIE_NAME, '', { path: '/', maxAge: 0 });
-}
-
-export function getSession(): SessionPayload | null {
-  const token = cookies().get(COOKIE_NAME)?.value;
-  if (!token) return null;
-  return verifySessionToken(token);
+export async function getSession(): Promise<SessionPayload | null> {
+  return getCurrentUser();
 }

@@ -1,15 +1,32 @@
 import { NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
+import {
+  embedOrganizerDurationMeta,
+  extractOrganizerDurationMeta
+} from '@/lib/organizer-rich-text';
+import { requireApiAdmin } from '@/lib/auth/api';
+import { syncOrganizerProfileCompletenessPercent } from '@/lib/organizer-profile-completeness';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { slugify } from '@/lib/utils';
 
 export const runtime = 'nodejs';
 
-export async function POST(req: Request, context: { params: { id: string } }) {
-  const { id: idOrSlug } = context.params;
+export async function POST(req: Request, context: { params: Promise<{ id: string }> }) {
+  const unauthorized = await requireApiAdmin(req);
+  if (unauthorized) return unauthorized;
+
+  const { id: idOrSlug } = await context.params;
   const formData = await req.formData();
   const name = String(formData.get('name') ?? '').trim();
   const contactEmail = String(formData.get('contact_email') ?? '').trim();
-  const description = String(formData.get('description') ?? '').trim();
+  const websiteUrl = String(formData.get('website_url') ?? '').trim();
+  const hasLogoUrlField = formData.has('logo_url');
+  const logoUrlField = hasLogoUrlField ? String(formData.get('logo_url') ?? '').trim() : null;
+  const isFoundingMember = formData.get('is_founding_member') === 'on';
+  const isResacoloMember = formData.get('is_resacolo_member') === 'on';
+  const heroIntroText = String(formData.get('hero_intro_text') ?? '').trim();
+  const hasDescriptionField = formData.has('description');
+  const description = hasDescriptionField ? String(formData.get('description') ?? '').trim() : null;
   const foundedYearRaw = String(formData.get('founded_year') ?? '').trim();
   const ageMinRaw = String(formData.get('age_min') ?? '').trim();
   const ageMaxRaw = String(formData.get('age_max') ?? '').trim();
@@ -25,14 +42,14 @@ export async function POST(req: Request, context: { params: { id: string } }) {
   const supabase = getServerSupabaseClient();
   let { data: organizer } = await supabase
     .from('organizers')
-    .select('id')
+    .select('id,slug')
     .eq('slug', idOrSlug)
     .maybeSingle();
 
   if (!organizer) {
     const { data: byId } = await supabase
       .from('organizers')
-      .select('id')
+      .select('id,slug')
       .eq('id', idOrSlug)
       .maybeSingle();
     organizer = byId ?? null;
@@ -40,28 +57,47 @@ export async function POST(req: Request, context: { params: { id: string } }) {
 
   if (!organizer) {
     return NextResponse.redirect(
-      new URL(`/admin/organisateurs/${urlSlug}?error=Organisateur%20introuvable`, req.url),
+      new URL(`/admin/organizers/${urlSlug}?error=Organisme%20introuvable`, req.url),
       303
     );
   }
 
-  const { error } = await supabase
+  const { data: organizerDetails } = await supabase
     .from('organizers')
-    .update({
-      name,
-      contact_email: contactEmail,
-      description: description || null,
-      founded_year: foundedYear,
-      age_min: ageMin,
-      age_max: ageMax,
-      slug
-    })
-    .eq('id', organizer.id);
+    .select('description')
+    .eq('id', organizer.id)
+    .maybeSingle();
+  const existingDurationMeta = extractOrganizerDurationMeta(organizerDetails?.description);
+
+  const updatePayload = {
+    name,
+    contact_email: contactEmail,
+    website_url: websiteUrl || null,
+    logo_url: hasLogoUrlField ? logoUrlField || null : undefined,
+    is_founding_member: isFoundingMember,
+    is_resacolo_member: isResacoloMember,
+    hero_intro_text: heroIntroText || null,
+    founded_year: foundedYear,
+    age_min: ageMin,
+    age_max: ageMax,
+    slug,
+    ...(hasDescriptionField
+      ? {
+          description: embedOrganizerDurationMeta(
+            description,
+            existingDurationMeta.stayDurationMinDays,
+            existingDurationMeta.stayDurationMaxDays
+          )
+        }
+      : {})
+  };
+
+  const { error } = await supabase.from('organizers').update(updatePayload).eq('id', organizer.id);
 
   if (error) {
     return NextResponse.redirect(
       new URL(
-        `/admin/organisateurs/${urlSlug}?error=${encodeURIComponent(error.message)}`,
+        `/admin/organizers/${urlSlug}?error=${encodeURIComponent(error.message)}`,
         req.url
       ),
       303
@@ -78,7 +114,7 @@ export async function POST(req: Request, context: { params: { id: string } }) {
     if (logoError) {
       return NextResponse.redirect(
         new URL(
-          `/admin/organisateurs/${urlSlug}?error=${encodeURIComponent(logoError.message)}`,
+          `/admin/organizers/${urlSlug}?error=${encodeURIComponent(logoError.message)}`,
           req.url
         ),
         303
@@ -97,7 +133,7 @@ export async function POST(req: Request, context: { params: { id: string } }) {
     if (projectError) {
       return NextResponse.redirect(
         new URL(
-          `/admin/organisateurs/${urlSlug}?error=${encodeURIComponent(projectError.message)}`,
+          `/admin/organizers/${urlSlug}?error=${encodeURIComponent(projectError.message)}`,
           req.url
         ),
         303
@@ -109,5 +145,15 @@ export async function POST(req: Request, context: { params: { id: string } }) {
       .eq('id', organizer.id);
   }
 
-  return NextResponse.redirect(new URL(`/admin/organisateurs/${urlSlug}?success=1`, req.url), 303);
+  await syncOrganizerProfileCompletenessPercent(supabase, organizer.id);
+
+  const previousSlug = organizer.slug ?? idOrSlug;
+  const nextPublicSlug = slug ?? organizer.slug ?? idOrSlug;
+  revalidatePath('/organisateurs');
+  revalidatePath(`/organisateurs/${previousSlug}`);
+  if (nextPublicSlug !== previousSlug) {
+    revalidatePath(`/organisateurs/${nextPublicSlug}`);
+  }
+
+  return NextResponse.redirect(new URL(`/admin/organizers/${urlSlug}?success=1`, req.url), 303);
 }

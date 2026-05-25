@@ -1,11 +1,37 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
+  normalizeAccommodationAddress,
+  validateAndParseAccommodationCenterCoordinates
+} from '@/lib/accommodation-location';
+import { repairAccommodationImportLocation } from '@/lib/french-department-codes';
+import {
+  ensurePrimaryStaySettingCategory,
   normalizeStayDraftCategories,
   stayCategoryLabelToValue,
   stayCategoryValueToLabel,
   type StayCategoryValue
 } from '@/lib/stay-categories';
+import {
+  normalizeAccommodationTypeToken,
+  normalizeLocationMode
+} from '@/lib/stay-draft-accommodation-import';
+import { expandDraftAges } from '@/lib/stay-draft-content';
+import { liveSessionStableKey } from '@/lib/draft-session-keys';
+import { readDraftDestinationFields } from '@/lib/stay-draft-destination';
+import {
+  isVideoUrlCandidate,
+  normalizeImportedVideoUrlList
+} from '@/lib/stay-draft-url-extract';
+import {
+  removeStayMediaStorageFiles,
+  uploadImportedStayImages
+} from '@/lib/stay-media-storage';
 import { mapToCanonicalStayRegion } from '@/lib/stay-regions';
+import { isPartnerTariffExtraOptionLabel } from '@/lib/stay-draft-extra-options-split';
+import { sanitizeSeoPrimaryKeyword } from '@/lib/stay-seo';
+import { tryCanonicalizeStaySourceUrl } from '@/lib/stay-source-url-canonical';
+import { normalizeStayTitle } from '@/lib/stay-title';
+import { maybeRecordPublicationFeeWhenStayPublished } from '@/lib/resacolo-fee-ledger.server';
 import type { Database, Json } from '@/types/supabase';
 
 type StayDraftRow = Database['public']['Tables']['stay_drafts']['Row'];
@@ -54,28 +80,6 @@ const LIVE_TRANSPORT_MODES = new Set([
   'Aller/Retour similaire',
   'Aller/Retour différencié',
   'Sans transport'
-]);
-
-const TITLE_LOWERCASE_WORDS = new Set([
-  'a',
-  'à',
-  'au',
-  'aux',
-  'de',
-  'du',
-  'des',
-  'en',
-  'et',
-  'l',
-  'la',
-  'le',
-  'les',
-  'ou',
-  'par',
-  'pour',
-  'sur',
-  'un',
-  'une'
 ]);
 
 const INSURANCE_KEYWORDS = [
@@ -164,40 +168,6 @@ function simplifyForMatch(value: string | null | undefined): string {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^\w\s']/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function toStartCaseWord(word: string): string {
-  if (!word) return '';
-  const lower = word.toLocaleLowerCase('fr-FR');
-  return lower.charAt(0).toLocaleUpperCase('fr-FR') + lower.slice(1);
-}
-
-function normalizeStayTitle(value: string | null | undefined): string {
-  const normalized = normalizeWhitespace(value);
-  if (!normalized) return '';
-
-  const words = normalized.split(' ').filter(Boolean);
-  return words
-    .map((word, index) => {
-      if (word.includes("'")) {
-        const [prefix, suffix] = word.split("'", 2);
-        const normalizedPrefix = prefix ? prefix.toLocaleLowerCase('fr-FR') : '';
-        const normalizedSuffix = suffix ? toStartCaseWord(suffix) : '';
-        if (index === 0) {
-          return `${toStartCaseWord(prefix)}'${normalizedSuffix}`;
-        }
-        return `${normalizedPrefix}'${normalizedSuffix}`;
-      }
-
-      const key = simplifyForMatch(word);
-      if (index > 0 && TITLE_LOWERCASE_WORDS.has(key)) {
-        return word.toLocaleLowerCase('fr-FR');
-      }
-      return toStartCaseWord(word);
-    })
-    .join(' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -305,6 +275,8 @@ function buildFallbackAccommodationName(
       ? 'Camping'
       : accommodationType === 'auberge de jeunesse'
         ? 'Auberge de jeunesse'
+        : accommodationType === 'gite'
+          ? 'Gîte'
         : "Centre d'hébergement";
   return city ? `${base} à ${city}` : base;
 }
@@ -329,6 +301,16 @@ function toNullableText(value: string | null | undefined): string | null {
   return normalized.length > 0 ? normalized : null;
 }
 
+function toNullableNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value === 'string') {
+    const parsed = Number(value.trim().replace(',', '.'));
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
@@ -350,6 +332,26 @@ function asObject(value: Json | null): Record<string, unknown> {
   }
 
   return {};
+}
+
+function readPartnerDiscountPercentFromRawPayload(rawPayload: Record<string, unknown>): number | null {
+  const v = rawPayload.partner_discount_percent;
+  if (v == null || v === '') return null;
+  const n = typeof v === 'number' ? v : Number(String(v).trim().replace(',', '.'));
+  if (!Number.isFinite(n) || n < 0 || n > 100) return null;
+  return n;
+}
+
+function coerceAccommodationJsonObject(value: Json | null): Record<string, unknown> {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      if (isPlainObject(item)) {
+        return repairAccommodationImportLocation({ ...item });
+      }
+    }
+    return {};
+  }
+  return repairAccommodationImportLocation(asObject(value));
 }
 
 function asRecordArray(value: Json | null): Array<Record<string, unknown>> {
@@ -444,6 +446,22 @@ function isMissingColumnError(message: string | undefined, columnName: string): 
   return normalized.includes('column') && normalized.includes(columnName.toLowerCase());
 }
 
+function isMissingSeoColumnError(message: string | undefined): boolean {
+  if (!message) return false;
+  const normalized = message.toLowerCase();
+  return normalized.includes('column') && normalized.includes('seo_') && normalized.includes('does not exist');
+}
+
+function removeSeoFieldsFromPayload<T extends Record<string, unknown>>(payload: T): T {
+  const nextPayload = { ...payload };
+  for (const key of Object.keys(nextPayload)) {
+    if (key.startsWith('seo_')) {
+      delete nextPayload[key];
+    }
+  }
+  return nextPayload as T;
+}
+
 function categoryValueToLogLabel(value: string): string {
   return stayCategoryValueToLabel(value) ?? value;
 }
@@ -488,35 +506,20 @@ function inferLiveCategoriesFromContent(content: string): StayCategoryValue[] {
 }
 
 function normalizeAges(ages: number[] | null, ageMin: number | null, ageMax: number | null): number[] {
-  const fromArray = (ages ?? []).filter((age) => Number.isInteger(age) && age >= 3 && age <= 25);
-  const sortedFromArray = Array.from(new Set(fromArray)).sort((a, b) => a - b);
-  if (sortedFromArray.length > 0) {
-    return sortedFromArray;
-  }
-
-  const min = typeof ageMin === 'number' && ageMin >= 3 && ageMin <= 25 ? ageMin : null;
-  const max = typeof ageMax === 'number' && ageMax >= 3 && ageMax <= 25 ? ageMax : null;
-
-  if (min !== null && max !== null) {
-    const start = Math.min(min, max);
-    const end = Math.max(min, max);
-    const values: number[] = [];
-    for (let age = start; age <= end; age += 1) {
-      values.push(age);
-    }
-    return values;
-  }
-
-  if (min !== null) return [min];
-  if (max !== null) return [max];
-
-  return [];
+  return expandDraftAges(ages, ageMin, ageMax);
 }
+
+export type ParsedTransportOption = {
+  departureCity: string;
+  returnCity: string;
+  amountCents: number;
+  excludedSessionKeys: string[];
+};
 
 function normalizeTransportMode(
   draftMode: string | null,
   hasTransportText: boolean,
-  transportOptions: Array<{ departureCity: string; returnCity: string; amountCents: number }>
+  transportOptions: ParsedTransportOption[]
 ): string {
   const normalized = normalizeWhitespace(draftMode ?? '');
   if (normalized && LIVE_TRANSPORT_MODES.has(normalized)) {
@@ -537,9 +540,9 @@ function normalizeTransportMode(
   return 'Sans transport';
 }
 
-function parseSessions(value: Json | null): Array<{ startDate: string; endDate: string; status: SessionStatus; priceCents: number | null; currency: string }> {
+function parseSessions(value: Json | null): Array<{ startDate: string; endDate: string; status: SessionStatus; priceCents: number | null; currency: string; remainingPlaces: number | null }> {
   const rows = asRecordArray(value);
-  const output: Array<{ startDate: string; endDate: string; status: SessionStatus; priceCents: number | null; currency: string }> = [];
+  const output: Array<{ startDate: string; endDate: string; status: SessionStatus; priceCents: number | null; currency: string; remainingPlaces: number | null }> = [];
 
   for (const row of rows) {
     const startDate = normalizeDateOnly(row.start_date);
@@ -551,15 +554,21 @@ function parseSessions(value: Json | null): Array<{ startDate: string; endDate: 
     const status: SessionStatus = availability === 'full' ? 'FULL' : 'OPEN';
 
     const price = toNumber(row.price);
+    const remainingPlacesValue = toNumber(row.remaining_places);
     const currency = normalizeWhitespace(String(row.currency ?? 'EUR')).toUpperCase() || 'EUR';
     const priceCents = price !== null && price >= 0 ? Math.round(price * 100) : null;
+    const remainingPlaces =
+      remainingPlacesValue !== null && remainingPlacesValue >= 0
+        ? Math.round(remainingPlacesValue)
+        : null;
 
     output.push({
       startDate,
       endDate,
       status,
       priceCents,
-      currency
+      currency,
+      remainingPlaces
     });
   }
 
@@ -592,33 +601,19 @@ function isInsuranceCandidate(...values: Array<unknown>): boolean {
   return INSURANCE_KEYWORDS.some((token) => key.includes(simplifyForMatch(token)));
 }
 
-function parseExtraAndInsuranceOptions(
-  draft: StayDraftRow,
-  rawPayload: Record<string, unknown>
-): {
+/** Même logique que `parseExtraAndInsuranceOptions` mais sur une liste fusionnée (ex. payload de relecture). */
+export function parseMergedExtraOptionsRows(rowsInput: Array<Record<string, unknown>>): {
   extraOptions: Array<{ label: string; amountCents: number }>;
   insuranceOptions: Array<{ label: string; pricingMode: 'FIXED' | 'PERCENT'; amountCents: number | null; percentValue: number | null }>;
 } {
-  const rows: Array<Record<string, unknown>> = [...asRecordArray(draft.extra_options_json)];
-
-  const aiExtracted = isPlainObject(rawPayload.ai_extracted) ? rawPayload.ai_extracted : null;
-  if (aiExtracted && Array.isArray(aiExtracted.extra_options_json)) {
-    for (const item of aiExtracted.extra_options_json) {
-      if (isPlainObject(item)) rows.push(item);
-    }
-  }
-  if (aiExtracted && Array.isArray(aiExtracted.insurance_options_json)) {
-    for (const item of aiExtracted.insurance_options_json) {
-      if (isPlainObject(item)) rows.push(item);
-    }
-  }
-
+  const rows = rowsInput;
   const extraOutput: Array<{ label: string; amountCents: number }> = [];
   const insuranceOutput: Array<{ label: string; pricingMode: 'FIXED' | 'PERCENT'; amountCents: number | null; percentValue: number | null }> = [];
 
   for (const row of rows) {
     const label = normalizeWhitespace(String(row.label ?? ''));
     if (!label) continue;
+    if (isPartnerTariffExtraOptionLabel(label)) continue;
 
     const description = normalizeWhitespace(String(row.description ?? ''));
     const pricingModeRaw = normalizeWhitespace(String(row.pricing_mode ?? row.mode ?? '')).toUpperCase();
@@ -682,6 +677,25 @@ function parseExtraAndInsuranceOptions(
   };
 }
 
+function parseExtraAndInsuranceOptions(
+  draft: StayDraftRow,
+  rawPayload: Record<string, unknown>
+): {
+  extraOptions: Array<{ label: string; amountCents: number }>;
+  insuranceOptions: Array<{ label: string; pricingMode: 'FIXED' | 'PERCENT'; amountCents: number | null; percentValue: number | null }>;
+} {
+  const rows: Array<Record<string, unknown>> = [...asRecordArray(draft.extra_options_json)];
+
+  const aiExtracted = isPlainObject(rawPayload.ai_extracted) ? rawPayload.ai_extracted : null;
+  if (aiExtracted && Array.isArray(aiExtracted.insurance_options_json)) {
+    for (const item of aiExtracted.insurance_options_json) {
+      if (isPlainObject(item)) rows.push(item);
+    }
+  }
+
+  return parseMergedExtraOptionsRows(rows);
+}
+
 function toBoolean(value: unknown): boolean {
   if (typeof value === 'boolean') return value;
   if (typeof value === 'number') return value !== 0;
@@ -689,12 +703,19 @@ function toBoolean(value: unknown): boolean {
   return ['1', 'true', 'yes', 'oui', 'on'].includes(value.trim().toLowerCase());
 }
 
-function parseTransportOptions(value: Json | null): Array<{ departureCity: string; returnCity: string; amountCents: number }> {
+function parseExcludedSessionKeysFromRow(row: Record<string, unknown>): string[] {
+  const raw = row.excluded_session_keys;
+  if (!Array.isArray(raw)) return [];
+  return raw.map((x) => String(x).trim()).filter(Boolean);
+}
+
+export function parseTransportOptionsFromJson(value: Json | null): ParsedTransportOption[] {
   const rows = asRecordArray(value);
   type TransportCandidate = {
     departureCity: string;
     returnCity: string;
     amountCents: number;
+    excludedSessionKeys: string[];
     score: number;
     sourceUrl: string | null;
     reason: string | null;
@@ -708,7 +729,8 @@ function parseTransportOptions(value: Json | null): Array<{ departureCity: strin
     amountCents: number | null,
     sourceUrl: string | null,
     reason: string | null,
-    confidenceRaw: string | null
+    confidenceRaw: string | null,
+    excludedSessionKeys: string[] = []
   ) => {
     const cleanDeparture = normalizeWhitespace(departureCity);
     const cleanReturn = normalizeWhitespace(returnCity);
@@ -738,11 +760,13 @@ function parseTransportOptions(value: Json | null): Array<{ departureCity: strin
     const confidenceScore =
       confidence === 'high' ? 30 : confidence === 'medium' ? 20 : confidence === 'low' ? 10 : 0;
     const score = 100 + confidenceScore + (normalizedAmount > 0 ? 10 : 0);
-    const key = `${simplifyForMatch(normalizedDeparture)}|${simplifyForMatch(normalizedReturn)}`;
+    const exKey = excludedSessionKeys.slice().sort().join('>');
+    const key = `${simplifyForMatch(normalizedDeparture)}|${simplifyForMatch(normalizedReturn)}|ex:${exKey}`;
     const candidate: TransportCandidate = {
       departureCity: normalizedDeparture,
       returnCity: normalizedReturn,
       amountCents: normalizedAmount,
+      excludedSessionKeys: excludedSessionKeys.slice(),
       score,
       sourceUrl,
       reason
@@ -754,6 +778,7 @@ function parseTransportOptions(value: Json | null): Array<{ departureCity: strin
   };
 
   for (const row of rows) {
+    const excludedSessionKeys = parseExcludedSessionKeysFromRow(row);
     const label = normalizeWhitespace(String(row.label ?? ''));
     const city = normalizeWhitespace(String(row.city ?? row.label ?? ''));
     const departureCity = normalizeWhitespace(String(row.departure_city ?? row.outbound_city ?? ''));
@@ -789,16 +814,16 @@ function parseTransportOptions(value: Json | null): Array<{ departureCity: strin
 
     if (city && (outboundAmountCents !== null || returnAmountCents !== null)) {
       if (outboundAmountCents !== null) {
-        pushOption(city, '', outboundAmountCents, sourceUrl, reason, confidenceRaw);
+        pushOption(city, '', outboundAmountCents, sourceUrl, reason, confidenceRaw, excludedSessionKeys);
       }
       if (returnAmountCents !== null) {
-        pushOption('', city, returnAmountCents, sourceUrl, reason, confidenceRaw);
+        pushOption('', city, returnAmountCents, sourceUrl, reason, confidenceRaw, excludedSessionKeys);
       }
       continue;
     }
 
     if (departureCity || returnCity) {
-      pushOption(departureCity, returnCity, amountCents, sourceUrl, reason, confidenceRaw);
+      pushOption(departureCity, returnCity, amountCents, sourceUrl, reason, confidenceRaw, excludedSessionKeys);
       continue;
     }
 
@@ -810,21 +835,22 @@ function parseTransportOptions(value: Json | null): Array<{ departureCity: strin
     const isReturn = hasReturnFlag || (returnByText && !outboundByText);
 
     if (isOutbound && !isReturn) {
-      pushOption(city, '', amountCents, sourceUrl, reason, confidenceRaw);
+      pushOption(city, '', amountCents, sourceUrl, reason, confidenceRaw, excludedSessionKeys);
       continue;
     }
     if (isReturn && !isOutbound) {
-      pushOption('', city, amountCents, sourceUrl, reason, confidenceRaw);
+      pushOption('', city, amountCents, sourceUrl, reason, confidenceRaw, excludedSessionKeys);
       continue;
     }
 
-    pushOption(city, city, amountCents, sourceUrl, reason, confidenceRaw);
+    pushOption(city, city, amountCents, sourceUrl, reason, confidenceRaw, excludedSessionKeys);
   }
 
   const accepted = Array.from(output.values()).map((option) => ({
     departureCity: option.departureCity,
     returnCity: option.returnCity,
-    amountCents: option.amountCents
+    amountCents: option.amountCents,
+    excludedSessionKeys: option.excludedSessionKeys
   }))
     .sort((left, right) =>
       `${left.departureCity}|${left.returnCity}`.localeCompare(
@@ -952,17 +978,30 @@ function normalizeAccommodationAccessibility(value: string | null | undefined): 
 
 function normalizeAccommodationType(value: string | null | undefined, fallbackText: string): string {
   const raw = simplifyForMatch(sanitizeAccommodationText(value, { maxLength: 80 }) ?? '');
+  if (raw.includes('hotel')) return 'hotel';
   if (raw === 'camping') return 'camping';
   if (raw.includes('auberge')) return 'auberge de jeunesse';
   if (raw.includes('famille')) return "famille d'accueil";
+  if (raw.includes('gite')) return 'gite';
   if (raw === 'mixte') return 'mixte';
   if (raw === 'centre') return 'centre';
 
   const fallback = simplifyForMatch(fallbackText);
+  if (fallback.includes('hotel')) return 'hotel';
   if (fallback.includes('camping') || fallback.includes('tente')) return 'camping';
   if (fallback.includes('auberge')) return 'auberge de jeunesse';
   if (fallback.includes('famille d accueil')) return "famille d'accueil";
+  if (fallback.includes('gite')) return 'gite';
   return 'centre';
+}
+
+function readImportedExistingAccommodationId(rawPayload: Record<string, unknown>): string | null {
+  const importOptions = rawPayload.import_options;
+  if (!isPlainObject(importOptions)) return null;
+  return typeof importOptions.existing_accommodation_id === 'string' &&
+    importOptions.existing_accommodation_id.trim().length > 0
+    ? importOptions.existing_accommodation_id.trim()
+    : null;
 }
 
 function parseAccommodation(
@@ -976,18 +1015,36 @@ function parseAccommodation(
   cateringInfo: string | null;
   accessibilityInfo: string | null;
   accommodationType: string;
+  addressText: string | null;
+  postalCode: string | null;
+  city: string | null;
+  departmentCode: string | null;
+  regionText: string | null;
+  country: string | null;
+  centerLatitude: number | null;
+  centerLongitude: number | null;
 } | null {
-  const object = asObject(value);
+  const object = coerceAccommodationJsonObject(value);
   if (Object.keys(object).length === 0) return null;
 
-  const title = sanitizeAccommodationText(String(object.title ?? ''), { maxLength: 160 });
-  const description = sanitizeAccommodationText(String(object.description ?? ''), { maxLength: 2_200 });
-  const descriptionText = description ?? '';
+  const titleRaw =
+    object.title ?? object.nom ?? object.name ?? object.nom_hebergement ?? object.nom_de_l_hebergement ?? '';
+  const title = sanitizeAccommodationText(String(titleRaw), { maxLength: 160 });
+  const descriptionRaw = sanitizeAccommodationText(String(object.description ?? ''), { maxLength: 2_200 });
+  const descriptionText = descriptionRaw ?? '';
   const locationHint = sanitizeAccommodationText(
     String(object.location ?? object.location_text ?? object.city ?? context?.locationText ?? ''),
     { maxLength: 120 }
   );
   const sourceText = [title, descriptionText].filter(Boolean).join('\n');
+
+  const typesFromJson = Array.isArray(object.accommodation_types)
+    ? object.accommodation_types.filter((item): item is string => typeof item === 'string')
+    : [];
+  const normalizedTypes = typesFromJson
+    .map((t) => normalizeAccommodationTypeToken(t))
+    .filter((t): t is string => Boolean(t));
+  const uniqueTypes = Array.from(new Set(normalizedTypes));
 
   const bedInfo =
     cleanupBedInfo(sanitizeAccommodationText(String(object.bed_info ?? object.sleeping_info ?? ''), { maxLength: 220 })) ??
@@ -998,19 +1055,73 @@ function parseAccommodation(
   const cateringInfo =
     cleanupCateringInfo(sanitizeAccommodationText(String(object.catering_info ?? object.food_info ?? ''), { maxLength: 220 })) ??
     extractCateringInfo(sourceText);
-  const accessibilityInfo = normalizeAccommodationAccessibility(
+  let accessibilityInfo = normalizeAccommodationAccessibility(
     sanitizeAccommodationText(String(object.accessibility_info ?? object.pmr_info ?? ''), { maxLength: 220 }) ??
       extractSectionFromText(sourceText, ACCESSIBILITY_KEYS)
   );
-  const accommodationType = normalizeAccommodationType(
-    sanitizeAccommodationText(String(object.accommodation_type ?? ''), { maxLength: 80 }),
-    [title, descriptionText, bedInfo, locationHint].filter(Boolean).join(' ')
-  );
+  const pmrFlag =
+    object.pmr_accessible === true ||
+    object.pmr_accessible === 'true' ||
+    object.pmr_accessible === 1 ||
+    object.pmr_accessible === '1';
+  if (pmrFlag) {
+    const pmrPhrase = 'Repéré comme accessible aux personnes à mobilité réduite (PMR).';
+    accessibilityInfo = accessibilityInfo ? `${accessibilityInfo} ${pmrPhrase}` : pmrPhrase;
+  }
+
+  const accommodationTypeFromList =
+    uniqueTypes.length > 1 ? 'mixte' : uniqueTypes.length === 1 ? uniqueTypes[0]! : null;
+  const accommodationType =
+    accommodationTypeFromList ??
+    normalizeAccommodationType(
+      sanitizeAccommodationText(String(object.accommodation_type ?? ''), { maxLength: 80 }),
+      [title, descriptionText, bedInfo, locationHint].filter(Boolean).join(' ')
+    );
+
+  const description = descriptionRaw;
+  const locationModeNorm = normalizeLocationMode(object.location_mode);
+  const normalizedAddress = normalizeAccommodationAddress({
+    addressText: sanitizeAccommodationText(
+      String(object.address_text ?? object.street ?? object.street_address ?? ''),
+      { maxLength: 220 }
+    ),
+    postalCode: sanitizeAccommodationText(
+      String(object.postal_code ?? object.postalCode ?? ''),
+      { maxLength: 16 }
+    ),
+    city: sanitizeAccommodationText(
+      String(object.city ?? object.location_city ?? ''),
+      { maxLength: 120 }
+    ),
+    departmentCode: sanitizeAccommodationText(
+      String(object.department_code ?? object.location_department_code ?? ''),
+      { maxLength: 8 }
+    ),
+    regionText: sanitizeAccommodationText(
+      String(object.region_text ?? object.region ?? ''),
+      { maxLength: 120 }
+    ),
+    country: sanitizeAccommodationText(
+      String(object.country ?? object.location_country ?? ''),
+      { maxLength: 80 }
+    )
+  });
+  if (locationModeNorm === 'france' && !normalizedAddress.country) {
+    normalizedAddress.country = 'France';
+  }
   const resolvedName = buildAccommodationName({
     title,
-    description,
+    description: descriptionText,
     locationHint,
     accommodationType
+  });
+  const centerCoordinates = validateAndParseAccommodationCenterCoordinates({
+    centerLatitude: toNullableNumber(
+      object.center_latitude ?? object.latitude ?? object.lat
+    ),
+    centerLongitude: toNullableNumber(
+      object.center_longitude ?? object.longitude ?? object.lng ?? object.lon
+    )
   });
 
   if (!resolvedName && !description && !bedInfo && !bathroomInfo && !cateringInfo && !accessibilityInfo) {
@@ -1024,7 +1135,15 @@ function parseAccommodation(
     bathroomInfo,
     cateringInfo,
     accessibilityInfo,
-    accommodationType
+    accommodationType,
+    addressText: normalizedAddress.addressText,
+    postalCode: normalizedAddress.postalCode,
+    city: normalizedAddress.city,
+    departmentCode: normalizedAddress.departmentCode,
+    regionText: normalizedAddress.regionText,
+    country: normalizedAddress.country,
+    centerLatitude: centerCoordinates.error ? null : centerCoordinates.value.centerLatitude,
+    centerLongitude: centerCoordinates.error ? null : centerCoordinates.value.centerLongitude
   };
 }
 
@@ -1041,6 +1160,13 @@ function readLivePublication(rawPayload: Record<string, unknown>): {
     stayId: typeof live.stay_id === 'string' ? live.stay_id : null,
     accommodationId: typeof live.accommodation_id === 'string' ? live.accommodation_id : null
   };
+}
+
+function readDraftAccommodationPreviewId(rawPayload: Record<string, unknown>): string | null {
+  const preview = rawPayload.draft_accommodation_preview;
+  if (!isPlainObject(preview)) return null;
+  const id = preview.accommodation_id;
+  return typeof id === 'string' && id.trim().length > 0 ? id.trim() : null;
 }
 
 function seasonNameFromMonth(month: number): 'Hiver' | 'Printemps' | 'Été' | 'Automne' {
@@ -1097,6 +1223,12 @@ async function findExistingStayBySourceUrl(
   organizerId: string,
   sourceUrl: string
 ): Promise<string | null> {
+  const candidates = new Set<string>();
+  const trimmed = sourceUrl.trim();
+  if (trimmed) candidates.add(trimmed);
+  const canonical = tryCanonicalizeStaySourceUrl(trimmed);
+  if (canonical) candidates.add(canonical);
+
   const dynamicFrom = supabase.from('stays') as unknown as {
     select: (columns: string) => {
       eq: (column: string, value: string) => {
@@ -1110,21 +1242,27 @@ async function findExistingStayBySourceUrl(
   };
 
   try {
-    const { data, error } = await dynamicFrom
-      .select('id')
-      .eq('organizer_id', organizerId)
-      .eq('source_url', sourceUrl)
-      .limit(1)
-      .maybeSingle();
+    for (const candidate of candidates) {
+      const { data, error } = await dynamicFrom
+        .select('id')
+        .eq('organizer_id', organizerId)
+        .eq('source_url', candidate)
+        .limit(1)
+        .maybeSingle();
 
-    if (error) {
-      if (isMissingColumnError(error.message, 'source_url')) {
-        return null;
+      if (error) {
+        if (isMissingColumnError(error.message, 'source_url')) {
+          return null;
+        }
+        throw new PublishStayDraftError('find-stay-by-source-url', error.message ?? 'Erreur inconnue.');
       }
-      throw new PublishStayDraftError('find-stay-by-source-url', error.message ?? 'Erreur inconnue.');
+
+      if (data?.id) {
+        return data.id;
+      }
     }
 
-    return data?.id ?? null;
+    return null;
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Erreur inconnue.';
     if (isMissingColumnError(message, 'source_url')) {
@@ -1144,11 +1282,21 @@ async function updateOrInsertStay(
   sessions: Array<{ startDate: string; endDate: string; status: SessionStatus; priceCents: number | null; currency: string }>
 ): Promise<string> {
   const now = new Date().toISOString();
+  const draftRawPayload = asObject(draft.raw_payload);
+  const publishedSourceUrl = tryCanonicalizeStaySourceUrl(draft.source_url) ?? draft.source_url;
+  const partnerDiscountPercent = readPartnerDiscountPercentFromRawPayload(draftRawPayload);
   const ageMin = ages.length > 0 ? ages[0] : draft.age_min;
   const ageMax = ages.length > 0 ? ages[ages.length - 1] : draft.age_max;
   const normalizedTitle = normalizeStayTitle(draft.title);
   const normalizedRegion = mapToCanonicalStayRegion(draft.region_text);
+  const destination = readDraftDestinationFields(draftRawPayload);
   const seasonId = await resolveSeasonIdFromSessions(supabase, sessions);
+
+  let previousStatus: string | null | undefined;
+  if (stayId) {
+    const { data: existingStay } = await supabase.from('stays').select('status').eq('id', stayId).maybeSingle();
+    previousStatus = existingStay?.status ?? undefined;
+  }
 
   const basePayload: StayUpdate = {
     title: normalizedTitle,
@@ -1160,6 +1308,14 @@ async function updateOrInsertStay(
     required_documents_text: toNullableText(draft.required_documents_text),
     location_text: toNullableText(draft.location_text),
     region_text: normalizedRegion ?? null,
+    destination_type: destination.destinationType,
+    destination_city: destination.destinationCity,
+    destination_postal_code: destination.destinationPostalCode,
+    destination_department_code: destination.destinationDepartmentCode,
+    destination_region: destination.destinationRegion,
+    destination_country: destination.destinationCountry,
+    destination_itinerary_label: destination.destinationItineraryLabel,
+    destination_countries: destination.destinationCountries.length > 0 ? destination.destinationCountries : null,
     season_id: seasonId,
     age_min: ageMin ?? null,
     age_max: ageMax ?? null,
@@ -1167,6 +1323,22 @@ async function updateOrInsertStay(
     categories: mappedCategories,
     transport_mode: transportMode,
     transport_text: toNullableText(draft.transport_text),
+    partner_discount_percent: partnerDiscountPercent,
+    seo_primary_keyword: toNullableText(sanitizeSeoPrimaryKeyword(draft.seo_primary_keyword)),
+    seo_secondary_keywords: draft.seo_secondary_keywords ?? [],
+    seo_target_city: toNullableText(draft.seo_target_city),
+    seo_target_region: toNullableText(draft.seo_target_region),
+    seo_search_intents: draft.seo_search_intents ?? [],
+    seo_title: toNullableText(draft.seo_title),
+    seo_meta_description: toNullableText(draft.seo_meta_description),
+    seo_intro_text: toNullableText(draft.seo_intro_text),
+    seo_h1_variant: toNullableText(draft.seo_h1_variant),
+    seo_internal_link_anchor_suggestions: draft.seo_internal_link_anchor_suggestions ?? [],
+    seo_slug_candidate: toNullableText(draft.seo_slug_candidate),
+    seo_generated_at: draft.seo_generated_at ?? null,
+    seo_generation_source: toNullableText(draft.seo_generation_source),
+    seo_score: Number.isFinite(draft.seo_score) ? draft.seo_score : null,
+    seo_checks: Array.isArray(draft.seo_checks) ? draft.seo_checks : [],
     status: 'PUBLISHED' as StayStatus,
     updated_at: now
   };
@@ -1175,10 +1347,17 @@ async function updateOrInsertStay(
     throw new PublishStayDraftError('validate-title', 'Le titre est requis pour publier.');
   }
 
+  if (destination.destinationType === 'fixed_france' && (!destination.destinationRegion || destination.destinationRegion === 'Étranger')) {
+    throw new PublishStayDraftError(
+      'validate-region',
+      'La région est obligatoire pour publier un séjour en France (sélectionnez une région, pas "Étranger").'
+    );
+  }
+
   if (stayId) {
     const updateWithSourceUrl = {
       ...basePayload,
-      source_url: draft.source_url
+      source_url: publishedSourceUrl
     };
 
     const dynamicUpdate = supabase.from('stays') as unknown as {
@@ -1194,22 +1373,46 @@ async function updateOrInsertStay(
       .eq('id', stayId)
       .eq('organizer_id', draft.organizer_id);
 
-    if (firstTry.error && !isMissingColumnError(firstTry.error.message, 'source_url')) {
+    const missingSourceUrl = isMissingColumnError(firstTry.error?.message, 'source_url');
+    const missingSeoColumns = isMissingSeoColumnError(firstTry.error?.message);
+
+    if (firstTry.error && !missingSourceUrl && !missingSeoColumns) {
       throw new PublishStayDraftError('update-stay', firstTry.error.message ?? 'Impossible de mettre à jour le séjour.');
     }
 
-    if (firstTry.error && isMissingColumnError(firstTry.error.message, 'source_url')) {
-      const { error: fallbackError } = await supabase
+    if (firstTry.error) {
+      const fallbackPayload = missingSeoColumns
+        ? removeSeoFieldsFromPayload(basePayload as Record<string, unknown>)
+        : (basePayload as Record<string, unknown>);
+
+      let { error: fallbackError } = await supabase
         .from('stays')
-        .update(basePayload)
+        .update(fallbackPayload)
         .eq('id', stayId)
         .eq('organizer_id', draft.organizer_id);
+
+      if (fallbackError && !missingSeoColumns && isMissingSeoColumnError(fallbackError.message)) {
+        const withoutSeoPayload = removeSeoFieldsFromPayload(basePayload as Record<string, unknown>);
+        const secondFallback = await supabase
+          .from('stays')
+          .update(withoutSeoPayload)
+          .eq('id', stayId)
+          .eq('organizer_id', draft.organizer_id);
+        fallbackError = secondFallback.error;
+      }
 
       if (fallbackError) {
         throw new PublishStayDraftError('update-stay', fallbackError.message);
       }
     }
 
+    await maybeRecordPublicationFeeWhenStayPublished(supabase, {
+      stayId,
+      organizerId: draft.organizer_id,
+      previousStatus,
+      newStatus: 'PUBLISHED',
+      occurredAt: now
+    });
     return stayId;
   }
 
@@ -1231,6 +1434,22 @@ async function updateOrInsertStay(
     categories: mappedCategories,
     transport_mode: transportMode,
     transport_text: basePayload.transport_text ?? null,
+    partner_discount_percent: partnerDiscountPercent,
+    seo_primary_keyword: basePayload.seo_primary_keyword ?? null,
+    seo_secondary_keywords: basePayload.seo_secondary_keywords ?? [],
+    seo_target_city: basePayload.seo_target_city ?? null,
+    seo_target_region: basePayload.seo_target_region ?? null,
+    seo_search_intents: basePayload.seo_search_intents ?? [],
+    seo_title: basePayload.seo_title ?? null,
+    seo_meta_description: basePayload.seo_meta_description ?? null,
+    seo_intro_text: basePayload.seo_intro_text ?? null,
+    seo_h1_variant: basePayload.seo_h1_variant ?? null,
+    seo_internal_link_anchor_suggestions: basePayload.seo_internal_link_anchor_suggestions ?? [],
+    seo_slug_candidate: basePayload.seo_slug_candidate ?? null,
+    seo_generated_at: basePayload.seo_generated_at ?? null,
+    seo_generation_source: basePayload.seo_generation_source ?? null,
+    seo_score: basePayload.seo_score ?? null,
+    seo_checks: basePayload.seo_checks ?? [],
     status: 'PUBLISHED'
   };
 
@@ -1244,31 +1463,59 @@ async function updateOrInsertStay(
 
   const insertWithSourceUrl = {
     ...insertPayload,
-    source_url: draft.source_url
+    source_url: publishedSourceUrl
   };
 
   const firstTry = await dynamicInsert.insert(insertWithSourceUrl).select('id').single();
+  const missingSourceUrl = isMissingColumnError(firstTry.error?.message, 'source_url');
+  const missingSeoColumns = isMissingSeoColumnError(firstTry.error?.message);
 
-  if (firstTry.error && !isMissingColumnError(firstTry.error.message, 'source_url')) {
+  if (firstTry.error && !missingSourceUrl && !missingSeoColumns) {
     throw new PublishStayDraftError('insert-stay', firstTry.error.message ?? 'Impossible de créer le séjour.');
   }
 
   if (!firstTry.error && firstTry.data?.id) {
-    return firstTry.data.id;
+    const newId = firstTry.data.id;
+    await maybeRecordPublicationFeeWhenStayPublished(supabase, {
+      stayId: newId,
+      organizerId: draft.organizer_id,
+      previousStatus,
+      newStatus: 'PUBLISHED',
+      occurredAt: now
+    });
+    return newId;
   }
 
-  const fallbackTry = await supabase.from('stays').insert(insertPayload).select('id').single();
+  let fallbackPayload = insertPayload as Record<string, unknown>;
+  if (missingSeoColumns) {
+    fallbackPayload = removeSeoFieldsFromPayload(fallbackPayload);
+  }
+
+  let fallbackTry = await supabase.from('stays').insert(fallbackPayload as StayInsert).select('id').single();
+  if ((fallbackTry.error || !fallbackTry.data?.id) && !missingSeoColumns && isMissingSeoColumnError(fallbackTry.error?.message)) {
+    const withoutSeoPayload = removeSeoFieldsFromPayload(insertPayload as Record<string, unknown>);
+    fallbackTry = await supabase.from('stays').insert(withoutSeoPayload as StayInsert).select('id').single();
+  }
+
   if (fallbackTry.error || !fallbackTry.data?.id) {
     throw new PublishStayDraftError('insert-stay', fallbackTry.error?.message ?? 'Impossible de créer le séjour.');
   }
 
-  return fallbackTry.data.id;
+  const newId = fallbackTry.data.id;
+  await maybeRecordPublicationFeeWhenStayPublished(supabase, {
+    stayId: newId,
+    organizerId: draft.organizer_id,
+    previousStatus,
+    newStatus: 'PUBLISHED',
+    occurredAt: now
+  });
+  return newId;
 }
 
 async function syncSessions(
   supabase: SupabaseClient<Database>,
   stayId: string,
-  sessions: Array<{ startDate: string; endDate: string; status: SessionStatus; priceCents: number | null; currency: string }>
+  sessions: Array<{ startDate: string; endDate: string; status: SessionStatus; priceCents: number | null; currency: string; remainingPlaces: number | null }>
 ): Promise<void> {
   const { data: existingSessions, error: listError } = await supabase
     .from('sessions')
@@ -1307,7 +1554,7 @@ async function syncSessions(
       start_date: session.startDate,
       end_date: session.endDate,
       status: session.status,
-      capacity_total: 0,
+      capacity_total: session.remainingPlaces ?? 0,
       capacity_reserved: 0
     };
 
@@ -1338,26 +1585,75 @@ async function syncSessions(
   }
 }
 
-async function syncStayMedia(
+export async function syncStayMedia(
   supabase: SupabaseClient<Database>,
+  organizerId: string,
   stayId: string,
-  images: string[]
+  images: string[],
+  stayVideoUrls: string[] = []
 ): Promise<void> {
+  const { data: existingRows, error: existingRowsError } = await supabase
+    .from('stay_media')
+    .select('url')
+    .eq('stay_id', stayId);
+
+  if (existingRowsError) {
+    throw new PublishStayDraftError('read-stay-media', existingRowsError.message);
+  }
+
+  const normalizedStayVideos = normalizeImportedVideoUrlList(stayVideoUrls).slice(0, 20);
+  const nextImageUrls = await uploadImportedStayImages(supabase, {
+    organizerId,
+    stayId,
+    imageUrls: images
+  });
+  const nextVideoUrls = await uploadImportedStayImages(supabase, {
+    organizerId,
+    stayId,
+    imageUrls: normalizedStayVideos
+  });
+  const previousUrls = (existingRows ?? []).map((row) => row.url).filter(Boolean);
+
   const { error: deleteError } = await supabase.from('stay_media').delete().eq('stay_id', stayId);
   if (deleteError) {
     throw new PublishStayDraftError('delete-stay-media', deleteError.message);
   }
 
-  if (images.length === 0) {
+  const allNextUrls = [...nextImageUrls, ...nextVideoUrls];
+  const urlsToRemove = previousUrls.filter((url) => !allNextUrls.includes(url));
+  if (urlsToRemove.length > 0) {
+    try {
+      await removeStayMediaStorageFiles(supabase, urlsToRemove);
+    } catch (error) {
+      console.warn('[publish-stay-draft] stale stay media cleanup failed', {
+        stayId,
+        error: error instanceof Error ? error.message : 'unknown-error'
+      });
+    }
+  }
+
+  if (nextImageUrls.length === 0 && nextVideoUrls.length === 0) {
     return;
   }
 
-  const rows: StayMediaInsert[] = images.map((url, index) => ({
-    stay_id: stayId,
-    url,
-    position: index + 1,
-    media_type: index === 0 ? 'cover' : 'gallery'
-  }));
+  const rows: StayMediaInsert[] = [];
+  nextImageUrls.forEach((url, index) => {
+    rows.push({
+      stay_id: stayId,
+      url,
+      position: index + 1,
+      media_type: index === 0 ? 'cover' : 'gallery'
+    });
+  });
+  const imageCount = nextImageUrls.length;
+  nextVideoUrls.forEach((url, index) => {
+    rows.push({
+      stay_id: stayId,
+      url,
+      position: imageCount + index + 1,
+      media_type: 'video'
+    });
+  });
 
   const { error: insertError } = await supabase.from('stay_media').insert(rows);
   if (insertError) {
@@ -1365,7 +1661,66 @@ async function syncStayMedia(
   }
 }
 
-async function syncExtraOptions(
+/**
+ * Remplace uniquement les médias vidéo d’une fiche hébergement (URLs reconnues comme vidéo).
+ * Les images catalogue existantes sont conservées.
+ */
+export async function replaceAccommodationVideoOnlyMedia(
+  supabase: SupabaseClient<Database>,
+  accommodationId: string,
+  videoUrls: string[]
+): Promise<void> {
+  const { data: mediaRows, error: readError } = await supabase
+    .from('accommodation_media')
+    .select('id,url')
+    .eq('accommodation_id', accommodationId);
+
+  if (readError) {
+    throw new PublishStayDraftError('read-accommodation-media', readError.message);
+  }
+
+  const videoRowIds = (mediaRows ?? [])
+    .filter((row) => isVideoUrlCandidate(String(row.url ?? '')))
+    .map((row) => row.id);
+
+  if (videoRowIds.length > 0) {
+    const { error: deleteVideosError } = await supabase
+      .from('accommodation_media')
+      .delete()
+      .in('id', videoRowIds);
+    if (deleteVideosError) {
+      throw new PublishStayDraftError('delete-accommodation-videos', deleteVideosError.message);
+    }
+  }
+
+  const normalized = normalizeImportedVideoUrlList(videoUrls);
+  if (normalized.length === 0) {
+    return;
+  }
+
+  const { data: tailRows } = await supabase
+    .from('accommodation_media')
+    .select('position')
+    .eq('accommodation_id', accommodationId)
+    .order('position', { ascending: false })
+    .limit(1);
+  const tail = tailRows?.[0];
+  let start = (typeof tail?.position === 'number' ? tail.position : 0) + 1;
+
+  const { error: insertError } = await supabase.from('accommodation_media').insert(
+    normalized.map((url, index) => ({
+      accommodation_id: accommodationId,
+      url,
+      position: start + index
+    }))
+  );
+
+  if (insertError) {
+    throw new PublishStayDraftError('insert-accommodation-videos', insertError.message);
+  }
+}
+
+export async function syncExtraOptions(
   supabase: SupabaseClient<Database>,
   stayId: string,
   options: Array<{ label: string; amountCents: number }>
@@ -1396,7 +1751,7 @@ async function syncExtraOptions(
   }
 }
 
-async function syncInsuranceOptions(
+export async function syncInsuranceOptions(
   supabase: SupabaseClient<Database>,
   stayId: string,
   options: Array<{ label: string; pricingMode: 'FIXED' | 'PERCENT'; amountCents: number | null; percentValue: number | null }>
@@ -1430,10 +1785,10 @@ async function syncInsuranceOptions(
   }
 }
 
-async function syncTransportOptions(
+export async function syncTransportOptions(
   supabase: SupabaseClient<Database>,
   stayId: string,
-  options: Array<{ departureCity: string; returnCity: string; amountCents: number }>
+  options: ParsedTransportOption[]
 ): Promise<void> {
   const { error: deleteError } = await supabase
     .from('transport_options')
@@ -1448,13 +1803,51 @@ async function syncTransportOptions(
     return;
   }
 
-  const rows: TransportOptionInsert[] = options.map((option) => ({
-    stay_id: stayId,
-    session_id: null,
-    departure_city: option.departureCity,
-    return_city: option.returnCity,
-    amount_cents: option.amountCents
-  }));
+  const { data: liveSessions, error: sessionsError } = await supabase
+    .from('sessions')
+    .select('id,start_date,end_date')
+    .eq('stay_id', stayId)
+    .order('start_date', { ascending: true });
+
+  if (sessionsError) {
+    throw new PublishStayDraftError('list-sessions-for-transport', sessionsError.message);
+  }
+
+  const sessions = liveSessions ?? [];
+  const rows: TransportOptionInsert[] = [];
+
+  for (const option of options) {
+    const excluded = new Set(option.excludedSessionKeys ?? []);
+    const includedSessions = sessions.filter((s, i) => !excluded.has(liveSessionStableKey(s, i)));
+
+    if (includedSessions.length === 0) {
+      continue;
+    }
+
+    const base = {
+      stay_id: stayId,
+      departure_city: option.departureCity,
+      return_city: option.returnCity,
+      amount_cents: option.amountCents
+    };
+
+    if (sessions.length === 0) {
+      rows.push({ ...base, session_id: null });
+      continue;
+    }
+
+    if (includedSessions.length === sessions.length) {
+      rows.push({ ...base, session_id: null });
+    } else {
+      for (const s of includedSessions) {
+        rows.push({ ...base, session_id: s.id });
+      }
+    }
+  }
+
+  if (rows.length === 0) {
+    return;
+  }
 
   const { error: insertError } = await supabase.from('transport_options').insert(rows);
   if (insertError) {
@@ -1467,6 +1860,7 @@ async function syncAccommodation(
   draft: StayDraftRow,
   stayId: string,
   currentAccommodationId: string | null,
+  extractedAccommodationSource: Json | null,
   parsedAccommodation: {
     title: string;
     description: string | null;
@@ -1475,6 +1869,14 @@ async function syncAccommodation(
     cateringInfo: string | null;
     accessibilityInfo: string | null;
     accommodationType: string;
+    addressText: string | null;
+    postalCode: string | null;
+    city: string | null;
+    departmentCode: string | null;
+    regionText: string | null;
+    country: string | null;
+    centerLatitude: number | null;
+    centerLongitude: number | null;
   } | null
 ): Promise<string | null> {
   const { error: deleteLinksError } = await supabase
@@ -1491,6 +1893,27 @@ async function syncAccommodation(
       return null;
     }
 
+    const { data: existingAccommodation, error: existingAccommodationError } = await supabase
+      .from('accommodations')
+      .select('id')
+      .eq('id', currentAccommodationId)
+      .eq('organizer_id', draft.organizer_id)
+      .maybeSingle();
+
+    if (existingAccommodationError) {
+      throw new PublishStayDraftError(
+        'resolve-existing-accommodation',
+        existingAccommodationError.message
+      );
+    }
+
+    if (!existingAccommodation?.id) {
+      throw new PublishStayDraftError(
+        'resolve-existing-accommodation',
+        "L'hébergement sélectionné pour le draft est introuvable."
+      );
+    }
+
     const { error: relinkError } = await supabase.from('stay_accommodations').insert({
       stay_id: stayId,
       accommodation_id: currentAccommodationId
@@ -1504,6 +1927,15 @@ async function syncAccommodation(
 
   const now = new Date().toISOString();
   let accommodationId = currentAccommodationId;
+  const accommodationValidatedAt = draft.validated_at ?? now;
+  const accommodationValidatedByUserId = draft.validated_by_user_id ?? null;
+  const extractedData: Json = {
+    source: 'stay_draft_publication',
+    draft_id: draft.id,
+    stay_id: stayId,
+    source_url: draft.source_url ?? null,
+    extracted_accommodation: extractedAccommodationSource
+  };
 
   if (accommodationId) {
     const updatePayload: AccommodationUpdate = {
@@ -1514,7 +1946,19 @@ async function syncAccommodation(
       catering_info: parsedAccommodation.cateringInfo,
       accessibility_info: parsedAccommodation.accessibilityInfo,
       accommodation_type: parsedAccommodation.accommodationType,
+      address_text: parsedAccommodation.addressText,
+      postal_code: parsedAccommodation.postalCode,
+      city: parsedAccommodation.city,
+      department_code: parsedAccommodation.departmentCode,
+      region_text: parsedAccommodation.regionText,
+      country: parsedAccommodation.country,
+      center_latitude: parsedAccommodation.centerLatitude,
+      center_longitude: parsedAccommodation.centerLongitude,
       source_url: draft.source_url,
+      ai_extracted_data: extractedData,
+      status: 'VALIDATED',
+      validated_at: accommodationValidatedAt,
+      validated_by_user_id: accommodationValidatedByUserId,
       updated_at: now
     };
 
@@ -1546,7 +1990,18 @@ async function syncAccommodation(
       accessibility_info: parsedAccommodation.accessibilityInfo,
       source_url: draft.source_url,
       accommodation_type: parsedAccommodation.accommodationType,
-      status: 'DRAFT',
+      address_text: parsedAccommodation.addressText,
+      postal_code: parsedAccommodation.postalCode,
+      city: parsedAccommodation.city,
+      department_code: parsedAccommodation.departmentCode,
+      region_text: parsedAccommodation.regionText,
+      country: parsedAccommodation.country,
+      center_latitude: parsedAccommodation.centerLatitude,
+      center_longitude: parsedAccommodation.centerLongitude,
+      ai_extracted_data: extractedData,
+      status: 'VALIDATED',
+      validated_at: accommodationValidatedAt,
+      validated_by_user_id: accommodationValidatedByUserId,
       created_at: now,
       updated_at: now
     };
@@ -1577,6 +2032,145 @@ async function syncAccommodation(
   }
 
   return accommodationId;
+}
+
+/**
+ * Crée ou met à jour une fiche hébergement « brouillon » (statut DRAFT) à chaque sauvegarde du stay_draft,
+ * pour qu’elle apparaisse tout de suite dans la liste des hébergements organisateur.
+ */
+export async function syncStayDraftPreviewAccommodation(
+  supabase: SupabaseClient<Database>,
+  draft: StayDraftRow
+): Promise<StayDraftRow> {
+  const rawPayload = asObject(draft.raw_payload);
+  if (readImportedExistingAccommodationId(rawPayload)) {
+    return draft;
+  }
+
+  const rawAiExtracted = isPlainObject(rawPayload.ai_extracted) ? rawPayload.ai_extracted : null;
+  const accommodationSource =
+    draft.accommodations_json ?? (rawAiExtracted?.accommodations_json as Json | undefined) ?? null;
+
+  const parsed = parseAccommodation(accommodationSource, {
+    locationText: draft.location_text
+  });
+
+  if (!parsed) {
+    return draft;
+  }
+
+  const previewId = readDraftAccommodationPreviewId(rawPayload);
+  const now = new Date().toISOString();
+  const extractedData: Json = {
+    source: 'stay_draft_save_preview',
+    draft_id: draft.id,
+    source_url: draft.source_url ?? null,
+    extracted_accommodation: accommodationSource
+  };
+
+  let accommodationId: string | null = previewId;
+
+  if (accommodationId) {
+    const updatePayload: AccommodationUpdate = {
+      name: parsed.title,
+      description: parsed.description,
+      bed_info: parsed.bedInfo,
+      bathroom_info: parsed.bathroomInfo,
+      catering_info: parsed.cateringInfo,
+      accessibility_info: parsed.accessibilityInfo,
+      accommodation_type: parsed.accommodationType,
+      address_text: parsed.addressText,
+      postal_code: parsed.postalCode,
+      city: parsed.city,
+      department_code: parsed.departmentCode,
+      region_text: parsed.regionText,
+      country: parsed.country,
+      center_latitude: parsed.centerLatitude,
+      center_longitude: parsed.centerLongitude,
+      source_url: draft.source_url,
+      ai_extracted_data: extractedData,
+      status: 'DRAFT',
+      validated_at: null,
+      validated_by_user_id: null,
+      updated_at: now
+    };
+
+    const { data: updated, error } = await supabase
+      .from('accommodations')
+      .update(updatePayload)
+      .eq('id', accommodationId)
+      .eq('organizer_id', draft.organizer_id)
+      .select('id')
+      .maybeSingle();
+
+    if (error || !updated?.id) {
+      accommodationId = null;
+    }
+  }
+
+  if (!accommodationId) {
+    const insertPayload: AccommodationInsert = {
+      organizer_id: draft.organizer_id,
+      name: parsed.title,
+      description: parsed.description,
+      bed_info: parsed.bedInfo,
+      bathroom_info: parsed.bathroomInfo,
+      catering_info: parsed.cateringInfo,
+      accessibility_info: parsed.accessibilityInfo,
+      source_url: draft.source_url,
+      accommodation_type: parsed.accommodationType,
+      address_text: parsed.addressText,
+      postal_code: parsed.postalCode,
+      city: parsed.city,
+      department_code: parsed.departmentCode,
+      region_text: parsed.regionText,
+      country: parsed.country,
+      center_latitude: parsed.centerLatitude,
+      center_longitude: parsed.centerLongitude,
+      ai_extracted_data: extractedData,
+      status: 'DRAFT',
+      validated_at: null,
+      validated_by_user_id: null,
+      created_at: now,
+      updated_at: now
+    };
+
+    const { data: inserted, error: insertError } = await supabase
+      .from('accommodations')
+      .insert(insertPayload)
+      .select('id')
+      .single();
+
+    if (insertError || !inserted?.id) {
+      console.error('[stay-draft-preview-accommodation] insert failed', insertError?.message);
+      return draft;
+    }
+
+    accommodationId = inserted.id;
+  }
+
+  const nextRaw: Record<string, unknown> = {
+    ...rawPayload,
+    draft_accommodation_preview: {
+      accommodation_id: accommodationId,
+      updated_at: now
+    }
+  };
+
+  const { data: updatedDraft, error: draftError } = await supabase
+    .from('stay_drafts')
+    .update({ raw_payload: nextRaw as Json })
+    .eq('id', draft.id)
+    .eq('organizer_id', draft.organizer_id)
+    .select('*')
+    .maybeSingle();
+
+  if (draftError || !updatedDraft) {
+    console.error('[stay-draft-preview-accommodation] draft raw_payload update failed', draftError?.message);
+    return draft;
+  }
+
+  return updatedDraft as StayDraftRow;
 }
 
 async function resolveStayId(
@@ -1636,6 +2230,7 @@ export async function publishStayDraftToLive(
 
   const rawPayload = asObject(draft.raw_payload);
   const livePublication = readLivePublication(rawPayload);
+  const importedExistingAccommodationId = readImportedExistingAccommodationId(rawPayload);
   const categoryMapping = mapDraftCategoriesToLiveCategories(draft.categories);
   const categoryInferenceSource = [
     draft.summary,
@@ -1648,10 +2243,17 @@ export async function publishStayDraftToLive(
     .filter(Boolean)
     .join('\n');
   const inferredCategories = inferLiveCategoriesFromContent(categoryInferenceSource);
-  const categories =
-    categoryMapping.liveValues.length > 0
-      ? categoryMapping.liveValues
-      : inferredCategories;
+  const mergedCategories = Array.from(
+    new Set(
+      categoryMapping.liveValues.length > 0
+        ? [...categoryMapping.liveValues, ...inferredCategories]
+        : inferredCategories
+    )
+  );
+  const categories = ensurePrimaryStaySettingCategory(
+    mergedCategories,
+    [draft.location_text, draft.region_text, draft.summary, draft.description, draft.program_text].join(' ')
+  );
   const ages = normalizeAges(draft.ages, draft.age_min, draft.age_max);
   const rawAiExtracted = isPlainObject(rawPayload.ai_extracted) ? rawPayload.ai_extracted : null;
   const sessionsSource =
@@ -1667,17 +2269,24 @@ export async function publishStayDraftToLive(
     draft.transport_options_json ??
     (rawAiExtracted?.transport_options_json as Json | undefined) ??
     null;
-  const transportOptions = parseTransportOptions(transportSource);
-  const accommodationSource =
-    draft.accommodations_json ??
-    (rawAiExtracted?.accommodations_json as Json | undefined) ??
-    null;
+  const transportOptions = parseTransportOptionsFromJson(transportSource);
+  const accommodationSource = importedExistingAccommodationId
+    ? null
+    : draft.accommodations_json ??
+      (rawAiExtracted?.accommodations_json as Json | undefined) ??
+      null;
   const accommodation = parseAccommodation(accommodationSource, {
     locationText: draft.location_text
   });
   const images = Array.from(
     new Set(asStringArray(draft.images).filter((url) => /^https?:\/\//i.test(url)))
   ).slice(0, 20);
+  const stayPublishVideos = normalizeImportedVideoUrlList(
+    asStringArray((rawPayload.video_urls as Json | null) ?? null)
+  );
+  const accommodationPublishVideos = normalizeImportedVideoUrlList(
+    asStringArray((rawPayload.accommodation_video_urls as Json | null) ?? null)
+  );
   console.info('[publish-stay-draft] mapping catégories', {
     draftId: draft.id,
     draftCategories: categoryMapping.draftReceived,
@@ -1736,8 +2345,13 @@ export async function publishStayDraftToLive(
   await syncSessions(supabase, stayId, sessions);
   syncedTables.push('sessions', 'session_prices');
 
-  console.info('[publish-stay-draft] sync médias', { stayId, images: images.length });
-  await syncStayMedia(supabase, stayId, images);
+  console.info('[publish-stay-draft] sync médias', {
+    stayId,
+    images: images.length,
+    stayVideos: stayPublishVideos.length,
+    accommodationVideos: accommodationPublishVideos.length
+  });
+  await syncStayMedia(supabase, draft.organizer_id, stayId, images, stayPublishVideos);
   syncedTables.push('stay_media');
 
   console.info('[publish-stay-draft] sync options extras', { stayId, extraOptions: extraOptions.length });
@@ -1762,14 +2376,23 @@ export async function publishStayDraftToLive(
     stayId,
     hasAccommodation: Boolean(accommodation)
   });
+  const previewAccommodationId = readDraftAccommodationPreviewId(rawPayload);
   const accommodationId = await syncAccommodation(
     supabase,
     draft,
     stayId,
-    livePublication.accommodationId,
+    importedExistingAccommodationId ??
+      livePublication.accommodationId ??
+      previewAccommodationId,
+    accommodationSource,
     accommodation
   );
   syncedTables.push('stay_accommodations', 'accommodations');
+
+  if (accommodationId) {
+    await replaceAccommodationVideoOnlyMedia(supabase, accommodationId, accommodationPublishVideos);
+    syncedTables.push('accommodation_media');
+  }
 
   const publishedAt = new Date().toISOString();
   const nextLivePublication: LivePublication = {
@@ -1785,6 +2408,7 @@ export async function publishStayDraftToLive(
     published_at: publishedAt,
     publish_error: null
   };
+  delete nextRawPayload.draft_accommodation_preview;
 
   console.info('[publish-stay-draft] sortie succès', {
     draftId: draft.id,

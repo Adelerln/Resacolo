@@ -1,13 +1,15 @@
 'use client';
 
+import type { CSSProperties } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
-import { ChevronDown, Menu, X } from 'lucide-react';
+import { ChevronDown, Heart, Menu, ShoppingCart, User, X } from 'lucide-react';
 import clsx from 'clsx';
+import { useFavorites } from '@/components/favorites/FavoritesProvider';
 import { useCart } from '@/context/CartContext';
-import { AnimatePresence, motion } from 'framer-motion';
+import type { PublicSitePartnerBranding } from '@/types/partner-branding';
 
 const links = [
   { href: '/sejours', label: 'Séjours' },
@@ -17,7 +19,7 @@ const links = [
     children: [
       { href: '/notre-concept', label: 'Notre Concept' },
       { href: '/organisateurs', label: 'Organisateurs' },
-      { href: '/devenir-organisateur', label: 'Devenir Organisateur' },
+      { href: '/rejoindre-resacolo', label: 'Rejoindre Resacolo' },
       { href: '/devenir-partenaire', label: 'Devenir Partenaire' }
     ]
   },
@@ -25,19 +27,14 @@ const links = [
   { href: '/contact', label: 'Contact' }
 ];
 
-const backOfficeLinks = [
-  { href: '/admin', label: 'Admin' },
-  { href: '/organisme', label: 'Organisateur' },
-  { href: '/partenaire', label: 'Collectivité' }
-];
-
 const headerLinkClass =
-  'whitespace-nowrap text-[15px] font-bold tracking-[0.03em] !text-[#37b5f4] transition-opacity hover:opacity-80 xl:text-base';
+  'whitespace-nowrap text-[15px] font-bold tracking-[0.03em] !text-[color:var(--color-primary)] transition-colors hover:!text-[color:var(--resacolo-orange)] focus-visible:!text-[color:var(--resacolo-orange)] xl:text-base';
 const headerDropdownItemClass =
-  'block px-4 py-2 text-[15px] font-bold tracking-[0.03em] !text-[#37b5f4] hover:bg-slate-50 hover:opacity-80';
+  'block px-4 py-2 text-[15px] font-bold tracking-[0.03em] !text-[color:var(--color-primary)] transition-colors hover:bg-slate-50 hover:!text-[color:var(--resacolo-orange)] focus-visible:!text-[color:var(--resacolo-orange)]';
 const headerIconButtonClass =
   'flex h-9 w-9 items-center justify-center rounded-full bg-transparent transition hover:bg-slate-50 hover:opacity-80';
-const mobileHeaderLinkClass = 'block text-base font-semibold leading-snug !text-[#37b5f4]';
+const mobileHeaderLinkClass =
+  'block text-base font-semibold leading-snug !text-[color:var(--color-primary)] transition-colors hover:!text-[color:var(--resacolo-orange)] focus-visible:!text-[color:var(--resacolo-orange)]';
 
 function isLinkItem(
   item: (typeof links)[number]
@@ -51,14 +48,38 @@ function isDropdownItem(
   return 'children' in item;
 }
 
-export function MainNavigation() {
+export function MainNavigation({
+  initialBranding,
+  initialHidePartnerMarketingLinks
+}: {
+  initialBranding: PublicSitePartnerBranding;
+  initialHidePartnerMarketingLinks: boolean;
+}) {
   const pathname = usePathname();
+  return (
+    <MainNavigationContent
+      key={pathname}
+      pathname={pathname}
+      branding={initialBranding}
+      hidePartnerMarketingLinks={initialHidePartnerMarketingLinks}
+    />
+  );
+}
+
+function MainNavigationContent({
+  pathname,
+  branding,
+  hidePartnerMarketingLinks
+}: {
+  pathname: string;
+  branding: PublicSitePartnerBranding;
+  hidePartnerMarketingLinks: boolean;
+}) {
   const { count: cartCount } = useCart();
+  const { favoriteIdsArray } = useFavorites();
   const [open, setOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [backOfficeOpen, setBackOfficeOpen] = useState(false);
   const dropdownCloseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const backOfficeCloseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const openDropdown = () => {
     if (dropdownCloseTimeoutRef.current) {
@@ -78,40 +99,13 @@ export function MainNavigation() {
     }, 180);
   };
 
-  const openBackOffice = () => {
-    if (backOfficeCloseTimeoutRef.current) {
-      clearTimeout(backOfficeCloseTimeoutRef.current);
-      backOfficeCloseTimeoutRef.current = null;
-    }
-    setBackOfficeOpen(true);
-  };
-
-  const closeBackOffice = () => {
-    if (backOfficeCloseTimeoutRef.current) {
-      clearTimeout(backOfficeCloseTimeoutRef.current);
-    }
-    backOfficeCloseTimeoutRef.current = setTimeout(() => {
-      setBackOfficeOpen(false);
-      backOfficeCloseTimeoutRef.current = null;
-    }, 180);
-  };
-
   useEffect(() => {
     return () => {
       if (dropdownCloseTimeoutRef.current) {
         clearTimeout(dropdownCloseTimeoutRef.current);
       }
-      if (backOfficeCloseTimeoutRef.current) {
-        clearTimeout(backOfficeCloseTimeoutRef.current);
-      }
     };
   }, []);
-
-  useEffect(() => {
-    setOpen(false);
-    setDropdownOpen(false);
-    setBackOfficeOpen(false);
-  }, [pathname]);
 
   useEffect(() => {
     if (!open) {
@@ -126,60 +120,108 @@ export function MainNavigation() {
 
   const toggle = () => setOpen((current) => !current);
   const close = () => setOpen(false);
+  const headerStyle = branding?.primaryColor
+    ? ({ '--color-primary': branding.primaryColor } as CSSProperties)
+    : undefined;
+  const useBrandedHeaderIcons = Boolean(branding?.primaryColor);
+  const headerIconClass = 'h-4 w-4 text-[color:var(--color-primary)]';
+  const headerBadgeClass = useBrandedHeaderIcons
+    ? 'bg-[color:var(--color-primary)]'
+    : 'bg-accent-500';
+  const visibleLinks = links
+    .map((link) => {
+      if (!isDropdownItem(link)) return link;
+      return {
+        ...link,
+        children: hidePartnerMarketingLinks
+          ? link.children.filter(
+              (child) => child.href !== '/rejoindre-resacolo' && child.href !== '/devenir-partenaire'
+            )
+          : link.children
+      };
+    })
+    .filter((link) => !isDropdownItem(link) || link.children.length > 0);
 
   return (
-    <header className="relative z-[100] overflow-visible border-b border-slate-200 bg-white/80 backdrop-blur">
-      <div className="section-container flex items-center justify-between gap-3 overflow-visible py-3 sm:py-4">
-        <Link href="/" className="flex items-center gap-3 text-2xl font-semibold tracking-tight text-slate-900">
-          <Image
-            src="/image/accueil/images_accueil/logo-resacolo.png"
-            alt="Resacolo"
-            width={140}
-            height={40}
-            className="h-9 w-auto sm:h-10"
-            priority
-          />
+    <header
+      className="font-accent sticky top-0 z-[100] overflow-visible border-b border-slate-200 bg-white/90 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-white/80"
+      style={headerStyle}
+    >
+      <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-6 sm:py-4 lg:px-8 xl:grid xl:grid-cols-[auto_minmax(0,1fr)_auto] xl:gap-4">
+        <Link href="/" className="flex shrink-0 items-center" title="Retour à l’accueil">
+          {branding?.partnerLogoUrl ? (
+            <span className="flex items-center">
+              <span className="flex h-10 items-center justify-center sm:h-11">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={branding.partnerLogoUrl}
+                  alt={branding.partnerName}
+                  className="h-9 w-auto max-w-[160px] object-contain sm:h-10"
+                  style={{
+                    transform: `translate(${branding.partnerLogoOffsetX}%, ${branding.partnerLogoOffsetY}%) scale(${branding.partnerLogoScale})`,
+                    transformOrigin: 'center center'
+                  }}
+                />
+              </span>
+            </span>
+          ) : null}
+          {branding?.partnerLogoUrl ? (
+            <span className="mx-2.5 my-auto h-10 w-px shrink-0 translate-x-[3px] bg-black/80 sm:h-11" aria-hidden />
+          ) : null}
+          <span className="flex h-10 items-center justify-center sm:h-11">
+            <Image
+              src="/image/accueil/images_accueil/logo-resacolo.png"
+              alt="Resacolo"
+              width={140}
+              height={40}
+              className="h-9 w-auto sm:h-10"
+              style={{ width: 'auto' }}
+              priority
+            />
+          </span>
         </Link>
-        <nav className="hidden items-center gap-6 overflow-visible font-medium xl:flex">
-          {links.map((link) => {
-            if (isDropdownItem(link)) {
-              const isActive = link.children.some((c) => pathname === c.href);
-              return (
-                <div
-                  key={link.label}
-                  className="relative"
-                  onMouseEnter={openDropdown}
-                  onMouseLeave={closeDropdown}
-                >
-                  <button
-                    type="button"
-                    aria-expanded={dropdownOpen}
-                    aria-haspopup="menu"
-                    className={clsx(
-                      'flex items-center gap-1',
-                      headerLinkClass,
-                      isActive && 'opacity-100'
-                    )}
+
+        <div className="hidden min-w-0 items-center justify-center xl:flex">
+          <nav className="flex min-w-0 items-center gap-6 overflow-visible font-medium xl:gap-7 2xl:gap-8">
+            {visibleLinks.map((link) => {
+              if (isDropdownItem(link)) {
+                const isActive = link.children.some((c) => pathname === c.href);
+                return (
+                  <div
+                    key={link.label}
+                    className="relative"
+                    onMouseEnter={openDropdown}
+                    onMouseLeave={closeDropdown}
                   >
-                    {link.label}
-                    <ChevronDown
-                      className={clsx('h-4 w-4 transition', dropdownOpen && 'rotate-180')}
-                    />
-                  </button>
-                  <AnimatePresence>
-                    {dropdownOpen && (
-                      <motion.div
-                        initial={{ opacity: 0, y: 8, scale: 0.98 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: 6, scale: 0.98 }}
-                        transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-                        className="absolute left-0 top-full z-50 min-w-[260px] pt-1"
-                      >
+                    <button
+                      type="button"
+                      aria-expanded={dropdownOpen}
+                      aria-haspopup="menu"
+                      title={link.label}
+                      className={clsx(
+                        'flex items-center gap-1.5 overflow-visible',
+                        headerLinkClass,
+                        isActive && 'opacity-100'
+                      )}
+                    >
+                      {link.label}
+                      <ChevronDown
+                        aria-hidden
+                        strokeWidth={2.5}
+                        className={clsx(
+                          'h-4 w-4 shrink-0 text-current transition',
+                          dropdownOpen && 'rotate-180'
+                        )}
+                      />
+                    </button>
+                    {dropdownOpen ? (
+                      <div className="absolute left-0 top-full z-50 min-w-[260px] pt-1">
                         <div className="rounded-xl border border-slate-200 bg-white py-2 shadow-lg">
                           {link.children.map((child) => (
                             <Link
                               key={child.href}
                               href={child.href}
+                              title={child.label}
                               className={clsx(
                                 headerDropdownItemClass,
                                 pathname === child.href && 'bg-brand-50'
@@ -189,140 +231,141 @@ export function MainNavigation() {
                             </Link>
                           ))}
                         </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-              );
-            }
-            if (isLinkItem(link)) {
-              const isAnchor = link.href.startsWith('#');
-              const isActive = !isAnchor && pathname === link.href;
-              return (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  className={clsx(headerLinkClass, isActive && 'opacity-100')}
-                >
-                  {link.label}
-                </Link>
-              );
-            }
-            return null;
-          })}
-        </nav>
-        <div className="hidden items-center gap-4 xl:flex">
-          <Link
-            href="/mon-compte"
-            className={headerIconButtonClass}
-            aria-label="Mon compte"
-          >
-            <Image
-              src="/image/header/pictos_header/icon-mon-compte.png"
-              alt=""
-              width={16}
-              height={16}
-              className="h-4 w-4 object-contain"
-            />
-          </Link>
-          <button className={headerIconButtonClass} aria-label="Favoris" type="button">
-            <Image
-              src="/image/header/pictos_header/icon-favoris.png"
-              alt=""
-              width={16}
-              height={16}
-              className="h-4 w-4 object-contain"
-            />
-          </button>
-          <Link
-            href="/panier"
-            className={clsx(headerIconButtonClass, 'relative')}
-            aria-label="Panier"
-          >
-            <Image
-              src="/image/header/pictos_header/icon-panier.png"
-              alt=""
-              width={16}
-              height={16}
-              className="h-4 w-4 object-contain"
-            />
-            {cartCount > 0 && (
-              <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-accent-500 text-[10px] font-semibold text-white">
-                {cartCount > 99 ? '99+' : cartCount}
-              </span>
-            )}
-          </Link>
-          <div
-            className="relative"
-            onMouseEnter={openBackOffice}
-            onMouseLeave={closeBackOffice}
-          >
-            <button
-              type="button"
-              aria-expanded={backOfficeOpen}
-              aria-haspopup="menu"
-              className="btn btn-sm btn-accent-outline text-[15px] font-bold tracking-[0.03em] !text-[#37b5f4] xl:text-base"
-            >
-              Back Office
-              <ChevronDown className={clsx('h-4 w-4 transition', backOfficeOpen && 'rotate-180')} />
-            </button>
-            <AnimatePresence>
-              {backOfficeOpen && (
-                <motion.div
-                  initial={{ opacity: 0, y: 8, scale: 0.98 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: 6, scale: 0.98 }}
-                  transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-                  className="absolute right-0 top-full z-50 min-w-[200px] pt-2"
-                >
-                  <div className="rounded-xl border border-slate-200 bg-white py-2 shadow-lg">
-                    {backOfficeLinks.map((item) => (
-                      <Link
-                        key={item.href}
-                        href={item.href}
-                        className={clsx(
-                          'block px-4 py-2 text-slate-700 hover:bg-slate-50 hover:text-brand-500',
-                          pathname === item.href && 'bg-brand-50 text-brand-600'
-                        )}
-                      >
-                        {item.label}
-                      </Link>
-                    ))}
+                      </div>
+                    ) : null}
                   </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
+                );
+              }
+              if (isLinkItem(link)) {
+                const isAnchor = link.href.startsWith('#');
+                const isActive = !isAnchor && pathname === link.href;
+                return (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    title={link.label}
+                    className={clsx(headerLinkClass, isActive && 'opacity-100')}
+                  >
+                    {link.label}
+                  </Link>
+                );
+              }
+              return null;
+            })}
+          </nav>
         </div>
-        <button
-          className="rounded-lg border border-slate-200 p-2.5 text-slate-600 xl:hidden"
-          onClick={toggle}
-          aria-label="Ouvrir le menu"
-        >
-          {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-        </button>
-      </div>
-      <AnimatePresence>
-        {open && (
-          <motion.nav
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
-            className="overflow-hidden border-t border-slate-200 bg-white px-4 py-4 sm:px-6 xl:hidden"
+
+        <div className="flex shrink-0 items-center gap-2 sm:gap-3 xl:justify-self-end">
+          <div className="hidden items-center gap-3 xl:flex 2xl:gap-4">
+            <Link
+              href="/mon-compte"
+              prefetch={false}
+              className={headerIconButtonClass}
+              aria-label="Mon compte"
+              title="Mon compte"
+            >
+              {useBrandedHeaderIcons ? (
+                <User className={headerIconClass} strokeWidth={2.25} aria-hidden />
+              ) : (
+                <Image
+                  src="/image/header/pictos_header/icon-mon-compte.png"
+                  alt=""
+                  width={16}
+                  height={16}
+                  className="h-4 w-4 object-contain"
+                />
+              )}
+            </Link>
+            <Link
+              href="/account/favorites"
+              className={clsx(headerIconButtonClass, 'relative')}
+              aria-label="Favoris"
+              title="Favoris"
+            >
+              {useBrandedHeaderIcons ? (
+                <Heart className={headerIconClass} strokeWidth={2.25} aria-hidden />
+              ) : (
+                <Image
+                  src="/image/header/pictos_header/icon-favoris.png"
+                  alt=""
+                  width={16}
+                  height={16}
+                  className="h-4 w-4 object-contain"
+                />
+              )}
+              {favoriteIdsArray.length > 0 && (
+                <span
+                  className={clsx(
+                    'absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold text-white',
+                    headerBadgeClass
+                  )}
+                >
+                  {favoriteIdsArray.length > 99 ? '99+' : favoriteIdsArray.length}
+                </span>
+              )}
+            </Link>
+            <Link
+              href="/panier"
+              className={clsx(headerIconButtonClass, 'relative')}
+              aria-label="Panier"
+              title="Panier"
+            >
+              {useBrandedHeaderIcons ? (
+                <ShoppingCart className={headerIconClass} strokeWidth={2.25} aria-hidden />
+              ) : (
+                <Image
+                  src="/image/header/pictos_header/icon-panier.png"
+                  alt=""
+                  width={16}
+                  height={16}
+                  className="h-4 w-4 object-contain"
+                />
+              )}
+              {cartCount > 0 && (
+                <span
+                  className={clsx(
+                    'absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-semibold text-white',
+                    headerBadgeClass
+                  )}
+                >
+                  {cartCount > 99 ? '99+' : cartCount}
+                </span>
+              )}
+            </Link>
+          </div>
+          <button
+            type="button"
+            className="rounded-lg border border-slate-200 p-2.5 text-slate-600 xl:hidden"
+            onClick={toggle}
+            aria-label={open ? 'Fermer le menu' : 'Ouvrir le menu'}
+            title={open ? 'Fermer le menu' : 'Ouvrir le menu'}
           >
+            {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </button>
+        </div>
+      </div>
+      {open ? (
+        <nav className="overflow-hidden border-t border-slate-200 bg-white px-4 py-4 sm:px-6 xl:hidden">
             <ul className="flex flex-col gap-4 font-medium text-slate-700">
-              {links.map((link) => {
+              {visibleLinks.map((link) => {
                 if (isDropdownItem(link)) {
                   return (
                     <li key={link.label}>
-                      <span className={mobileHeaderLinkClass}>{link.label}</span>
+                      <span className={`${mobileHeaderLinkClass} inline-flex items-center gap-1.5`}>
+                        {link.label}
+                        <ChevronDown
+                          aria-hidden
+                          strokeWidth={2.5}
+                          className="h-4 w-4 shrink-0 text-[color:var(--color-primary)]"
+                        />
+                      </span>
                       <ul className="mt-2 flex flex-col gap-2 pl-3">
                         {link.children.map((child) => (
                           <li key={child.href}>
                             <Link
                               href={child.href}
                               onClick={close}
+                              title={child.label}
                               className={clsx(
                                 mobileHeaderLinkClass,
                                 pathname === child.href && 'opacity-100'
@@ -344,6 +387,7 @@ export function MainNavigation() {
                       <Link
                         href={link.href}
                         onClick={close}
+                        title={link.label}
                         className={clsx(mobileHeaderLinkClass, isActive && 'opacity-100')}
                       >
                         {link.label}
@@ -353,37 +397,29 @@ export function MainNavigation() {
                 }
                 return null;
               })}
-              <li>
-                <span className={mobileHeaderLinkClass}>Back Office</span>
-                <ul className="mt-2 flex flex-col gap-2 pl-3">
-                  {backOfficeLinks.map((item) => (
-                    <li key={item.href}>
-                      <Link
-                        href={item.href}
-                        onClick={close}
-                        className={clsx(
-                          mobileHeaderLinkClass,
-                          pathname === item.href && 'opacity-100'
-                        )}
-                      >
-                        {item.label}
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              </li>
               <li className="mt-2 border-t border-slate-100 pt-4">
                 <div className="flex items-center gap-2">
                   <Link
                     href="/mon-compte"
+                    prefetch={false}
                     onClick={close}
+                    title="Mon compte"
                     className="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
                   >
                     Mon compte
                   </Link>
                   <Link
+                    href="/account/favorites"
+                    onClick={close}
+                    title="Favoris"
+                    className="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
+                  >
+                    Favoris {favoriteIdsArray.length > 0 ? `(${favoriteIdsArray.length > 99 ? '99+' : favoriteIdsArray.length})` : ''}
+                  </Link>
+                  <Link
                     href="/panier"
                     onClick={close}
+                    title="Panier"
                     className="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
                   >
                     Panier {cartCount > 0 ? `(${cartCount > 99 ? '99+' : cartCount})` : ''}
@@ -391,9 +427,8 @@ export function MainNavigation() {
                 </div>
               </li>
             </ul>
-          </motion.nav>
-        )}
-      </AnimatePresence>
+        </nav>
+      ) : null}
     </header>
   );
 }

@@ -1,9 +1,21 @@
 import { NextResponse } from 'next/server';
-import { getSession } from '@/lib/auth/session';
-import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers.server';
-import { normalizeStayDraftCategories } from '@/lib/stay-categories';
+import { requireOrganizerApiAccess } from '@/lib/organizer-backoffice-access.server';
+import { withOrganizerQuery } from '@/lib/organizers.server';
+import {
+  ensurePrimaryStaySettingCategory,
+  normalizeStayDraftCategories,
+  stayCategoryLabelToValue,
+  stayCategoryValueToLabel
+} from '@/lib/stay-categories';
+import { inferTransportLogisticsModeFromSignals } from '@/lib/stay-draft-content';
+import { writeDraftDestinationFields } from '@/lib/stay-draft-destination';
+import {
+  buildDraftTransportOptionsFromVariants,
+  type TransportVariantForDraft
+} from '@/lib/stay-draft-transport-display';
 import { enrichStayDraftWithAI, StayDraftAiEnrichmentError } from '@/lib/stay-draft-ai-enrichment';
-import { mockOrganizerTenant } from '@/lib/mocks';
+import { normalizeStayTitle } from '@/lib/stay-title';
+import { resolveAccommodationCenterCoordinates } from '@/lib/accommodation-center-geocoding';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import type { Database, Json } from '@/types/supabase';
 
@@ -15,6 +27,7 @@ type StayDraftRowAfterUpdate = Pick<
   StayDraftRow,
   | 'id'
   | 'summary'
+  | 'description'
   | 'location_text'
   | 'region_text'
   | 'program_text'
@@ -53,14 +66,14 @@ function requestExpectsJson(req: Request): boolean {
   return contentType.includes('application/json') || accept.includes('application/json');
 }
 
-function redirectToOrganizerStays(
+function redirectToOrganizerStayCreation(
   req: Request,
   organizerId: string | null,
   params?: Record<string, string>
 ) {
   const query = new URLSearchParams(params ?? {}).toString();
   const path = withOrganizerQuery(
-    query ? `/organisme/sejours?${query}` : '/organisme/sejours',
+    query ? `/organisme/sejours/new/url?${query}` : '/organisme/sejours/new/url',
     organizerId
   );
   return NextResponse.redirect(new URL(path, req.url), 303);
@@ -75,7 +88,7 @@ function makeErrorResponse(
   if (requestExpectsJson(req)) {
     return NextResponse.json({ error: errorMessage }, { status });
   }
-  return redirectToOrganizerStays(req, organizerId, { error: errorMessage });
+  return redirectToOrganizerStayCreation(req, organizerId, { error: errorMessage });
 }
 
 function makeSuccessResponse(
@@ -87,9 +100,11 @@ function makeSuccessResponse(
     aiModel: string;
     aiPromptVersion: string;
     aiEnrichedAt: string | null;
+    transportDebugCities: string[];
     updatedDraft: {
       id: string;
       summary: string | null;
+      description: string | null;
       location_text: string | null;
       region_text: string | null;
       program_text: string | null;
@@ -116,12 +131,14 @@ function makeSuccessResponse(
       ai_model: result.aiModel,
       ai_prompt_version: result.aiPromptVersion,
       ai_enriched_at: result.aiEnrichedAt,
+      transport_cities_debug: result.transportDebugCities,
       updated_draft: result.updatedDraft
     });
   }
-  return redirectToOrganizerStays(req, organizerId, {
+  return redirectToOrganizerStayCreation(req, organizerId, {
     ai: 'success',
-    aiDraftId: result.draftId
+    aiDraftId: result.draftId,
+    transportCitiesDebug: JSON.stringify(result.transportDebugCities)
   });
 }
 
@@ -135,6 +152,95 @@ function parseBooleanInput(value: unknown): boolean | undefined {
   if (['1', 'true', 'on', 'yes', 'oui'].includes(normalized)) return true;
   if (['0', 'false', 'off', 'no', 'non'].includes(normalized)) return false;
   return undefined;
+}
+
+function cleanText(value: string | null | undefined) {
+  const normalized = (value ?? '').trim();
+  return normalized || null;
+}
+
+function extractCountryFromLocationText(value: string | null | undefined) {
+  const candidate = cleanText(value);
+  if (!candidate) return null;
+  const parts = candidate.split(',').map((part) => part.trim()).filter(Boolean);
+  return parts.length >= 2 ? parts.at(-1) ?? null : null;
+}
+
+function extractCityFromLocationText(value: string | null | undefined) {
+  const candidate = cleanText(value);
+  if (!candidate) return null;
+  const parts = candidate.split(',').map((part) => part.trim()).filter(Boolean);
+  return parts[0] ?? null;
+}
+
+function deriveDraftDestinationFromAi(input: {
+  categories: string[];
+  locationText: string | null;
+  regionText: string | null;
+  accommodation:
+    | {
+        city?: string | null;
+        postal_code?: string | null;
+        department_code?: string | null;
+        region_text?: string | null;
+        country?: string | null;
+        location_mode: string | null;
+        location_city: string | null;
+        location_department_code: string | null;
+        location_country: string | null;
+        itinerant_zone: string | null;
+      }
+    | null;
+}) {
+  const categories = new Set(input.categories.map((value) => value.toLowerCase()));
+  const accommodation = input.accommodation;
+  const mode = accommodation?.location_mode ?? null;
+  const regionText = cleanText(input.regionText);
+  const locationText = cleanText(input.locationText);
+  const city = cleanText(accommodation?.city) ?? cleanText(accommodation?.location_city);
+  const postalCode = cleanText(accommodation?.postal_code);
+  const departmentCode = cleanText(accommodation?.department_code) ?? cleanText(accommodation?.location_department_code);
+  const country = cleanText(accommodation?.country) ?? cleanText(accommodation?.location_country);
+
+  if (mode === 'itinerant' || categories.has('itinerant')) {
+    return {
+      destination_type: 'itinerant' as const,
+      destination_city: null,
+      destination_postal_code: null,
+      destination_department_code: null,
+      destination_region: null,
+      destination_country: country,
+      destination_itinerary_label: cleanText(accommodation?.itinerant_zone) ?? locationText,
+      destination_countries:
+        country != null ? [country] : []
+    };
+  }
+
+  if (mode === 'abroad' || categories.has('etranger') || regionText === 'Étranger') {
+    const destinationCity = city ?? extractCityFromLocationText(locationText);
+    const destinationCountry = country ?? extractCountryFromLocationText(locationText);
+    return {
+      destination_type: 'fixed_abroad' as const,
+      destination_city: destinationCity,
+      destination_postal_code: null,
+      destination_department_code: null,
+      destination_region: null,
+      destination_country: destinationCountry,
+      destination_itinerary_label: null,
+      destination_countries: []
+    };
+  }
+
+  return {
+    destination_type: 'fixed_france' as const,
+    destination_city: city ?? locationText,
+    destination_postal_code: postalCode,
+    destination_department_code: departmentCode,
+    destination_region: regionText,
+    destination_country: 'France',
+    destination_itinerary_label: null,
+    destination_countries: []
+  };
 }
 
 async function readEnrichInput(req: Request) {
@@ -185,6 +291,165 @@ function hasJsonValue(value: Json | null | undefined): boolean {
   return true;
 }
 
+function asRecordArray(value: unknown): Array<Record<string, unknown>> {
+  if (Array.isArray(value)) {
+    return value.filter(
+      (item): item is Record<string, unknown> =>
+        Boolean(item) && typeof item === 'object' && !Array.isArray(item)
+    );
+  }
+
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      if (Array.isArray(parsed)) {
+        return parsed.filter(
+          (item): item is Record<string, unknown> =>
+            Boolean(item) && typeof item === 'object' && !Array.isArray(item)
+        );
+      }
+    } catch {
+      return [];
+    }
+  }
+
+  return [];
+}
+
+function countPricedTransportOptions(rows: Array<Record<string, unknown>>): number {
+  return rows.filter((row) => {
+    if (typeof row.amount_cents === 'number' && Number.isFinite(row.amount_cents)) return true;
+    if (typeof row.price === 'number' && Number.isFinite(row.price)) return true;
+    if (typeof row.price === 'string' && row.price.trim().length > 0) {
+      const parsed = Number(row.price.trim().replace(',', '.'));
+      return Number.isFinite(parsed);
+    }
+    return false;
+  }).length;
+}
+
+function normalizeTransportDebugCity(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function extractTransportDebugCities(value: unknown): string[] {
+  const cities = new Set<string>();
+
+  for (const row of asRecordArray(value)) {
+    const candidates = [row.label, row.departure_city, row.return_city];
+    for (const candidate of candidates) {
+      const city = normalizeTransportDebugCity(candidate);
+      if (city) cities.add(city);
+    }
+  }
+
+  return Array.from(cities).slice(0, 50);
+}
+
+function toTransportVariant(record: Record<string, unknown>): TransportVariantForDraft | null {
+  const departureCity = String(record.departure_city ?? '').trim();
+  const returnCity = String(record.return_city ?? departureCity).trim() || departureCity;
+  const amountCents =
+    typeof record.amount_cents === 'number' && Number.isFinite(record.amount_cents)
+      ? Math.round(record.amount_cents)
+      : typeof record.price === 'number' && Number.isFinite(record.price)
+        ? Math.round(record.price * 100)
+        : null;
+
+  if (!departureCity || amountCents === null) return null;
+
+  return {
+    departure_city: departureCity,
+    return_city: returnCity,
+    amount_cents: amountCents,
+    currency: 'EUR',
+    source_url: typeof record.source_url === 'string' ? record.source_url : undefined,
+    departure_label_raw:
+      typeof record.departure_label_raw === 'string' ? record.departure_label_raw : null,
+    return_label_raw: typeof record.return_label_raw === 'string' ? record.return_label_raw : null,
+    page_price_cents:
+      typeof record.page_price_cents === 'number' && Number.isFinite(record.page_price_cents)
+        ? Math.round(record.page_price_cents)
+        : null,
+    base_price_cents:
+      typeof record.base_price_cents === 'number' && Number.isFinite(record.base_price_cents)
+        ? Math.round(record.base_price_cents)
+        : null,
+    pricing_method: record.pricing_method as TransportVariantForDraft['pricing_method'] | undefined,
+    confidence: record.confidence as TransportVariantForDraft['confidence'] | undefined,
+    reason: typeof record.reason === 'string' ? record.reason : undefined
+  };
+}
+
+function recoverImportedTransportOptions(
+  rawPayload: Record<string, unknown>
+): Array<Record<string, unknown>> {
+  const variantSources = [
+    ...asRecordArray(rawPayload.transport_variants),
+    ...asRecordArray(rawPayload.transport_matrix),
+    ...asRecordArray(rawPayload.transport_price_debug)
+  ];
+  const variants = variantSources
+    .map(toTransportVariant)
+    .filter((row): row is TransportVariantForDraft => Boolean(row));
+  if (variants.length === 0) return [];
+  return buildDraftTransportOptionsFromVariants(variants);
+}
+
+function simplifyForMatch(value: string | null | undefined): string {
+  if (!value) return '';
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function isLikelySeoDescription(value: string | null | undefined): boolean {
+  if (!hasText(value)) return false;
+  const normalized = simplifyForMatch(value);
+  if (!normalized) return false;
+
+  const keywordSignals = [
+    'colonie',
+    'stage',
+    'sejour',
+    'pour enfant',
+    'pour adolescents',
+    'meilleures colonies',
+    'encadree par',
+    'artistiques'
+  ];
+
+  const keywordHits = keywordSignals.reduce((count, signal) => {
+    return count + (normalized.includes(signal) ? 1 : 0);
+  }, 0);
+
+  return keywordHits >= 3 || /(^| )colonie( |$).*(^| )colonie( |$)/.test(normalized);
+}
+
+function shouldReplaceDescription(
+  draft: StayDraftRow,
+  currentRawPayload: Record<string, unknown>,
+  force: boolean
+): boolean {
+  if (force || !hasText(draft.description)) return true;
+
+  const extractedValue = currentRawPayload.extracted;
+  const extracted =
+    extractedValue && typeof extractedValue === 'object' && !Array.isArray(extractedValue)
+      ? (extractedValue as Record<string, unknown>)
+      : null;
+  const importedDescription =
+    extracted && typeof extracted.description === 'string' ? extracted.description.trim() : null;
+
+  if (importedDescription && draft.description?.trim() === importedDescription) return true;
+  return isLikelySeoDescription(draft.description);
+}
+
 function asObject(value: Json | null): Record<string, unknown> {
   if (value && typeof value === 'object' && !Array.isArray(value)) {
     return { ...value };
@@ -204,16 +469,120 @@ function asObject(value: Json | null): Record<string, unknown> {
   return {};
 }
 
-function buildDraftUpdateFromAi(
+function readImportedExistingAccommodationId(rawPayload: Json | null): string | null {
+  const raw = asObject(rawPayload);
+  const importOptions = raw.import_options;
+  if (!importOptions || typeof importOptions !== 'object' || Array.isArray(importOptions)) {
+    return null;
+  }
+
+  const selectedId = (importOptions as Record<string, unknown>).existing_accommodation_id;
+  return typeof selectedId === 'string' && selectedId.trim().length > 0 ? selectedId.trim() : null;
+}
+
+async function buildDraftUpdateFromAi(
   draft: StayDraftRow,
   ai: Awaited<ReturnType<typeof enrichStayDraftWithAI>>,
   force: boolean
-): StayDraftUpdate {
+): Promise<StayDraftUpdate> {
   const patch: StayDraftUpdate = {};
   const extracted = ai.extracted;
-  const normalizedCategories = normalizeStayDraftCategories(extracted.categories).categories;
+  const currentRawPayload = asObject(draft.raw_payload);
+  const currentTransportOptions = asRecordArray(draft.transport_options_json);
+  const recoveredImportedTransportOptions = recoverImportedTransportOptions(currentRawPayload);
+  const linkedAccommodationId = readImportedExistingAccommodationId(draft.raw_payload);
+  let extractedAccommodation = linkedAccommodationId ? null : extracted.accommodations_json;
+  let accommodationGeocodingMeta: Json | null = null;
+  const shouldResolveAccommodationCoordinates =
+    Boolean(extractedAccommodation) && (force || !hasJsonValue(draft.accommodations_json));
 
+  if (extractedAccommodation && shouldResolveAccommodationCoordinates) {
+    const resolvedCoordinates = await resolveAccommodationCenterCoordinates({
+      title: extractedAccommodation.title,
+      locationMode: extractedAccommodation.location_mode,
+      locationCity: extractedAccommodation.city ?? extractedAccommodation.location_city,
+      locationDepartmentCode: extractedAccommodation.department_code ?? extractedAccommodation.location_department_code,
+      locationCountry: extractedAccommodation.country ?? extractedAccommodation.location_country,
+      geocodingQuery: extractedAccommodation.center_geocoding_query,
+      draftLocationText: draft.location_text,
+      draftRegionText: draft.region_text,
+      centerLatitude: extractedAccommodation.center_latitude,
+      centerLongitude: extractedAccommodation.center_longitude
+    });
+
+    if (
+      resolvedCoordinates.centerLatitude != null &&
+      resolvedCoordinates.centerLongitude != null
+    ) {
+      extractedAccommodation = {
+        ...extractedAccommodation,
+        center_latitude: resolvedCoordinates.centerLatitude,
+        center_longitude: resolvedCoordinates.centerLongitude
+      };
+    }
+
+    accommodationGeocodingMeta = {
+      source: resolvedCoordinates.source,
+      query_used: resolvedCoordinates.queryUsed,
+      confidence: resolvedCoordinates.confidence,
+      center_latitude: resolvedCoordinates.centerLatitude,
+      center_longitude: resolvedCoordinates.centerLongitude
+    } as Json;
+  }
+  const normalizedCategoryLabels = normalizeStayDraftCategories(extracted.categories).categories;
+  const categoryContext = [
+    extracted.location_text,
+    extracted.region_text,
+    extracted.summary,
+    extracted.program_text,
+    extracted.transport_text,
+    draft.location_text,
+    draft.region_text,
+    draft.summary,
+    draft.program_text,
+    draft.description
+  ]
+    .filter(Boolean)
+    .join(' ');
+  const normalizedCategoryValues = ensurePrimaryStaySettingCategory(
+    normalizedCategoryLabels
+      .map((label) => stayCategoryLabelToValue(label))
+      .filter((value): value is NonNullable<ReturnType<typeof stayCategoryLabelToValue>> => value !== null),
+    categoryContext
+  );
+  const normalizedCategories = normalizedCategoryValues.reduce<string[]>((acc, value) => {
+    const label = stayCategoryValueToLabel(value);
+    if (label) acc.push(label);
+    return acc;
+  }, []);
+  const derivedDestination = deriveDraftDestinationFromAi({
+    categories: normalizedCategoryValues,
+    locationText: extracted.location_text,
+    regionText: extracted.region_text,
+    accommodation: extractedAccommodation
+      ? {
+          city: extractedAccommodation.city,
+          postal_code: extractedAccommodation.postal_code,
+          department_code: extractedAccommodation.department_code,
+          region_text: extractedAccommodation.region_text,
+          country: extractedAccommodation.country,
+          location_mode: extractedAccommodation.location_mode,
+          location_city: extractedAccommodation.location_city,
+          location_department_code: extractedAccommodation.location_department_code,
+          location_country: extractedAccommodation.location_country,
+          itinerant_zone: extractedAccommodation.itinerant_zone
+        }
+      : null
+  });
+  const normalizedTitle = normalizeStayTitle(draft.title);
+
+  if (hasText(normalizedTitle) && normalizedTitle !== String(draft.title ?? '').trim()) {
+    patch.title = normalizedTitle;
+  }
   if ((force || !hasText(draft.summary)) && hasText(extracted.summary)) patch.summary = extracted.summary;
+  if (shouldReplaceDescription(draft, currentRawPayload, force) && hasText(extracted.description)) {
+    patch.description = extracted.description;
+  }
   if ((force || !hasText(draft.location_text)) && hasText(extracted.location_text)) {
     patch.location_text = extracted.location_text;
   }
@@ -229,8 +598,23 @@ function buildDraftUpdateFromAi(
   if ((force || !hasText(draft.transport_text)) && hasText(extracted.transport_text)) {
     patch.transport_text = extracted.transport_text;
   }
-  if ((force || !hasText(draft.transport_mode)) && hasText(extracted.transport_mode)) {
-    patch.transport_mode = extracted.transport_mode;
+  const inferredTransportMode = inferTransportLogisticsModeFromSignals({
+    currentValue: extracted.transport_mode,
+    html: typeof currentRawPayload.html === 'string' ? currentRawPayload.html : null,
+    visibleText:
+      typeof currentRawPayload.main_text === 'string'
+        ? currentRawPayload.main_text
+        : typeof currentRawPayload.html_excerpt === 'string'
+          ? currentRawPayload.html_excerpt
+          : null,
+    transportOptions: Array.isArray(currentRawPayload.transport_variants)
+      ? currentRawPayload.transport_variants
+      : Array.isArray(currentRawPayload.transport_matrix)
+        ? currentRawPayload.transport_matrix
+        : null
+  });
+  if ((force || !hasText(draft.transport_mode)) && hasText(inferredTransportMode)) {
+    patch.transport_mode = inferredTransportMode;
   }
   if ((force || !draft.categories || draft.categories.length === 0) && normalizedCategories.length > 0) {
     patch.categories = normalizedCategories;
@@ -241,25 +625,32 @@ function buildDraftUpdateFromAi(
   if ((force || !hasJsonValue(draft.sessions_json)) && extracted.sessions_json.length > 0) {
     patch.sessions_json = extracted.sessions_json;
   }
-  if ((force || !hasJsonValue(draft.extra_options_json)) && extracted.extra_options_json.length > 0) {
-    patch.extra_options_json = extracted.extra_options_json;
+  const recoveredPricedTransportCount = countPricedTransportOptions(recoveredImportedTransportOptions);
+  const currentPricedTransportCount = countPricedTransportOptions(currentTransportOptions);
+  if (recoveredPricedTransportCount > currentPricedTransportCount) {
+    patch.transport_options_json = recoveredImportedTransportOptions as Json;
+  } else if (
+    currentPricedTransportCount === 0 &&
+    !hasJsonValue(draft.transport_options_json) &&
+    extracted.transport_options_json.length > 0
+  ) {
+    patch.transport_options_json = extracted.transport_options_json as Json;
   }
-  if ((force || !hasJsonValue(draft.transport_options_json)) && extracted.transport_options_json.length > 0) {
-    patch.transport_options_json = extracted.transport_options_json;
-  }
-  if ((force || !hasJsonValue(draft.accommodations_json)) && extracted.accommodations_json) {
-    patch.accommodations_json = extracted.accommodations_json;
+  if ((force || !hasJsonValue(draft.accommodations_json)) && extractedAccommodation) {
+    patch.accommodations_json = extractedAccommodation;
   }
 
-  const existingRawPayload = asObject(draft.raw_payload);
   const aiEnrichedAt = new Date().toISOString();
   patch.raw_payload = {
-    ...existingRawPayload,
+    ...writeDraftDestinationFields(currentRawPayload, derivedDestination),
     ai_raw: ai.rawResponse,
     ai_extracted: {
       ...extracted,
+      extra_options_json: [],
+      accommodations_json: extractedAccommodation,
       categories: normalizedCategories
     },
+    ai_accommodation_geocoding: accommodationGeocodingMeta,
     ai_prompt_version: ai.promptVersion,
     ai_model: ai.model,
     ai_enriched_at: aiEnrichedAt,
@@ -279,7 +670,7 @@ async function updateDraftWithFallbacks(
   error: { message: string } | null;
   attempt: 'json-object' | 'json-string';
 }> {
-  const selectColumns = 'id,summary,location_text,region_text,program_text,supervision_text,transport_text,transport_mode,categories,ages,sessions_json,extra_options_json,transport_options_json,accommodations_json,raw_payload,updated_at';
+  const selectColumns = 'id,summary,description,location_text,region_text,program_text,supervision_text,transport_text,transport_mode,categories,ages,sessions_json,extra_options_json,transport_options_json,accommodations_json,raw_payload,updated_at';
 
   const attempts: Array<{ label: 'json-object' | 'json-string'; payload: StayDraftUpdate }> = [
     { label: 'json-object', payload }
@@ -398,16 +789,6 @@ async function persistAiRawOnFailure(
 }
 
 export async function POST(req: Request) {
-  const isMockMode = process.env.MOCK_UI === '1' || process.env.DISABLE_AUTH === '1';
-  const session = getSession();
-
-  if (!isMockMode && (!session || session.role !== 'ORGANISATEUR')) {
-    if (requestExpectsJson(req)) {
-      return NextResponse.json({ error: 'Non authentifié.' }, { status: 401 });
-    }
-    return NextResponse.redirect(new URL('/login', req.url), 303);
-  }
-
   const queryForce = parseBooleanInput(new URL(req.url).searchParams.get('force'));
   const { draftId: draftIdRaw, organizerId: organizerIdRaw, force: bodyForce } = await readEnrichInput(req);
   const draftId = draftIdRaw.trim();
@@ -424,15 +805,17 @@ export async function POST(req: Request) {
   if (!draftId) {
     return makeErrorResponse(req, requestedOrganizerId || null, "L'identifiant du draft est requis.");
   }
-
-  const { selectedOrganizerId } = await resolveOrganizerSelection(
-    requestedOrganizerId || undefined,
-    isMockMode ? mockOrganizerTenant.id : session?.tenantId ?? null
-  );
-
-  if (!selectedOrganizerId) {
-    return makeErrorResponse(req, null, 'Aucun organisateur disponible.');
+  const access = await requireOrganizerApiAccess({
+    requestedOrganizerId: requestedOrganizerId || undefined,
+    requiredSection: 'stays'
+  });
+  if (!access.ok) {
+    if (requestExpectsJson(req)) {
+      return NextResponse.json({ error: access.error }, { status: access.status });
+    }
+    return NextResponse.redirect(new URL('/login', req.url), 303);
   }
+  const { selectedOrganizerId } = access.context;
 
   const supabase = getServerSupabaseClient();
 
@@ -494,7 +877,7 @@ export async function POST(req: Request) {
     return makeErrorResponse(req, selectedOrganizerId, message, 502);
   }
 
-  const updatePayload = buildDraftUpdateFromAi(draft, aiResult, force);
+  const updatePayload = await buildDraftUpdateFromAi(draft, aiResult, force);
   logInfo('supabase payload prepared', {
     draftId,
     force,
@@ -524,12 +907,18 @@ export async function POST(req: Request) {
   }
 
   const aiMeta = extractAiMeta(updateResult.data.raw_payload);
+  const transportDebugCities = extractTransportDebugCities(updateResult.data.transport_options_json);
   logInfo('supabase update success', {
     draftId,
     force,
     attempt: updateResult.attempt,
     updatedAt: updateResult.data.updated_at,
     aiMeta
+  });
+  logInfo('transport cities after AI import', {
+    draftId,
+    transportCities: transportDebugCities,
+    transportCityCount: transportDebugCities.length
   });
 
   return makeSuccessResponse(req, selectedOrganizerId, {
@@ -538,9 +927,11 @@ export async function POST(req: Request) {
     aiModel: aiMeta.ai_model ?? aiResult.model,
     aiPromptVersion: aiMeta.ai_prompt_version ?? aiResult.promptVersion,
     aiEnrichedAt: aiMeta.ai_enriched_at,
+    transportDebugCities,
     updatedDraft: {
       id: updateResult.data.id,
       summary: updateResult.data.summary,
+      description: updateResult.data.description,
       location_text: updateResult.data.location_text,
       region_text: updateResult.data.region_text,
       program_text: updateResult.data.program_text,

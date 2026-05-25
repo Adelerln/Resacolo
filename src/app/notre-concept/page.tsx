@@ -50,15 +50,15 @@ export default function NotreConceptPage() {
     <div className="min-h-screen bg-white text-slate-900">
       <section className="bg-white py-16 md:py-20">
         <div className="section-container grid gap-12 md:grid-cols-2 md:items-center">
-          <div>
+          <div className="max-w-2xl text-left">
             <p className="text-xs font-extrabold uppercase tracking-widest text-slate-500">
               À propos
             </p>
-            <h1 className="mt-4 font-display text-3xl font-bold text-slate-900 sm:text-4xl lg:text-5xl">
+            <h1 className="mt-3 text-left font-display text-3xl font-bold leading-[1.06] text-slate-900 sm:text-4xl lg:text-[3.25rem]">
               <span style={{ color: ORIGIN_GRAY }}>Notre</span>{' '}
               <span style={{ color: ORANGE }}>concept</span>
             </h1>
-            <p className="mt-6 max-w-xl font-medium leading-relaxed text-slate-600">
+            <p className="mt-4 max-w-xl font-medium leading-relaxed text-slate-600">
               Né d’une réflexion collective sur la protection et la valorisation d’un savoir-faire,
               RESACOLO est devenu le projet mutualiste de membres de l’association ResoColo.
             </p>
@@ -67,7 +67,7 @@ export default function NotreConceptPage() {
           <div className="flex items-center justify-center md:justify-end">
             <div className="w-full max-w-[32rem]">
               <Image
-                src="/image/concept/gif_concept/Composition 1_2.gif"
+                src="/image/concept/gif_concept/Composition 1_2.webp"
                 alt="Animation Resacolo"
                 width={1920}
                 height={1080}
@@ -107,8 +107,8 @@ export default function NotreConceptPage() {
             </div>
           </div>
 
-          <div className="flex h-full flex-col lg:min-h-[32rem]">
-            <div className="space-y-6 font-medium leading-relaxed text-slate-600">
+          <div className="flex h-full flex-col">
+            <div className="space-y-6 text-left font-medium leading-relaxed text-slate-600">
               <p>
                 <strong className="font-semibold text-slate-800">RESACOLO</strong> est le fruit de
                 l’imagination de professionnels de l’Enfance-Jeunesse, spécialisés dans
@@ -127,15 +127,15 @@ export default function NotreConceptPage() {
                 organisateur, sans intermédiaire ni surcoût.
               </p>
             </div>
-            <div className="mt-10 flex justify-start lg:mt-auto lg:justify-end">
+            <div className="mt-6 flex justify-center lg:mt-8">
               <a
                 href="https://resocolo.org"
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center rounded-[1.35rem] px-7 py-4 text-base font-bold uppercase tracking-[0.12em] text-white shadow-[0_16px_30px_-18px_rgba(250,133,0,0.9)] transition hover:opacity-95"
+                className="cta-orange-sweep inline-flex items-center rounded-[1.35rem] px-7 py-4 text-base font-bold uppercase tracking-[0.12em] text-white shadow-[0_16px_30px_-18px_rgba(250,133,0,0.9)] transition"
                 style={{ backgroundColor: ORANGE }}
               >
-                RESOCOLO.ORG
+                Découvrir ResoColo
               </a>
             </div>
           </div>
@@ -148,7 +148,7 @@ export default function NotreConceptPage() {
             {strengths.map((item) => (
               <article
                 key={item.title}
-                className="group flex min-h-[16.5rem] w-full max-w-none flex-col items-center rounded-[28px] border border-slate-200 bg-white px-5 py-6 shadow-[0_18px_40px_-28px_rgba(15,23,42,0.35)] transition-transform duration-300 hover:-translate-y-1 xl:max-w-[15.5rem]"
+                className="flex min-h-[16.5rem] w-full max-w-none flex-col items-center rounded-[28px] border border-slate-200 bg-white px-5 py-6 shadow-[0_18px_40px_-28px_rgba(15,23,42,0.35)] xl:max-w-[15.5rem]"
               >
                 <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-2xl">
                   <Image
@@ -190,7 +190,7 @@ export default function NotreConceptPage() {
         </div>
       </section>
 
-      <section className="border-t border-slate-100 bg-slate-50/30 py-12 md:py-14">
+      <section className="border-t border-slate-100 bg-slate-100 py-12 md:py-14">
         <div className="section-container">
           <h2
             className="mb-7 text-center font-display text-3xl font-bold leading-[1.04] sm:text-4xl lg:text-5xl"
@@ -202,14 +202,14 @@ export default function NotreConceptPage() {
         </div>
       </section>
 
-      <section className="bg-slate-100 py-12 md:py-14">
+      <section className="bg-white py-12 md:py-14">
         <div className="section-container">
           <div>
             <h2
               className="mb-9 font-display text-3xl font-bold leading-[1.04] sm:text-4xl lg:text-5xl"
               style={{ color: ORIGIN_GRAY }}
             >
-              Nos <span style={{ color: BLUE }}>GARANTIES</span>
+              Nos <span style={{ color: BLUE }}>Garanties</span>
             </h2>
             <div className="divide-y divide-slate-200">
               <div className="flex flex-col gap-4 py-6 first:pt-0 sm:flex-row sm:items-center sm:gap-6">

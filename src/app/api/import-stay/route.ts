@@ -1,34 +1,368 @@
+import { after } from 'next/server';
 import { NextResponse } from 'next/server';
-import { getSession } from '@/lib/auth/session';
-import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers.server';
-import { mockOrganizerTenant } from '@/lib/mocks';
-import {
-  extractStayData,
-  extractTransportVariants,
-  fetchHtml,
-  selectBestStayImages,
-  type DraftTransportPriceDebug,
-  type DraftTransportVariant
-} from '@/lib/stay-draft-import';
+import { requireOrganizerApiAccess } from '@/lib/organizer-backoffice-access.server';
+import { withOrganizerQuery } from '@/lib/organizers.server';
+import { runStayImportInBackground } from '@/lib/run-stay-import-background';
+import { canonicalizeStaySourceUrl, tryCanonicalizeStaySourceUrl } from '@/lib/stay-source-url-canonical';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
+import type { Json } from '@/types/supabase';
 
 export const runtime = 'nodejs';
+/** Vercel : le travail lourd continue via `after()` après la redirection ; garder une marge pour Playwright + Thalie. */
+export const maxDuration = 300;
+type ImportAction = 'created' | 'existing' | 'restarted';
+type ExistingDraftContext = 'visible' | 'validated' | 'published';
 
-function redirectToOrganizerStays(
+type ImportableDraftRow = {
+  id: string;
+  status: string;
+  raw_payload: unknown;
+  source_url: string;
+  source_url_canonical?: string | null;
+  transport_options_json?: unknown;
+  validated_at?: string | null;
+};
+type ExistingStayRow = {
+  id: string;
+  source_url: string | null;
+};
+
+type DynamicStayDraftInsertBuilder = {
+  insert: (values: Record<string, unknown>) => {
+    select: (columns: string) => {
+      single: () => Promise<{
+        data: ImportableDraftRow | null;
+        error: { code?: string | null; message?: string | null } | null;
+      }>;
+    };
+  };
+};
+
+function requestExpectsJson(req: Request): boolean {
+  const contentType = req.headers.get('content-type') ?? '';
+  const accept = req.headers.get('accept') ?? '';
+  return contentType.includes('application/json') || accept.includes('application/json');
+}
+
+function redirectToOrganizerStayCreation(
   req: Request,
   organizerId: string | null,
   params?: Record<string, string>
 ) {
   const query = new URLSearchParams(params ?? {}).toString();
   const path = withOrganizerQuery(
-    query ? `/organisme/sejours?${query}` : '/organisme/sejours',
+    query ? `/organisme/sejours/new/url?${query}` : '/organisme/sejours/new/url',
     organizerId
   );
   return NextResponse.redirect(new URL(path, req.url), 303);
 }
 
+function isUniqueCanonicalConflict(error: { code?: string | null; message?: string | null } | null): boolean {
+  if (!error || error.code !== '23505') return false;
+  const message = String(error.message ?? '').toLowerCase();
+  return (
+    message.includes('source_url_canonical') ||
+    message.includes('stay_drafts_organizer_source_url_canonical_uidx')
+  );
+}
+
+function isMissingColumnError(
+  error: { code?: string | null; message?: string | null } | null,
+  columnName: string
+): boolean {
+  if (!error) return false;
+  if (error.code === '42703') return true;
+  const message = String(error.message ?? '').toLowerCase();
+  return message.includes(columnName.toLowerCase()) && message.includes('column');
+}
+
+function toObject(value: unknown): Record<string, unknown> {
+  if (!value) return {};
+  if (typeof value === 'object' && !Array.isArray(value)) {
+    return { ...(value as Record<string, unknown>) };
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return {};
+    try {
+      const parsed = JSON.parse(trimmed) as unknown;
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return { ...(parsed as Record<string, unknown>) };
+      }
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
+function asRecordArray(value: unknown): Array<Record<string, unknown>> {
+  if (Array.isArray(value)) {
+    return value.filter(
+      (item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object' && !Array.isArray(item)
+    );
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+    try {
+      const parsed = JSON.parse(trimmed) as unknown;
+      if (Array.isArray(parsed)) {
+        return parsed.filter(
+          (item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object' && !Array.isArray(item)
+        );
+      }
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+function normalizeStatus(value: string | null | undefined): string {
+  return String(value ?? '').trim().toLowerCase();
+}
+
+function countPricedTransportOptions(value: unknown): number {
+  return asRecordArray(value).filter((row) => {
+    if (typeof row.amount_cents === 'number' && Number.isFinite(row.amount_cents)) return true;
+    if (typeof row.price === 'number' && Number.isFinite(row.price)) return true;
+    if (typeof row.price === 'string' && row.price.trim().length > 0) {
+      const parsed = Number(row.price.trim().replace(',', '.'));
+      return Number.isFinite(parsed);
+    }
+    return false;
+  }).length;
+}
+
+function readIncludePricingFromRawPayload(rawPayload: unknown): boolean | null {
+  const importOptions = toObject(toObject(rawPayload).import_options);
+  const rawValue = importOptions.include_pricing;
+  if (typeof rawValue === 'boolean') return rawValue;
+  if (typeof rawValue === 'number') return rawValue !== 0;
+  if (typeof rawValue !== 'string') return null;
+  const normalized = rawValue.trim().toLowerCase();
+  if (!normalized) return null;
+  if (['1', 'true', 'on', 'yes', 'oui'].includes(normalized)) return true;
+  if (['0', 'false', 'off', 'no', 'non'].includes(normalized)) return false;
+  return null;
+}
+
+function countRecoveredRawTransportOptions(rawPayload: unknown): number {
+  const raw = toObject(rawPayload);
+  return countPricedTransportOptions([
+    ...asRecordArray(raw.transport_variants),
+    ...asRecordArray(raw.transport_matrix),
+    ...asRecordArray(raw.transport_price_debug)
+  ]);
+}
+
+function shouldRefreshExistingDraftImport(existingDraft: ImportableDraftRow, includePricing: boolean): {
+  shouldRefresh: boolean;
+  reason:
+    | 'failed_status'
+    | 'already_pending'
+    | 'pricing_not_requested'
+    | 'pricing_now_requested'
+    | 'transport_data_present'
+    | 'missing_transport_data';
+  currentPricedTransportCount: number;
+  recoveredPricedTransportCount: number;
+  previousIncludePricing: boolean | null;
+} {
+  const status = normalizeStatus(existingDraft.status);
+  const currentPricedTransportCount = countPricedTransportOptions(existingDraft.transport_options_json);
+  const recoveredPricedTransportCount = countRecoveredRawTransportOptions(existingDraft.raw_payload);
+  const previousIncludePricing = readIncludePricingFromRawPayload(existingDraft.raw_payload);
+
+  if (status === 'failed') {
+    return {
+      shouldRefresh: true,
+      reason: 'failed_status',
+      currentPricedTransportCount,
+      recoveredPricedTransportCount,
+      previousIncludePricing
+    };
+  }
+
+  if (status === 'pending') {
+    return {
+      shouldRefresh: false,
+      reason: 'already_pending',
+      currentPricedTransportCount,
+      recoveredPricedTransportCount,
+      previousIncludePricing
+    };
+  }
+
+  if (!includePricing) {
+    return {
+      shouldRefresh: false,
+      reason: 'pricing_not_requested',
+      currentPricedTransportCount,
+      recoveredPricedTransportCount,
+      previousIncludePricing
+    };
+  }
+
+  if (previousIncludePricing !== true) {
+    return {
+      shouldRefresh: true,
+      reason: 'pricing_now_requested',
+      currentPricedTransportCount,
+      recoveredPricedTransportCount,
+      previousIncludePricing
+    };
+  }
+
+  if (currentPricedTransportCount > 0 || recoveredPricedTransportCount > 0) {
+    return {
+      shouldRefresh: false,
+      reason: 'transport_data_present',
+      currentPricedTransportCount,
+      recoveredPricedTransportCount,
+      previousIncludePricing
+    };
+  }
+
+  return {
+    shouldRefresh: true,
+    reason: 'missing_transport_data',
+    currentPricedTransportCount,
+    recoveredPricedTransportCount,
+    previousIncludePricing
+  };
+}
+
+function buildImportRawPayload(input: {
+  existingRawPayload?: unknown;
+  selectedAccommodation: { id: string; name: string } | null;
+  includePricing: boolean;
+  progressLabel: string;
+}): Record<string, unknown> {
+  const base = toObject(input.existingRawPayload);
+  const currentImportOptions = toObject(base.import_options);
+
+  return {
+    ...base,
+    import_options: {
+      ...currentImportOptions,
+      existing_accommodation_id: input.selectedAccommodation?.id ?? null,
+      existing_accommodation_name: input.selectedAccommodation?.name ?? null,
+      include_pricing: input.includePricing
+    },
+    import_progress: {
+      step: 'created',
+      label: input.progressLabel,
+      percent: 5,
+      completed: false,
+      updated_at: new Date().toISOString(),
+      error: null
+    }
+  };
+}
+
+function isFailedStatus(status: string | null | undefined): boolean {
+  return String(status ?? '').trim().toLowerCase() === 'failed';
+}
+
+function hasLivePublication(rawPayload: unknown): boolean {
+  const livePublication = toObject(toObject(rawPayload).live_publication);
+  const stayId = livePublication.stay_id ?? livePublication.stayId;
+  return typeof stayId === 'string' && stayId.trim().length > 0;
+}
+
+function getExistingDraftContext(existingDraft: ImportableDraftRow): ExistingDraftContext {
+  if (hasLivePublication(existingDraft.raw_payload)) return 'published';
+  if (existingDraft.validated_at || normalizeStatus(existingDraft.status) === 'validated') {
+    return 'validated';
+  }
+  return 'visible';
+}
+
+function shouldMatchExistingSourceUrl(
+  sourceUrlValue: string | null | undefined,
+  canonicalSourceUrl: string,
+  sourceUrlCandidates: Set<string>
+): boolean {
+  const normalized = String(sourceUrlValue ?? '').trim();
+  if (!normalized) return false;
+  if (sourceUrlCandidates.has(normalized)) return true;
+  return tryCanonicalizeStaySourceUrl(normalized) === canonicalSourceUrl;
+}
+
+async function findExistingStayBySourceUrl(params: {
+  supabase: ReturnType<typeof getServerSupabaseClient>;
+  organizerId: string;
+  canonicalSourceUrl: string;
+  sourceUrlCandidates: Set<string>;
+}): Promise<{ stayId: string | null; errorMessage: string | null }> {
+  const sourceUrlCandidatesArray = Array.from(params.sourceUrlCandidates);
+  const exactLookup = await params.supabase
+    .from('stays')
+    .select('id,source_url')
+    .eq('organizer_id', params.organizerId)
+    .in('source_url', sourceUrlCandidatesArray)
+    .order('updated_at', { ascending: false })
+    .limit(1);
+
+  if (exactLookup.error) {
+    if (isMissingColumnError(exactLookup.error, 'source_url')) {
+      return { stayId: null, errorMessage: null };
+    }
+    return {
+      stayId: null,
+      errorMessage: exactLookup.error.message ?? 'Impossible de vérifier les séjours existants.'
+    };
+  }
+
+  const exactMatch = (exactLookup.data as ExistingStayRow[] | null)?.[0];
+  if (exactMatch?.id) {
+    return { stayId: exactMatch.id, errorMessage: null };
+  }
+
+  const canonicalLookup = await params.supabase
+    .from('stays')
+    .select('id,source_url')
+    .eq('organizer_id', params.organizerId)
+    .not('source_url', 'is', null)
+    .order('updated_at', { ascending: false })
+    .limit(500);
+
+  if (canonicalLookup.error) {
+    if (isMissingColumnError(canonicalLookup.error, 'source_url')) {
+      return { stayId: null, errorMessage: null };
+    }
+    return {
+      stayId: null,
+      errorMessage: canonicalLookup.error.message ?? 'Impossible de vérifier les séjours existants.'
+    };
+  }
+
+  const canonicalMatch = (canonicalLookup.data as ExistingStayRow[] | null)?.find((row) =>
+    shouldMatchExistingSourceUrl(row.source_url, params.canonicalSourceUrl, params.sourceUrlCandidates)
+  );
+
+  if (canonicalMatch?.id) {
+    return { stayId: canonicalMatch.id, errorMessage: null };
+  }
+
+  return { stayId: null, errorMessage: null };
+}
+
 async function readImportInput(req: Request) {
   const contentType = req.headers.get('content-type') ?? '';
+
+  const parseBooleanInput = (value: unknown, fallback = true): boolean => {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'number') return value !== 0;
+    if (typeof value !== 'string') return fallback;
+    const normalized = value.trim().toLowerCase();
+    if (!normalized) return fallback;
+    if (['1', 'true', 'on', 'yes', 'oui'].includes(normalized)) return true;
+    if (['0', 'false', 'off', 'no', 'non'].includes(normalized)) return false;
+    return fallback;
+  };
 
   if (contentType.includes('application/json')) {
     const body = (await req.json().catch(() => ({}))) as {
@@ -36,6 +370,10 @@ async function readImportInput(req: Request) {
       source_url?: unknown;
       organizerId?: unknown;
       organizer_id?: unknown;
+      selectedAccommodationId?: unknown;
+      selected_accommodation_id?: unknown;
+      includePricing?: unknown;
+      include_pricing?: unknown;
     };
     return {
       sourceUrl:
@@ -49,293 +387,470 @@ async function readImportInput(req: Request) {
           ? body.organizerId
           : typeof body.organizer_id === 'string'
             ? body.organizer_id
-            : ''
+            : '',
+      selectedAccommodationId:
+        typeof body.selectedAccommodationId === 'string'
+          ? body.selectedAccommodationId
+          : typeof body.selected_accommodation_id === 'string'
+            ? body.selected_accommodation_id
+            : '',
+      includePricing:
+        typeof body.includePricing !== 'undefined'
+          ? parseBooleanInput(body.includePricing)
+          : typeof body.include_pricing !== 'undefined'
+            ? parseBooleanInput(body.include_pricing)
+            : true
     };
   }
 
   const formData = await req.formData();
   return {
     sourceUrl: String(formData.get('sourceUrl') ?? formData.get('source_url') ?? ''),
-    organizerId: String(formData.get('organizerId') ?? formData.get('organizer_id') ?? '')
+    organizerId: String(formData.get('organizerId') ?? formData.get('organizer_id') ?? ''),
+    selectedAccommodationId: String(
+      formData.get('selectedAccommodationId') ?? formData.get('selected_accommodation_id') ?? ''
+    ),
+    includePricing:
+      formData.has('includePricing') || formData.has('include_pricing')
+        ? parseBooleanInput(formData.get('includePricing') ?? formData.get('include_pricing'))
+        : false
   };
-}
-
-function buildRawPayload(
-  html: string,
-  fetchedAt: string,
-  sourceUrl: string,
-  finalUrl: string,
-  contentType: string | null,
-  status: number,
-  extracted: ReturnType<typeof extractStayData>,
-  transportVariants: DraftTransportVariant[],
-  transportPriceDebug: DraftTransportPriceDebug[]
-) {
-  return {
-    html,
-    fetched_at: fetchedAt,
-    source_url: sourceUrl,
-    final_url: finalUrl,
-    content_type: contentType,
-    status_code: status,
-    extracted,
-    transport_variants: transportVariants,
-    transport_matrix: transportVariants,
-    transport_price_debug: transportPriceDebug
-  };
-}
-
-function buildDraftTransportOptionsFromVariants(transportVariants: DraftTransportVariant[]) {
-  return transportVariants
-    .filter((variant) => typeof variant.amount_cents === 'number' && Number.isFinite(variant.amount_cents))
-    .map((variant) => ({
-      label:
-        variant.departure_city === variant.return_city
-          ? variant.departure_city
-          : `${variant.departure_city} / ${variant.return_city}`,
-      departure_city: variant.departure_city,
-      return_city: variant.return_city,
-      amount_cents: variant.amount_cents,
-      price:
-        typeof variant.amount_cents === 'number'
-          ? Number((variant.amount_cents / 100).toFixed(2))
-          : null,
-      currency: variant.currency ?? 'EUR',
-      source_url: variant.source_url,
-      departure_label_raw: variant.departure_label_raw ?? null,
-      return_label_raw: variant.return_label_raw ?? null
-    }));
-}
-
-function buildDraftUpdatePayload(
-  columns: Set<string>,
-  extracted: ReturnType<typeof extractStayData>,
-  rawPayload: ReturnType<typeof buildRawPayload>,
-  transportVariants: DraftTransportVariant[]
-) {
-  const payload: Record<string, unknown> = {};
-
-  // Parsing manuel minimal : on ne remplit ici que les champs fiables.
-  if (columns.has('title')) payload.title = extracted.title;
-  if (columns.has('description')) payload.description = extracted.description;
-  if (columns.has('age_min')) payload.age_min = extracted.ageMin;
-  if (columns.has('age_max')) payload.age_max = extracted.ageMax;
-  if (columns.has('images')) {
-    payload.images = extracted.images.length > 0 ? extracted.images : null;
-  }
-  if (columns.has('image')) {
-    payload.image = extracted.images[0] ?? null;
-  }
-  if (columns.has('source_url')) {
-    payload.source_url = rawPayload.source_url;
-  }
-  if (columns.has('raw_text')) {
-    payload.raw_text = extracted.rawText;
-  }
-  if (columns.has('raw_payload')) {
-    payload.raw_payload = rawPayload;
-  }
-  if (columns.has('transport_options_json')) {
-    const transportOptions = buildDraftTransportOptionsFromVariants(transportVariants);
-    payload.transport_options_json = transportOptions.length > 0 ? transportOptions : null;
-  }
-  if (columns.has('status')) {
-    payload.status = 'pending';
-  }
-
-  return payload;
-}
-
-async function updateDraftWithFallbacks(
-  draftId: string,
-  payload: Record<string, unknown>
-) {
-  const supabase = getServerSupabaseClient();
-
-  const attempts: Record<string, unknown>[] = [];
-  const baseAttempt = { ...payload };
-  attempts.push(baseAttempt);
-
-  const stringifiedAttempt = { ...payload };
-  let hasStringifiedFallback = false;
-  const maybeComplexKeys = [
-    'activities',
-    'images',
-    'sessions_json',
-    'extra_options_json',
-    'transport_options_json',
-    'accommodations_json',
-    'raw_payload'
-  ];
-  for (const key of maybeComplexKeys) {
-    const value = stringifiedAttempt[key];
-    if (Array.isArray(value)) {
-      stringifiedAttempt[key] =
-        key === 'activities' ? value.join(' | ') || null : JSON.stringify(value);
-      hasStringifiedFallback = true;
-      continue;
-    }
-    if (value && typeof value === 'object') {
-      stringifiedAttempt[key] = JSON.stringify(value);
-      hasStringifiedFallback = true;
-    }
-  }
-  if (hasStringifiedFallback) {
-    attempts.push(stringifiedAttempt);
-  }
-
-  const strippedAttempt = { ...payload };
-  delete strippedAttempt.activities;
-  delete strippedAttempt.images;
-  delete strippedAttempt.sessions_json;
-  delete strippedAttempt.transport_options_json;
-  delete strippedAttempt.accommodations_json;
-  if (Object.keys(strippedAttempt).length > 0) {
-    attempts.push(strippedAttempt);
-  }
-
-  let lastError: { message: string } | null = null;
-  for (const attempt of attempts) {
-    const { error } = await supabase
-      .from('stay_drafts')
-      .update(attempt)
-      .eq('id', draftId);
-
-    if (!error) return null;
-    lastError = error;
-  }
-
-  return lastError;
 }
 
 export async function POST(req: Request) {
-  const isMockMode = process.env.MOCK_UI === '1' || process.env.DISABLE_AUTH === '1';
-  const session = getSession();
+  const {
+    sourceUrl: sourceUrlRaw,
+    organizerId: organizerIdRaw,
+    selectedAccommodationId: selectedAccommodationIdRaw,
+    includePricing
+  } = await readImportInput(req);
+  const sourceUrlInput = sourceUrlRaw.trim();
+  const requestedOrganizerId = organizerIdRaw.trim();
+  const selectedAccommodationId = selectedAccommodationIdRaw.trim();
+  const access = await requireOrganizerApiAccess({
+    requestedOrganizerId: requestedOrganizerId || undefined,
+    requiredSection: 'stays'
+  });
 
-  if (!isMockMode && (!session || session.role !== 'ORGANISATEUR')) {
+  if (!access.ok) {
+    if (requestExpectsJson(req)) {
+      return NextResponse.json({ error: access.error }, { status: access.status });
+    }
     return NextResponse.redirect(new URL('/login', req.url), 303);
   }
 
-  const { sourceUrl: sourceUrlRaw, organizerId: organizerIdRaw } = await readImportInput(req);
-  const sourceUrl = sourceUrlRaw.trim();
-  const requestedOrganizerId = organizerIdRaw.trim();
-  const { selectedOrganizerId } = await resolveOrganizerSelection(
-    requestedOrganizerId || undefined,
-    isMockMode ? mockOrganizerTenant.id : session?.tenantId ?? null
-  );
+  const { selectedOrganizerId } = access.context;
 
   if (!selectedOrganizerId) {
-    return redirectToOrganizerStays(req, null, {
+    if (requestExpectsJson(req)) {
+      return NextResponse.json({ error: 'Aucun organisateur disponible.' }, { status: 400 });
+    }
+    return redirectToOrganizerStayCreation(req, null, {
       error: 'Aucun organisateur disponible.'
     });
   }
 
-  if (!sourceUrl) {
-    return redirectToOrganizerStays(req, selectedOrganizerId, {
+  if (!sourceUrlInput) {
+    if (requestExpectsJson(req)) {
+      return NextResponse.json({ error: "L'URL de la fiche séjour est requise." }, { status: 400 });
+    }
+    return redirectToOrganizerStayCreation(req, selectedOrganizerId, {
       error: "L'URL de la fiche séjour est requise."
     });
   }
 
+  let canonicalSourceUrl: string;
   try {
-    const parsedUrl = new URL(sourceUrl);
-    if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
-      throw new Error('invalid-protocol');
-    }
+    canonicalSourceUrl = canonicalizeStaySourceUrl(sourceUrlInput);
   } catch {
-    return redirectToOrganizerStays(req, selectedOrganizerId, {
+    if (requestExpectsJson(req)) {
+      return NextResponse.json({ error: 'Veuillez saisir une URL valide.' }, { status: 400 });
+    }
+    return redirectToOrganizerStayCreation(req, selectedOrganizerId, {
       error: 'Veuillez saisir une URL valide.'
     });
   }
+  const sourceUrl = canonicalSourceUrl;
+  const sourceUrlCandidates = new Set<string>(
+    [sourceUrlInput, canonicalSourceUrl].map((value) => value.trim()).filter(Boolean)
+  );
 
   const supabase = getServerSupabaseClient();
-  const { data: insertedDraft, error: insertError } = await supabase
+  let selectedAccommodation:
+    | {
+        id: string;
+        name: string;
+      }
+    | null = null;
+
+  if (selectedAccommodationId) {
+    const { data: accommodation, error: accommodationError } = await supabase
+      .from('accommodations')
+      .select('id,name')
+      .eq('id', selectedAccommodationId)
+      .eq('organizer_id', selectedOrganizerId)
+      .maybeSingle();
+
+    if (accommodationError || !accommodation) {
+      if (requestExpectsJson(req)) {
+        return NextResponse.json(
+          { error: 'Hébergement introuvable pour cet organisateur.' },
+          { status: 400 }
+        );
+      }
+      return redirectToOrganizerStayCreation(req, selectedOrganizerId, {
+        error: 'Hébergement introuvable pour cet organisateur.'
+      });
+    }
+
+    selectedAccommodation = accommodation;
+  }
+
+  const initialRawPayload = buildImportRawPayload({
+    selectedAccommodation,
+    includePricing,
+    progressLabel: 'Brouillon créé'
+  });
+
+  let supportsCanonicalColumn = true;
+
+  const resolveExistingDraft = async (): Promise<{
+    draft: ImportableDraftRow | null;
+    errorMessage: string | null;
+  }> => {
+    const lookupByCanonical = await supabase
+      .from('stay_drafts')
+      .select('*')
+      .eq('organizer_id', selectedOrganizerId)
+      .eq('source_url_canonical', canonicalSourceUrl)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (isMissingColumnError(lookupByCanonical.error, 'source_url_canonical')) {
+      supportsCanonicalColumn = false;
+      const fallbackLookup = await supabase
+        .from('stay_drafts')
+        .select('*')
+        .eq('organizer_id', selectedOrganizerId)
+        .order('created_at', { ascending: false })
+        .limit(250);
+
+      if (fallbackLookup.error) {
+        return {
+          draft: null,
+          errorMessage: fallbackLookup.error.message ?? 'Impossible de lire les brouillons existants.'
+        };
+      }
+
+      const matchedDraft = (fallbackLookup.data as ImportableDraftRow[] | null)?.find((row) =>
+        shouldMatchExistingSourceUrl(row.source_url, canonicalSourceUrl, sourceUrlCandidates)
+      );
+      return { draft: matchedDraft ?? null, errorMessage: null };
+    }
+
+    if (lookupByCanonical.error) {
+      return {
+        draft: null,
+        errorMessage: lookupByCanonical.error.message ?? 'Impossible de lire les brouillons existants.'
+      };
+    }
+
+    return {
+      draft: (lookupByCanonical.data as ImportableDraftRow | null) ?? null,
+      errorMessage: null
+    };
+  };
+
+  const refreshExistingDraftImport = async (
+    existingDraft: ImportableDraftRow
+  ): Promise<{ draft: ImportableDraftRow; importAction: ImportAction; errorMessage: string | null }> => {
+    const restartRawPayload = buildImportRawPayload({
+      existingRawPayload: existingDraft.raw_payload,
+      selectedAccommodation,
+      includePricing,
+      progressLabel: isFailedStatus(existingDraft.status) ? 'Relance du brouillon' : 'Actualisation du brouillon'
+    });
+    const { data: restartedDraft, error: restartError } = await supabase
+      .from('stay_drafts')
+      .update({
+        status: 'pending',
+        source_url: sourceUrl,
+        ...(supportsCanonicalColumn ? { source_url_canonical: canonicalSourceUrl } : {}),
+        raw_payload: restartRawPayload as Json,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', existingDraft.id)
+      .eq('organizer_id', selectedOrganizerId)
+      .select('*')
+      .maybeSingle();
+
+    if (restartError) {
+      return {
+        draft: existingDraft,
+        importAction: 'existing',
+        errorMessage: restartError.message ?? "Impossible de relancer l'import du brouillon."
+      };
+    }
+
+    if (restartedDraft) {
+      return {
+        draft: restartedDraft as ImportableDraftRow,
+        importAction: 'restarted',
+        errorMessage: null
+      };
+    }
+
+    return { draft: existingDraft, importAction: 'existing', errorMessage: null };
+  };
+
+  const preflightExisting = await resolveExistingDraft();
+  if (preflightExisting.errorMessage) {
+    if (requestExpectsJson(req)) {
+      return NextResponse.json({ error: preflightExisting.errorMessage }, { status: 500 });
+    }
+    return redirectToOrganizerStayCreation(req, selectedOrganizerId, {
+      error: preflightExisting.errorMessage
+    });
+  }
+
+  if (preflightExisting.draft) {
+    const existingDraftContext = getExistingDraftContext(preflightExisting.draft);
+    const existingDecision = shouldRefreshExistingDraftImport(preflightExisting.draft, includePricing);
+    console.info('[import-stay] existing draft decision', {
+      draftId: preflightExisting.draft.id,
+      existingDraftContext,
+      status: normalizeStatus(preflightExisting.draft.status),
+      includePricingRequested: includePricing,
+      previousIncludePricing: existingDecision.previousIncludePricing,
+      currentPricedTransportCount: existingDecision.currentPricedTransportCount,
+      recoveredPricedTransportCount: existingDecision.recoveredPricedTransportCount,
+      shouldRefresh: existingDecision.shouldRefresh,
+      reason: existingDecision.reason
+    });
+
+    const existingHandling = existingDecision.shouldRefresh
+      ? await refreshExistingDraftImport(preflightExisting.draft)
+      : { draft: preflightExisting.draft, importAction: 'existing' as const, errorMessage: null };
+    if (existingHandling.errorMessage) {
+      if (requestExpectsJson(req)) {
+        return NextResponse.json({ error: existingHandling.errorMessage }, { status: 500 });
+      }
+      return redirectToOrganizerStayCreation(req, selectedOrganizerId, {
+        error: existingHandling.errorMessage
+      });
+    }
+
+    const shouldLaunchBackgroundImport = existingHandling.importAction === 'restarted';
+    if (shouldLaunchBackgroundImport) {
+      const draftColumns = new Set(Object.keys(existingHandling.draft));
+      after(() => {
+        void runStayImportInBackground({
+          draftId: existingHandling.draft.id,
+          sourceUrl,
+          selectedOrganizerId,
+          selectedAccommodation,
+          includePricing,
+          draftColumnKeys: Array.from(draftColumns)
+        });
+      });
+    }
+
+    if (requestExpectsJson(req)) {
+      return NextResponse.json({
+        success: true,
+        draftId: existingHandling.draft.id,
+        organizerId: selectedOrganizerId,
+        importAction: existingHandling.importAction,
+        existingDraftContext
+      });
+    }
+
+    return redirectToOrganizerStayCreation(req, selectedOrganizerId, {
+      prefill: existingHandling.importAction,
+      draftId: existingHandling.draft.id
+    });
+  }
+
+  const existingStayLookup = await findExistingStayBySourceUrl({
+    supabase,
+    organizerId: selectedOrganizerId,
+    canonicalSourceUrl,
+    sourceUrlCandidates
+  });
+  if (existingStayLookup.errorMessage) {
+    if (requestExpectsJson(req)) {
+      return NextResponse.json({ error: existingStayLookup.errorMessage }, { status: 500 });
+    }
+    return redirectToOrganizerStayCreation(req, selectedOrganizerId, {
+      error: existingStayLookup.errorMessage
+    });
+  }
+
+  if (existingStayLookup.stayId) {
+    const alreadyExistsMessage =
+      "Un séjour existe déjà pour cette URL. Ouvrez le séjour existant depuis la liste pour le modifier.";
+    if (requestExpectsJson(req)) {
+      return NextResponse.json(
+        {
+          error: alreadyExistsMessage,
+          existingStayId: existingStayLookup.stayId
+        },
+        { status: 409 }
+      );
+    }
+    return redirectToOrganizerStayCreation(req, selectedOrganizerId, {
+      error: alreadyExistsMessage
+    });
+  }
+
+  const insertDraftPayload = {
+    organizer_id: selectedOrganizerId,
+    source_url: sourceUrl,
+    status: 'pending',
+    raw_payload: initialRawPayload as Json
+  };
+
+  const firstInsertAttempt = await supabase
     .from('stay_drafts')
     .insert({
-      organizer_id: selectedOrganizerId,
-      source_url: sourceUrl,
-      status: 'pending'
+      ...insertDraftPayload,
+      source_url_canonical: canonicalSourceUrl
     })
     .select('*')
     .single();
+  let insertedDraft = (firstInsertAttempt.data as ImportableDraftRow | null) ?? null;
+  let insertError: { code?: string | null; message?: string | null } | null = firstInsertAttempt.error
+    ? { code: firstInsertAttempt.error.code, message: firstInsertAttempt.error.message }
+    : null;
 
-  if (insertError || !insertedDraft) {
-    return redirectToOrganizerStays(req, selectedOrganizerId, {
-      error: insertError?.message ?? 'Impossible de créer le brouillon.'
-    });
+  if (isMissingColumnError(insertError, 'source_url_canonical')) {
+    supportsCanonicalColumn = false;
+    const dynamicInsertWithoutCanonical = supabase.from('stay_drafts') as unknown as DynamicStayDraftInsertBuilder;
+    const retryWithoutCanonicalColumn = await dynamicInsertWithoutCanonical
+      .insert(insertDraftPayload)
+      .select('*')
+      .single();
+    insertedDraft = retryWithoutCanonicalColumn.data;
+    insertError = retryWithoutCanonicalColumn.error;
   }
 
-  const draftColumns = new Set(Object.keys(insertedDraft));
+  const targetDraft: ImportableDraftRow | null = (insertedDraft as ImportableDraftRow | null) ?? null;
 
-  let fetchedHtml: Awaited<ReturnType<typeof fetchHtml>>;
-  try {
-    fetchedHtml = await fetchHtml(sourceUrl);
-  } catch (error) {
-    const fetchErrorMessage =
-      error instanceof Error ? error.message : 'Impossible de récupérer la page source.';
-
-    if (draftColumns.has('raw_payload')) {
-      await supabase
-        .from('stay_drafts')
-        .update({
-          raw_payload: {
-            source_url: sourceUrl,
-            fetch_error: fetchErrorMessage,
-            fetched_at: new Date().toISOString()
-          }
-        })
-        .eq('id', insertedDraft.id);
+  if (insertError || !targetDraft) {
+    if (!isUniqueCanonicalConflict(insertError)) {
+      if (requestExpectsJson(req)) {
+        return NextResponse.json(
+          { error: insertError?.message ?? 'Impossible de créer le brouillon.' },
+          { status: 500 }
+        );
+      }
+      return redirectToOrganizerStayCreation(req, selectedOrganizerId, {
+        error: insertError?.message ?? 'Impossible de créer le brouillon.'
+      });
     }
 
-    return redirectToOrganizerStays(req, selectedOrganizerId, {
-      error: fetchErrorMessage
+    const existingAfterConflict = await resolveExistingDraft();
+    if (existingAfterConflict.errorMessage || !existingAfterConflict.draft) {
+      if (requestExpectsJson(req)) {
+        return NextResponse.json(
+          {
+            error:
+              existingAfterConflict.errorMessage ??
+              'Un brouillon existe déjà pour cette source, mais sa récupération a échoué.'
+          },
+          { status: 500 }
+        );
+      }
+      return redirectToOrganizerStayCreation(req, selectedOrganizerId, {
+        error:
+          existingAfterConflict.errorMessage ??
+          'Un brouillon existe déjà pour cette source, mais sa récupération a échoué.'
+      });
+    }
+
+    const conflictDraftContext = getExistingDraftContext(existingAfterConflict.draft);
+    const conflictDecision = shouldRefreshExistingDraftImport(existingAfterConflict.draft, includePricing);
+    console.info('[import-stay] conflict existing draft decision', {
+      draftId: existingAfterConflict.draft.id,
+      existingDraftContext: conflictDraftContext,
+      status: normalizeStatus(existingAfterConflict.draft.status),
+      includePricingRequested: includePricing,
+      previousIncludePricing: conflictDecision.previousIncludePricing,
+      currentPricedTransportCount: conflictDecision.currentPricedTransportCount,
+      recoveredPricedTransportCount: conflictDecision.recoveredPricedTransportCount,
+      shouldRefresh: conflictDecision.shouldRefresh,
+      reason: conflictDecision.reason
+    });
+    const conflictHandling = conflictDecision.shouldRefresh
+      ? await refreshExistingDraftImport(existingAfterConflict.draft)
+      : { draft: existingAfterConflict.draft, importAction: 'existing' as const, errorMessage: null };
+    if (conflictHandling.errorMessage) {
+      if (requestExpectsJson(req)) {
+        return NextResponse.json({ error: conflictHandling.errorMessage }, { status: 500 });
+      }
+      return redirectToOrganizerStayCreation(req, selectedOrganizerId, {
+        error: conflictHandling.errorMessage
+      });
+    }
+
+    const shouldLaunchBackgroundImport = conflictHandling.importAction === 'restarted';
+    if (shouldLaunchBackgroundImport) {
+      const draftColumns = new Set(Object.keys(conflictHandling.draft));
+      after(() => {
+        void runStayImportInBackground({
+          draftId: conflictHandling.draft.id,
+          sourceUrl,
+          selectedOrganizerId,
+          selectedAccommodation,
+          includePricing,
+          draftColumnKeys: Array.from(draftColumns)
+        });
+      });
+    }
+
+    if (requestExpectsJson(req)) {
+      return NextResponse.json({
+        success: true,
+        draftId: conflictHandling.draft.id,
+        organizerId: selectedOrganizerId,
+        importAction: conflictHandling.importAction,
+        existingDraftContext: conflictDraftContext
+      });
+    }
+
+    return redirectToOrganizerStayCreation(req, selectedOrganizerId, {
+      prefill: conflictHandling.importAction,
+      draftId: conflictHandling.draft.id
     });
   }
 
-  const extracted = extractStayData(fetchedHtml.html, fetchedHtml.finalUrl);
-  const [selectedImages, transportExtraction] = await Promise.all([
-    selectBestStayImages(fetchedHtml.html, fetchedHtml.finalUrl, extracted.images, {
-      title: extracted.title,
-      description: extracted.description,
-      summary: extracted.summary,
-      locationText: extracted.locationText,
-      regionText: extracted.regionText,
-      activities: extracted.activities
-    }),
-    extractTransportVariants(fetchedHtml.html, fetchedHtml.finalUrl)
-  ]);
-  const extractedWithSmartImages = {
-    ...extracted,
-    images: selectedImages.length > 0 ? selectedImages : extracted.images
-  };
-  const transportVariants = transportExtraction.transportVariants;
-  const transportPriceDebug = transportExtraction.transportPriceDebug;
-  const rawPayload = buildRawPayload(
-    fetchedHtml.html,
-    fetchedHtml.fetchedAt,
-    sourceUrl,
-    fetchedHtml.finalUrl,
-    fetchedHtml.contentType,
-    fetchedHtml.status,
-    extractedWithSmartImages,
-    transportVariants,
-    transportPriceDebug
-  );
-  const updatePayload = buildDraftUpdatePayload(
-    draftColumns,
-    extractedWithSmartImages,
-    rawPayload,
-    transportVariants
-  );
-  const updateError = await updateDraftWithFallbacks(insertedDraft.id, updatePayload);
-
-  if (updateError) {
-    return redirectToOrganizerStays(req, selectedOrganizerId, {
-      error: updateError.message ?? 'Impossible de mettre à jour le brouillon.'
+  const shouldLaunchBackgroundImport = true;
+  if (shouldLaunchBackgroundImport) {
+    const draftColumns = new Set(Object.keys(targetDraft));
+    after(() => {
+      void runStayImportInBackground({
+        draftId: targetDraft.id,
+        sourceUrl,
+        selectedOrganizerId,
+        selectedAccommodation,
+        includePricing,
+        draftColumnKeys: Array.from(draftColumns)
+      });
     });
   }
 
-  return redirectToOrganizerStays(req, selectedOrganizerId, {
+  if (requestExpectsJson(req)) {
+    return NextResponse.json({
+      success: true,
+      draftId: targetDraft.id,
+      organizerId: selectedOrganizerId,
+      importAction: 'created'
+    });
+  }
+
+  return redirectToOrganizerStayCreation(req, selectedOrganizerId, {
     prefill: 'created',
-    draftId: insertedDraft.id
+    draftId: targetDraft.id
   });
 }

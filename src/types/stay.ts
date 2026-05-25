@@ -26,6 +26,7 @@ export interface StayFilters {
 export interface OrganizerInfo {
   name: string;
   website: string;
+  slug?: string;
   logoUrl?: string;
   description?: string;
 }
@@ -35,6 +36,8 @@ export interface StayTransportOption {
   departureCity: string;
   returnCity: string;
   amount: number;
+  /** Si défini, option limitée à cette session ; sinon valable pour toutes les sessions du séjour. */
+  sessionId?: string | null;
 }
 
 export interface StayInsuranceOption {
@@ -67,10 +70,63 @@ export interface StayBookingOptions {
   extraOptions: StayExtraOption[];
 }
 
+export interface StaySeo {
+  primaryKeyword?: string;
+  secondaryKeywords: string[];
+  targetCity?: string;
+  targetRegion?: string;
+  searchIntents: string[];
+  title?: string;
+  metaDescription?: string;
+  introText?: string;
+  h1Variant?: string;
+  internalLinkAnchorSuggestions?: string[];
+  slugCandidate?: string;
+  score?: number;
+  checks?: Array<{
+    code: string;
+    level: 'ok' | 'warning' | 'info';
+    message: string;
+  }>;
+  generatedAt?: string;
+  generationSource?: string;
+}
+
+export interface StayCenterLocation {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+}
+
+export interface StayAccommodation {
+  id: string;
+  name: string;
+  accommodationType: string | null;
+  locationLabel: string | null;
+  mapEmbedSrc?: string | null;
+  addressText?: string | null;
+  postalCode?: string | null;
+  city?: string | null;
+  departmentCode?: string | null;
+  regionText?: string | null;
+  country?: string | null;
+  description: string;
+  bedInfo: string;
+  bathroomInfo: string;
+  cateringInfo: string;
+  accessibilityInfo: string;
+  imageUrls: string[];
+  /** Liens vidéo (YouTube, Vimeo, etc.) associés au lieu d’hébergement. */
+  videoUrls?: string[];
+}
+
 export interface Stay {
   id: string;
   title: string;
   slug: string;
+  canonicalSlug: string;
+  legacySlugs?: string[];
   summary: string;
   description: string;
   seasonId: string;
@@ -78,8 +134,17 @@ export interface Stay {
   organizerId: string;
   organizer: OrganizerInfo;
   location: string;
+  displayLocation?: string;
   region: string;
   country: string;
+  destinationType?: 'fixed_france' | 'fixed_abroad' | 'itinerant' | null;
+  destinationCity?: string | null;
+  destinationPostalCode?: string | null;
+  destinationDepartmentCode?: string | null;
+  destinationRegion?: string | null;
+  destinationCountry?: string | null;
+  destinationItineraryLabel?: string | null;
+  destinationCountries?: string[];
   ageMin: number | null;
   ageMax: number | null;
   ageRange: string;
@@ -92,8 +157,13 @@ export interface Stay {
   programText?: string;
   transportText?: string;
   coverImage?: string;
+  galleryImages?: string[];
+  videoUrls?: string[];
   filters: StayFilters;
   bookingOptions?: StayBookingOptions;
+  centerLocations?: StayCenterLocation[];
+  accommodations?: StayAccommodation[];
+  seo?: StaySeo;
   sourceUrl?: string;
   rawContext?: Record<string, unknown>;
   updatedAt: string;

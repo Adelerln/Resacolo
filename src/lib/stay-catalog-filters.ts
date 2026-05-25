@@ -1,4 +1,9 @@
 import { FILTER_LABELS } from '@/lib/constants';
+import {
+  buildStayDestinationSearchText,
+  buildStayPrimaryDestinationFilterLabel
+} from '@/lib/stay-destination';
+import { staySessionsAppearFullyBooked } from '@/lib/stay-catalog-availability';
 import { slugify } from '@/lib/utils';
 import type { Stay } from '@/types/stay';
 
@@ -20,6 +25,7 @@ export type StayCatalogFilterOptions = {
   seasons: StayCatalogFilterOption[];
   categories: StayCatalogFilterOption[];
   ageBands: StayCatalogAgeFilterOption[];
+  destinationTypes: StayCatalogFilterOption[];
   destinations: StayCatalogFilterOption[];
   organizers: StayCatalogFilterOption[];
 };
@@ -29,8 +35,13 @@ export type StayCatalogFilterState = {
   seasonIds: string[];
   categories: string[];
   ageBands: StayAgeBandValue[];
+  destinationTypes: string[];
   destinations: string[];
   organizerIds: string[];
+  ageMin: number | null;
+  ageMax: number | null;
+  priceMin: number | null;
+  priceMax: number | null;
 };
 
 export const STAY_CATALOG_SORT_OPTIONS = [
@@ -76,14 +87,51 @@ const LEGACY_AGE_ALIAS: Record<string, StayAgeBandValue> = {
 const STAY_CATALOG_SORT_VALUES = new Set<StayCatalogSortValue>(
   STAY_CATALOG_SORT_OPTIONS.map((option) => option.value)
 );
+const SEARCH_STOP_WORDS = new Set([
+  'a',
+  'au',
+  'aux',
+  'de',
+  'des',
+  'du',
+  'd',
+  'la',
+  'le',
+  'les',
+  'un',
+  'une',
+  'en',
+  'et',
+  'ou',
+  'pour',
+  'avec',
+  'sur',
+  'dans',
+  'colonie',
+  'colonies',
+  'vacance',
+  'vacances',
+  'sejour',
+  'sejours'
+]);
+type SearchIndexedStay = Stay & { _searchText: string; _locationText: string };
+export type StaySearchQuery = {
+  tokens: string[];
+  locationIntent: string | null;
+};
 
 export const EMPTY_STAY_CATALOG_FILTERS: StayCatalogFilterState = {
   q: '',
   seasonIds: [],
   categories: [],
   ageBands: [],
+  destinationTypes: [],
   destinations: [],
-  organizerIds: []
+  organizerIds: [],
+  ageMin: null,
+  ageMax: null,
+  priceMin: null,
+  priceMax: null
 };
 
 function cleanText(value: string | null | undefined) {
@@ -165,7 +213,8 @@ function extractStayAgeBounds(stay: Stay): AgeBounds | null {
     return { min: 3, max: rawMax };
   }
 
-  const numbers = (stay.ageRange.match(/\d{1,2}/g) ?? [])
+  const ageRangeText = typeof stay.ageRange === 'string' ? stay.ageRange : '';
+  const numbers = (ageRangeText.match(/\d{1,2}/g) ?? [])
     .map((value) => Number.parseInt(value, 10))
     .filter((value) => Number.isFinite(value));
 
@@ -183,9 +232,31 @@ function agesOverlap(left: AgeBounds, right: AgeBounds) {
 }
 
 function stayDestinationLabel(stay: Stay) {
-  const region = cleanText(stay.region);
-  if (region) return region;
-  return cleanText(stay.location);
+  return buildStayPrimaryDestinationFilterLabel({
+    destinationType: stay.destinationType,
+    destinationRegion: stay.destinationRegion,
+    destinationCountry: stay.destinationCountry,
+    destinationItineraryLabel: stay.destinationItineraryLabel,
+    locationText: stay.location,
+    regionText: stay.region
+  });
+}
+
+function stayDestinationTypeValue(stay: Stay) {
+  const normalized = cleanText(stay.destinationType);
+  if (normalized === 'fixed_france' || normalized === 'fixed_abroad' || normalized === 'itinerant') {
+    return normalized;
+  }
+  if (stay.categories.includes('itinerant')) return 'itinerant';
+  if (stay.categories.includes('etranger')) return 'fixed_abroad';
+  return 'fixed_france';
+}
+
+function getDestinationTypeLabel(value: string) {
+  if (value === 'fixed_france') return 'Séjour fixe en France';
+  if (value === 'fixed_abroad') return "Séjour fixe à l'étranger";
+  if (value === 'itinerant') return 'Circuit itinérant';
+  return value;
 }
 
 function readParamList(searchParams: URLSearchParams, keys: string[]) {
@@ -293,6 +364,16 @@ function buildStateKeyValues(values: string[]) {
   return [...values].sort(compareLabel).join('|');
 }
 
+function clampNumber(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function parseRangeNumber(raw: string | null): number | null {
+  if (!raw) return null;
+  const parsed = Number.parseFloat(raw.replace(',', '.'));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 export function normalizeCatalogText(value: string) {
   return normalizeSpaces(
     value
@@ -303,32 +384,133 @@ export function normalizeCatalogText(value: string) {
   );
 }
 
+export function getSearchTokens(q: string) {
+  return uniq(
+    normalizeCatalogText(q)
+      .split(' ')
+      .map((token) => token.trim())
+      .filter((token) => token.length >= 3 && !SEARCH_STOP_WORDS.has(token))
+  );
+}
+
+function extractLocationIntent(q: string) {
+  const normalized = normalizeCatalogText(q);
+  if (!normalized) return null;
+
+  const patterns = [
+    /\b(?:pres de|proche de)\s+(.+)$/,
+    /\b(?:dans)\s+(?:les|la|le|l)\s+(.+)$/,
+    /\b(?:dans)\s+(.+)$/,
+    /\b(?:a|au|aux)\s+(.+)$/
+  ];
+
+  for (const pattern of patterns) {
+    const match = normalized.match(pattern);
+    if (!match?.[1]) continue;
+    const intent = normalizeSpaces(match[1]).replace(/^(les|la|le|l)\s+/, '').trim();
+    if (intent.length >= 2) return intent;
+  }
+
+  return null;
+}
+
+export function parseSearchQuery(q: string): StaySearchQuery {
+  return {
+    tokens: getSearchTokens(q),
+    locationIntent: extractLocationIntent(q)
+  };
+}
+
+export function buildStaySearchIndex(stay: Stay): SearchIndexedStay {
+  const locationText = normalizeCatalogText(
+    [
+      // Equivalent of requested fields with existing domain model keys.
+      stay.destinationCity,
+      stay.location,
+      stay.displayLocation,
+      stay.region,
+      stayDestinationLabel(stay),
+      stay.destinationRegion,
+      stay.destinationCountry
+    ]
+      .filter(Boolean)
+      .join(' ')
+  );
+
+  return {
+    ...stay,
+    _searchText: normalizeCatalogText(
+      [
+        stay.title,
+        stay.summary,
+        stay.description,
+        stay.location,
+        stay.destinationCity,
+        stay.region,
+        stayDestinationLabel(stay),
+        buildStayDestinationSearchText({
+          destinationType: stay.destinationType,
+          destinationCity: stay.destinationCity,
+          destinationPostalCode: stay.destinationPostalCode,
+          destinationDepartmentCode: stay.destinationDepartmentCode,
+          destinationRegion: stay.destinationRegion,
+          destinationCountry: stay.destinationCountry,
+          destinationItineraryLabel: stay.destinationItineraryLabel,
+          destinationCountries: stay.destinationCountries,
+          locationText: stay.location,
+          regionText: stay.region
+        }),
+        stay.activitiesText ?? '',
+        stay.programText ?? '',
+        stay.transportText ?? '',
+        stay.categories.join(' '),
+        stay.organizer.name,
+        stay.ageRange,
+        stay.ageMin != null ? `${stay.ageMin} ans` : '',
+        stay.ageMax != null ? `${stay.ageMax} ans` : ''
+      ]
+        .filter(Boolean)
+        .join(' ')
+    ),
+    _locationText: locationText
+  };
+}
+
 export function stayCatalogFilterStateKey(state: StayCatalogFilterState) {
   return [
     normalizeCatalogText(state.q),
     buildStateKeyValues(state.seasonIds),
     buildStateKeyValues(state.categories),
     buildStateKeyValues(state.ageBands),
+    buildStateKeyValues(state.destinationTypes),
     buildStateKeyValues(state.destinations),
-    buildStateKeyValues(state.organizerIds)
+    buildStateKeyValues(state.organizerIds),
+    `${state.ageMin ?? ''}-${state.ageMax ?? ''}`,
+    `${state.priceMin ?? ''}-${state.priceMax ?? ''}`
   ].join('::');
 }
 
 export function countActiveStayCatalogFilters(state: StayCatalogFilterState) {
   const hasQuery = normalizeCatalogText(state.q).length > 0 ? 1 : 0;
+  const hasAgeRange = state.ageMin != null || state.ageMax != null ? 1 : 0;
+  const hasPriceRange = state.priceMin != null || state.priceMax != null ? 1 : 0;
   return (
     hasQuery +
     state.seasonIds.length +
     state.categories.length +
     state.ageBands.length +
+    state.destinationTypes.length +
     state.destinations.length +
-    state.organizerIds.length
+    state.organizerIds.length +
+    hasAgeRange +
+    hasPriceRange
   );
 }
 
 export function buildStayCatalogFilterOptions(stays: Stay[]): StayCatalogFilterOptions {
   const seasonCounts = new Map<string, { label: string; count: number }>();
   const categoryCounts = new Map<string, { label: string; count: number }>();
+  const destinationTypeCounts = new Map<string, { label: string; count: number }>();
   const destinationCounts = new Map<string, { label: string; count: number }>();
   const organizerCounts = new Map<string, { label: string; count: number }>();
   const ageBandCounts = new Map<StayAgeBandValue, number>(
@@ -348,7 +530,7 @@ export function buildStayCatalogFilterOptions(stays: Stay[]): StayCatalogFilterO
       }
     }
 
-    uniq(stay.categories.map((value) => normalizeSpaces(String(value).toLowerCase())))
+    uniq((stay.categories ?? []).map((value) => normalizeSpaces(String(value).toLowerCase())))
       .filter(Boolean)
       .forEach((category) => {
         const current = categoryCounts.get(category);
@@ -361,6 +543,17 @@ export function buildStayCatalogFilterOptions(stays: Stay[]): StayCatalogFilterO
           });
         }
       });
+
+    const destinationType = stayDestinationTypeValue(stay);
+    const currentDestinationType = destinationTypeCounts.get(destinationType);
+    if (currentDestinationType) {
+      currentDestinationType.count += 1;
+    } else {
+      destinationTypeCounts.set(destinationType, {
+        label: getDestinationTypeLabel(destinationType),
+        count: 1
+      });
+    }
 
     const destinationLabel = stayDestinationLabel(stay);
     if (destinationLabel) {
@@ -418,6 +611,14 @@ export function buildStayCatalogFilterOptions(stays: Stay[]): StayCatalogFilterO
     }))
     .sort((left, right) => compareLabel(left.label, right.label));
 
+  const destinationTypes = Array.from(destinationTypeCounts.entries())
+    .map(([value, data]) => ({
+      value,
+      label: data.label,
+      count: data.count
+    }))
+    .sort((left, right) => compareLabel(left.label, right.label));
+
   const destinations = Array.from(destinationCounts.entries())
     .map(([value, data]) => ({
       value,
@@ -444,6 +645,7 @@ export function buildStayCatalogFilterOptions(stays: Stay[]): StayCatalogFilterO
     seasons,
     categories,
     ageBands,
+    destinationTypes,
     destinations,
     organizers
   };
@@ -473,6 +675,11 @@ export function parseStayCatalogFiltersFromSearchParams(
     options.ageBands
   );
 
+  const destinationTypes = resolveValuesFromOptions(
+    readParamList(searchParams, ['destinationTypes', 'destination_type', 'destinationType']),
+    options.destinationTypes
+  );
+
   const destinations = resolveValuesFromOptions(
     [
       ...readParamList(searchParams, ['destinations', 'destination']),
@@ -486,13 +693,23 @@ export function parseStayCatalogFiltersFromSearchParams(
     options.organizers
   );
 
+  const ageMinRaw = parseRangeNumber(searchParams.get('ageMin') ?? searchParams.get('age_min'));
+  const ageMaxRaw = parseRangeNumber(searchParams.get('ageMax') ?? searchParams.get('age_max'));
+  const priceMinRaw = parseRangeNumber(searchParams.get('priceMin') ?? searchParams.get('price_min'));
+  const priceMaxRaw = parseRangeNumber(searchParams.get('priceMax') ?? searchParams.get('price_max'));
+
   return {
     q,
     seasonIds: seasons,
     categories,
     ageBands,
+    destinationTypes,
     destinations,
-    organizerIds
+    organizerIds,
+    ageMin: ageMinRaw != null ? clampNumber(ageMinRaw, 0, 99) : null,
+    ageMax: ageMaxRaw != null ? clampNumber(ageMaxRaw, 0, 99) : null,
+    priceMin: priceMinRaw != null ? Math.max(0, priceMinRaw) : null,
+    priceMax: priceMaxRaw != null ? Math.max(0, priceMaxRaw) : null
   };
 }
 
@@ -504,8 +721,15 @@ export function serializeStayCatalogFiltersToSearchParams(state: StayCatalogFilt
   if (state.seasonIds.length > 0) params.set('season', uniq(state.seasonIds).join(','));
   if (state.categories.length > 0) params.set('categories', uniq(state.categories).join(','));
   if (state.ageBands.length > 0) params.set('ages', uniq(state.ageBands).join(','));
+  if (state.destinationTypes.length > 0) {
+    params.set('destinationTypes', uniq(state.destinationTypes).join(','));
+  }
   if (state.destinations.length > 0) params.set('destinations', uniq(state.destinations).join(','));
   if (state.organizerIds.length > 0) params.set('organizers', uniq(state.organizerIds).join(','));
+  if (state.ageMin != null) params.set('ageMin', String(state.ageMin));
+  if (state.ageMax != null) params.set('ageMax', String(state.ageMax));
+  if (state.priceMin != null) params.set('priceMin', String(state.priceMin));
+  if (state.priceMax != null) params.set('priceMax', String(state.priceMax));
 
   return params;
 }
@@ -563,20 +787,50 @@ export function applyStayCatalogSort(
     return sorted;
   }
 
-  sorted.sort((left, right) => {
+  const byRandomRank = (left: Stay, right: Stay) => {
     const leftRank = fnv1aHash(`${seed}:${left.id}:${left.slug}`);
     const rightRank = fnv1aHash(`${seed}:${right.id}:${right.slug}`);
     if (leftRank !== rightRank) return leftRank - rightRank;
     return compareFallbackStable(left, right);
-  });
+  };
 
-  return sorted;
+  const available: Stay[] = [];
+  const fullyBooked: Stay[] = [];
+
+  for (const stay of sorted) {
+    if (staySessionsAppearFullyBooked(stay.bookingOptions?.sessions)) {
+      fullyBooked.push(stay);
+    } else {
+      available.push(stay);
+    }
+  }
+
+  available.sort(byRandomRank);
+  fullyBooked.sort(byRandomRank);
+
+  return [...available, ...fullyBooked];
 }
 
-export function applyStayCatalogFilters(stays: Stay[], state: StayCatalogFilterState) {
-  const queryTokens = normalizeCatalogText(state.q).split(' ').filter(Boolean);
+export function applyStayCatalogFilters(
+  stays: Stay[],
+  state: StayCatalogFilterState,
+  preParsedQuery?: StaySearchQuery
+) {
+  const searchQuery = preParsedQuery ?? parseSearchQuery(state.q);
+  const queryTokens = searchQuery.tokens;
+  const locationIntent = searchQuery.locationIntent;
+  const searchableTextForStay = (stay: Stay) => {
+    const indexed = stay as SearchIndexedStay;
+    if (typeof indexed._searchText === 'string') return indexed._searchText;
+    return buildStaySearchIndex(stay)._searchText;
+  };
+  const locationTextForStay = (stay: Stay) => {
+    const indexed = stay as SearchIndexedStay;
+    if (typeof indexed._locationText === 'string') return indexed._locationText;
+    return buildStaySearchIndex(stay)._locationText;
+  };
 
-  return stays.filter((stay) => {
+  const matchesNonTextFilters = (stay: Stay) => {
     if (state.seasonIds.length > 0 && !state.seasonIds.includes(stay.seasonId)) {
       return false;
     }
@@ -586,6 +840,13 @@ export function applyStayCatalogFilters(stays: Stay[], state: StayCatalogFilterS
       !stay.categories.some((category) => state.categories.includes(category))
     ) {
       return false;
+    }
+
+    if (state.destinationTypes.length > 0) {
+      const destinationType = stayDestinationTypeValue(stay);
+      if (!state.destinationTypes.includes(destinationType)) {
+        return false;
+      }
     }
 
     if (state.ageBands.length > 0) {
@@ -603,6 +864,25 @@ export function applyStayCatalogFilters(stays: Stay[], state: StayCatalogFilterS
       }
     }
 
+    if (state.ageMin != null || state.ageMax != null) {
+      const ageBounds = extractStayAgeBounds(stay);
+      if (!ageBounds) return false;
+      const range: AgeBounds = {
+        min: state.ageMin != null ? state.ageMin : 0,
+        max: state.ageMax != null ? state.ageMax : 99
+      };
+      if (!agesOverlap(ageBounds, range)) {
+        return false;
+      }
+    }
+
+    if (state.priceMin != null || state.priceMax != null) {
+      const price = stayPriceForSort(stay);
+      if (price == null) return false;
+      if (state.priceMin != null && price < state.priceMin) return false;
+      if (state.priceMax != null && price > state.priceMax) return false;
+    }
+
     if (state.destinations.length > 0) {
       const destinationLabel = stayDestinationLabel(stay);
       const destinationValue = destinationLabel ? toDestinationValue(destinationLabel) : '';
@@ -617,27 +897,52 @@ export function applyStayCatalogFilters(stays: Stay[], state: StayCatalogFilterS
       }
     }
 
-    if (queryTokens.length > 0) {
-      const searchable = normalizeCatalogText(
-        [
-          stay.title,
-          stay.summary,
-          stay.description,
-          stay.location,
-          stay.region,
-          stay.activitiesText ?? '',
-          stay.programText ?? '',
-          stay.transportText ?? '',
-          stay.organizer.name
-        ].join(' ')
-      );
+    return true;
+  };
 
-      const isMatch = queryTokens.every((token) => searchable.includes(token));
-      if (!isMatch) {
-        return false;
+  const strictResults: Stay[] = [];
+  const fallbackResults: Stay[] = [];
+  const canUseFallback = !locationIntent && queryTokens.length >= 2;
+
+  for (const stay of stays) {
+    if (!matchesNonTextFilters(stay)) continue;
+
+    if (locationIntent) {
+      if (locationTextForStay(stay).includes(locationIntent)) {
+        strictResults.push(stay);
+      }
+      continue;
+    }
+
+    if (queryTokens.length === 0) {
+      strictResults.push(stay);
+      continue;
+    }
+
+    const searchable = searchableTextForStay(stay);
+    let matchedCount = 0;
+    for (const token of queryTokens) {
+      if (searchable.includes(token)) {
+        matchedCount += 1;
+      } else if (!canUseFallback) {
+        matchedCount = -1;
+        break;
       }
     }
 
-    return true;
-  });
+    if (matchedCount === queryTokens.length) {
+      strictResults.push(stay);
+      continue;
+    }
+
+    if (canUseFallback && matchedCount > 0) {
+      fallbackResults.push(stay);
+    }
+  }
+
+  if (locationIntent || queryTokens.length === 0 || strictResults.length > 0) {
+    return strictResults;
+  }
+
+  return canUseFallback ? fallbackResults : strictResults;
 }

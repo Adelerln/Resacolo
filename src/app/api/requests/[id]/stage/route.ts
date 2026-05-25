@@ -8,11 +8,12 @@ const stageUpdateSchema = z.object({
   stageId: z.string()
 });
 
-export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const body = await req.json();
   const input = stageUpdateSchema.parse(body);
   const service = new RequestPipelineService();
-  const updated = await service.setStage(params.id, input.stageId);
+  const updated = await service.setStage(id, input.stageId);
   if (!updated) {
     return NextResponse.json({ error: 'Request not found' }, { status: 404 });
   }

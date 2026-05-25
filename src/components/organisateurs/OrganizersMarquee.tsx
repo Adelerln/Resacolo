@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { useEffect, useRef, useState } from 'react';
 
 type OrganizerLogo = {
@@ -94,12 +95,13 @@ export function OrganizersMarquee({ embedded = false }: OrganizersMarqueeProps) 
                     className="flex h-[108px] w-[150px] items-center justify-center"
                     aria-hidden={copyIndex === 1 ? true : undefined}
                   >
-                    <img
+                    <Image
                       src={org.logoUrl}
                       alt={copyIndex === 1 ? '' : org.name}
+                      width={180}
+                      height={88}
                       className="max-h-[88px] w-auto object-contain opacity-95"
-                      loading="lazy"
-                      decoding="async"
+                      unoptimized
                     />
                   </div>
                 ))}

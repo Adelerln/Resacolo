@@ -8,7 +8,6 @@ import { WorldMap } from '@/components/home/WorldMap';
 import { OrganizersMarquee } from '@/components/organisateurs/OrganizersMarquee';
 import {
   Briefcase,
-  CheckCircle,
   Home,
   HeartHandshake,
   CreditCard,
@@ -16,8 +15,7 @@ import {
   ArrowRight,
   ChevronLeft,
   ChevronRight,
-  type LucideIcon,
-  Send
+  type LucideIcon
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
@@ -29,7 +27,9 @@ const benefits = [
     imageAlt: 'Pictogramme ordinateur',
     text: (
       <>
-        <strong style={{ color: '#fb8500' }}>1er site</strong> conçu par un collectif d&apos;organisateurs.
+        <strong style={{ color: '#fb8500' }}>1er site</strong>
+        {' '}
+        conçu par un collectif d&apos;organisateurs.
       </>
     )
   },
@@ -47,7 +47,9 @@ const benefits = [
     imageAlt: 'Pictogramme carrousel',
     text: (
       <>
-        Une <strong style={{ color: '#fb8500' }}>offre riche et variée</strong> issue d&apos;opérateurs reconnus.
+        Une <strong style={{ color: '#fb8500' }}>offre riche et variée</strong>
+        {' '}
+        issue d&apos;opérateurs reconnus.
       </>
     )
   }
@@ -130,19 +132,19 @@ const inspiCards = [
 
 const processSteps = [
   {
-    gifSrc: '/image/accueil/gif_accueil/pictogrammes_Selection resacolo-min.gif',
+    gifSrc: '/image/accueil/gif_accueil/pictogrammes_Selection resacolo-min.webp',
     gifAlt: 'Animation de sélection de séjour',
     title: '1. Choisir un séjour',
     desc: 'Trouvez la destination, les activités idéales pour votre enfant et consultez la fiche détaillée du séjour sur notre plateforme.'
   },
   {
-    gifSrc: '/image/accueil/gif_accueil/pictogrammes_Inscription-min.gif',
+    gifSrc: '/image/accueil/gif_accueil/pictogrammes_Inscription-min.webp',
     gifAlt: "Animation d'inscription",
     title: "2. S'inscrire",
     desc: 'Choisissez vos options (dates, transport…), saisissez vos informations personnelles puis transmettez votre réservation à l’organisateur du séjour.'
   },
   {
-    gifSrc: '/image/accueil/gif_accueil/chargement-animation-min.gif',
+    gifSrc: '/image/accueil/gif_accueil/chargement-animation-min.webp',
     gifAlt: 'Animation de validation de réservation',
     title: '3. Valider votre réservation',
     desc: 'L’organisateur se met en relation avec vous pour finaliser l’inscription de votre enfant et préparer son départ en séjour.'
@@ -208,8 +210,10 @@ const fadeUp = {
 /* ─── Page ────────────────────────────────────────────────────────────────── */
 
 export default function HomePage() {
-  const [submitted, setSubmitted] = useState(false);
   const [destinationMap, setDestinationMap] = useState<'france' | 'world'>('france');
+  const [activeFranceRegionIds, setActiveFranceRegionIds] = useState<string[] | null>(null);
+  const [activeCountryNames, setActiveCountryNames] = useState<string[] | null>(null);
+  const [hasFranceDestinations, setHasFranceDestinations] = useState(true);
   const [inspiIndex, setInspiIndex] = useState(inspiCards.length);
   const [inspiTransitionEnabled, setInspiTransitionEnabled] = useState(true);
   const [inspiStepPx, setInspiStepPx] = useState(0);
@@ -220,6 +224,41 @@ export default function HomePage() {
   const leftAids = aids.filter((_, index) => index % 2 === 0);
   const rightAids = aids.filter((_, index) => index % 2 === 1);
   const inspiLoopCards = [...inspiCards, ...inspiCards, ...inspiCards];
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    async function loadDestinationAvailability() {
+      try {
+        const response = await fetch('/api/sejours/destinations');
+        if (!response.ok) {
+          throw new Error(`Impossible de charger les destinations (${response.status})`);
+        }
+
+        const data = (await response.json()) as {
+          activeFranceRegionIds?: string[];
+          activeCountryNames?: string[];
+          hasFranceDestinations?: boolean;
+        };
+
+        if (isCancelled) {
+          return;
+        }
+
+        setActiveFranceRegionIds(data.activeFranceRegionIds ?? []);
+        setActiveCountryNames(data.activeCountryNames ?? []);
+        setHasFranceDestinations(data.hasFranceDestinations ?? false);
+      } catch (error) {
+        console.error('Erreur chargement destinations accueil', error);
+      }
+    }
+
+    loadDestinationAvailability();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -313,7 +352,7 @@ export default function HomePage() {
               </p>
               <div className="absolute left-1/2 top-1/2 flex w-full -translate-x-1/2 flex-col items-center pt-8 sm:pt-10 lg:pt-12">
                 <h1
-                  className="w-full max-w-4xl px-2 text-center text-[clamp(0.95rem,2.6vw,23px)] font-semibold text-white"
+                  className="max-w-none whitespace-nowrap px-2 text-center text-[clamp(0.52rem,2.15vw,23px)] font-semibold text-white"
                   style={{
                     textShadow: '0.06em 0.06em 0.1em rgba(23,23,23,0.9)',
                     lineHeight: 1.2,
@@ -328,7 +367,7 @@ export default function HomePage() {
                     Trouver une colo
                     <ArrowRight size={18} />
                   </Link>
-                  <a href="#comment-ca-marche" className="btn btn-secondary btn-md w-full sm:w-auto">
+                  <a href="#notice-heading" className="btn btn-secondary btn-md w-full sm:w-auto">
                     Comment ça marche ?
                   </a>
                 </div>
@@ -381,6 +420,7 @@ export default function HomePage() {
                       width={56}
                       height={56}
                       className="h-14 w-14 object-contain"
+                      priority={i === 0}
                     />
                   </div>
                   <p className="text-slate-700 font-medium">{item.text}</p>
@@ -437,95 +477,96 @@ export default function HomePage() {
             </p>
           </motion.div>
 
-          <div className="mt-10 space-y-4">
-            <div ref={inspiViewportRef} className="min-w-0 overflow-hidden">
-              <div
-                className={`flex ${
-                  inspiTransitionEnabled ? 'transition-transform duration-700 ease-out' : 'transition-none'
-                }`}
-                onTransitionEnd={(event) => {
-                  if (event.target !== event.currentTarget || event.propertyName !== 'transform') {
-                    return;
-                  }
+          <div className="mt-10">
+            <div className="relative">
+              <div ref={inspiViewportRef} className="min-w-0 overflow-hidden">
+                <div
+                  className={`flex ${
+                    inspiTransitionEnabled ? 'transition-transform duration-700 ease-out' : 'transition-none'
+                  }`}
+                  onTransitionEnd={(event) => {
+                    if (event.target !== event.currentTarget || event.propertyName !== 'transform') {
+                      return;
+                    }
 
-                  handleInspiTransitionEnd();
-                }}
-                style={{
-                  transform: `translateX(-${inspiIndex * inspiStepPx}px)`,
-                  gap: `${inspiGapPx}px`
-                }}
-              >
-                {inspiLoopCards.map((card, index) => (
-                  <div
-                    key={`${card.src}-${index}`}
-                    className="group relative shrink-0 overflow-hidden rounded-[14px] bg-slate-100 shadow-md"
-                    style={{ width: inspiCardWidthPx > 0 ? `${inspiCardWidthPx}px` : '100%' }}
-                  >
-                    <div className="relative aspect-[4/5]">
-                      <Image
-                        src={card.src}
-                        alt={card.alt}
-                        fill
-                        className="object-cover"
-                        sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/35 to-black/10 opacity-100 transition-opacity duration-300 sm:opacity-0 sm:group-hover:opacity-100" />
-                      <div className="absolute inset-0 flex flex-col justify-end p-4 opacity-100 transition-opacity duration-300 sm:p-5 sm:opacity-0 sm:group-hover:opacity-100">
-                        <h3
-                          className="text-2xl sm:text-[32px]"
-                          style={{
-                            fontWeight: 700,
-                            color: '#FFFFFF',
-                            textShadow: '0em 0em 0.3em rgba(0,0,0,0.4)',
-                            lineHeight: '1.1em'
-                          }}
-                        >
-                          {card.title}
-                        </h3>
-                        <p
-                          style={{
-                            color: '#FFFFFF',
-                            fontFamily: 'var(--font-sans), Arial, sans-serif',
-                            fontWeight: 400
-                          }}
-                          className="mt-3 text-sm leading-6"
-                        >
-                          {card.description}
-                        </p>
-                        <Link
-                          href={card.href}
-                          className="mt-4 inline-flex w-fit items-center gap-2 rounded-xl bg-accent-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-accent-600"
-                        >
-                          Découvrir
-                          <ArrowRight size={16} />
-                        </Link>
+                    handleInspiTransitionEnd();
+                  }}
+                  style={{
+                    transform: `translateX(-${inspiIndex * inspiStepPx}px)`,
+                    gap: `${inspiGapPx}px`
+                  }}
+                >
+                  {inspiLoopCards.map((card, index) => (
+                    <Link
+                      key={`${card.src}-${index}`}
+                      href={card.href}
+                      title={`Découvrir : ${card.title}`}
+                      className="group relative block shrink-0 cursor-pointer overflow-hidden rounded-[14px] bg-slate-100 shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 focus-visible:ring-offset-2"
+                      style={{ width: inspiCardWidthPx > 0 ? `${inspiCardWidthPx}px` : '100%' }}
+                    >
+                      <div className="relative aspect-[4/5]">
+                        <Image
+                          src={card.src}
+                          alt={card.alt}
+                          fill
+                          className="object-cover"
+                          sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/35 to-black/10 opacity-100 transition-opacity duration-300 sm:opacity-0 sm:group-hover:opacity-100" />
+                        <div className="absolute inset-0 flex flex-col justify-end p-4 opacity-100 transition-opacity duration-300 sm:p-5 sm:opacity-0 sm:group-hover:opacity-100">
+                          <h3
+                            className="text-2xl sm:text-[32px]"
+                            style={{
+                              fontWeight: 700,
+                              color: '#FFFFFF',
+                              textShadow: '0em 0em 0.3em rgba(0,0,0,0.4)',
+                              lineHeight: '1.1em'
+                            }}
+                          >
+                            {card.title}
+                          </h3>
+                          <p
+                            style={{
+                              color: '#FFFFFF',
+                              fontFamily: 'var(--font-sans), Arial, sans-serif',
+                              fontWeight: 400
+                            }}
+                            className="mt-3 text-sm leading-6"
+                          >
+                            {card.description}
+                          </p>
+                          <span className="cta-orange-sweep mt-4 inline-flex w-fit items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-white">
+                            Découvrir
+                            <ArrowRight size={16} />
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  </div>
-                ))}
+                    </Link>
+                  ))}
+                </div>
               </div>
+              {inspiCardsPerView < inspiCards.length && (
+                <>
+                  <button
+                    type="button"
+                    onClick={showPreviousInspiCard}
+                    className="absolute left-0 top-1/2 z-10 flex h-10 w-10 -translate-x-[calc(100%+12px)] -translate-y-1/2 items-center justify-center rounded-full bg-white/92 text-[#505050] shadow-md transition hover:bg-white sm:h-11 sm:w-11"
+                    aria-label="Card précédente"
+                  >
+                    <ChevronLeft size={18} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={showNextInspiCard}
+                    className="absolute right-0 top-1/2 z-10 flex h-10 w-10 translate-x-[calc(100%+12px)] -translate-y-1/2 items-center justify-center rounded-full bg-white/92 text-[#505050] shadow-md transition hover:bg-white sm:h-11 sm:w-11"
+                    aria-label="Card suivante"
+                  >
+                    <ChevronRight size={18} />
+                  </button>
+                </>
+              )}
             </div>
-            {inspiCardsPerView < inspiCards.length && (
-              <div className="flex items-center justify-center gap-3">
-                <button
-                  type="button"
-                  onClick={showPreviousInspiCard}
-                  className="z-10 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/92 text-[#505050] shadow-md transition hover:bg-white sm:h-11 sm:w-11"
-                  aria-label="Card précédente"
-                >
-                  <ChevronLeft size={18} />
-                </button>
-                <button
-                  type="button"
-                  onClick={showNextInspiCard}
-                  className="z-10 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/92 text-[#505050] shadow-md transition hover:bg-white sm:h-11 sm:w-11"
-                  aria-label="Card suivante"
-                >
-                  <ChevronRight size={18} />
-                </button>
-              </div>
-            )}
-            </div>
+          </div>
         </div>
       </section>
 
@@ -533,6 +574,8 @@ export default function HomePage() {
       <section id="comment-ca-marche" className="bg-slate-50 pb-16 pt-8 sm:pb-24 sm:pt-10">
         <div className="section-container text-center">
           <motion.div
+            id="notice-heading"
+            className="scroll-mt-20 sm:scroll-mt-24"
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
@@ -605,9 +648,9 @@ export default function HomePage() {
           >
             <Link
               href="/faq"
-              className="inline-flex items-center gap-2 rounded-xl bg-accent-500 px-6 py-3 font-semibold text-white shadow-md hover:bg-accent-600 transition-colors"
+              className="cta-orange-sweep inline-flex items-center gap-2 rounded-xl px-6 py-3 font-semibold text-white shadow-md"
             >
-              En savoir plus
+              Commencer
               <ChevronRight className="h-4 w-4" />
             </Link>
           </motion.div>
@@ -672,10 +715,14 @@ export default function HomePage() {
             >
               {destinationMap === 'france' ? (
                 <div className="bg-transparent p-0 shadow-none">
-                  <FranceRegionsMap />
+                  <FranceRegionsMap activeRegionIds={activeFranceRegionIds} />
                 </div>
               ) : (
-                <WorldMap onFranceSelect={() => setDestinationMap('france')} />
+                <WorldMap
+                  activeCountryNames={activeCountryNames}
+                  hasActiveFrance={hasFranceDestinations}
+                  onFranceSelect={() => setDestinationMap('france')}
+                />
               )}
             </motion.div>
           </div>
@@ -689,7 +736,7 @@ export default function HomePage() {
             src="/image/accueil/images_accueil/fonds_euro.png"
             alt=""
             fill
-            className="object-contain object-center scale-110"
+            className="object-cover object-center"
             sizes="100vw"
             style={{
               filter: 'grayscale(1) brightness(1.08) sepia(1) hue-rotate(170deg) saturate(450%)'
@@ -783,7 +830,7 @@ export default function HomePage() {
                     href={aid.href}
                     target="_blank"
                     rel="noreferrer"
-                    className="resacolo-card flex h-[118px] w-full cursor-pointer flex-col items-center justify-center gap-1.5 !px-4 !py-3 text-center"
+                    className="resacolo-card flex h-[118px] w-full cursor-pointer flex-col items-center justify-center gap-1.5 !px-4 !py-3 text-center transition-transform duration-200 hover:scale-[1.02]"
                     initial={{ opacity: 0, y: 20 }}
                     whileInView={{ opacity: 1, y: 0 }}
                     viewport={{ once: true }}
@@ -804,96 +851,21 @@ export default function HomePage() {
                         <aid.icon size={19} />
                       </div>
                     )}
-                    <span className="text-sm font-extrabold !text-[#505050]">{aid.label}</span>
+                    <span className="text-sm font-extrabold text-[#505050]">{aid.label}</span>
                   </motion.a>
                 ))}
               </div>
             </div>
           </div>
-        </div>
 
-      </section>
-
-      {/* ── Contact ── */}
-      <section id="contact" className="section-padding bg-slate-50">
-        <div className="section-container max-w-xl mx-auto text-center">
-          <motion.h2
-            className="font-display text-3xl sm:text-4xl font-bold text-slate-900"
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-          >
-            Contact
-          </motion.h2>
-
-          {submitted ? (
-            <motion.div
-              className="mt-10 resacolo-card flex flex-col items-center gap-4 py-12"
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
+          <div id="contact" className="mt-10 flex justify-center sm:mt-14">
+            <Link
+              href="/contact"
+              className="cta-orange-sweep inline-flex items-center justify-center rounded-full px-10 py-4 text-base font-bold uppercase tracking-widest text-white shadow-[0_16px_30px_-18px_rgba(250,133,0,0.7)] transition"
             >
-              <div className="icon-box">
-                <CheckCircle size={28} />
-              </div>
-              <p className="text-lg font-semibold text-slate-900">Merci pour votre message !</p>
-              <p className="text-sm text-slate-500">Nous vous répondrons dans les plus brefs délais.</p>
-            </motion.div>
-          ) : (
-            <motion.form
-              className="mt-10 space-y-5 text-left"
-              onSubmit={(e) => {
-                e.preventDefault();
-                setSubmitted(true);
-              }}
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-            >
-              <div>
-                <label htmlFor="name" className="block text-sm font-medium text-slate-700 mb-1.5">
-                  Nom
-                </label>
-                <input
-                  id="name"
-                  type="text"
-                  required
-                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500 transition"
-                  placeholder="Votre nom"
-                />
-              </div>
-              <div>
-                <label htmlFor="email" className="block text-sm font-medium text-slate-700 mb-1.5">
-                  Email
-                </label>
-                <input
-                  id="email"
-                  type="email"
-                  required
-                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500 transition"
-                  placeholder="votre@email.com"
-                />
-              </div>
-              <div>
-                <label htmlFor="message" className="block text-sm font-medium text-slate-700 mb-1.5">
-                  Message
-                </label>
-                <textarea
-                  id="message"
-                  rows={5}
-                  required
-                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500 transition resize-none"
-                  placeholder="Votre message…"
-                />
-              </div>
-              <button
-                type="submit"
-                className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-accent-500 px-7 py-3 text-base font-semibold text-white shadow-md hover:bg-accent-600 transition-colors"
-              >
-                Envoyer
-                <Send size={16} />
-              </button>
-            </motion.form>
-          )}
+              Nous contacter
+            </Link>
+          </div>
         </div>
       </section>
     </div>

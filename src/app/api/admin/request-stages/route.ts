@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import { requireApiAdmin } from '@/lib/auth/api';
 import { RequestPipelineService } from '@/lib/domain/services/requestPipelineService';
 
 export const runtime = 'nodejs';
@@ -14,6 +15,9 @@ const stageSchema = z.object({
 });
 
 export async function GET(req: Request) {
+  const unauthorized = await requireApiAdmin(req);
+  if (unauthorized) return unauthorized;
+
   const { searchParams } = new URL(req.url);
   const scope = (searchParams.get('scope') as 'GLOBAL' | 'PARTNER' | 'ORGANIZER') ?? 'GLOBAL';
   const tenantId = searchParams.get('tenantId');
@@ -23,6 +27,9 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const unauthorized = await requireApiAdmin(req);
+  if (unauthorized) return unauthorized;
+
   const body = await req.json();
   const input = stageSchema.parse(body);
   const service = new RequestPipelineService();

@@ -1,20 +1,11 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { Suspense } from 'react';
-import { ArrowLeft } from 'lucide-react';
-import { requireRole } from '@/lib/auth/require';
+import { getOrganizerNavLinks } from '@/lib/organizer-access';
+import { requireOrganizerPageAccess } from '@/lib/organizer-backoffice-access.server';
 import {
-  OrganizerWorkspaceNav,
-  OrganizerWorkspaceSelector
+  OrganizerWorkspaceNav
 } from '@/components/organisme/OrganizerWorkspaceControls';
-import { resolveOrganizerSelection } from '@/lib/organizers.server';
-
-const organizerNavLinks = [
-  { href: '/organisme', label: 'Organisme' },
-  { href: '/organisme/sejours', label: 'Séjours' },
-  { href: '/organisme/hebergements', label: 'Hébergements' },
-  { href: '/organisme/reservations', label: 'Réservations' }
-];
 
 function withOrganizerQuery(path: string, organizerId?: string | null) {
   if (!organizerId) return path;
@@ -23,23 +14,14 @@ function withOrganizerQuery(path: string, organizerId?: string | null) {
 }
 
 export default async function OrganizerLayout({ children }: { children: React.ReactNode }) {
-  const session = requireRole('ORGANISATEUR');
-  const { organizers, selectedOrganizerId } = await resolveOrganizerSelection(
-    undefined,
-    session.tenantId ?? null
-  );
+  const { organizers, selectedOrganizerId, accessRole, accessByOrganizerId } =
+    await requireOrganizerPageAccess();
+  const organizerNavLinks = getOrganizerNavLinks(accessRole);
 
   return (
     <div className="min-h-screen bg-slate-50">
       <div className="border-b border-slate-200 bg-white px-4 py-3 lg:hidden">
-        <div className="flex items-center justify-between gap-3">
-          <Link
-            href="/"
-            className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-800"
-          >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            Retour
-          </Link>
+        <div className="flex items-center justify-center gap-3">
           <Link href="/organisme" className="text-base font-semibold text-slate-900">
             Espace Organisateur
           </Link>
@@ -49,36 +31,26 @@ export default async function OrganizerLayout({ children }: { children: React.Re
             <Link
               key={item.href}
               href={withOrganizerQuery(item.href, selectedOrganizerId)}
-              className="inline-flex shrink-0 rounded-full border border-slate-200 px-3 py-1.5 transition hover:border-slate-300 hover:text-slate-900"
+              className="inline-flex shrink-0 rounded-full border border-slate-200 px-3 py-1.5 font-semibold transition hover:border-slate-300 hover:text-slate-900"
             >
               {item.label}
             </Link>
           ))}
         </nav>
       </div>
-      <div className="flex min-h-screen">
-        <aside className="hidden w-64 flex-col border-r border-slate-200 bg-white lg:flex">
+      <div className="flex min-h-screen lg:h-screen lg:overflow-hidden">
+        <aside className="hidden h-screen w-64 flex-col border-r border-slate-200 bg-white shadow-sm lg:flex">
           <div className="px-6 py-6">
-            <div className="mb-3">
-              <Link
-                href="/"
-                className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-800"
-              >
-                <ArrowLeft className="h-3.5 w-3.5" />
-                Retour
-              </Link>
-            </div>
-            <div>
-              <Link href="/organisme" className="text-lg font-semibold text-slate-900">
-                Espace Organisateur
-              </Link>
-              <p className="mt-1 text-xs text-slate-500">Gestion des séjours</p>
-            </div>
+            <Link href="/organisme" className="text-lg font-semibold text-slate-900">
+              Espace Organisateur
+            </Link>
+            <p className="mt-1 text-xs text-slate-500">Gestion des séjours</p>
           </div>
           <Suspense fallback={<div className="px-3 text-sm text-slate-500">Chargement...</div>}>
             <OrganizerWorkspaceNav
               organizers={organizers}
               initialSelectedOrganizerId={selectedOrganizerId}
+              accessRolesByOrganizerId={accessByOrganizerId}
             />
           </Suspense>
           <div className="mt-auto px-6 pb-6 pt-4">
@@ -98,15 +70,7 @@ export default async function OrganizerLayout({ children }: { children: React.Re
             </div>
           </div>
         </aside>
-        <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-10">
-          <Suspense
-            fallback={<div className="mb-6 rounded-2xl border border-slate-200 bg-white px-4 py-4" />}
-          >
-            <OrganizerWorkspaceSelector
-              organizers={organizers}
-              initialSelectedOrganizerId={selectedOrganizerId}
-            />
-          </Suspense>
+        <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:overflow-y-auto lg:px-8 lg:py-10">
           {children}
         </main>
       </div>

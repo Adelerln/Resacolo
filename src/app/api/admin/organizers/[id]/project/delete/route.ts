@@ -1,10 +1,16 @@
 import { NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
+import { requireApiAdmin } from '@/lib/auth/api';
+import { syncOrganizerProfileCompletenessPercent } from '@/lib/organizer-profile-completeness';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 
 export const runtime = 'nodejs';
 
-export async function POST(req: Request, context: { params: { id: string } }) {
-  const { id } = context.params;
+export async function POST(req: Request, context: { params: Promise<{ id: string }> }) {
+  const unauthorized = await requireApiAdmin(req);
+  if (unauthorized) return unauthorized;
+
+  const { id } = await context.params;
   const supabase = getServerSupabaseClient();
 
   // Retrouver l'organisateur par slug puis par id
@@ -27,7 +33,7 @@ export async function POST(req: Request, context: { params: { id: string } }) {
 
   if (!organizer) {
     return NextResponse.redirect(
-      new URL(`/admin/organisateurs/${organizerSlug}?error=Organisateur%20introuvable`, req.url),
+      new URL(`/admin/organizers/${organizerSlug}?error=Organisateur%20introuvable`, req.url),
       303
     );
   }
@@ -46,16 +52,19 @@ export async function POST(req: Request, context: { params: { id: string } }) {
   if (error) {
     return NextResponse.redirect(
       new URL(
-        `/admin/organisateurs/${organizerSlug}?error=${encodeURIComponent(error.message)}`,
+        `/admin/organizers/${organizerSlug}?error=${encodeURIComponent(error.message)}`,
         req.url
       ),
       303
     );
   }
 
+  await syncOrganizerProfileCompletenessPercent(supabase, organizer.id);
+  revalidatePath('/organisateurs');
+  revalidatePath(`/organisateurs/${organizer.slug ?? organizer.id}`);
+
   return NextResponse.redirect(
-    new URL(`/admin/organisateurs/${organizerSlug}?success=1`, req.url),
+    new URL(`/admin/organizers/${organizerSlug}?success=1`, req.url),
     303
   );
 }
-

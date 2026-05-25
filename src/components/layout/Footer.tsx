@@ -1,81 +1,145 @@
+'use client';
+
+import type { ReactNode } from 'react';
+import { useEffect, useState } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
-import { Award, CheckCircle2, HeartHandshake, type LucideIcon } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+import { BarChart3, CircleHelp, FileLock2, Mail, Scale, Shield } from 'lucide-react';
 
 type FooterHighlight = {
   title: string;
-  description: string;
-  icon: LucideIcon;
+  imageSrc: string;
+  description: ReactNode;
 };
 
-const footerHighlights: FooterHighlight[] = [
-  {
-    title: 'Authenticité',
-    description: '100 % des séjours conçus et organisés par des opérateurs producteurs',
-    icon: CheckCircle2
-  },
-  {
-    title: 'Savoir-faire',
-    description: 'De 5 à 75 ans d’expérience dans le secteur des accueils collectifs de mineurs',
-    icon: Award
-  },
-  {
-    title: 'Engagement',
-    description: 'La sécurité et l’épanouissement des enfants comme premières préoccupations',
-    icon: HeartHandshake
+type OrganizerExperienceRange = {
+  minYears: number;
+  maxYears: number;
+};
+
+const helpLinks: { href: string; label: string; Icon: LucideIcon }[] = [
+  { href: '/bien-choisir-sa-colo', label: 'Bien choisir sa colo', Icon: BarChart3 },
+  { href: '/faq', label: 'FAQ', Icon: CircleHelp },
+  { href: '/contact', label: 'Contact', Icon: Mail }
+];
+
+const legalLinks: { href: string; label: string; Icon: LucideIcon }[] = [
+  { href: '/confidentialite', label: 'Politique de Confidentialité', Icon: Shield },
+  { href: '/cgv', label: 'Conditions Générales de Vente des organisateurs', Icon: FileLock2 },
+  { href: '/cgu', label: 'Conditions Générales d’utilisation', Icon: FileLock2 },
+  { href: '/mentions-legales', label: 'Mentions légales', Icon: Scale }
+];
+
+const footerLinkIconClass =
+  'mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center text-white/90';
+
+function buildExperienceLabel(range: OrganizerExperienceRange | null) {
+  if (!range) {
+    return 'De 5 à 75 ans';
   }
-];
 
-const helpLinks = [
-  { href: '/bien-choisir-sa-colo', label: 'Bien choisir sa colo' },
-  { href: '/faq', label: 'FAQ' },
-  { href: '/contact', label: 'Contact' }
-];
+  if (range.minYears === range.maxYears) {
+    return `${range.minYears} ans`;
+  }
 
-const legalLinks = [
-  { href: '/confidentialite', label: 'Politique de Confidentialité' },
-  { href: '/cgv', label: 'Conditions Générales de Vente des organisateurs' },
-  { href: '/cgu', label: 'Conditions Générales d’utilisation' },
-  { href: '/mentions-legales', label: 'Mentions légales' }
-];
+  return `De ${range.minYears} à ${range.maxYears} ans`;
+}
 
-export function Footer() {
+export function Footer({ hideHelpAndLegal = false }: { hideHelpAndLegal?: boolean }) {
+  const [experienceRange, setExperienceRange] = useState<OrganizerExperienceRange | null>(null);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    async function loadExperienceRange() {
+      try {
+        const response = await fetch('/api/organizers/experience-range');
+        if (!response.ok) {
+          throw new Error(`Impossible de charger l'ancienneté organisateurs (${response.status})`);
+        }
+
+        const data = (await response.json()) as OrganizerExperienceRange | null;
+        if (!isCancelled) {
+          setExperienceRange(data);
+        }
+      } catch (error) {
+        console.error('Erreur chargement ancienneté organisateurs', error);
+      }
+    }
+
+    loadExperienceRange();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
+
+  const footerHighlights: FooterHighlight[] = [
+    {
+      title: 'Authenticité',
+      description: (
+        <>
+          <strong>100 % des séjours</strong> conçus et organisés par des opérateurs producteurs
+        </>
+      ),
+      imageSrc: '/image/footer/qualite.png'
+    },
+    {
+      title: 'Savoir-faire',
+      description: (
+        <>
+          <strong>{buildExperienceLabel(experienceRange)}</strong> d’expérience dans le secteur des accueils collectifs de mineurs
+        </>
+      ),
+      imageSrc: '/image/footer/evaluation.png'
+    },
+    {
+      title: 'Engagement',
+      description: (
+        <>
+          <strong>La sécurité et l’épanouissement</strong> des enfants comme premières préoccupations
+        </>
+      ),
+      imageSrc: '/image/footer/bouclier.png'
+    }
+  ];
+
   return (
-    <footer className="relative overflow-hidden bg-[#7dbcf0] text-white">
-      <div
-        className="pointer-events-none absolute right-4 top-6 h-8 w-8 rounded-[60%_40%_65%_35%/40%_55%_45%_60%] bg-[#FA8500] sm:hidden"
-        aria-hidden
-      />
-      <div
-        className="pointer-events-none absolute right-[-3.5rem] top-[4.75rem] hidden h-[16rem] w-[20rem] xl:block"
-        aria-hidden
-      >
-        <span className="absolute right-44 top-0 h-32 w-20 rotate-[40deg] rounded-[72%_28%_65%_35%/64%_60%_40%_36%] bg-[#FA8500]">
-          <span className="absolute left-4 top-4 h-2.5 w-8 rounded-full bg-white/90" />
-        </span>
-        <span className="absolute right-16 top-9 h-40 w-24 rotate-[33deg] rounded-[68%_32%_60%_40%/64%_58%_42%_36%] bg-[#FA8500]">
-          <span className="absolute left-4 top-5 h-2.5 w-10 rounded-full bg-white/90" />
-        </span>
-        <span className="absolute right-0 top-28 h-28 w-40 rotate-[16deg] rounded-[62%_38%_58%_42%/58%_45%_55%_42%] bg-[#FA8500]">
-          <span className="absolute right-7 top-4 h-2.5 w-8 rotate-[18deg] rounded-full bg-white/90" />
-        </span>
+    <footer className="relative mt-0 overflow-visible bg-[color:var(--color-primary)] text-white">
+      <div className="pointer-events-none absolute right-0 top-0 z-10 translate-y-[-42%]" aria-hidden>
+        <Image
+          src="/image/footer/gouttes.png"
+          alt=""
+          width={320}
+          height={240}
+          sizes="(max-width: 640px) 7rem, (max-width: 1024px) 9rem, (max-width: 1280px) 13rem, 16rem"
+          className="h-auto w-28 object-contain sm:w-36 lg:w-52 xl:w-64"
+          style={{ height: 'auto' }}
+          loading="eager"
+        />
       </div>
 
-      <div className="section-container relative py-9 sm:py-10 lg:py-12">
+      <div className="section-container relative py-7 sm:py-8 lg:py-9">
         <h2 className="mx-auto max-w-4xl text-center font-display text-2xl font-extrabold leading-tight sm:text-3xl lg:text-4xl">
           Ce que RESACOLO vous offre
         </h2>
 
-        <div className="mt-6 grid gap-5 sm:mt-7 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3 lg:gap-8">
+        <div className="mt-5 grid gap-4 sm:mt-6 sm:grid-cols-2 sm:gap-5 lg:grid-cols-3 lg:gap-6">
           {footerHighlights.map((item) => {
-            const Icon = item.icon;
-
             return (
               <article key={item.title} className="flex flex-col items-center text-center">
-                <div className="mb-3 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-white text-[#FA8500] shadow-sm">
-                  <Icon className="h-6 w-6" aria-hidden />
+                <div className="mb-2 inline-flex h-14 w-14 items-center justify-center rounded-xl bg-white shadow-sm">
+                  <Image
+                    src={item.imageSrc}
+                    alt=""
+                    width={40}
+                    height={40}
+                    className="h-8 w-8 object-contain"
+                  />
                 </div>
                 <h3 className="text-xl font-bold leading-tight sm:text-[1.25rem]">{item.title}</h3>
-                <p className="mx-auto mt-2 max-w-[17rem] text-[0.92rem] leading-6 text-white/95 sm:max-w-xs sm:text-[0.95rem]">
+                <p className="mx-auto mt-1.5 max-w-[17rem] text-[0.92rem] leading-6 text-white/95 sm:max-w-xs sm:text-[0.95rem]">
                   {item.description}
                 </p>
               </article>
@@ -84,14 +148,22 @@ export function Footer() {
         </div>
       </div>
 
-      <div className="section-container py-6 sm:py-8">
-        <div className="border-t border-white/35 pt-5 sm:pt-6">
+      <div className="section-container py-5 sm:py-6">
+        <div className="border-t border-white/35 pt-4 sm:pt-5">
           <div className="grid gap-8 md:grid-cols-[1.1fr_1fr] lg:grid-cols-[1.2fr_0.9fr]">
-            <div className="max-w-md">
-              <Link href="/" className="inline-flex items-start text-white">
-                <span className="font-display text-[34px] font-bold uppercase leading-none tracking-tight sm:text-[42px] lg:text-[52px]">
-                  RESACOLO
-                </span>
+            <div className="max-w-md overflow-visible text-left">
+              <Link
+                href="/"
+                className="footer-logo-resacolo-link block w-fit max-w-full text-white"
+              >
+                <Image
+                  src="/image/footer/logo_footer/logo-resacolo-RVB-blanc_logo-final copie 2.png"
+                  alt="Resacolo"
+                  width={420}
+                  height={110}
+                  className="h-auto w-56 object-contain object-left sm:w-64 lg:w-80"
+                  style={{ height: 'auto' }}
+                />
               </Link>
               <div className="mt-4 space-y-3 text-sm leading-6 text-white sm:text-[15px]">
                 <p>
@@ -106,43 +178,61 @@ export function Footer() {
               </div>
             </div>
 
-            <div className="space-y-7">
-              <div>
-                <h2 className="text-[15px] font-bold uppercase tracking-[0.03em] text-white">
-                  Aide
-                </h2>
-                <ul className="mt-4 space-y-3 text-[15px] font-semibold leading-5 text-white">
-                  {helpLinks.map((link) => (
-                    <li key={link.href}>
-                      <Link href={link.href} className="text-white transition hover:text-white">
-                        {link.label}
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+            {!hideHelpAndLegal ? (
+              <div className="space-y-5">
+                <div>
+                  <h2 className="text-[15px] font-bold uppercase tracking-[0.03em] text-white">
+                    Aide
+                  </h2>
+                  <ul className="mt-3 space-y-2 text-[15px] font-semibold leading-snug text-white">
+                    {helpLinks.map(({ href, label, Icon }) => (
+                      <li key={href}>
+                        <Link
+                          href={href}
+                          className="flex w-full cursor-pointer items-start gap-2 text-white hover:text-white"
+                        >
+                          <span className={footerLinkIconClass} aria-hidden>
+                            <Icon className="h-4 w-4" strokeWidth={2} />
+                          </span>
+                          <span className="min-w-0 flex-1">{label}</span>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
 
-              <div>
-                <h2 className="text-[15px] font-bold uppercase tracking-[0.03em] text-white">
-                  Informations légales
-                </h2>
-                <ul className="mt-4 space-y-3 text-[15px] font-semibold leading-5 text-white">
-                  {legalLinks.map((link) => (
-                    <li key={link.href}>
-                      <Link href={link.href} className="text-white transition hover:text-white">
-                        {link.label}
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
+                <div>
+                  <h2 className="text-[15px] font-bold uppercase tracking-[0.03em] text-white">
+                    Informations légales
+                  </h2>
+                  <ul className="mt-3 space-y-2 text-[15px] font-semibold leading-snug text-white">
+                    {legalLinks.map(({ href, label, Icon }) => (
+                      <li key={href}>
+                        <Link
+                          href={href}
+                          className="flex w-full cursor-pointer items-start gap-2 text-white hover:text-white"
+                        >
+                          <span className={footerLinkIconClass} aria-hidden>
+                            <Icon className="h-4 w-4" strokeWidth={2} />
+                          </span>
+                          <span className="min-w-0 flex-1">{label}</span>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               </div>
-            </div>
+            ) : null}
           </div>
         </div>
       </div>
 
-      <div className="border-t border-white/20 px-4 py-3 text-center text-xs font-bold text-white sm:text-sm">
-        © 2026 – RESACOLO | Colonie de vacances pour enfants, ados et séjour jeunes adultes
+      <div className="border-t border-white/20">
+        <div className="section-container py-3">
+          <div className="text-center text-xs font-bold text-white sm:text-sm">
+            © 2026 – RESACOLO | Colonies de vacances pour enfants, ados et séjours jeunes adultes
+          </div>
+        </div>
       </div>
     </footer>
   );

@@ -1,29 +1,35 @@
 import { revalidatePath } from 'next/cache';
-import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import ErrorToast from '@/components/common/ErrorToast';
+import NewStayChoiceModalTrigger from '@/components/organisme/NewStayChoiceModalTrigger';
 import SavedToast from '@/components/common/SavedToast';
+import OrganizerPageHeader from '@/components/organisme/OrganizerPageHeader';
 import OrganizerStaysTable from '@/components/organisme/OrganizerStaysTable';
-import { requireRole } from '@/lib/auth/require';
-import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers.server';
+import { requireOrganizerPageAccess } from '@/lib/organizer-backoffice-access.server';
+import { withOrganizerQuery } from '@/lib/organizers.server';
 import { getReservedSessionCounts } from '@/lib/session-reservations';
+import { isPublishedStayStatus, stayDraftShouldAppearInImportList } from '@/lib/stay-draft-published';
+import { tryCanonicalizeStaySourceUrl } from '@/lib/stay-source-url-canonical';
+import { removeStayMediaStorageFiles } from '@/lib/stay-media-storage';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 
 type PageProps = {
-  searchParams?: {
+  searchParams?: Promise<{
     organizerId?: string | string[];
     saved?: string | string[];
+    deleted?: string | string[];
+    visibility?: string | string[];
+    draftDeleted?: string | string[];
     error?: string | string[];
     openStay?: string | string[];
-    prefill?: string | string[];
-    draftId?: string | string[];
-    ai?: string | string[];
-    aiDraftId?: string | string[];
-  };
+    editSession?: string | string[];
+  }>;
 };
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+
+type StayAvailability = 'AVAILABLE' | 'PARTIALLY_AVAILABLE' | 'FULL';
 
 function formatRedirectValue(value?: string | string[]) {
   return Array.isArray(value) ? value[0] : value;
@@ -35,29 +41,77 @@ function formatRedirectValues(value?: string | string[]) {
 }
 
 export default async function OrganizerStaysPage({ searchParams }: PageProps) {
-  const session = requireRole('ORGANISATEUR');
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const { selectedOrganizerId: organizerId } = await requireOrganizerPageAccess({
+    requestedOrganizerId: resolvedSearchParams?.organizerId,
+    requiredSection: 'stays'
+  });
   const supabase = getServerSupabaseClient();
-  const { selectedOrganizer, selectedOrganizerId } = await resolveOrganizerSelection(
-    searchParams?.organizerId,
-    session.tenantId ?? null
-  );
-  const organizerId = selectedOrganizerId;
-  const savedParam = formatRedirectValue(searchParams?.saved);
-  const errorParam = formatRedirectValue(searchParams?.error);
-  const openStayParams = formatRedirectValues(searchParams?.openStay);
-  const prefillParam = formatRedirectValue(searchParams?.prefill);
-  const draftIdParam = formatRedirectValue(searchParams?.draftId);
-  const aiParam = formatRedirectValue(searchParams?.ai);
-  const aiDraftIdParam = formatRedirectValue(searchParams?.aiDraftId);
+  const savedParam = formatRedirectValue(resolvedSearchParams?.saved);
+  const deletedParam = formatRedirectValue(resolvedSearchParams?.deleted);
+  const visibilityParam = formatRedirectValue(resolvedSearchParams?.visibility);
+  const draftDeletedParam = formatRedirectValue(resolvedSearchParams?.draftDeleted);
+  const errorParam = formatRedirectValue(resolvedSearchParams?.error);
+  const openStayParams = formatRedirectValues(resolvedSearchParams?.openStay);
+  const editSessionParam = formatRedirectValue(resolvedSearchParams?.editSession);
 
   const { data: stays, error: staysError } = organizerId
     ? await supabase
         .from('stays')
-        .select('id,title,status,season_id,created_at')
+        .select('id,title,status,season_id,created_at,location_text')
         .eq('organizer_id', organizerId)
         .order('created_at', { ascending: false })
     : { data: [], error: null };
+  const { data: organizerStayDrafts } = organizerId
+    ? await supabase
+        .from('stay_drafts')
+        .select('id,title,status,updated_at,raw_payload,source_url,validated_at')
+        .eq('organizer_id', organizerId)
+        .order('updated_at', { ascending: false })
+        .limit(100)
+    : { data: [] };
   const safeStays = stays ?? [];
+
+  const publishedStaySourceUrls = new Set<string>();
+  if (organizerId) {
+    const { data: stayUrlRows, error: stayUrlError } = await supabase
+      .from('stays')
+      .select('source_url,status')
+      .eq('organizer_id', organizerId);
+    if (!stayUrlError) {
+      for (const row of stayUrlRows ?? []) {
+        const u = row.source_url?.trim();
+        if (u && isPublishedStayStatus(row.status)) {
+          publishedStaySourceUrls.add(u);
+          const canonical = tryCanonicalizeStaySourceUrl(u);
+          if (canonical) {
+            publishedStaySourceUrls.add(canonical);
+          }
+        }
+      }
+    } else if (!/source_url|column|42703|does not exist/i.test(stayUrlError.message)) {
+      console.warn('[organisme/stays] Lecture source_url pour filtre brouillons:', stayUrlError.message);
+    }
+  }
+  const importDraftRows =
+    (organizerStayDrafts ?? [])
+      .filter((draft) =>
+        stayDraftShouldAppearInImportList(
+          {
+            raw_payload: draft.raw_payload,
+            source_url: draft.source_url,
+            status: draft.status,
+            validated_at: draft.validated_at
+          },
+          publishedStaySourceUrls
+        )
+      )
+      .map((draft) => ({
+        id: draft.id,
+        title: draft.title?.trim() || 'Sans titre',
+        status: draft.status,
+        updatedAt: draft.updated_at
+      }));
   const stayIds = safeStays.map((stay) => stay.id);
 
   const { data: seasons } = await supabase
@@ -76,13 +130,44 @@ export default async function OrganizerStaysPage({ searchParams }: PageProps) {
     supabase,
     (sessions ?? []).map((sessionItem) => sessionItem.id)
   );
+  const allSessionsByStayId = new Map<string, NonNullable<typeof sessions>[number][]>();
   const sessionsByStayId = new Map<string, NonNullable<typeof sessions>[number][]>();
 
   for (const sessionItem of sessions ?? []) {
+    const allGroup = allSessionsByStayId.get(sessionItem.stay_id) ?? [];
+    allGroup.push(sessionItem);
+    allSessionsByStayId.set(sessionItem.stay_id, allGroup);
+
     if (sessionItem.status === 'COMPLETED' || sessionItem.status === 'ARCHIVED') continue;
     const group = sessionsByStayId.get(sessionItem.stay_id) ?? [];
     group.push(sessionItem);
     sessionsByStayId.set(sessionItem.stay_id, group);
+  }
+
+  function getStayAvailability(stayId: string): StayAvailability {
+    const staySessions = allSessionsByStayId.get(stayId) ?? [];
+    if (staySessions.length === 0) return 'FULL';
+
+    let openCount = 0;
+    let closedCount = 0;
+
+    for (const sessionItem of staySessions) {
+      const reserved = reservedSessionCounts.get(sessionItem.id) ?? 0;
+      const isClosed =
+        sessionItem.status === 'COMPLETED' ||
+        sessionItem.status === 'ARCHIVED' ||
+        reserved >= sessionItem.capacity_total;
+
+      if (isClosed) {
+        closedCount += 1;
+      } else {
+        openCount += 1;
+      }
+    }
+
+    if (openCount === 0) return 'FULL';
+    if (closedCount === 0) return 'AVAILABLE';
+    return 'PARTIALLY_AVAILABLE';
   }
 
   async function updateSessionRemainingPlaces(formData: FormData) {
@@ -91,6 +176,7 @@ export default async function OrganizerStaysPage({ searchParams }: PageProps) {
     const sessionId = String(formData.get('session_id') ?? '').trim();
     const stayId = String(formData.get('stay_id') ?? '').trim();
     const remainingPlaces = Number(formData.get('remaining_places') ?? NaN);
+    const nextEditSessionId = String(formData.get('next_edit_session_id') ?? '').trim();
 
     if (!sessionId || !stayId || Number.isNaN(remainingPlaces) || remainingPlaces < 0) {
       redirect(
@@ -163,10 +249,280 @@ export default async function OrganizerStaysPage({ searchParams }: PageProps) {
     revalidatePath('/sejours');
     redirect(
       withOrganizerQuery(
-        `/organisme/sejours?saved=1&openStay=${encodeURIComponent(stayId)}`,
+        `/organisme/sejours?saved=1&openStay=${encodeURIComponent(stayId)}${nextEditSessionId ? `&editSession=${encodeURIComponent(nextEditSessionId)}` : ''}`,
         organizerId
       )
     );
+  }
+
+  async function deleteStay(formData: FormData) {
+    'use server';
+    const supabase = getServerSupabaseClient();
+    const stayId = String(formData.get('stay_id') ?? '').trim();
+
+    if (!stayId || !organizerId) {
+      redirect(withOrganizerQuery('/organisme/sejours?error=Suppression%20impossible.', organizerId));
+    }
+
+    const { data: stay } = await supabase
+      .from('stays')
+      .select('id,title')
+      .eq('id', stayId)
+      .eq('organizer_id', organizerId)
+      .maybeSingle();
+
+    if (!stay) {
+      redirect(withOrganizerQuery('/organisme/sejours?error=Séjour%20introuvable.', organizerId));
+    }
+
+    const { data: sessions, error: sessionsError } = await supabase
+      .from('sessions')
+      .select('id')
+      .eq('stay_id', stayId);
+
+    if (sessionsError) {
+      redirect(
+        withOrganizerQuery(
+          `/organisme/sejours?error=${encodeURIComponent(sessionsError.message)}`,
+          organizerId
+        )
+      );
+    }
+
+    const { data: stayMediaRows, error: stayMediaRowsError } = await supabase
+      .from('stay_media')
+      .select('url')
+      .eq('stay_id', stayId);
+
+    if (stayMediaRowsError) {
+      redirect(
+        withOrganizerQuery(
+          `/organisme/sejours?error=${encodeURIComponent(stayMediaRowsError.message)}`,
+          organizerId
+        )
+      );
+    }
+
+    const sessionIds = (sessions ?? []).map((sessionItem) => sessionItem.id);
+    const stayMediaUrls = (stayMediaRows ?? []).map((row) => row.url).filter(Boolean);
+    const [orderItemsResult, ledgerResult] = await Promise.all([
+      sessionIds.length > 0
+        ? supabase.from('order_items').select('id', { count: 'exact', head: true }).in('session_id', sessionIds)
+        : Promise.resolve({ count: 0, error: null }),
+      supabase.from('resacolo_fee_ledger').select('id', { count: 'exact', head: true }).eq('stay_id', stayId)
+    ]);
+
+    if (orderItemsResult.error) {
+      redirect(
+        withOrganizerQuery(
+          `/organisme/sejours?error=${encodeURIComponent(orderItemsResult.error.message)}`,
+          organizerId
+        )
+      );
+    }
+
+    if (ledgerResult.error) {
+      redirect(
+        withOrganizerQuery(
+          `/organisme/sejours?error=${encodeURIComponent(ledgerResult.error.message)}`,
+          organizerId
+        )
+      );
+    }
+
+    if ((orderItemsResult.count ?? 0) > 0 || (ledgerResult.count ?? 0) > 0) {
+      redirect(
+        withOrganizerQuery(
+          `/organisme/sejours?error=${encodeURIComponent(
+            'Ce séjour ne peut pas être supprimé car il est déjà lié à des réservations ou à des écritures de facturation.'
+          )}`,
+          organizerId
+        )
+      );
+    }
+
+    if (sessionIds.length > 0) {
+      const { error: deleteSessionHoldsError } = await supabase
+        .from('session_holds')
+        .delete()
+        .in('session_id', sessionIds);
+
+      if (deleteSessionHoldsError) {
+        redirect(
+          withOrganizerQuery(
+            `/organisme/sejours?error=${encodeURIComponent(deleteSessionHoldsError.message)}`,
+            organizerId
+          )
+        );
+      }
+
+      const { error: deleteSessionPricesError } = await supabase
+        .from('session_prices')
+        .delete()
+        .in('session_id', sessionIds);
+
+      if (deleteSessionPricesError) {
+        redirect(
+          withOrganizerQuery(
+            `/organisme/sejours?error=${encodeURIComponent(deleteSessionPricesError.message)}`,
+            organizerId
+          )
+        );
+      }
+    }
+
+    const cleanupSteps = [
+      () => supabase.from('favorites').delete().eq('stay_id', stayId),
+      () => supabase.from('collectivity_stay_exclusions').delete().eq('stay_id', stayId),
+      () => supabase.from('stay_media').delete().eq('stay_id', stayId),
+      () => supabase.from('stay_accommodations').delete().eq('stay_id', stayId),
+      () => supabase.from('stay_extra_options').delete().eq('stay_id', stayId),
+      () => supabase.from('insurance_options').delete().eq('stay_id', stayId),
+      () => supabase.from('transport_options').delete().eq('stay_id', stayId),
+      () => supabase.from('sessions').delete().eq('stay_id', stayId),
+      () => supabase.from('stays').delete().eq('id', stayId).eq('organizer_id', organizerId)
+    ];
+
+    for (const cleanupStep of cleanupSteps) {
+      const { error } = await cleanupStep();
+      if (error) {
+        redirect(
+          withOrganizerQuery(
+            `/organisme/sejours?error=${encodeURIComponent(error.message)}`,
+            organizerId
+          )
+        );
+      }
+    }
+
+    if (stayMediaUrls.length > 0) {
+      try {
+        await removeStayMediaStorageFiles(supabase, stayMediaUrls);
+      } catch (error) {
+        console.warn('[organisme/sejours] stay media bucket cleanup failed', {
+          stayId,
+          error: error instanceof Error ? error.message : 'unknown-error'
+        });
+      }
+    }
+
+    revalidatePath('/organisme/sejours');
+    revalidatePath('/organisme/stays');
+    revalidatePath(`/organisme/sejours/${stayId}`);
+    revalidatePath(`/organisme/stays/${stayId}`);
+    revalidatePath('/sejours');
+    redirect(withOrganizerQuery('/organisme/sejours?deleted=1', organizerId));
+  }
+
+  async function updateStayStatus(formData: FormData) {
+    'use server';
+    const supabase = getServerSupabaseClient();
+    const stayId = String(formData.get('stay_id') ?? '').trim();
+    const requestedStatus = String(formData.get('status') ?? '').trim().toUpperCase();
+
+    if (!stayId || !organizerId) {
+      redirect(withOrganizerQuery('/organisme/sejours?error=Action%20impossible.', organizerId));
+    }
+
+    if (requestedStatus !== 'PUBLISHED' && requestedStatus !== 'HIDDEN') {
+      redirect(
+        withOrganizerQuery('/organisme/sejours?error=Statut%20invalide%20pour%20ce%20séjour.', organizerId)
+      );
+    }
+
+    const { data: stay, error: stayError } = await supabase
+      .from('stays')
+      .select('id,status')
+      .eq('id', stayId)
+      .eq('organizer_id', organizerId)
+      .maybeSingle();
+
+    if (stayError) {
+      redirect(
+        withOrganizerQuery(`/organisme/sejours?error=${encodeURIComponent(stayError.message)}`, organizerId)
+      );
+    }
+
+    if (!stay) {
+      redirect(withOrganizerQuery('/organisme/sejours?error=Séjour%20introuvable.', organizerId));
+    }
+
+    if (stay.status !== 'PUBLISHED' && stay.status !== 'HIDDEN') {
+      redirect(
+        withOrganizerQuery(
+          '/organisme/sejours?error=Seuls%20les%20séjours%20publiés%20peuvent%20être%20masqués%20ou%20affichés.',
+          organizerId
+        )
+      );
+    }
+
+    const { error: updateError } = await supabase
+      .from('stays')
+      .update({ status: requestedStatus })
+      .eq('id', stay.id)
+      .eq('organizer_id', organizerId);
+
+    if (updateError) {
+      redirect(
+        withOrganizerQuery(`/organisme/sejours?error=${encodeURIComponent(updateError.message)}`, organizerId)
+      );
+    }
+
+    revalidatePath('/organisme/sejours');
+    revalidatePath('/organisme/stays');
+    revalidatePath(`/organisme/sejours/${stay.id}`);
+    revalidatePath(`/organisme/stays/${stay.id}`);
+    revalidatePath('/sejours');
+
+    const visibilityQueryValue = requestedStatus === 'HIDDEN' ? 'hidden' : 'visible';
+    redirect(withOrganizerQuery(`/organisme/sejours?visibility=${visibilityQueryValue}`, organizerId));
+  }
+
+  async function deleteStayDraft(formData: FormData) {
+    'use server';
+    const supabase = getServerSupabaseClient();
+    const draftId = String(formData.get('draft_id') ?? '').trim();
+    const requestedOrganizerId = String(formData.get('organizer_id') ?? '').trim() || undefined;
+    const { selectedOrganizerId } = await requireOrganizerPageAccess({
+      requestedOrganizerId,
+      requiredSection: 'stays'
+    });
+
+    if (!draftId || !selectedOrganizerId) {
+      redirect(
+        withOrganizerQuery(
+          '/organisme/sejours?error=Suppression%20du%20brouillon%20impossible.',
+          selectedOrganizerId
+        )
+      );
+    }
+
+    const { data: draftRow } = await supabase
+      .from('stay_drafts')
+      .select('id')
+      .eq('id', draftId)
+      .eq('organizer_id', selectedOrganizerId)
+      .maybeSingle();
+
+    if (!draftRow) {
+      redirect(withOrganizerQuery('/organisme/sejours?error=Brouillon%20introuvable.', selectedOrganizerId));
+    }
+
+    const { error } = await supabase
+      .from('stay_drafts')
+      .delete()
+      .eq('id', draftId)
+      .eq('organizer_id', selectedOrganizerId);
+
+    if (error) {
+      redirect(
+        withOrganizerQuery(`/organisme/sejours?error=${encodeURIComponent(error.message)}`, selectedOrganizerId)
+      );
+    }
+
+    revalidatePath('/organisme/sejours');
+    revalidatePath('/organisme/stays');
+    redirect(withOrganizerQuery('/organisme/sejours?draftDeleted=1', selectedOrganizerId));
   }
 
   const stayRows = safeStays.map((stay) => ({
@@ -174,6 +530,8 @@ export default async function OrganizerStaysPage({ searchParams }: PageProps) {
     title: stay.title,
     status: stay.status,
     seasonName: seasonsById.get(stay.season_id)?.name ?? '-',
+    locationText: stay.location_text ?? '',
+    availability: getStayAvailability(stay.id),
     sessions: sessionsByStayId.get(stay.id)?.map((sessionItem) => ({
       id: sessionItem.id,
       startDate: sessionItem.start_date,
@@ -186,127 +544,32 @@ export default async function OrganizerStaysPage({ searchParams }: PageProps) {
 
   return (
     <div className="space-y-6">
+      {deletedParam === '1' && <SavedToast message="Le séjour a bien été supprimé." />}
+      {visibilityParam === 'hidden' && (
+        <SavedToast message="Le séjour a été masqué du catalogue public." />
+      )}
+      {visibilityParam === 'visible' && (
+        <SavedToast message="Le séjour est de nouveau visible dans le catalogue public." />
+      )}
+      {draftDeletedParam === '1' && <SavedToast message="Le brouillon d'import a bien été supprimé." />}
       {savedParam === '1' && <SavedToast message="Le stock de la session a bien été mis à jour." />}
       {errorParam && <ErrorToast message={decodeURIComponent(errorParam)} />}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Séjours</h1>
-          <p className="text-sm text-slate-600">
-            {selectedOrganizer
-              ? `Liste des séjours déclarés pour ${selectedOrganizer.name}.`
-              : 'Liste des séjours déclarés.'}
-          </p>
-        </div>
-        <Link
-          href={withOrganizerQuery('/organisme/sejours/new', organizerId)}
-          className="inline-flex min-h-[44px] items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white"
-        >
-          Nouveau séjour
-        </Link>
-      </div>
+      <OrganizerPageHeader
+        title="Séjours"
+        actions={<NewStayChoiceModalTrigger organizerId={organizerId} />}
+      />
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
-        <h2 className="text-lg font-semibold text-slate-900">Pré-remplissage depuis une URL</h2>
-        <p className="mt-1 text-sm text-slate-600">
-          Collez l&apos;URL d&apos;une fiche séjour existante pour préparer un brouillon automatiquement
-          à l&apos;étape suivante.
-        </p>
-        <form
-          action="/api/import-stay"
-          method="post"
-          className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end"
-        >
-          <label className="block flex-1 text-sm font-medium text-slate-700">
-            URL de la fiche séjour
-            <input
-              name="sourceUrl"
-              type="url"
-              placeholder="https://exemple.com/fiche-sejour"
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-              required
-            />
-          </label>
-          <input type="hidden" name="organizerId" value={organizerId ?? ''} />
-          <button
-            type="submit"
-            className="h-10 rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white"
-          >
-            Pré-remplir
-          </button>
-        </form>
-        {prefillParam === 'created' && draftIdParam && (
-          <p className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-            Brouillon créé et pré-rempli avec succès. ID du draft :{' '}
-            <span className="font-semibold">{draftIdParam}</span>.{' '}
-            <Link
-              href={withOrganizerQuery(`/organisme/sejours/drafts/${draftIdParam}`, organizerId)}
-              className="font-semibold underline"
-            >
-              Ouvrir la review
-            </Link>
-          </p>
-        )}
-
-        <div className="mt-6 border-t border-slate-200 pt-4">
-          <h3 className="text-base font-semibold text-slate-900">Enrichissement IA d&apos;un draft</h3>
-          <p className="mt-1 text-sm text-slate-600">
-            Lancez une étape complémentaire d&apos;extraction IA sur un draft existant. Cette étape
-            enrichit uniquement <code>stay_drafts</code> et ne publie rien dans les tables live.
-          </p>
-          <form
-            action="/api/stay-drafts/enrich"
-            method="post"
-            className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end"
-          >
-            <label className="block flex-1 text-sm font-medium text-slate-700">
-              ID du draft
-              <input
-                name="draftId"
-                type="text"
-                placeholder="UUID du stay_draft"
-                defaultValue={draftIdParam ?? aiDraftIdParam ?? ''}
-                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-                required
-              />
-            </label>
-            <input type="hidden" name="organizerId" value={organizerId ?? ''} />
-            <label className="inline-flex items-center gap-2 text-sm text-slate-700 sm:pb-2">
-              <input
-                type="checkbox"
-                name="force"
-                value="true"
-                className="h-4 w-4 rounded border-slate-300"
-              />
-              Forcer l&apos;écrasement (test)
-            </label>
-            <button
-              type="submit"
-              className="h-10 rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white"
-            >
-              Enrichir avec IA
-            </button>
-          </form>
-          {aiParam === 'success' && aiDraftIdParam && (
-            <p className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-              Enrichissement IA terminé avec succès. ID du draft :{' '}
-              <span className="font-semibold">{aiDraftIdParam}</span>.{' '}
-              <Link
-                href={withOrganizerQuery(`/organisme/sejours/drafts/${aiDraftIdParam}`, organizerId)}
-                className="font-semibold underline"
-              >
-                Ouvrir la review
-              </Link>
-            </p>
-          )}
-        </div>
-      </div>
-
-      {stayRows.length > 0 ? (
+      {stayRows.length > 0 || importDraftRows.length > 0 ? (
         <OrganizerStaysTable
           stays={stayRows}
           organizerId={organizerId}
+          importDrafts={importDraftRows}
           updateSessionRemainingPlacesAction={updateSessionRemainingPlaces}
+          deleteStayAction={deleteStay}
+          updateStayStatusAction={updateStayStatus}
+          deleteImportDraftAction={deleteStayDraft}
           defaultOpenStayIds={openStayParams}
+          defaultEditingSessionId={editSessionParam ?? null}
         />
       ) : (
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white px-4 py-6 text-sm text-slate-500">

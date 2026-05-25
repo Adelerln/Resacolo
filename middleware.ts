@@ -1,71 +1,70 @@
-import { NextResponse } from 'next/server';
+import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@supabase/supabase-js';
 import type { NextRequest } from 'next/server';
-type SessionPayload = {
-  role: 'ADMIN' | 'ORGANISATEUR' | 'PARTENAIRE';
-};
+import { NextResponse } from 'next/server';
+import {
+  canAccessBackofficePath,
+  getHomePathForRole,
+  resolveRoleContextForUserId
+} from '@/lib/auth/roles';
+import type { Database } from '@/types/supabase';
 
-const rolePaths: Record<string, string> = {
-  ADMIN: '/admin',
-  ORGANISATEUR: '/organisme',
-  PARTENAIRE: '/partenaire'
-};
-
-export function middleware(req: NextRequest) {
-  const { pathname } = req.nextUrl;
-  if (process.env.MOCK_UI === '1' || process.env.DISABLE_AUTH === '1') {
-    return NextResponse.next();
-  }
-  if (
-    pathname.startsWith('/login') ||
-    pathname.startsWith('/api/auth') ||
-    pathname.startsWith('/_next') ||
-    pathname.startsWith('/favicon')
-  ) {
-    return NextResponse.next();
-  }
-
-  const protectedPrefixes = ['/admin', '/organisme', '/partenaire'];
-  const isProtected = protectedPrefixes.some((prefix) => pathname.startsWith(prefix));
-  if (!isProtected) return NextResponse.next();
-
-  const token = req.cookies.get('resacolo_session')?.value;
-  if (!token) {
-    const url = req.nextUrl.clone();
-    url.pathname = '/login';
-    return NextResponse.redirect(url);
-  }
-
-  const session = parseSession(token);
-  if (!session) {
-    const url = req.nextUrl.clone();
-    url.pathname = '/login';
-    return NextResponse.redirect(url);
-  }
-
-  const expectedPrefix = rolePaths[session.role];
-  if (expectedPrefix && !pathname.startsWith(expectedPrefix)) {
-    const url = req.nextUrl.clone();
-    url.pathname = expectedPrefix;
-    return NextResponse.redirect(url);
-  }
-
-  return NextResponse.next();
+function buildRedirectTo(req: NextRequest, pathname: string) {
+  const url = new URL(pathname, req.url);
+  return url;
 }
 
-function parseSession(token: string): SessionPayload | null {
-  const [data] = token.split('.');
-  if (!data) return null;
-  try {
-    const padded = data.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(data.length / 4) * 4, '=');
-    const json = atob(padded);
-    const payload = JSON.parse(json) as SessionPayload;
-    if (!payload.role) return null;
-    return payload;
-  } catch {
-    return null;
+function buildLoginRedirect(req: NextRequest) {
+  const redirectTo = `${req.nextUrl.pathname}${req.nextUrl.search}`;
+  const loginUrl = new URL('/login', req.url);
+  loginUrl.searchParams.set('redirectTo', redirectTo);
+  return loginUrl;
+}
+
+function getMiddlewareServiceClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !key) {
+    throw new Error('Supabase env manquantes pour le middleware.');
   }
+  return createClient<Database>(url, key, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false
+    }
+  });
+}
+
+export async function middleware(req: NextRequest) {
+  if (req.nextUrl.pathname.startsWith('/back-office')) {
+    return NextResponse.redirect(buildRedirectTo(req, '/organisme'));
+  }
+
+  const res = NextResponse.next();
+  const supabase = createMiddlewareClient<Database>({ req, res });
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.redirect(buildLoginRedirect(req));
+  }
+
+  const roleContext = await resolveRoleContextForUserId(user.id, getMiddlewareServiceClient());
+  if (!canAccessBackofficePath(roleContext.role, req.nextUrl.pathname)) {
+    return NextResponse.redirect(buildRedirectTo(req, getHomePathForRole(roleContext.role)));
+  }
+
+  return res;
 }
 
 export const config = {
-  matcher: ['/admin/:path*', '/organisme/:path*', '/partenaire/:path*', '/login']
+  matcher: [
+    '/admin/:path*',
+    '/organisme/:path*',
+    '/partenaire/:path*',
+    '/mnemos/:path*',
+    '/back-office/:path*',
+    '/back-office'
+  ]
 };

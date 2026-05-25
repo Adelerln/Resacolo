@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Heart,
   Mail,
@@ -9,147 +9,173 @@ import {
   UserRound,
   ShieldCheck,
   Settings,
-  Home,
-  X
+  Wallet,
+  Building2,
+  Link2,
+  Unlink
 } from 'lucide-react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import FamilyReservationDetailsModal from '@/components/account/FamilyReservationDetailsModal';
+import { formatMoneyCentsFr } from '@/lib/format-money-fr';
+import { useFavorites } from '@/components/favorites/FavoritesProvider';
+import {
+  attachFamilyCseAffiliation,
+  detachFamilyCseAffiliation,
+  fetchFamilyProfileSnapshot
+} from '@/lib/account-profile/client';
+import { formatPhoneDisplay, parentStatusLabel } from '@/lib/account-preferences';
+import type { FamilyCseAffiliation, FamilyProfile, FamilyReservation } from '@/types/family-profile';
+import type { Stay } from '@/types/stay';
 
-type ParentStatus = 'pere' | 'mere' | 'grand-parent' | 'autre';
-
-type AccountInfo = {
-  addressLine1: string;
-  addressLine2: string;
-  postalCode: string;
-  city: string;
-  parent1Name: string;
-  parent2Name: string;
-  parent1Phone: string;
-  parent2Phone: string;
-  parent1Email: string;
-  parent2Email: string;
-  parent1Status: ParentStatus;
-  parent2Status: ParentStatus;
-  parent1StatusOther: string;
-  parent2StatusOther: string;
-  parent2HasDifferentAddress: boolean;
-  parent2AddressLine1: string;
-  parent2AddressLine2: string;
-  parent2PostalCode: string;
-  parent2City: string;
+type MonCompteClientProps = {
+  initialProfile: FamilyProfile;
+  reservations: FamilyReservation[];
+  initialCseAffiliation: FamilyCseAffiliation | null;
+  favoriteStays: Stay[];
+  profileLoadError?: string | null;
 };
 
-const mockUser = {
-  name: 'Marie Dupont',
-  email: 'marie.dupont@example.com',
-  city: 'Lyon, France'
-};
+const ACCOUNT_PANEL_VISIBLE_ITEMS = 3;
+const ACCOUNT_PANEL_ITEM_MIN_HEIGHT = 'min-h-[120px]';
+/** 3 cartes d'environ 120px + 2 espacements de 12px. */
+const ACCOUNT_PANEL_LIST_MAX_HEIGHT = '24rem';
 
-const mockUpcoming = [
-  {
-    id: '1',
-    title: 'Colonie multi-activités - Alpes',
-    dates: '12 au 19 août 2026',
-    child: 'Léo, 11 ans',
-    organizer: 'Aventures Vacances Énergie',
-    status: 'Dossier en cours'
-  }
-];
-
-const mockFavorites = [
-  {
-    id: 'fav-1',
-    title: 'Séjour surf & océan',
-    age: '14-17 ans',
-    location: 'Landes, France'
-  },
-  {
-    id: 'fav-2',
-    title: 'Stage théâtre & cirque',
-    age: '8-12 ans',
-    location: 'Provence, France'
-  }
-];
-
-const initialAccountInfo: AccountInfo = {
-  addressLine1: '12 rue des Tilleuls',
-  addressLine2: 'Bâtiment B, Appartement 23',
-  postalCode: '69003',
-  city: 'Lyon',
-  parent1Name: 'Marie Dupont',
-  parent2Name: 'Jean Dupont',
-  parent1Phone: '06.12.34.56.78',
-  parent2Phone: '06.78.90.12.34',
-  parent1Email: 'parent1@example.com',
-  parent2Email: 'parent2@example.com',
-  parent1Status: 'mere',
-  parent2Status: 'pere',
-  parent1StatusOther: '',
-  parent2StatusOther: '',
-  parent2HasDifferentAddress: false,
-  parent2AddressLine1: '',
-  parent2AddressLine2: '',
-  parent2PostalCode: '',
-  parent2City: ''
-};
-
-function parentStatusLabel(status: ParentStatus, other?: string) {
-  if (status === 'pere') return 'Père';
-  if (status === 'mere') return 'Mère';
-  if (status === 'grand-parent') return 'Grand-parent';
-  return other?.trim() || 'Autre';
-}
-
-function formatFrenchPhone(value: string) {
-  const digits = value.replace(/\D/g, '').slice(0, 10);
-  if (!digits) return '';
-  return digits.match(/.{1,2}/g)?.join('.') ?? digits;
-}
+/** Hauteur réservée identique sous les deux panneaux pour aligner le début des listes de cartes. */
+const ACCOUNT_PANEL_HEADER_CLASS =
+  'flex min-h-[3rem] items-center justify-between gap-3 border-b border-transparent';
 
 function formatAddress(line1: string, line2: string, postalCode: string, city: string) {
   return [line1, line2, `${postalCode} ${city}`.trim()].filter(Boolean).join(', ');
 }
 
-export default function MonCompteClient() {
-  const [accountInfo, setAccountInfo] = useState<AccountInfo>(initialAccountInfo);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [draft, setDraft] = useState<AccountInfo>(initialAccountInfo);
+function buildProfileDisplayName(profile: FamilyProfile) {
+  const fullName = [profile.billingFirstName, profile.billingLastName].filter(Boolean).join(' ').trim();
+  return fullName || 'Famille';
+}
 
-  const fullAddress = formatAddress(
-    accountInfo.addressLine1,
-    accountInfo.addressLine2,
-    accountInfo.postalCode,
-    accountInfo.city
+function splitName(value: string | null | undefined) {
+  const clean = value?.trim() ?? '';
+  if (!clean) {
+    return { firstName: '', lastName: '' };
+  }
+
+  const parts = clean.split(/\s+/).filter(Boolean);
+  if (parts.length === 1) {
+    return { firstName: parts[0], lastName: '' };
+  }
+
+  return {
+    firstName: parts[0],
+    lastName: parts.slice(1).join(' ')
+  };
+}
+
+export default function MonCompteClient({
+  initialProfile,
+  reservations,
+  initialCseAffiliation,
+  favoriteStays,
+  profileLoadError
+}: MonCompteClientProps) {
+  const router = useRouter();
+  const [profile, setProfile] = useState<FamilyProfile>(initialProfile);
+  const [reservationList, setReservationList] = useState<FamilyReservation[]>(reservations);
+  const [cseAffiliation, setCseAffiliation] = useState<FamilyCseAffiliation | null>(initialCseAffiliation);
+  const [cseCodeInput, setCseCodeInput] = useState(initialCseAffiliation?.code ?? initialProfile.cseOrganization ?? '');
+  const [cseSubmitError, setCseSubmitError] = useState<string | null>(null);
+  const [cseSubmitSuccess, setCseSubmitSuccess] = useState<string | null>(null);
+  const [isSubmittingCse, setIsSubmittingCse] = useState(false);
+  const { favoriteIdsArray, isLoaded } = useFavorites();
+
+  const visibleFavoriteStays = useMemo(() => {
+    if (!isLoaded) return favoriteStays;
+    const ids = new Set(favoriteIdsArray);
+    return favoriteStays.filter((stay) => ids.has(stay.id));
+  }, [favoriteIdsArray, favoriteStays, isLoaded]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchFamilyProfileSnapshot()
+      .then((snapshot) => {
+        if (cancelled) return;
+        setProfile(snapshot.profile);
+        setReservationList(snapshot.reservations);
+        setCseAffiliation(snapshot.cseAffiliation);
+        setCseCodeInput(snapshot.cseAffiliation?.code ?? snapshot.profile.cseOrganization ?? '');
+      })
+      .catch(() => {
+        // Keep server-rendered profile as fallback.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const parent2Identity = useMemo(() => splitName(profile.parent2Name), [profile.parent2Name]);
+  const fullAddress = useMemo(
+    () =>
+      formatAddress(profile.addressLine1, profile.addressLine2, profile.postalCode, profile.city) ||
+      'Non renseignée',
+    [profile]
   );
-  const parent2Address = accountInfo.parent2HasDifferentAddress
-    ? formatAddress(
-        accountInfo.parent2AddressLine1,
-        accountInfo.parent2AddressLine2,
-        accountInfo.parent2PostalCode,
-        accountInfo.parent2City
-      )
-    : 'Même adresse que le domicile';
+  const showParent2 = useMemo(
+    () =>
+      Boolean(
+        profile.parent2Name ||
+          profile.parent2Phone ||
+          profile.parent2Email ||
+          profile.parent2StatusOther ||
+          profile.parent2HasDifferentAddress
+      ),
+    [profile]
+  );
 
-  function openEditModal() {
-    setDraft(accountInfo);
-    setIsModalOpen(true);
+  const reservationsScrollable = reservationList.length > ACCOUNT_PANEL_VISIBLE_ITEMS;
+  const favoritesScrollable = visibleFavoriteStays.length > ACCOUNT_PANEL_VISIBLE_ITEMS;
+
+  async function handleAttachCse() {
+    setCseSubmitError(null);
+    setCseSubmitSuccess(null);
+    setIsSubmittingCse(true);
+
+    try {
+      const response = await attachFamilyCseAffiliation(cseCodeInput);
+      setProfile(response.profile);
+      setReservationList(response.reservations);
+      setCseAffiliation(response.cseAffiliation);
+      setCseCodeInput(response.cseAffiliation?.code ?? response.profile.cseOrganization ?? '');
+      setCseSubmitSuccess('Votre rattachement CSE a bien été enregistré.');
+      router.refresh();
+    } catch (error) {
+      setCseSubmitError(error instanceof Error ? error.message : 'Impossible de rattacher ce compte au CSE.');
+    } finally {
+      setIsSubmittingCse(false);
+    }
   }
 
-  function closeEditModal() {
-    setIsModalOpen(false);
-  }
+  async function handleDetachCse() {
+    setCseSubmitError(null);
+    setCseSubmitSuccess(null);
+    setIsSubmittingCse(true);
 
-  function onSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setAccountInfo(draft);
-    setIsModalOpen(false);
-  }
-
-  function updateField<K extends keyof AccountInfo>(key: K, value: AccountInfo[K]) {
-    setDraft((prev) => ({ ...prev, [key]: value }));
+    try {
+      const response = await detachFamilyCseAffiliation();
+      setProfile(response.profile);
+      setReservationList(response.reservations);
+      setCseAffiliation(response.cseAffiliation);
+      setCseCodeInput('');
+      setCseSubmitSuccess('Votre rattachement CSE a bien été supprimé.');
+      router.refresh();
+    } catch (error) {
+      setCseSubmitError(error instanceof Error ? error.message : 'Impossible de désaffilier ce compte du CSE.');
+    } finally {
+      setIsSubmittingCse(false);
+    }
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-slate-100">
       <section className="section-container py-10 sm:py-14">
         <header className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-4">
@@ -158,487 +184,333 @@ export default function MonCompteClient() {
             </div>
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Mon compte</p>
-              <h1 className="mt-1 font-display text-2xl font-bold text-slate-900 sm:text-3xl">Bonjour {mockUser.name}</h1>
+              <h1 className="mt-1 font-display text-2xl font-bold text-slate-900 sm:text-3xl">
+                Bonjour {buildProfileDisplayName(profile)}
+              </h1>
               <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-500">
                 <Mail className="h-4 w-4" />
-                {mockUser.email}
+                {profile.email || 'Email non renseigné'}
                 <span className="mx-1 hidden text-slate-300 sm:inline">|</span>
                 <MapPin className="h-4 w-4" />
-                {mockUser.city}
+                {profile.city || 'Ville non renseignée'}
               </p>
             </div>
           </div>
           <div className="flex flex-wrap gap-3">
-            <button className="btn btn-secondary btn-sm">
+            <Link href="/contact/preferences" className="btn btn-secondary btn-sm">
               <Settings className="h-4 w-4" />
-              Préférences
-            </button>
-            <button className="btn btn-primary btn-sm">Se déconnecter</button>
+              Mes informations
+            </Link>
+            <form action="/api/auth/logout" method="post">
+              <input type="hidden" name="redirectTo" value="/login/familles" />
+              <button type="submit" className="btn btn-primary btn-sm">
+                Se déconnecter
+              </button>
+            </form>
           </div>
         </header>
+        {profileLoadError ? (
+          <p className="mt-6 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            {profileLoadError}
+          </p>
+        ) : null}
 
-        <div className="mt-10 grid gap-8 lg:grid-cols-[minmax(0,2fr)_minmax(0,1.4fr)]">
-          <div className="space-y-8">
-            <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <h2 className="font-display text-lg font-semibold text-slate-900">Prochaine réservation</h2>
-                  <p className="mt-1 text-sm text-slate-500">
-                    Retrouvez ici les séjours déjà réservés pour vos enfants.
-                  </p>
-                </div>
-                <CalendarDays className="h-8 w-8 text-accent-500" />
+        <section className="mt-10 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="font-display text-lg font-semibold text-slate-900">Informations du compte</h2>
+          <article className="mt-4 rounded-xl border border-blue-100 bg-blue-100/70 p-3.5">
+            <h3 className="text-sm font-semibold text-slate-900">Parent 1</h3>
+            <dl className="mt-2.5 grid gap-x-8 gap-y-2.5 text-sm text-slate-700 md:grid-cols-2">
+              <div className="space-y-0.5">
+                <dt className="text-slate-500">Nom parent 1</dt>
+                <dd className="font-medium text-slate-900">{profile.billingLastName || 'Non renseigné'}</dd>
+              </div>
+              <div className="space-y-0.5">
+                <dt className="text-slate-500">Prénom parent 1</dt>
+                <dd className="font-medium text-slate-900">{profile.billingFirstName || 'Non renseigné'}</dd>
+              </div>
+              <div className="space-y-0.5">
+                <dt className="text-slate-500">Statut</dt>
+                <dd className="font-medium text-slate-900">
+                  {parentStatusLabel(profile.parent1Status, profile.parent1StatusOther)}
+                </dd>
+              </div>
+              <div className="space-y-0.5">
+                <dt className="text-slate-500">Portable</dt>
+                <dd className="font-medium text-slate-900">{formatPhoneDisplay(profile.phone)}</dd>
+              </div>
+              <div className="space-y-0.5">
+                <dt className="text-slate-500">Email</dt>
+                <dd className="font-medium text-slate-900">{profile.email || 'Non renseigné'}</dd>
+              </div>
+              <div className="space-y-0.5">
+                <dt className="text-slate-500">Adresse</dt>
+                <dd className="font-medium text-slate-900">{fullAddress}</dd>
+              </div>
+              <div className="space-y-0.5">
+                <dt className="text-slate-500">Nom parent 2</dt>
+                <dd className="font-medium text-slate-900">
+                  {showParent2 ? parent2Identity.lastName || 'Non renseigné' : 'Masqué / non renseigné'}
+                </dd>
+              </div>
+              <div className="space-y-0.5">
+                <dt className="text-slate-500">Prénom parent 2</dt>
+                <dd className="font-medium text-slate-900">
+                  {showParent2 ? parent2Identity.firstName || 'Non renseigné' : 'Masqué / non renseigné'}
+                </dd>
+              </div>
+            </dl>
+          </article>
+        </section>
+
+        <div className="mt-8 grid gap-8 xl:grid-cols-2 xl:items-stretch [&>*]:min-h-0">
+          <section className="flex h-full min-h-0 flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className={ACCOUNT_PANEL_HEADER_CLASS}>
+                <h2 className="min-w-0 max-w-[85%] font-display text-lg font-semibold leading-snug text-slate-900 sm:max-w-none">
+                  Réservations à venir et passées
+                </h2>
+                <CalendarDays className="h-8 w-8 shrink-0 text-accent-500" aria-hidden />
               </div>
 
-              {mockUpcoming.length === 0 ? (
-                <p className="mt-6 text-sm text-slate-500">
+              {reservationList.length === 0 ? (
+                <p className="mt-4 text-sm text-slate-500">
                   Vous n&apos;avez pas encore de réservation. Parcourez les séjours et ajoutez-les à votre panier.
                 </p>
               ) : (
-                <ul className="mt-6 space-y-4">
-                  {mockUpcoming.map((stay) => (
+                <ul
+                  className={`mt-3 min-h-0 space-y-3 ${reservationsScrollable ? 'flex-1 overflow-y-auto pr-1' : ''}`}
+                  style={reservationsScrollable ? { maxHeight: ACCOUNT_PANEL_LIST_MAX_HEIGHT } : undefined}
+                >
+                  {reservationList.map((reservation) => (
                     <li
-                      key={stay.id}
-                      className="rounded-xl border border-slate-100 bg-slate-50/60 p-4 text-sm text-slate-700"
+                      key={reservation.orderId}
+                      className={`flex h-auto ${ACCOUNT_PANEL_ITEM_MIN_HEIGHT} flex-col rounded-xl border p-3 text-sm ${
+                        reservation.isPast
+                          ? 'border-slate-300 bg-slate-100/90 text-slate-500'
+                          : 'border-slate-300 bg-slate-50/60 text-slate-700'
+                      }`}
                     >
-                      <p className="font-display text-base font-semibold text-slate-900">{stay.title}</p>
-                      <p className="mt-1 flex items-center gap-2 text-xs text-slate-500">
-                        <CalendarDays className="h-4 w-4" />
-                        {stay.dates}
-                      </p>
-                      <p className="mt-1 text-xs text-slate-500">{stay.child}</p>
-                      <p className="mt-1 text-xs text-slate-500">
-                        Organisateur : <span className="font-medium">{stay.organizer}</span>
-                      </p>
-                      <p className="mt-3 inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-                        <ShieldCheck className="h-3.5 w-3.5" />
-                        {stay.status}
-                      </p>
+                      <div className="flex min-h-0 flex-1 flex-col gap-3 sm:flex-row sm:items-stretch sm:justify-between sm:gap-3">
+                        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+                          <p
+                            className={`line-clamp-2 font-display text-base font-semibold leading-snug ${
+                              reservation.isPast ? 'text-slate-500' : 'text-slate-900'
+                            }`}
+                          >
+                            {reservation.title}
+                          </p>
+                          <p className={`mt-1 flex items-center gap-2 text-xs ${reservation.isPast ? 'text-slate-400' : 'text-slate-500'}`}>
+                            <CalendarDays className="h-4 w-4 shrink-0" />
+                            <span className="min-w-0">{reservation.dates}</span>
+                          </p>
+                          <p className={`mt-0.5 truncate text-xs ${reservation.isPast ? 'text-slate-400' : 'text-slate-500'}`}>
+                            {reservation.child}
+                          </p>
+                          <div className="mt-auto flex min-w-0 flex-nowrap items-center gap-2 overflow-x-auto pt-1.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                            <span
+                              className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                                reservation.isPast
+                                  ? 'bg-slate-200 text-slate-600'
+                                  : 'bg-emerald-50 text-emerald-700'
+                              }`}
+                            >
+                              <ShieldCheck className="h-3 w-3 shrink-0" />
+                              {reservation.status}
+                            </span>
+                            <span
+                              className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-0.5 text-[11px] font-extrabold leading-none sm:text-xs ${
+                                reservation.remainingBalanceCents > 0
+                                  ? 'bg-amber-50 text-amber-700'
+                                  : 'bg-emerald-50 text-emerald-700'
+                              }`}
+                            >
+                              <Wallet className="h-3 w-3 shrink-0" />
+                              Solde à régler : {formatMoneyCentsFr(reservation.remainingBalanceCents, reservation.currency)}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex shrink-0 justify-end self-start pt-0.5 sm:mt-auto sm:self-end sm:pt-1">
+                          <FamilyReservationDetailsModal reservation={reservation} />
+                        </div>
+                      </div>
                     </li>
                   ))}
                 </ul>
               )}
+          </section>
 
-              <div className="mt-5 flex justify-end">
-                <Link href="/sejours" className="text-sm font-semibold text-brand-600 hover:text-brand-700">
-                  Voir tous les séjours
-                </Link>
-              </div>
-            </section>
-
-            <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <h2 className="font-display text-lg font-semibold text-slate-900">Séjours favoris</h2>
-                  <p className="mt-1 text-sm text-slate-500">
-                    Les séjours que vous avez ajoutés en favoris depuis la page catalogue.
-                  </p>
-                </div>
-                <Heart className="h-7 w-7 text-accent-500" />
+          <section className="flex h-full min-h-0 flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className={ACCOUNT_PANEL_HEADER_CLASS}>
+                <h2 className="min-w-0 max-w-[85%] font-display text-lg font-semibold leading-snug text-slate-900 sm:max-w-none">
+                  Séjours ajoutés aux favoris
+                </h2>
+                {visibleFavoriteStays.length > 0 ? (
+                  <Link href="/account/favorites" className="text-sm font-semibold text-brand-600 hover:text-brand-700">
+                    Voir tous les favoris
+                  </Link>
+                ) : null}
+                <Heart className="h-8 w-8 shrink-0 text-accent-500" aria-hidden />
               </div>
 
-              {mockFavorites.length === 0 ? (
-                <p className="mt-6 text-sm text-slate-500">
+              {visibleFavoriteStays.length === 0 ? (
+                <p className="mt-4 text-sm text-slate-500">
                   Vous n&apos;avez pas encore de favoris. Cliquez sur le cœur depuis une fiche séjour pour l&apos;ajouter.
                 </p>
               ) : (
-                <ul className="mt-6 grid gap-4 sm:grid-cols-2">
-                  {mockFavorites.map((fav) => (
-                    <li
-                      key={fav.id}
-                      className="rounded-xl border border-slate-100 bg-slate-50/80 p-4 text-sm text-slate-700"
-                    >
-                      <p className="font-display text-base font-semibold text-slate-900">{fav.title}</p>
-                      <p className="mt-1 text-xs text-slate-500">{fav.age}</p>
-                      <p className="mt-1 flex items-center gap-1 text-xs text-slate-500">
-                        <MapPin className="h-3.5 w-3.5" />
-                        {fav.location}
-                      </p>
+                <div
+                  className={`mt-3 min-h-0 space-y-3 ${favoritesScrollable ? 'flex-1 overflow-y-auto pr-1' : ''}`}
+                  style={favoritesScrollable ? { maxHeight: ACCOUNT_PANEL_LIST_MAX_HEIGHT } : undefined}
+                >
+                  {visibleFavoriteStays.map((stay) => {
+                    const locationLabel = stay.displayLocation || stay.location || stay.region || 'Lieu à préciser';
+                    const seasonLabel = stay.seasonName || stay.period[0] || 'Saison à préciser';
+                    const stayImage = stay.coverImage || stay.galleryImages?.[0] || '';
+                    return (
                       <Link
-                        href="/sejours"
-                        className="mt-3 inline-flex text-xs font-semibold text-brand-600 hover:text-brand-700"
+                        key={stay.id}
+                        href={`/sejours/${stay.canonicalSlug}`}
+                        className={`grid h-auto ${ACCOUNT_PANEL_ITEM_MIN_HEIGHT} grid-cols-[96px_minmax(0,1fr)] overflow-hidden rounded-xl border border-slate-300 bg-gradient-to-r from-white via-white to-blue-50/40 text-sm text-slate-700 transition hover:border-slate-400 hover:shadow-sm`}
                       >
-                        Voir le séjour
+                        {stayImage ? (
+                          <div className={`h-full ${ACCOUNT_PANEL_ITEM_MIN_HEIGHT} overflow-hidden bg-slate-100`}>
+                            <img
+                              src={stayImage}
+                              alt={stay.title}
+                              className="h-full w-full object-cover transition duration-300 hover:scale-[1.02]"
+                              loading="lazy"
+                            />
+                          </div>
+                        ) : (
+                          <div className={`flex h-full ${ACCOUNT_PANEL_ITEM_MIN_HEIGHT} items-center justify-center bg-gradient-to-r from-brand-100 via-blue-100 to-cyan-100`}>
+                            <span className="px-3 text-center font-display text-sm font-semibold text-brand-700">
+                              {stay.title}
+                            </span>
+                          </div>
+                        )}
+                        <div className="flex min-w-0 h-full flex-col p-3">
+                          <p className="line-clamp-2 font-display text-base font-semibold leading-snug text-slate-900">
+                            {stay.title}
+                          </p>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            <span className="inline-flex max-w-full items-center rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-700">
+                              <span className="mr-1 text-brand-500">Saison</span>
+                              <span className="truncate">{seasonLabel}</span>
+                            </span>
+                            <span className="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                              <span className="mr-1 text-emerald-500">Âge</span>
+                              {stay.ageRange || 'Tous âges'}
+                            </span>
+                          </div>
+                          <div className="mt-auto pt-1.5">
+                            <span className="inline-flex max-w-full items-center rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">
+                              <span className="mr-1 text-amber-500">Lieu</span>
+                              <span className="truncate">{locationLabel}</span>
+                            </span>
+                          </div>
+                        </div>
                       </Link>
-                    </li>
-                  ))}
-                </ul>
+                    );
+                  })}
+                </div>
               )}
-            </section>
+
+          </section>
+        </div>
+
+        <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h3 className="font-display text-base font-semibold text-slate-900">Rattachement à un CSE</h3>
+              <p className="mt-1 text-sm text-slate-500">
+                Renseignez le code partenaire transmis par votre CSE pour rattacher ce compte.
+              </p>
+            </div>
+            <Building2 className="h-7 w-7 shrink-0 text-accent-500" aria-hidden />
           </div>
 
-          <aside className="space-y-6">
-            <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <h2 className="font-display text-lg font-semibold text-slate-900">Informations du compte</h2>
-              <div className="mt-4 space-y-4">
-                <article className="rounded-xl border border-blue-100 bg-blue-100/70 p-4">
-                  <h3 className="text-sm font-semibold text-slate-900">Parent 1</h3>
-                  <dl className="mt-3 space-y-2 text-sm text-slate-700 break-words">
-                    <div className="flex items-start justify-between gap-3">
-                      <dt className="text-slate-500">Nom</dt>
-                      <dd className="font-medium text-slate-900">{accountInfo.parent1Name}</dd>
-                    </div>
-                    <div className="flex items-start justify-between gap-3">
-                      <dt className="text-slate-500">Statut</dt>
-                      <dd className="font-medium text-slate-900">
-                        {parentStatusLabel(accountInfo.parent1Status, accountInfo.parent1StatusOther)}
-                      </dd>
-                    </div>
-                    <div className="flex items-start justify-between gap-3">
-                      <dt className="text-slate-500">Portable</dt>
-                      <dd className="font-medium text-slate-900">{formatFrenchPhone(accountInfo.parent1Phone)}</dd>
-                    </div>
-                    <div className="flex items-start justify-between gap-3">
-                      <dt className="text-slate-500">Email</dt>
-                      <dd className="font-medium text-slate-900">{accountInfo.parent1Email}</dd>
-                    </div>
-                    <div className="flex items-start justify-between gap-3">
-                      <dt className="text-slate-500">Adresse</dt>
-                      <dd className="max-w-[65%] text-right font-medium text-slate-900">{fullAddress}</dd>
-                    </div>
-                  </dl>
-                </article>
-
-                <article className="rounded-xl border border-orange-100 bg-orange-100/70 p-4">
-                  <h3 className="text-sm font-semibold text-slate-900">Parent 2</h3>
-                  <dl className="mt-3 space-y-2 text-sm text-slate-700 break-words">
-                    <div className="flex items-start justify-between gap-3">
-                      <dt className="text-slate-500">Nom</dt>
-                      <dd className="font-medium text-slate-900">{accountInfo.parent2Name || 'Non renseigné'}</dd>
-                    </div>
-                    <div className="flex items-start justify-between gap-3">
-                      <dt className="text-slate-500">Statut</dt>
-                      <dd className="font-medium text-slate-900">
-                        {parentStatusLabel(accountInfo.parent2Status, accountInfo.parent2StatusOther)}
-                      </dd>
-                    </div>
-                    <div className="flex items-start justify-between gap-3">
-                      <dt className="text-slate-500">Portable</dt>
-                      <dd className="font-medium text-slate-900">
-                        {accountInfo.parent2Phone ? formatFrenchPhone(accountInfo.parent2Phone) : 'Non renseigné'}
-                      </dd>
-                    </div>
-                    <div className="flex items-start justify-between gap-3">
-                      <dt className="text-slate-500">Email</dt>
-                      <dd className="font-medium text-slate-900">
-                        {accountInfo.parent2Email || 'Non renseigné'}
-                      </dd>
-                    </div>
-                    <div className="flex items-start justify-between gap-3">
-                      <dt className="text-slate-500">Adresse</dt>
-                      <dd className="max-w-[65%] text-right font-medium text-slate-900">
-                        {parent2Address || 'Non renseignée'}
-                      </dd>
-                    </div>
-                  </dl>
-                </article>
-              </div>
-
-              <button
-                onClick={openEditModal}
-                className="mt-5 text-sm font-semibold text-brand-600 hover:text-brand-700"
-              >
-                Mettre à jour les informations
-              </button>
-            </section>
-
-            <section className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-600">
-              <h3 className="font-display text-base font-semibold text-slate-900">Aide & confidentialité</h3>
-              <ul className="mt-3 space-y-2">
-                <li>
-                  <Link href="/bien-choisir-sa-colo" className="hover:text-brand-600">
-                    Bien choisir sa colo
-                  </Link>
-                </li>
-                <li>
-                  <Link href="/faq" className="hover:text-brand-600">
-                    FAQ
-                  </Link>
-                </li>
-                <li>
-                  <Link href="/confidentialite" className="hover:text-brand-600">
-                    Politique de confidentialité
-                  </Link>
-                </li>
-              </ul>
-            </section>
-          </aside>
-        </div>
-      </section>
-
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
-          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-4 shadow-xl sm:p-6">
-            <div className="flex items-center justify-between gap-4">
-              <h3 className="font-display text-xl font-semibold text-slate-900">Mettre à jour les informations</h3>
-              <button
-                type="button"
-                onClick={closeEditModal}
-                className="rounded-md p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-                aria-label="Fermer"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <form className="mt-6 space-y-6" onSubmit={onSubmit}>
-              <section>
-                <h4 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-                  <Home className="h-4 w-4" />
-                  Adresse du domicile
-                </h4>
-                <div className="mt-3 grid gap-4 sm:grid-cols-2">
-                  <label className="sm:col-span-2 text-sm font-medium text-slate-700">
-                    N° et voie
-                    <input
-                      type="text"
-                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                      value={draft.addressLine1}
-                      onChange={(e) => updateField('addressLine1', e.target.value)}
-                      placeholder="Ex: 12 rue des Tilleuls"
-                      required
-                    />
-                  </label>
-                  <label className="sm:col-span-2 text-sm font-medium text-slate-700">
-                    Complément d&apos;adresse
-                    <input
-                      type="text"
-                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                      value={draft.addressLine2}
-                      onChange={(e) => updateField('addressLine2', e.target.value)}
-                      placeholder="Bâtiment, appartement, étage..."
-                    />
-                  </label>
-                  <label className="text-sm font-medium text-slate-700">
-                    Code postal
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      pattern="[0-9]{5}"
-                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                      value={draft.postalCode}
-                      onChange={(e) => updateField('postalCode', e.target.value)}
-                      placeholder="75001"
-                      required
-                    />
-                  </label>
-                  <label className="text-sm font-medium text-slate-700">
-                    Ville
-                    <input
-                      type="text"
-                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                      value={draft.city}
-                      onChange={(e) => updateField('city', e.target.value)}
-                      placeholder="Paris"
-                      required
-                    />
-                  </label>
+          {cseAffiliation ? (
+            <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50/70 p-4">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div className="space-y-1">
+                  <p className="text-sm font-semibold text-emerald-800">{cseAffiliation.name}</p>
+                  <p className="text-sm text-emerald-700">
+                    Code rattaché : <span className="font-semibold">{cseAffiliation.code}</span>
+                  </p>
+                  <p className="text-xs text-emerald-700/90">
+                    Pour modifier ce rattachement, il faut d’abord se désaffilier du CSE.
+                  </p>
                 </div>
-              </section>
-
-              <section className="rounded-xl border border-blue-100 bg-blue-100/60 p-4">
-                <h4 className="text-sm font-semibold text-slate-900">Parent 1</h4>
-                <div className="mt-3 grid gap-4 sm:grid-cols-2">
-                  <label className="sm:col-span-2 text-sm font-medium text-slate-700">
-                    Nom parent 1
-                    <input
-                      type="text"
-                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                      value={draft.parent1Name}
-                      onChange={(e) => updateField('parent1Name', e.target.value)}
-                      placeholder="Nom et prénom"
-                      required
-                    />
-                  </label>
-                  <label className="text-sm font-medium text-slate-700">
-                    Statut parent 1
-                    <select
-                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                      value={draft.parent1Status}
-                      onChange={(e) => updateField('parent1Status', e.target.value as ParentStatus)}
-                    >
-                      <option value="pere">Père</option>
-                      <option value="mere">Mère</option>
-                      <option value="grand-parent">Grand-parent</option>
-                      <option value="autre">Autre</option>
-                    </select>
-                    {draft.parent1Status === 'autre' && (
-                      <input
-                        type="text"
-                        className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                        value={draft.parent1StatusOther}
-                        onChange={(e) => updateField('parent1StatusOther', e.target.value)}
-                        placeholder="Précisez le statut"
-                        required
-                      />
-                    )}
-                  </label>
-                  <label className="text-sm font-medium text-slate-700">
-                    Portable parent 1
-                    <input
-                      type="tel"
-                      inputMode="tel"
-                      pattern="^0[1-9](\\.[0-9]{2}){4}$"
-                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                      value={draft.parent1Phone}
-                      onChange={(e) => updateField('parent1Phone', formatFrenchPhone(e.target.value))}
-                      placeholder="01.23.45.67.89"
-                      required
-                    />
-                  </label>
-                  <label className="sm:col-span-2 text-sm font-medium text-slate-700">
-                    Email parent 1
-                    <input
-                      type="email"
-                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                      value={draft.parent1Email}
-                      onChange={(e) => updateField('parent1Email', e.target.value)}
-                      placeholder="parent1@mail.fr"
-                      required
-                    />
-                  </label>
-                </div>
-              </section>
-
-              <section className="rounded-xl border border-orange-100 bg-orange-100/60 p-4">
-                <h4 className="text-sm font-semibold text-slate-900">Parent 2</h4>
-                <div className="mt-3 grid gap-4 sm:grid-cols-2">
-                  <label className="sm:col-span-2 text-sm font-medium text-slate-700">
-                    Nom parent 2
-                    <input
-                      type="text"
-                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                      value={draft.parent2Name}
-                      onChange={(e) => updateField('parent2Name', e.target.value)}
-                      placeholder="Nom et prénom"
-                    />
-                  </label>
-                  <label className="text-sm font-medium text-slate-700">
-                    Statut parent 2
-                    <select
-                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                      value={draft.parent2Status}
-                      onChange={(e) => updateField('parent2Status', e.target.value as ParentStatus)}
-                    >
-                      <option value="pere">Père</option>
-                      <option value="mere">Mère</option>
-                      <option value="grand-parent">Grand-parent</option>
-                      <option value="autre">Autre</option>
-                    </select>
-                    {draft.parent2Status === 'autre' && (
-                      <input
-                        type="text"
-                        className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                        value={draft.parent2StatusOther}
-                        onChange={(e) => updateField('parent2StatusOther', e.target.value)}
-                        placeholder="Précisez le statut"
-                        required
-                      />
-                    )}
-                  </label>
-                  <label className="text-sm font-medium text-slate-700">
-                    Portable parent 2
-                    <input
-                      type="tel"
-                      inputMode="tel"
-                      pattern="^0[1-9](\\.[0-9]{2}){4}$"
-                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                      value={draft.parent2Phone}
-                      onChange={(e) => updateField('parent2Phone', formatFrenchPhone(e.target.value))}
-                      placeholder="01.23.45.67.89"
-                    />
-                  </label>
-                  <label className="sm:col-span-2 text-sm font-medium text-slate-700">
-                    Email parent 2
-                    <input
-                      type="email"
-                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                      value={draft.parent2Email}
-                      onChange={(e) => updateField('parent2Email', e.target.value)}
-                      placeholder="parent2@mail.fr"
-                    />
-                  </label>
-                  <label className="sm:col-span-2 flex items-center gap-3 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700">
-                    <input
-                      type="checkbox"
-                      checked={draft.parent2HasDifferentAddress}
-                      onChange={(e) => updateField('parent2HasDifferentAddress', e.target.checked)}
-                      className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
-                    />
-                    Adresse parent 2 différente du domicile
-                  </label>
-                </div>
-
-                {draft.parent2HasDifferentAddress && (
-                  <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                    <label className="sm:col-span-2 text-sm font-medium text-slate-700">
-                      N° et voie parent 2
-                      <input
-                        type="text"
-                        className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                        value={draft.parent2AddressLine1}
-                        onChange={(e) => updateField('parent2AddressLine1', e.target.value)}
-                        placeholder="Ex: 18 avenue de la République"
-                        required={draft.parent2HasDifferentAddress}
-                      />
-                    </label>
-                    <label className="sm:col-span-2 text-sm font-medium text-slate-700">
-                      Complément d&apos;adresse parent 2
-                      <input
-                        type="text"
-                        className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                        value={draft.parent2AddressLine2}
-                        onChange={(e) => updateField('parent2AddressLine2', e.target.value)}
-                        placeholder="Bâtiment, appartement, étage..."
-                      />
-                    </label>
-                    <label className="text-sm font-medium text-slate-700">
-                      Code postal parent 2
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        pattern="[0-9]{5}"
-                        className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                        value={draft.parent2PostalCode}
-                        onChange={(e) => updateField('parent2PostalCode', e.target.value)}
-                        placeholder="75001"
-                        required={draft.parent2HasDifferentAddress}
-                      />
-                    </label>
-                    <label className="text-sm font-medium text-slate-700">
-                      Ville parent 2
-                      <input
-                        type="text"
-                        className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                        value={draft.parent2City}
-                        onChange={(e) => updateField('parent2City', e.target.value)}
-                        placeholder="Paris"
-                        required={draft.parent2HasDifferentAddress}
-                      />
-                    </label>
-                  </div>
-                )}
-              </section>
-
-              <div className="flex justify-end gap-3 pt-2">
                 <button
                   type="button"
-                  onClick={closeEditModal}
-                  className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                  onClick={handleDetachCse}
+                  disabled={isSubmittingCse}
+                  className="btn btn-secondary btn-sm shrink-0"
                 >
-                  Annuler
-                </button>
-                <button
-                  type="submit"
-                  className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
-                >
-                  Enregistrer
+                  <Unlink className="h-4 w-4" />
+                  Se désaffilier
                 </button>
               </div>
-            </form>
-          </div>
-        </div>
-      )}
+            </div>
+          ) : (
+            <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+              <div className="flex flex-col gap-3 md:flex-row md:items-end">
+                <label className="min-w-0 flex-1 text-sm font-medium text-slate-700">
+                  Code CSE
+                  <input
+                    type="text"
+                    value={cseCodeInput}
+                    onChange={(event) => setCseCodeInput(event.target.value.toUpperCase())}
+                    className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand-300 focus:ring-2 focus:ring-brand-100"
+                    placeholder="Ex : CSE2026"
+                    disabled={isSubmittingCse}
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={handleAttachCse}
+                  disabled={isSubmittingCse || !cseCodeInput.trim()}
+                  className="btn btn-primary btn-sm shrink-0"
+                >
+                  <Link2 className="h-4 w-4" />
+                  Rattacher mon compte
+                </button>
+              </div>
+            </div>
+          )}
+
+          {cseSubmitError ? (
+            <p className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+              {cseSubmitError}
+            </p>
+          ) : null}
+          {cseSubmitSuccess ? (
+            <p className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+              {cseSubmitSuccess}
+            </p>
+          ) : null}
+        </section>
+
+        <section className="mt-8 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-600">
+          <h3 className="font-display text-base font-semibold text-slate-900">Aide & confidentialité</h3>
+          <ul className="mt-3 space-y-2">
+            <li>
+              <Link href="/bien-choisir-sa-colo" className="text-brand-700 hover:text-brand-800">
+                Bien choisir sa colo
+              </Link>
+            </li>
+            <li>
+              <Link href="/faq" className="text-brand-700 hover:text-brand-800">
+                FAQ
+              </Link>
+            </li>
+            <li>
+              <Link href="/confidentialite" className="text-brand-700 hover:text-brand-800">
+                Politique de confidentialité
+              </Link>
+            </li>
+          </ul>
+        </section>
+      </section>
     </div>
   );
 }

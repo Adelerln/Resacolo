@@ -14,6 +14,11 @@ import { requireOrganizerPageAccess } from '@/lib/organizer-backoffice-access.se
 import { withOrganizerQuery } from '@/lib/organizers.server';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { slugify } from '@/lib/utils';
+import {
+  buildGoogleMapsEmbedIframeHtml,
+  extractGoogleMapsEmbedSrcFromInput,
+  mergeMapIframeHtmlIntoAiExtractedData
+} from '@/lib/google-maps-iframe';
 
 type PageProps = {
   searchParams?: Promise<{
@@ -83,36 +88,63 @@ export default async function NewAccommodationPage({ searchParams }: PageProps) 
 
     const now = new Date().toISOString();
     const mediaUrls = parseAccommodationMediaUrls(formData.get('media_urls'));
+    const mapIframeRaw = String(formData.get('map_iframe_html') ?? '').trim();
+    const mapEmbedSrc = extractGoogleMapsEmbedSrcFromInput(mapIframeRaw);
+    const normalizedMapIframeHtml =
+      mapIframeRaw.length === 0 ? null : mapEmbedSrc ? buildGoogleMapsEmbedIframeHtml(mapEmbedSrc) : null;
 
-    const { data: insertedAccommodation, error } = await supabase
-      .from('accommodations')
-      .insert({
-        organizer_id: selectedOrganizerId,
-        name,
-        accommodation_type: accommodationType,
-        address_text: addressInput.addressText || null,
-        postal_code: addressInput.postalCode || null,
-        city: addressInput.city || null,
-        department_code: addressInput.departmentCode || null,
-        region_text: addressInput.regionText || null,
-        country: addressInput.country || null,
-        description: description || null,
-        bed_info: String(formData.get('bed_info') ?? '').trim() || null,
-        bathroom_info: String(formData.get('bathroom_info') ?? '').trim() || null,
-        catering_info: String(formData.get('catering_info') ?? '').trim() || null,
-        accessibility_info: buildAccessibilityInfoFromForm(formData),
-        slug: slugify(name),
-        ai_extracted_data: null,
-        status: 'DRAFT',
-        validated_at: null,
-        validated_by_user_id: null,
-        center_latitude: centerCoordinatesResult.value.centerLatitude,
-        center_longitude: centerCoordinatesResult.value.centerLongitude,
-        created_at: now,
-        updated_at: now
-      })
-      .select('id')
-      .single();
+    if (mapIframeRaw.length > 0 && !mapEmbedSrc) {
+      redirect(
+        withOrganizerQuery(
+          `/organisme/hebergements/new?error=${encodeURIComponent('Code iframe Google Maps invalide. Utilisez un embed https://www.google.com/maps/.../embed.')}`,
+          selectedOrganizerId
+        )
+      );
+    }
+
+    const insertPayload = {
+      organizer_id: selectedOrganizerId,
+      name,
+      accommodation_type: accommodationType,
+      address_text: addressInput.addressText || null,
+      postal_code: addressInput.postalCode || null,
+      city: addressInput.city || null,
+      department_code: addressInput.departmentCode || null,
+      region_text: addressInput.regionText || null,
+      country: addressInput.country || null,
+      description: description || null,
+      bed_info: String(formData.get('bed_info') ?? '').trim() || null,
+      bathroom_info: String(formData.get('bathroom_info') ?? '').trim() || null,
+      catering_info: String(formData.get('catering_info') ?? '').trim() || null,
+      accessibility_info: buildAccessibilityInfoFromForm(formData),
+      slug: slugify(name),
+      ai_extracted_data: null,
+      status: 'DRAFT',
+      validated_at: null,
+      validated_by_user_id: null,
+      center_latitude: centerCoordinatesResult.value.centerLatitude,
+      center_longitude: centerCoordinatesResult.value.centerLongitude,
+      map_iframe_html: normalizedMapIframeHtml,
+      created_at: now,
+      updated_at: now
+    };
+
+    let insertResult = await supabase.from('accommodations').insert(insertPayload).select('id').single();
+    if (
+      insertResult.error &&
+      String(insertResult.error.message ?? '').toLowerCase().includes('map_iframe_html')
+    ) {
+      const legacyInsertPayload = { ...insertPayload };
+      delete legacyInsertPayload.map_iframe_html;
+      legacyInsertPayload.ai_extracted_data = mergeMapIframeHtmlIntoAiExtractedData(
+        legacyInsertPayload.ai_extracted_data,
+        normalizedMapIframeHtml
+      );
+      insertResult = await supabase.from('accommodations').insert(legacyInsertPayload).select('id').single();
+    }
+
+    const insertedAccommodation = insertResult.data;
+    const error = insertResult.error;
 
     if (error || !insertedAccommodation) {
       console.error('Erreur Supabase (create accommodation)', error?.message);

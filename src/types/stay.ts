@@ -104,6 +104,7 @@ export interface StayAccommodation {
   name: string;
   accommodationType: string | null;
   locationLabel: string | null;
+  mapEmbedSrc?: string | null;
   addressText?: string | null;
   postalCode?: string | null;
   city?: string | null;

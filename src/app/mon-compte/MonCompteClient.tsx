@@ -283,7 +283,7 @@ export default function MonCompteClient({
                   {reservationList.map((reservation) => (
                     <li
                       key={reservation.orderId}
-                      className={`flex ${ACCOUNT_PANEL_ITEM_MIN_HEIGHT} flex-col rounded-xl border p-3 text-sm ${
+                      className={`flex h-auto ${ACCOUNT_PANEL_ITEM_MIN_HEIGHT} flex-col rounded-xl border p-3 text-sm ${
                         reservation.isPast
                           ? 'border-slate-300 bg-slate-100/90 text-slate-500'
                           : 'border-slate-300 bg-slate-50/60 text-slate-700'
@@ -329,7 +329,7 @@ export default function MonCompteClient({
                           </div>
                         </div>
 
-                        <div className="flex shrink-0 justify-end self-start pt-0.5 sm:pt-1">
+                        <div className="flex shrink-0 justify-end self-start pt-0.5 sm:mt-auto sm:self-end sm:pt-1">
                           <FamilyReservationDetailsModal reservation={reservation} />
                         </div>
                       </div>
@@ -337,9 +337,6 @@ export default function MonCompteClient({
                   ))}
                 </ul>
               )}
-
-              <div className="mt-3 h-4 shrink-0" aria-hidden="true" />
-
           </section>
 
           <section className="flex h-full min-h-0 flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -372,7 +369,7 @@ export default function MonCompteClient({
                       <Link
                         key={stay.id}
                         href={`/sejours/${stay.canonicalSlug}`}
-                        className={`grid ${ACCOUNT_PANEL_ITEM_MIN_HEIGHT} grid-cols-[96px_minmax(0,1fr)] overflow-hidden rounded-xl border border-slate-300 bg-gradient-to-r from-white via-white to-blue-50/40 text-sm text-slate-700 transition hover:border-slate-400 hover:shadow-sm`}
+                        className={`grid h-auto ${ACCOUNT_PANEL_ITEM_MIN_HEIGHT} grid-cols-[96px_minmax(0,1fr)] overflow-hidden rounded-xl border border-slate-300 bg-gradient-to-r from-white via-white to-blue-50/40 text-sm text-slate-700 transition hover:border-slate-400 hover:shadow-sm`}
                       >
                         {stayImage ? (
                           <div className={`h-full ${ACCOUNT_PANEL_ITEM_MIN_HEIGHT} overflow-hidden bg-slate-100`}>
@@ -390,7 +387,7 @@ export default function MonCompteClient({
                             </span>
                           </div>
                         )}
-                        <div className="min-w-0 p-3">
+                        <div className="flex min-w-0 h-full flex-col p-3">
                           <p className="line-clamp-2 font-display text-base font-semibold leading-snug text-slate-900">
                             {stay.title}
                           </p>
@@ -404,7 +401,7 @@ export default function MonCompteClient({
                               {stay.ageRange || 'Tous âges'}
                             </span>
                           </div>
-                          <div className="mt-1.5">
+                          <div className="mt-auto pt-1.5">
                             <span className="inline-flex max-w-full items-center rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">
                               <span className="mr-1 text-amber-500">Lieu</span>
                               <span className="truncate">{locationLabel}</span>

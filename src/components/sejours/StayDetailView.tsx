@@ -125,12 +125,12 @@ function normalizeTransportCityDisplay(value: string | null | undefined) {
   if (!clean) return '';
 
   const parts = clean
-    .split(/\s*(?:→|\/)\s*/g)
+    .split(/\s*(?:→|->)\s*/g)
     .map((part) => part.trim())
     .filter(Boolean);
-  if (parts.length === 0) return clean;
+  if (parts.length <= 1) return clean;
 
-  const uniqueParts = Array.from(new Set(parts.map((part) => part.toUpperCase())));
+  const uniqueParts = Array.from(new Set(parts.map((part) => part.toUpperCase().replace(/\s+/g, ' '))));
   if (uniqueParts.length === 1) return parts[0];
   return clean;
 }
@@ -1225,6 +1225,22 @@ export function StayDetailView({ stay }: { stay: Stay }) {
                                   title={accommodation.name}
                                   imageUrls={accommodation.imageUrls}
                                 />
+                              </div>
+                            ) : null}
+                            {accommodation.mapEmbedSrc ? (
+                              <div className="mt-5">
+                                <h4 className="text-lg font-semibold text-slate-900">Carte du lieu</h4>
+                                <div className="mt-3 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                                  <div className="relative aspect-[4/3] w-full">
+                                    <iframe
+                                      src={accommodation.mapEmbedSrc}
+                                      title={`Carte — ${accommodation.name}`}
+                                      className="absolute inset-0 h-full w-full"
+                                      loading="lazy"
+                                      referrerPolicy="no-referrer-when-downgrade"
+                                    />
+                                  </div>
+                                </div>
                               </div>
                             ) : null}
                             {accommodation.videoUrls && accommodation.videoUrls.length > 0 ? (

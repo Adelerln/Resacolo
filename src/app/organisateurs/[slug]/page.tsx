@@ -26,6 +26,7 @@ import { staySessionsAppearFullyBooked } from '@/lib/stay-catalog-availability';
 import { getStays, getStayCanonicalPath } from '@/lib/stays';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { slugify } from '@/lib/utils';
+import { extractGoogleMapsEmbedSrcFromInput } from '@/lib/google-maps-iframe';
 
 type PageProps = { params: Promise<{ slug: string }> };
 
@@ -527,7 +528,7 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
     featuredSessionsByStayId.set(row.stay_id, group);
   }
 
-  const [{ data: stayMediaRaw }, { data: accommodationsRaw }, { data: stayAccommodationLinksRaw }, { data: accommodationMediaRaw }] =
+  const [{ data: stayMediaRaw }, { data: stayAccommodationLinksRaw }, { data: accommodationMediaRaw }] =
     resolvedOrganizer
       ? await Promise.all([
           publishedStayIds.length > 0
@@ -537,13 +538,6 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
                 .in('stay_id', publishedStayIds)
                 .order('position', { ascending: true })
             : Promise.resolve({ data: [] as Array<{ stay_id: string; url: string; position: number }> }),
-          supabase
-            .from('accommodations')
-            .select(
-              'id,name,accommodation_type,address_text,postal_code,city,department_code,region_text,country,description,bed_info,bathroom_info,catering_info,accessibility_info,status,updated_at'
-            )
-            .eq('organizer_id', resolvedOrganizer.id)
-            .order('updated_at', { ascending: false }),
           supabase.from('stay_accommodations').select('accommodation_id,stay_id'),
           supabase
             .from('accommodation_media')
@@ -552,29 +546,38 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
         ])
       : [
           { data: [] as Array<{ stay_id: string; url: string; position: number }> },
-          {
-            data: [] as Array<{
-              id: string;
-              name: string;
-              accommodation_type: string | null;
-              address_text: string | null;
-              postal_code: string | null;
-              city: string | null;
-              department_code: string | null;
-              region_text: string | null;
-              country: string | null;
-              description: string | null;
-              bed_info: string | null;
-              bathroom_info: string | null;
-              catering_info: string | null;
-              accessibility_info: string | null;
-              status: string | null;
-              updated_at: string;
-            }>
-          },
           { data: [] as Array<{ accommodation_id: string; stay_id: string }> },
           { data: [] as Array<{ accommodation_id: string; url: string; position: number }> }
         ];
+
+  const accommodationsSelectWithMapIframe =
+    'id,name,accommodation_type,address_text,postal_code,city,department_code,region_text,country,description,bed_info,bathroom_info,catering_info,accessibility_info,status,updated_at,map_iframe_html';
+  const accommodationsSelectLegacy =
+    'id,name,accommodation_type,address_text,postal_code,city,department_code,region_text,country,description,bed_info,bathroom_info,catering_info,accessibility_info,status,updated_at';
+
+  const accommodationsWithMapResult = resolvedOrganizer
+    ? await supabase
+        .from('accommodations')
+        .select(accommodationsSelectWithMapIframe)
+        .eq('organizer_id', resolvedOrganizer.id)
+        .order('updated_at', { ascending: false })
+    : { data: [], error: null };
+
+  const shouldFallbackToLegacyAccommodations =
+    accommodationsWithMapResult.error &&
+    String(accommodationsWithMapResult.error.message ?? '').toLowerCase().includes('map_iframe_html');
+
+  const accommodationsLegacyResult = shouldFallbackToLegacyAccommodations && resolvedOrganizer
+    ? await supabase
+        .from('accommodations')
+        .select(accommodationsSelectLegacy)
+        .eq('organizer_id', resolvedOrganizer.id)
+        .order('updated_at', { ascending: false })
+    : null;
+
+  const accommodationsRaw = shouldFallbackToLegacyAccommodations
+    ? (accommodationsLegacyResult?.data ?? []).map((row) => ({ ...row, map_iframe_html: null }))
+    : (accommodationsWithMapResult.data ?? []);
 
   const coverImageByStayId = new Map<string, string>();
   for (const media of stayMediaRaw ?? []) {
@@ -627,6 +630,7 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
       locationCountry: locationMeta.locationCountry,
       itinerantZone: locationMeta.itinerantZone,
       locationLabel: locationMeta.locationLabel,
+      mapEmbedSrc: extractGoogleMapsEmbedSrcFromInput(accommodation.map_iframe_html ?? ''),
       coverImage: coverImageByAccommodationId.get(accommodation.id) ?? null,
       linkedStayTitles: linkedPublishedTitlesByAccommodationId.get(accommodation.id) ?? [],
       linkedStayLocations: linkedPublishedLocationsByAccommodationId.get(accommodation.id) ?? []
@@ -938,7 +942,15 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
                         className="group w-[280px] shrink-0 overflow-hidden rounded-[28px] bg-white shadow-[0_18px_40px_-28px_rgba(15,23,42,0.35)]"
                       >
                         <div className="relative h-[320px] bg-slate-100">
-                          {accommodation.coverImage ? (
+                          {accommodation.mapEmbedSrc ? (
+                            <iframe
+                              src={accommodation.mapEmbedSrc}
+                              title={`Carte ${accommodation.name}`}
+                              className="h-full w-full"
+                              loading="lazy"
+                              referrerPolicy="no-referrer-when-downgrade"
+                            />
+                          ) : accommodation.coverImage ? (
                             <Image
                               src={accommodation.coverImage}
                               alt={accommodation.name}

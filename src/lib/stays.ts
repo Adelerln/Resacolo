@@ -10,6 +10,10 @@ import { isVideoUrlCandidate } from '@/lib/stay-draft-url-extract';
 import { normalizeStayTitle } from '@/lib/stay-title';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { slugify } from '@/lib/utils';
+import {
+  extractGoogleMapsEmbedSrcFromInput,
+  readMapIframeHtmlFromAiExtractedData
+} from '@/lib/google-maps-iframe';
 import type {
   Stay,
   StayAccommodation,
@@ -72,6 +76,8 @@ type AccommodationRow = Pick<
   | 'accessibility_info'
   | 'center_latitude'
   | 'center_longitude'
+  | 'map_iframe_html'
+  | 'ai_extracted_data'
 >;
 type StayAccommodationRow = Pick<
   Database['public']['Tables']['stay_accommodations']['Row'],
@@ -571,7 +577,6 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
     { data: mediaRaw },
     { data: sessionsRaw },
     { data: stayAccommodationRows },
-    { data: accommodationsRaw },
     { data: extraOptionsRaw },
     { data: insuranceOptionsRaw },
     { data: transportOptionsRaw }
@@ -602,13 +607,6 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
       : Promise.resolve({ data: [] as StayAccommodationRow[] | null }),
     stayIds.length
       ? supabase
-          .from('accommodations')
-          .select(
-            'id,name,accommodation_type,address_text,postal_code,city,department_code,region_text,country,description,bed_info,bathroom_info,catering_info,accessibility_info,center_latitude,center_longitude'
-          )
-      : Promise.resolve({ data: [] as AccommodationRow[] | null }),
-    stayIds.length
-      ? supabase
           .from('stay_extra_options')
           .select('id,stay_id,label,amount_cents,position')
           .in('stay_id', stayIds)
@@ -627,6 +625,30 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
           .in('stay_id', stayIds)
       : Promise.resolve({ data: [] as TransportOptionRow[] | null })
   ]);
+
+  let accommodationsRaw: AccommodationRow[] | null = [];
+  if (stayIds.length) {
+    const withMapResult = await supabase
+      .from('accommodations')
+      .select(
+        'id,name,accommodation_type,address_text,postal_code,city,department_code,region_text,country,description,bed_info,bathroom_info,catering_info,accessibility_info,center_latitude,center_longitude,map_iframe_html,ai_extracted_data'
+      );
+
+    const shouldFallbackLegacy =
+      withMapResult.error &&
+      String(withMapResult.error.message ?? '').toLowerCase().includes('map_iframe_html');
+
+    if (shouldFallbackLegacy) {
+      const legacyResult = await supabase
+        .from('accommodations')
+        .select(
+          'id,name,accommodation_type,address_text,postal_code,city,department_code,region_text,country,description,bed_info,bathroom_info,catering_info,accessibility_info,center_latitude,center_longitude,ai_extracted_data'
+        );
+      accommodationsRaw = (legacyResult.data ?? []).map((row) => ({ ...row, map_iframe_html: null }));
+    } else {
+      accommodationsRaw = withMapResult.data ?? [];
+    }
+  }
 
   const accommodationIds = Array.from(new Set((stayAccommodationRows ?? []).map((item) => item.accommodation_id)));
   const { data: accommodationMediaRaw } = accommodationIds.length
@@ -784,6 +806,9 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
           id: accommodation.id,
           name: accommodation.name,
           accommodationType: accommodation.accommodation_type,
+          mapEmbedSrc: extractGoogleMapsEmbedSrcFromInput(
+            accommodation.map_iframe_html ?? readMapIframeHtmlFromAiExtractedData(accommodation.ai_extracted_data) ?? ''
+          ),
           locationLabel:
             buildAccommodationAddressLabel({
               postalCode: accommodation.postal_code,

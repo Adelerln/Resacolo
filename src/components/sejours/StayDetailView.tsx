@@ -100,7 +100,12 @@ function formatSessionLabel(session: StaySessionOption) {
   const start = new Date(session.startDate).toLocaleDateString('fr-FR');
   const end = new Date(session.endDate).toLocaleDateString('fr-FR');
   const status = session.status === 'FULL' ? ' (COMPLET)' : '';
-  const price = session.price != null ? ` · ${formatPrice(session.price)}` : '';
+  const price =
+    session.familyCentsAfterAid != null
+      ? ` · ${formatPrice(session.familyCentsAfterAid / 100)} (après CSE)`
+      : session.price != null
+        ? ` · ${formatPrice(session.price)}`
+        : '';
   return `${start} - ${end}${status}${price}`;
 }
 
@@ -599,7 +604,10 @@ export function StayDetailView({ stay }: { stay: Stay }) {
   );
   const isSelectedSessionUnavailable = selectedSession ? selectedSession.status !== 'OPEN' : false;
   const estimatedPrice = useMemo(() => {
-    const basePrice = selectedSession?.price ?? stay.priceFrom;
+    const basePrice =
+      selectedSession?.familyCentsAfterAid != null
+        ? selectedSession.familyCentsAfterAid / 100
+        : selectedSession?.price ?? stay.csePriceFrom ?? stay.priceFrom;
     if (basePrice == null) return stay.priceFrom;
     let total = basePrice;
     total += selectedTransportAmount;
@@ -610,7 +618,14 @@ export function StayDetailView({ stay }: { stay: Stay }) {
       total += (basePrice * selectedInsuranceOption.percentValue) / 100;
     }
     return Math.round(total * 100) / 100;
-  }, [selectedExtraOption, selectedInsuranceOption, selectedSession, selectedTransportAmount, stay.priceFrom]);
+  }, [
+    selectedExtraOption,
+    selectedInsuranceOption,
+    selectedSession,
+    selectedTransportAmount,
+    stay.csePriceFrom,
+    stay.priceFrom
+  ]);
   const hasStartedSelection = Boolean(
     selectedSessionId ||
       selectedTransportId ||

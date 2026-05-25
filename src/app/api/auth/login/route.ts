@@ -48,6 +48,7 @@ function canUseRedirectForRole(role: AppRole, path: string) {
     );
   }
   if (role === 'ADMIN') return path.startsWith('/admin');
+  if (role === 'ADMIN_SALES') return path.startsWith('/admin');
   if (role === 'ORGANISATEUR') return path.startsWith('/organisme');
   if (role === 'PARTENAIRE') return path.startsWith('/partenaire');
   return (
@@ -119,7 +120,13 @@ function getOptionalField(input: unknown, key: string) {
 function isRoleAllowedForLoginMode(role: AppRole, loginMode: 'family' | 'pro' | undefined) {
   if (!loginMode) return true;
   if (loginMode === 'family') return role === 'CLIENT';
-  return role === 'ORGANISATEUR' || role === 'PARTENAIRE' || role === 'ADMIN' || role === 'MNEMOS';
+  return (
+    role === 'ORGANISATEUR' ||
+    role === 'PARTENAIRE' ||
+    role === 'ADMIN' ||
+    role === 'ADMIN_SALES' ||
+    role === 'MNEMOS'
+  );
 }
 
 export async function POST(req: Request) {

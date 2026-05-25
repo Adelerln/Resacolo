@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { requireRole } from '@/lib/auth/require';
+import { requireAdminSection } from '@/lib/auth/require';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 
 const SEASON_ORDER_STATUSES = new Set(['VALIDATED', 'BOOKED', 'PAID', 'CONFIRMED']);
@@ -179,7 +179,7 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 export default async function AdminHome() {
-  await requireRole('ADMIN');
+  await requireAdminSection('dashboard');
   const supabase = getServerSupabaseClient();
 
   const [

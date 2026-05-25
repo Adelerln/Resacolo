@@ -528,6 +528,30 @@ export default function CheckoutRecapitulatifPage() {
           </div>
         </section>
 
+        {pricing ? (
+          <section className={SECTION_CARD_CLASS}>
+            <h2 className="font-display text-xl font-bold text-slate-900 sm:text-2xl">Totaux estimés</h2>
+            <div className="mt-4 space-y-2 text-sm">
+              <div className="flex items-center justify-between font-semibold text-slate-800">
+                <span>Total catalogue</span>
+                <span>{new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(pricing.totalCents / 100)}</span>
+              </div>
+              {(pricing.cseTotalAidCents ?? 0) > 0 ? (
+                <>
+                  <div className="flex items-center justify-between font-semibold text-emerald-700">
+                    <span>Part CSE estimée</span>
+                    <span>- {new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format((pricing.cseTotalAidCents ?? 0) / 100)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-base font-bold text-slate-900">
+                    <span>Reste famille estimé</span>
+                    <span>{new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format((pricing.familyTotalCentsAfterAid ?? pricing.totalCents) / 100)}</span>
+                  </div>
+                </>
+              ) : null}
+            </div>
+          </section>
+        ) : null}
+
         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-end">
           <Link href="/checkout/informations" className="btn btn-secondary btn-md">
             Retour aux informations

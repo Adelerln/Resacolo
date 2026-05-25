@@ -1,8 +1,9 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { requireRole } from '@/lib/auth/require';
+import { requireAdminSection } from '@/lib/auth/require';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { AdminPartnerMembersSection } from '@/components/admin/AdminPartnerMembersSection';
+import { canMutateAdminSection, isAdminWorkspaceRole } from '@/lib/admin-access';
 import {
   normalizePartnerOffer,
   PARTNER_OFFER_LABELS,
@@ -49,7 +50,8 @@ export const revalidate = 0;
 export const runtime = 'nodejs';
 
 export default async function AdminPartnerEditPage({ params, searchParams }: PageProps) {
-  await requireRole('ADMIN');
+  const session = await requireAdminSection('partners');
+  const canEditPartners = isAdminWorkspaceRole(session.role) && canMutateAdminSection(session.role, 'partners');
   const { id } = await params;
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const errorParam = sanitizeQueryValue(resolvedSearchParams?.error);
@@ -150,83 +152,113 @@ export default async function AdminPartnerEditPage({ params, searchParams }: Pag
         </div>
       ) : null}
 
-      <form action={`/api/admin/partners/${partnerId}`} method="post" className="space-y-6 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
-        <input type="hidden" name="_intent" value="general" />
-        <div>
-          <h2 className="admin-section-title">Informations générales</h2>
-          <p className="admin-page-subtitle mt-1 text-xs">Nom, code, offre et email principal visibles côté back-office.</p>
-        </div>
-        <div className="grid gap-2 md:grid-cols-2">
-          <div>
-            <div className="text-xs uppercase text-slate-400">Créé le</div>
-            <div className="font-medium text-slate-900">
-              {new Date(collectivity.created_at).toLocaleDateString('fr-FR')}
+      {canEditPartners ? (
+        <>
+          <form action={`/api/admin/partners/${partnerId}`} method="post" className="space-y-6 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
+            <input type="hidden" name="_intent" value="general" />
+            <div>
+              <h2 className="admin-section-title">Informations générales</h2>
+              <p className="admin-page-subtitle mt-1 text-xs">Nom, code, offre et email principal visibles côté back-office.</p>
+            </div>
+            <div className="grid gap-2 md:grid-cols-2">
+              <div>
+                <div className="text-xs uppercase text-slate-400">Créé le</div>
+                <div className="font-medium text-slate-900">
+                  {new Date(collectivity.created_at).toLocaleDateString('fr-FR')}
+                </div>
+              </div>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="block text-sm font-medium text-slate-700">
+                Nom du partenaire
+                <input name="name" required defaultValue={collectivity.name} className={fieldClassName()} />
+              </label>
+              <label className="block text-sm font-medium text-slate-700">
+                Code de rattachement
+                <input
+                  name="code"
+                  required
+                  defaultValue={collectivity.code}
+                  className={`${fieldClassName()} uppercase`}
+                />
+              </label>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="block text-sm font-medium text-slate-700">
+                Offre
+                <select name="offer_mode" defaultValue={normalizePartnerOffer(collectivity.offer_mode)} className={fieldClassName()}>
+                  {PARTNER_OFFER_VALUES.map((offer) => (
+                    <option key={offer} value={offer}>
+                      {PARTNER_OFFER_LABELS[offer]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block text-sm font-medium text-slate-700">
+                Email principal
+                <input
+                  name="contact_email"
+                  type="email"
+                  required
+                  defaultValue={collectivity.contact_email ?? ''}
+                  className={fieldClassName()}
+                />
+              </label>
+            </div>
+            <div className="flex items-center justify-end">
+              <button className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">
+                Enregistrer
+              </button>
+            </div>
+          </form>
+
+          <section className="space-y-4">
+            <div>
+              <h2 className="admin-section-title">Utilisateurs partenaires</h2>
+              <p className="admin-page-subtitle mt-1 text-xs">
+                Admin : accès à toutes les pages. Gestion bénéficiaires et réservations : dashboard,
+                bénéficiaires et réservations uniquement.
+              </p>
+            </div>
+            <AdminPartnerMembersSection
+              partnerId={partnerId}
+              members={members}
+              initialMode={
+                openMemberModalParam === 'add' || openMemberModalParam === 'edit'
+                  ? openMemberModalParam
+                  : null
+              }
+              initialMemberId={selectedMemberIdParam}
+            />
+          </section>
+        </>
+      ) : (
+        <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+            Mode lecture seule
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div>
+              <p className="text-xs uppercase text-slate-400">Nom du partenaire</p>
+              <p className="text-sm font-semibold text-slate-900">{collectivity.name}</p>
+            </div>
+            <div>
+              <p className="text-xs uppercase text-slate-400">Code de rattachement</p>
+              <p className="text-sm font-semibold text-slate-900">{collectivity.code}</p>
+            </div>
+            <div>
+              <p className="text-xs uppercase text-slate-400">Offre</p>
+              <p className="text-sm font-semibold text-slate-900">
+                {PARTNER_OFFER_LABELS[normalizePartnerOffer(collectivity.offer_mode)]}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs uppercase text-slate-400">Email principal</p>
+              <p className="text-sm font-semibold text-slate-900">{collectivity.contact_email ?? '—'}</p>
             </div>
           </div>
-        </div>
-        <div className="grid gap-4 md:grid-cols-2">
-          <label className="block text-sm font-medium text-slate-700">
-            Nom du partenaire
-            <input name="name" required defaultValue={collectivity.name} className={fieldClassName()} />
-          </label>
-          <label className="block text-sm font-medium text-slate-700">
-            Code de rattachement
-            <input
-              name="code"
-              required
-              defaultValue={collectivity.code}
-              className={`${fieldClassName()} uppercase`}
-            />
-          </label>
-        </div>
-        <div className="grid gap-4 md:grid-cols-2">
-          <label className="block text-sm font-medium text-slate-700">
-            Offre
-            <select name="offer_mode" defaultValue={normalizePartnerOffer(collectivity.offer_mode)} className={fieldClassName()}>
-              {PARTNER_OFFER_VALUES.map((offer) => (
-                <option key={offer} value={offer}>
-                  {PARTNER_OFFER_LABELS[offer]}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="block text-sm font-medium text-slate-700">
-            Email principal
-            <input
-              name="contact_email"
-              type="email"
-              required
-              defaultValue={collectivity.contact_email ?? ''}
-              className={fieldClassName()}
-            />
-          </label>
-        </div>
-        <div className="flex items-center justify-end">
-          <button className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">
-            Enregistrer
-          </button>
-        </div>
-      </form>
-
-      <section className="space-y-4">
-        <div>
-          <h2 className="admin-section-title">Utilisateurs partenaires</h2>
-          <p className="admin-page-subtitle mt-1 text-xs">
-            Admin : accès à toutes les pages. Gestion bénéficiaires et réservations : dashboard,
-            bénéficiaires et réservations uniquement.
-          </p>
-        </div>
-        <AdminPartnerMembersSection
-          partnerId={partnerId}
-          members={members}
-          initialMode={
-            openMemberModalParam === 'add' || openMemberModalParam === 'edit'
-              ? openMemberModalParam
-              : null
-          }
-          initialMemberId={selectedMemberIdParam}
-        />
-      </section>
+        </section>
+      )}
     </div>
   );
 }

@@ -137,6 +137,12 @@ export function CheckoutCartSummary({
                     <p className="text-xs text-slate-700 sm:text-sm">
                       Vendu par : <span className="font-semibold text-brand-600">{item.organizerName}</span>
                     </p>
+                    {priced && (priced.cseAidCents ?? 0) > 0 ? (
+                      <p className="pt-1 text-xs font-semibold text-emerald-700 sm:text-sm">
+                        Part CSE estimée: {formatEuroFromCents(priced.cseAidCents ?? 0)} · Reste famille:{' '}
+                        {formatEuroFromCents(priced.familyCentsAfterAid ?? priced.totalPriceCents)}
+                      </p>
+                    ) : null}
                     {itemExtra ? <div className="pt-2">{itemExtra}</div> : null}
                   </div>
                 </article>
@@ -151,6 +157,12 @@ export function CheckoutCartSummary({
                 {pricing ? formatEuroFromCents(pricing.totalCents) : formatUnitPrice(fallbackTotal)}
               </span>
             </div>
+            {pricing && (pricing.cseTotalAidCents ?? 0) > 0 ? (
+              <div className="mt-2 flex items-center justify-between text-xs font-semibold text-emerald-700 sm:text-sm">
+                <span>Total après déduction CSE estimée</span>
+                <span>{formatEuroFromCents(pricing.familyTotalCentsAfterAid ?? pricing.totalCents)}</span>
+              </div>
+            ) : null}
           </div>
         </div>
       </div>
@@ -169,6 +181,12 @@ export function CheckoutCartSummary({
               <p className="text-sm font-semibold text-slate-900">{item.title}</p>
               <p className="mt-0.5 text-xs text-slate-500">{item.organizerName}</p>
               <p className="mt-2 text-sm font-semibold text-accent-600">{linePrice}</p>
+              {priced && (priced.cseAidCents ?? 0) > 0 ? (
+                <p className="mt-1 text-xs font-semibold text-emerald-700">
+                  Part CSE estimée: {formatEuroFromCents(priced.cseAidCents ?? 0)} · Reste famille:{' '}
+                  {formatEuroFromCents(priced.familyCentsAfterAid ?? priced.totalPriceCents)}
+                </p>
+              ) : null}
             </li>
           );
         })}
@@ -181,6 +199,12 @@ export function CheckoutCartSummary({
             {pricing ? formatEuroFromCents(pricing.totalCents) : formatUnitPrice(fallbackTotal)}
           </span>
         </div>
+        {pricing && (pricing.cseTotalAidCents ?? 0) > 0 ? (
+          <div className="mt-1 flex items-center justify-between text-xs font-semibold text-emerald-700">
+            <span>Total après déduction CSE estimée</span>
+            <span>{formatEuroFromCents(pricing.familyTotalCentsAfterAid ?? pricing.totalCents)}</span>
+          </div>
+        ) : null}
       </div>
     </div>
   );

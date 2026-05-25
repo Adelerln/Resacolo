@@ -6,6 +6,11 @@ import {
   type AppRole,
   type AuthenticatedAppRole
 } from '@/lib/auth/roles';
+import {
+  canAccessAdminSection,
+  isAdminWorkspaceRole,
+  type AdminWorkspaceSection
+} from '@/lib/admin-access';
 
 type RequireOptions = {
   loginPath?: string;
@@ -72,4 +77,12 @@ export async function requireOrganizer(options?: RequireOptions) {
 
 export async function requirePartner(options?: RequireOptions) {
   return requireRole('PARTENAIRE', options);
+}
+
+export async function requireAdminSection(section: AdminWorkspaceSection, options?: RequireOptions) {
+  const session = await requireAnyRole(['ADMIN', 'ADMIN_SALES', 'MNEMOS'], options);
+  if (!isAdminWorkspaceRole(session.role) || !canAccessAdminSection(session.role, section)) {
+    redirectToAuthorizedHome(session.role);
+  }
+  return session;
 }

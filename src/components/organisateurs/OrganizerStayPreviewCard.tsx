@@ -15,6 +15,9 @@ export type OrganizerStayPreviewCardProps = {
   seasonBadge: string;
   durationLabel: string;
   priceFromEuros: number | null;
+  csePriceFromEuros?: number | null;
+  cseAidFromEuros?: number | null;
+  cseLabel?: string | null;
   coverUrl: string | null;
   href: string;
   organizerLogoUrl: string | null;
@@ -37,6 +40,9 @@ export function OrganizerStayPreviewCard({
   seasonBadge,
   durationLabel,
   priceFromEuros,
+  csePriceFromEuros = null,
+  cseAidFromEuros = null,
+  cseLabel = null,
   coverUrl,
   href,
   organizerLogoUrl,
@@ -188,7 +194,27 @@ export function OrganizerStayPreviewCard({
             <p className={teaserClass}>{teaser ?? '\u00A0'}</p>
           </div>
           <p className={priceLineClass}>
-            {priceFromEuros != null ? (
+            {csePriceFromEuros != null ? (
+              <>
+                À partir de{' '}
+                <span className={priceValueClass}>
+                  {csePriceFromEuros.toLocaleString('fr-FR', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2
+                  })}
+                  €
+                </span>
+                {priceFromEuros != null ? (
+                  <span className="ml-2 text-xs font-medium text-slate-500 line-through">
+                    {priceFromEuros.toLocaleString('fr-FR', {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2
+                    })}
+                    €
+                  </span>
+                ) : null}
+              </>
+            ) : priceFromEuros != null ? (
               <>
                 À partir de{' '}
                 <span className={priceValueClass}>
@@ -205,6 +231,15 @@ export function OrganizerStayPreviewCard({
               </span>
             )}
           </p>
+          {csePriceFromEuros != null ? (
+            <p className="mt-1 text-[11px] font-semibold text-emerald-700">
+              {cseLabel ?? 'Déduction CSE estimée'}
+              {cseAidFromEuros != null ? ` · Aide dès ${cseAidFromEuros.toLocaleString('fr-FR', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+              })}€` : ''}
+            </p>
+          ) : null}
         </div>
 
         {isFullyBooked ? (

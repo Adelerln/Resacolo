@@ -109,7 +109,8 @@ export default async function AdminPartnerEditPage({ params, searchParams }: Pag
         ...member,
         email,
         first_name: firstName,
-        last_name: lastName
+        last_name: lastName,
+        role_label: contact?.role_label ?? null
       };
     })
   );
@@ -209,13 +210,7 @@ export default async function AdminPartnerEditPage({ params, searchParams }: Pag
       </form>
 
       <section className="space-y-4">
-        <div>
-          <h2 className="admin-section-title">Utilisateurs partenaires</h2>
-          <p className="admin-page-subtitle mt-1 text-xs">
-            Admin : accès à toutes les pages. Gestion bénéficiaires et réservations : dashboard,
-            bénéficiaires et réservations uniquement.
-          </p>
-        </div>
+        <h2 className="admin-section-title">Utilisateurs partenaires</h2>
         <AdminPartnerMembersSection
           partnerId={partnerId}
           members={members}

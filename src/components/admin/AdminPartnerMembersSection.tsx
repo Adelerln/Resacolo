@@ -8,6 +8,7 @@ import {
   normalizePartnerAccessRole,
   type PartnerAccessRole
 } from '@/lib/partner-access';
+import { PasswordInput } from '@/components/auth/PasswordInput';
 import {
   PASSWORD_POLICY_HTML_PATTERN,
   PASSWORD_POLICY_MESSAGE,
@@ -22,6 +23,7 @@ type MemberRow = {
   last_name: string | null;
   email: string | null;
   role: string;
+  role_label: string | null;
 };
 
 type ModalState =
@@ -82,6 +84,7 @@ export function AdminPartnerMembersSection({
                 <th className="px-4 py-3">Email</th>
                 <th className="px-4 py-3">Prénom</th>
                 <th className="px-4 py-3">Nom</th>
+                <th className="px-4 py-3">Fonction</th>
                 <th className="px-4 py-3">Accès</th>
                 <th className="px-4 py-3">Ajouté le</th>
                 <th className="px-4 py-3 text-right">Actions</th>
@@ -93,6 +96,7 @@ export function AdminPartnerMembersSection({
                   <td className="px-4 py-3 text-slate-600">{member.email ?? '—'}</td>
                   <td className="px-4 py-3 text-slate-600">{member.first_name ?? '—'}</td>
                   <td className="px-4 py-3 text-slate-600">{member.last_name ?? '—'}</td>
+                  <td className="px-4 py-3 text-slate-600">{member.role_label ?? '—'}</td>
                   <td className="px-4 py-3 text-slate-600">{renderRoleLabel(member.role)}</td>
                   <td className="px-4 py-3 text-slate-600">
                     {new Date(member.created_at).toLocaleDateString('fr-FR')}
@@ -132,7 +136,7 @@ export function AdminPartnerMembersSection({
               ))}
               {members.length === 0 ? (
                 <tr>
-                  <td className="px-4 py-6 text-slate-500" colSpan={6}>
+                  <td className="px-4 py-6 text-slate-500" colSpan={7}>
                     Aucun utilisateur partenaire.
                   </td>
                 </tr>
@@ -193,6 +197,14 @@ export function AdminPartnerMembersSection({
                 />
               </label>
               <label className="block text-sm font-medium text-slate-700">
+                Fonction au CSE
+                <input
+                  name="role_label"
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+                  placeholder="Ex: Comptabilité, Trésorier, Secrétaire"
+                />
+              </label>
+              <label className="block text-sm font-medium text-slate-700">
                 Niveau d&apos;accès
                 <select
                   name="role"
@@ -208,14 +220,14 @@ export function AdminPartnerMembersSection({
               </label>
               <label className="block text-sm font-medium text-slate-700">
                 Mot de passe temporaire (si création)
-                <input
+                <PasswordInput
                   name="temp_password"
-                  type="password"
                   minLength={PASSWORD_POLICY_MIN_LENGTH}
                   pattern={PASSWORD_POLICY_HTML_PATTERN}
                   title={PASSWORD_POLICY_MESSAGE}
                   autoComplete="new-password"
-                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+                  className="mt-1"
+                  inputClassName="w-full rounded-lg border border-slate-200 px-3 py-2 pr-11"
                 />
                 <span className="mt-1 block text-xs text-slate-500">{PASSWORD_POLICY_MESSAGE}</span>
               </label>
@@ -288,6 +300,15 @@ export function AdminPartnerMembersSection({
                   type="email"
                   defaultValue={modalState.member.email ?? ''}
                   className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+                />
+              </label>
+              <label className="block text-sm font-medium text-slate-700">
+                Fonction au CSE
+                <input
+                  name="role_label"
+                  defaultValue={modalState.member.role_label ?? ''}
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+                  placeholder="Ex: Comptabilité, Trésorier, Secrétaire"
                 />
               </label>
               <label className="block text-sm font-medium text-slate-700">

@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { useEffect, useRef, useState } from 'react';
 
 type PartnerLogoFieldsetProps = {
@@ -183,6 +184,46 @@ export default function PartnerLogoFieldset({
               Retirer l&apos;aperçu
             </button>
           </div>
+        </div>
+      </div>
+
+      <div className="mt-5 border-t border-slate-200 pt-5">
+        <h3 className="text-sm font-semibold text-slate-900">Aperçu dans le header du site</h3>
+        <p className="mt-1 text-xs text-slate-500">
+          Rendu affiché aux familles rattachées à votre CSE sur les pages publiques, comme sur la page d&apos;accueil.
+        </p>
+        <div className="mt-3 flex min-h-[4.5rem] items-center justify-start rounded-2xl border border-slate-200 bg-white px-4 py-3 sm:px-6">
+          {displayUrl ? (
+            <div className="flex shrink-0 items-center" aria-hidden>
+              <span className="flex h-10 items-center justify-center sm:h-11">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={displayUrl}
+                  alt=""
+                  className="h-9 w-auto max-w-[160px] object-contain sm:h-10"
+                  style={{
+                    transform: `translate(${offsetX}%, ${offsetY}%) scale(${scale})`,
+                    transformOrigin: 'center center'
+                  }}
+                />
+              </span>
+              <span className="mx-2.5 my-auto h-10 w-px shrink-0 translate-x-[3px] bg-black/80 sm:h-11" />
+              <span className="flex h-10 items-center justify-center sm:h-11">
+                <Image
+                  src="/image/accueil/images_accueil/logo-resacolo.png"
+                  alt="Resacolo"
+                  width={140}
+                  height={40}
+                  className="h-9 w-auto sm:h-10"
+                  style={{ width: 'auto' }}
+                />
+              </span>
+            </div>
+          ) : (
+            <p className="text-sm text-slate-400">
+              Ajoutez un logo pour prévisualiser l&apos;affichage à côté du logo Resacolo.
+            </p>
+          )}
         </div>
       </div>
 

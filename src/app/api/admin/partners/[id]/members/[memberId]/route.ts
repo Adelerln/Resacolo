@@ -2,11 +2,13 @@ import { revalidatePath } from 'next/cache';
 import { NextResponse } from 'next/server';
 import { requireApiAdmin } from '@/lib/auth/api';
 import {
+  isCollectivityMembersRoleConstraintError,
   isPartnerAccessRole,
-  PARTNER_ACCESS_LABELS,
+  PARTNER_MEMBERSHIP_ROLE_CONSTRAINT_MESSAGE,
   toStoredPartnerMembershipRole,
   type PartnerAccessRole
 } from '@/lib/partner-access';
+import { readPartnerContactRoleLabelFromFormData } from '@/lib/partner-contact-role-label';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 
 function isCollectivityContactsTableMissingError(error: { message?: string; code?: string } | null | undefined) {
@@ -19,14 +21,14 @@ async function syncPartnerContacts(input: {
   previousEmail: string | null;
   nextEmail: string;
   fullName: string;
-  role: PartnerAccessRole;
+  roleLabel: string | null;
 }) {
   const supabase = getServerSupabaseClient();
   if (!input.previousEmail) {
     const { error: insertError } = await supabase.from('collectivity_contacts').insert({
       collectivity_id: input.collectivityId,
       full_name: input.fullName,
-      role_label: PARTNER_ACCESS_LABELS[input.role],
+      role_label: input.roleLabel,
       email: input.nextEmail,
       phone: null,
       is_primary: false
@@ -52,7 +54,7 @@ async function syncPartnerContacts(input: {
     const { error: insertError } = await supabase.from('collectivity_contacts').insert({
       collectivity_id: input.collectivityId,
       full_name: input.fullName,
-      role_label: PARTNER_ACCESS_LABELS[input.role],
+      role_label: input.roleLabel,
       email: input.nextEmail,
       phone: null,
       is_primary: false
@@ -67,23 +69,16 @@ async function syncPartnerContacts(input: {
   const now = new Date().toISOString();
   const { error: updateError } = await supabase
     .from('collectivity_contacts')
-    .update({ full_name: input.fullName, email: input.nextEmail, updated_at: now })
+    .update({
+      full_name: input.fullName,
+      email: input.nextEmail,
+      role_label: input.roleLabel,
+      updated_at: now
+    })
     .in('id', ids);
 
   if (updateError) {
     throw new Error(updateError.message);
-  }
-
-  const nonPrimaryIds = contacts.filter((contact) => !contact.is_primary).map((contact) => contact.id);
-  if (nonPrimaryIds.length > 0) {
-    const { error: roleError } = await supabase
-      .from('collectivity_contacts')
-      .update({ role_label: PARTNER_ACCESS_LABELS[input.role], updated_at: now })
-      .in('id', nonPrimaryIds);
-
-    if (roleError) {
-      throw new Error(roleError.message);
-    }
   }
 }
 
@@ -99,6 +94,7 @@ export async function POST(
   const { id, memberId } = await context.params;
   const formData = await req.formData();
   const role = String(formData.get('role') ?? '').trim();
+  const roleLabel = readPartnerContactRoleLabelFromFormData(formData);
   const firstName = String(formData.get('first_name') ?? '').trim();
   const lastName = String(formData.get('last_name') ?? '').trim();
   const email = String(formData.get('email') ?? '').trim().toLowerCase();
@@ -143,8 +139,11 @@ export async function POST(
     .eq('id', memberId);
 
   if (memberError) {
+    const errorMessage = isCollectivityMembersRoleConstraintError(memberError)
+      ? PARTNER_MEMBERSHIP_ROLE_CONSTRAINT_MESSAGE
+      : memberError.message;
     return redirectUrl(redirectTo, {
-      error: memberError.message,
+      error: errorMessage,
       openMemberModal: 'edit',
       memberId
     });
@@ -168,7 +167,7 @@ export async function POST(
       previousEmail,
       nextEmail: email,
       fullName: `${firstName} ${lastName}`.trim(),
-      role
+      roleLabel
     });
   } catch (contactError) {
     await supabase.from('collectivity_members').update({ role: previousMember.role }).eq('id', memberId);

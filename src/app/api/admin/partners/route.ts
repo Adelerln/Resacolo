@@ -2,7 +2,11 @@ import { NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import { requireApiAdmin } from '@/lib/auth/api';
 import { isPasswordPolicyValid, PASSWORD_POLICY_MESSAGE } from '@/lib/auth/password-policy';
-import { toStoredPartnerMembershipRole } from '@/lib/partner-access';
+import {
+  isCollectivityMembersRoleConstraintError,
+  PARTNER_MEMBERSHIP_ROLE_CONSTRAINT_MESSAGE,
+  toStoredPartnerMembershipRole
+} from '@/lib/partner-access';
 import { normalizePartnerOffer } from '@/lib/partner-offers';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 
@@ -112,13 +116,11 @@ export async function POST(req: Request) {
   if (memberError) {
     await supabase.auth.admin.deleteUser(userData.user.id);
     await supabase.from('collectivities').delete().eq('id', collectivity.id);
+    const errorMessage = isCollectivityMembersRoleConstraintError(memberError)
+      ? PARTNER_MEMBERSHIP_ROLE_CONSTRAINT_MESSAGE
+      : memberError.message ?? "Impossible de lier l'utilisateur au partenaire";
     return NextResponse.redirect(
-      new URL(
-        `/admin/partenaires/nouveau?error=${encodeURIComponent(
-          memberError.message ?? "Impossible de lier l'utilisateur au partenaire"
-        )}`,
-        req.url
-      ),
+      new URL(`/admin/partenaires/nouveau?error=${encodeURIComponent(errorMessage)}`, req.url),
       303
     );
   }

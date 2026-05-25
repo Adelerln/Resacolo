@@ -2,8 +2,7 @@ import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { requirePartner } from '@/lib/auth/require';
 import { canAccessPartnerSection, getPartnerAccessRoleFromSession } from '@/lib/partner-access';
-import PartnerContactsSection from '@/components/partner/PartnerContactsSection';
-import PartnerMembersSection from '@/components/partner/PartnerMembersSection';
+import PartnerPeopleSection from '@/components/partner/PartnerPeopleSection';
 import PartnerOfferHelp from '@/components/partner/PartnerOfferHelp';
 import PartnerProfileFormEnhancer from '@/components/partner/PartnerProfileFormEnhancer';
 import {
@@ -142,9 +141,6 @@ export default async function PartnerProfilePage({ searchParams }: PageProps) {
         postal_code: normalizeOptionalString(formData.get('postal_code')),
         city: normalizeOptionalString(formData.get('city')),
         country: normalizeOptionalString(formData.get('country')) ?? 'France',
-        website_url: normalizeOptionalString(formData.get('website_url')),
-        description: normalizeOptionalString(formData.get('description')),
-        attachment_instructions: normalizeOptionalString(formData.get('attachment_instructions')),
         updated_at: new Date().toISOString()
       })
       .eq('id', collectivityId);
@@ -352,7 +348,8 @@ export default async function PartnerProfilePage({ searchParams }: PageProps) {
         ...member,
         email,
         first_name: firstName,
-        last_name: lastName
+        last_name: lastName,
+        role_label: contact?.role_label ?? null
       };
     })
   );
@@ -414,15 +411,6 @@ export default async function PartnerProfilePage({ searchParams }: PageProps) {
               </select>
               <input type="hidden" name="offer_mode" value={normalizedOffer} />
             </div>
-            <label className="md:col-span-2 text-sm font-medium text-slate-700">
-              Description
-              <textarea
-                name="description"
-                defaultValue={collectivity.description ?? ''}
-                rows={4}
-                className={fieldClassName()}
-              />
-            </label>
           </div>
         </section>
 
@@ -452,60 +440,32 @@ export default async function PartnerProfilePage({ searchParams }: PageProps) {
           </div>
         </section>
 
-        <section className="rounded-2xl border border-slate-200 bg-white p-6">
-          <h2 className="admin-section-title">Contacts</h2>
-          <p className="admin-page-subtitle mt-1">
-            Gérez les interlocuteurs du partenaire. Le contact principal alimente les champs de compatibilité existants.
-          </p>
-          <div className="mt-4">
-            <PartnerContactsSection
-              contacts={contacts}
-              contactsTableAvailable={contactsTableAvailable}
-              addContactAction={addPartnerContact}
-              deleteContactAction={deletePartnerContact}
-            />
-          </div>
-          <div className="mt-8 border-t border-slate-100 pt-6">
-            <h3 className="text-sm font-semibold uppercase tracking-[0.08em] text-slate-500">Accès utilisateurs</h3>
-            <p className="admin-page-subtitle mt-1">
-              Gérez ici les comptes partenaire et leur niveau d&apos;accès.
-            </p>
-            <div className="mt-4">
-              <PartnerMembersSection
-                members={members}
-                initialMode={openMemberModal}
-                initialMemberId={selectedMemberId}
-              />
-            </div>
-          </div>
-        </section>
-
-        <section className="rounded-2xl border border-slate-200 bg-white p-6">
-          <h2 className="admin-section-title">Rattachement et liens</h2>
-          <div className="mt-4 grid gap-4 md:grid-cols-2">
-            <label className="text-sm font-medium text-slate-700">
-              Site web
-              <input name="website_url" defaultValue={collectivity.website_url ?? ''} className={fieldClassName()} />
-            </label>
-            <div />
-            <label className="md:col-span-2 text-sm font-medium text-slate-700">
-              Instructions de rattachement
-              <textarea
-                name="attachment_instructions"
-                defaultValue={collectivity.attachment_instructions ?? ''}
-                rows={4}
-                className={fieldClassName()}
-              />
-            </label>
-          </div>
-        </section>
-
         <div className="flex justify-end">
           <button className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white lg:hidden">
             Enregistrer la fiche partenaire
           </button>
         </div>
       </form>
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-6">
+        <h2 className="admin-section-title">Interlocuteurs et accès</h2>
+        <p className="admin-page-subtitle mt-1">
+          Gérez les comptes partenaire et les interlocuteurs. Le contact principal alimente les champs de
+          compatibilité existants.
+        </p>
+        <div className="mt-4">
+          <PartnerPeopleSection
+            contacts={contacts}
+            members={members}
+            contactsTableAvailable={contactsTableAvailable}
+            addContactAction={addPartnerContact}
+            deleteContactAction={deletePartnerContact}
+            initialMode={openMemberModal}
+            initialMemberId={selectedMemberId}
+          />
+        </div>
+      </section>
+
       <PartnerProfileFormEnhancer formId="partner-profile-form" resetToken={formResetToken} />
     </div>
   );

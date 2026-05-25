@@ -1,4 +1,8 @@
 import { getServerSupabaseClient } from '@/lib/supabase/server';
+import {
+  computePartnerContributionSnapshotCents,
+  computePartnerFinanceSplit
+} from '@/lib/partner-offers';
 import type { Database } from '@/types/supabase';
 
 type CollectivityRow = Database['public']['Tables']['collectivities']['Row'];
@@ -191,13 +195,12 @@ export async function listPartnerBeneficiaries(collectivityId: string, excludedU
 
 export async function listPartnerReservations(collectivityId: string, excludedUserId?: string | null) {
   const supabase = getServerSupabaseClient();
-  const beneficiaryUserIds = await listPartnerBeneficiaryUserIds(collectivityId, excludedUserId);
-  if (beneficiaryUserIds.length === 0) return [];
+  const collectivity = await readPartnerCollectivity(collectivityId);
 
   const { data: orders, error: ordersError } = await supabase
     .from('orders')
     .select('id,status,created_at,requested_at,validated_at,booked_at,paid_at,client_user_id,collectivity_id')
-    .in('client_user_id', beneficiaryUserIds)
+    .eq('collectivity_id', collectivityId)
     .neq('status', 'CART')
     .order('created_at', { ascending: false });
 
@@ -226,7 +229,7 @@ export async function listPartnerReservations(collectivityId: string, excludedUs
   const contributionsResponse = orderItemIds.length
     ? await supabase
         .from('collectivity_contributions')
-        .select('order_item_id,fixed_cents,status')
+        .select('collectivity_id,order_item_id,mode,fixed_cents,percent_value,cap_cents,status')
         .eq('collectivity_id', collectivityId)
         .in('order_item_id', orderItemIds)
     : { data: [], error: null };
@@ -284,10 +287,10 @@ export async function listPartnerReservations(collectivityId: string, excludedUs
   const staysById = new Map((stays ?? []).map((row) => [row.id, row]));
   const clientsByUserId = new Map(clients.map((row) => [row.user_id, row]));
   const profilesByUserId = new Map(profiles.map((row) => [row.user_id, row]));
-  const contributionCentsByOrderItemId = new Map(
+  const contributionByOrderItemId = new Map(
     (contributionsResponse.data ?? [])
       .filter((row) => row.status !== 'REJECTED')
-      .map((row) => [row.order_item_id, row.fixed_cents ?? 0])
+      .map((row) => [row.order_item_id, row])
   );
 
   return orderRows.map((order) => {
@@ -309,10 +312,30 @@ export async function listPartnerReservations(collectivityId: string, excludedUs
       )
     );
     const totalCents = itemsForOrder.reduce((sum, item) => sum + (item.total_price_cents ?? 0), 0);
-    const manualContributionCents = itemsForOrder.reduce(
-      (sum, item) => sum + (contributionCentsByOrderItemId.get(item.id) ?? 0),
-      0
-    );
+    const snapshotPartnerCents = itemsForOrder.reduce((sum, item) => {
+      const contribution = contributionByOrderItemId.get(item.id);
+      if (!contribution) return sum;
+      return (
+        sum +
+        computePartnerContributionSnapshotCents({
+          mode: contribution.mode,
+          totalCents: item.total_price_cents ?? 0,
+          percentValue: contribution.percent_value,
+          fixedCents: contribution.fixed_cents,
+          capCents: contribution.cap_cents
+        })
+      );
+    }, 0);
+    const hasContributionSnapshot = itemsForOrder.some((item) => contributionByOrderItemId.has(item.id));
+    const fallbackSplit = computePartnerFinanceSplit({
+      mode: collectivity.finance_mode,
+      totalCents,
+      percentValue: collectivity.finance_percent_value,
+      fixedCents: collectivity.finance_fixed_cents,
+      manualPartnerCents: 0
+    });
+    const partnerContributionCents = hasContributionSnapshot ? snapshotPartnerCents : fallbackSplit.partnerCents;
+    const clientContributionCents = Math.max(0, totalCents - partnerContributionCents);
 
     return {
       id: order.id,
@@ -332,7 +355,9 @@ export async function listPartnerReservations(collectivityId: string, excludedUs
       childrenLabel: childNames.length > 0 ? childNames.join(', ') : 'Aucun participant',
       totalCents,
       totalLabel: formatCurrencyFromCents(totalCents, 'EUR'),
-      manualContributionCents,
+      partnerContributionCents,
+      clientContributionCents,
+      hasContributionSnapshot,
       isTaggedToCollectivity: order.collectivity_id === collectivityId
     };
   });

@@ -5,11 +5,13 @@ import { isPasswordPolicyValid, PASSWORD_POLICY_MESSAGE } from '@/lib/auth/passw
 import {
   canAccessPartnerSection,
   getPartnerAccessRoleFromSession,
+  isCollectivityMembersRoleConstraintError,
   isPartnerAccessRole,
-  PARTNER_ACCESS_LABELS,
+  PARTNER_MEMBERSHIP_ROLE_CONSTRAINT_MESSAGE,
   toStoredPartnerMembershipRole,
   type PartnerAccessRole
 } from '@/lib/partner-access';
+import { readPartnerContactRoleLabelFromFormData } from '@/lib/partner-contact-role-label';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 
 function isCollectivityContactsTableMissingError(error: { message?: string; code?: string } | null | undefined) {
@@ -21,7 +23,7 @@ async function upsertPartnerContact(input: {
   collectivityId: string;
   email: string;
   fullName: string;
-  role: PartnerAccessRole;
+  roleLabel: string | null;
 }) {
   const supabase = getServerSupabaseClient();
   const { data: existingContact, error } = await supabase
@@ -39,14 +41,12 @@ async function upsertPartnerContact(input: {
   }
 
   if (existingContact) {
-    const payload = existingContact.is_primary
-      ? { full_name: input.fullName, email: input.email, updated_at: new Date().toISOString() }
-      : {
-          full_name: input.fullName,
-          email: input.email,
-          role_label: PARTNER_ACCESS_LABELS[input.role],
-          updated_at: new Date().toISOString()
-        };
+    const payload = {
+      full_name: input.fullName,
+      email: input.email,
+      role_label: input.roleLabel,
+      updated_at: new Date().toISOString()
+    };
     const { error: updateError } = await supabase
       .from('collectivity_contacts')
       .update(payload)
@@ -59,7 +59,7 @@ async function upsertPartnerContact(input: {
   const { error: insertError } = await supabase.from('collectivity_contacts').insert({
     collectivity_id: input.collectivityId,
     full_name: input.fullName,
-    role_label: PARTNER_ACCESS_LABELS[input.role],
+    role_label: input.roleLabel,
     email: input.email,
     phone: null,
     is_primary: false
@@ -89,6 +89,7 @@ export async function POST(req: Request) {
   const firstName = String(formData.get('first_name') ?? '').trim();
   const lastName = String(formData.get('last_name') ?? '').trim();
   const role = String(formData.get('role') ?? 'PARTNER_BENEFICIARY_MANAGER').trim();
+  const roleLabel = readPartnerContactRoleLabelFromFormData(formData);
   const redirectToRaw = String(formData.get('redirect_to') ?? '').trim();
   const redirectToBase = redirectToRaw.startsWith('/partenaire/fiche')
     ? redirectToRaw
@@ -163,9 +164,12 @@ export async function POST(req: Request) {
     if (createdSupabaseUserId) {
       await supabase.auth.admin.deleteUser(createdSupabaseUserId);
     }
+    const errorMessage = isCollectivityMembersRoleConstraintError(memberError)
+      ? PARTNER_MEMBERSHIP_ROLE_CONSTRAINT_MESSAGE
+      : memberError.message ?? "Impossible d'ajouter l'utilisateur";
     return redirectUrl(redirectToBase, {
       openMemberModal: 'add',
-      error: memberError.message ?? "Impossible d'ajouter l'utilisateur"
+      error: errorMessage
     });
   }
 
@@ -174,7 +178,7 @@ export async function POST(req: Request) {
       collectivityId,
       email,
       fullName: `${firstName} ${lastName}`.trim(),
-      role
+      roleLabel
     });
   } catch (contactError) {
     await supabase

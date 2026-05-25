@@ -1,5 +1,6 @@
 import Link from 'next/link';
-import { requireRole } from '@/lib/auth/require';
+import { requireAdminSection } from '@/lib/auth/require';
+import { canMutateAdminSection, isAdminWorkspaceRole } from '@/lib/admin-access';
 import { normalizePartnerOffer, PARTNER_OFFER_LABELS } from '@/lib/partner-offers';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import type { Database } from '@/types/supabase';
@@ -10,7 +11,8 @@ export const revalidate = 0;
 type CollectivityRow = Database['public']['Tables']['collectivities']['Row'];
 
 export default async function AdminPartnersPage() {
-  await requireRole('ADMIN');
+  const session = await requireAdminSection('partners');
+  const canEditPartners = isAdminWorkspaceRole(session.role) && canMutateAdminSection(session.role, 'partners');
   const supabase = getServerSupabaseClient();
 
   const { data, error } = await supabase
@@ -30,12 +32,14 @@ export default async function AdminPartnersPage() {
           <h1 className="admin-page-title">Partenaires</h1>
           <p className="admin-page-subtitle mt-1">Créez et suivez les collectivités partenaires.</p>
         </div>
-        <Link
-          href="/admin/partenaires/nouveau"
-          className="inline-flex min-h-[44px] items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white"
-        >
-          Créer un partenaire
-        </Link>
+        {canEditPartners ? (
+          <Link
+            href="/admin/partenaires/nouveau"
+            className="inline-flex min-h-[44px] items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white"
+          >
+            Créer un partenaire
+          </Link>
+        ) : null}
       </div>
 
       {error ? (
@@ -74,7 +78,7 @@ export default async function AdminPartnersPage() {
                       href={`/admin/partenaires/${partner.id}`}
                       className="inline-flex min-h-[36px] items-center rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:border-slate-300 hover:text-slate-900"
                     >
-                      Gérer
+                      {canEditPartners ? 'Gérer' : 'Voir'}
                     </Link>
                   </td>
                 </tr>

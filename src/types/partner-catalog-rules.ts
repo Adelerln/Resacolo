@@ -88,5 +88,7 @@ export type AidSimulationResult = {
   aidCents: number;
   familyCents: number;
   appliedMode: AidMode | 'QF_ROW_PERCENT' | 'QF_ROW_FIXED';
+  appliedCapLabels: string[];
+  appliedSummary: string;
   warnings: string[];
 };

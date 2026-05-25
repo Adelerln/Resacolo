@@ -2,7 +2,14 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import type { Database } from '@/types/supabase';
 
-export type AppRole = 'ANONYME' | 'CLIENT' | 'ORGANISATEUR' | 'PARTENAIRE' | 'ADMIN' | 'MNEMOS';
+export type AppRole =
+  | 'ANONYME'
+  | 'CLIENT'
+  | 'ORGANISATEUR'
+  | 'PARTENAIRE'
+  | 'ADMIN'
+  | 'ADMIN_SALES'
+  | 'MNEMOS';
 export type AuthenticatedAppRole = Exclude<AppRole, 'ANONYME'>;
 
 export type ResolvedRoleContext = {
@@ -30,20 +37,39 @@ function normalizeRoleValue(value: string | null | undefined) {
     .toUpperCase();
 }
 
+function isPartnerStaffRole(normalizedRole: string) {
+  return PARTNER_STAFF_ROLES.has(normalizedRole);
+}
+
+function isAdminLikeStaffRole(normalizedRole: string) {
+  if (!normalizedRole || isPartnerStaffRole(normalizedRole)) return false;
+  return (
+    normalizedRole === 'ADMIN' ||
+    normalizedRole.includes('PLATFORM_ADMIN') ||
+    normalizedRole.includes('SUPPORT') ||
+    normalizedRole.includes('ADMIN')
+  );
+}
+
 function mapStaffRole(staffRoles: string[]): AuthenticatedAppRole | null {
   const normalizedRoles = staffRoles.map(normalizeRoleValue).filter(Boolean);
   if (normalizedRoles.some((role) => role.includes('MNEMOS'))) {
     return 'MNEMOS';
   }
-  if (
-    normalizedRoles.some(
-      (role) => role === 'ADMIN' || role.includes('PLATFORM_ADMIN') || role.includes('SUPPORT')
-    )
-  ) {
+  if (normalizedRoles.some((role) => role === 'SALES_ADMIN' || role === 'ADMIN_SALES')) {
+    return 'ADMIN_SALES';
+  }
+  if (normalizedRoles.some((role) => isAdminLikeStaffRole(role))) {
     return 'ADMIN';
   }
-  return normalizedRoles.length > 0 ? 'ADMIN' : null;
+  return null;
 }
+
+export const __testables__ = {
+  mapStaffRole,
+  normalizeRoleValue,
+  isAdminLikeStaffRole
+};
 
 export async function resolveRoleContextForUserId(
   userId: string,
@@ -108,6 +134,8 @@ export function getHomePathForRole(role: AppRole) {
       return '/mnemos';
     case 'ADMIN':
       return '/admin';
+    case 'ADMIN_SALES':
+      return '/admin';
     case 'ORGANISATEUR':
       return '/organisme';
     case 'PARTENAIRE':
@@ -124,7 +152,7 @@ export function canAccessBackofficePath(role: AppRole, pathname: string) {
     return role === 'MNEMOS';
   }
   if (pathname.startsWith('/admin')) {
-    return role === 'ADMIN' || role === 'MNEMOS';
+    return role === 'ADMIN' || role === 'ADMIN_SALES' || role === 'MNEMOS';
   }
   if (pathname.startsWith('/organisme')) {
     return role === 'ORGANISATEUR' || role === 'MNEMOS';
@@ -141,6 +169,8 @@ export function hasRequiredRole(actualRole: AppRole, requiredRole: Authenticated
       return actualRole === 'MNEMOS';
     case 'ADMIN':
       return actualRole === 'ADMIN' || actualRole === 'MNEMOS';
+    case 'ADMIN_SALES':
+      return actualRole === 'ADMIN_SALES' || actualRole === 'ADMIN' || actualRole === 'MNEMOS';
     case 'ORGANISATEUR':
       return actualRole === 'ORGANISATEUR' || actualRole === 'MNEMOS';
     case 'PARTENAIRE':

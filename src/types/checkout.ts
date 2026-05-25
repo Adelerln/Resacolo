@@ -60,11 +60,17 @@ export type CheckoutPricingItem = {
   insuranceOptionId: string | null;
   extraOptionId: string | null;
   extraOptionLabel: string | null;
+  cseAidCents?: number;
+  familyCentsAfterAid?: number;
+  cseEligible?: boolean;
+  cseLabel?: string | null;
 };
 
 export type CheckoutPricing = {
   items: CheckoutPricingItem[];
   totalCents: number;
+  familyTotalCentsAfterAid?: number;
+  cseTotalAidCents?: number;
   currency: 'EUR';
 };
 

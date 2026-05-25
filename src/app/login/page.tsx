@@ -36,7 +36,7 @@ function sanitizeRelativePath(value: string | undefined, fallback: string) {
 }
 
 function canUseRedirectForRole(
-  role: 'MNEMOS' | 'ADMIN' | 'ORGANISATEUR' | 'PARTENAIRE' | 'CLIENT',
+  role: 'MNEMOS' | 'ADMIN' | 'ADMIN_SALES' | 'ORGANISATEUR' | 'PARTENAIRE' | 'CLIENT',
   path: string
 ) {
   if (role === 'MNEMOS') {
@@ -48,6 +48,7 @@ function canUseRedirectForRole(
     );
   }
   if (role === 'ADMIN') return path.startsWith('/admin');
+  if (role === 'ADMIN_SALES') return path.startsWith('/admin');
   if (role === 'ORGANISATEUR') return path.startsWith('/organisme');
   if (role === 'PARTENAIRE') return path.startsWith('/partenaire');
   return !path.startsWith('/admin') && !path.startsWith('/mnemos') && !path.startsWith('/organisme') && !path.startsWith('/partenaire');
@@ -93,6 +94,9 @@ export default async function LoginPage({
       }
       if (session.role === 'ADMIN') {
         redirect(canUseRedirectForRole('ADMIN', safeRedirectTo) ? safeRedirectTo : '/admin');
+      }
+      if (session.role === 'ADMIN_SALES') {
+        redirect(canUseRedirectForRole('ADMIN_SALES', safeRedirectTo) ? safeRedirectTo : '/admin');
       }
       if (session.role === 'ORGANISATEUR') {
         redirect(canUseRedirectForRole('ORGANISATEUR', safeRedirectTo) ? safeRedirectTo : '/organisme');

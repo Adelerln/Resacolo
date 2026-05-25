@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { requireRole } from '@/lib/auth/require';
+import { requireAdminSection } from '@/lib/auth/require';
+import { canMutateAdminSection, isAdminWorkspaceRole } from '@/lib/admin-access';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import type { Database } from '@/types/supabase';
 
@@ -127,7 +128,9 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 export default async function AdminRequestsPage({ searchParams }: { searchParams?: SearchParams }) {
-  await requireRole('ADMIN');
+  const session = await requireAdminSection('reservations');
+  const canEditReservations =
+    isAdminWorkspaceRole(session.role) && canMutateAdminSection(session.role, 'reservations');
 
   const { status, season } = searchParams ? await searchParams : {};
   const normalizedSeasonFilter = normalizeSeasonLabel(season);
@@ -250,6 +253,10 @@ export default async function AdminRequestsPage({ searchParams }: { searchParams
 
   async function updateStatus(formData: FormData) {
     'use server';
+    const actionSession = await requireAdminSection('reservations');
+    if (!isAdminWorkspaceRole(actionSession.role) || !canMutateAdminSection(actionSession.role, 'reservations')) {
+      redirect('/admin/reservations');
+    }
 
     const supabase = getServerSupabaseClient();
     const orderId = String(formData.get('orderId') ?? '');
@@ -330,24 +337,28 @@ export default async function AdminRequestsPage({ searchParams }: { searchParams
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <form action={updateStatus} className="flex items-center justify-end gap-2">
-                      <input type="hidden" name="orderId" value={reservation.id} />
-                      <input type="hidden" name="redirectTo" value={redirectTo} />
-                      <select
-                        name="status"
-                        defaultValue={reservation.status}
-                        className="rounded border border-slate-200 px-2 py-1 text-xs"
-                      >
-                        {ADMIN_ORDER_STATUSES.map((statusOption) => (
-                          <option key={statusOption} value={statusOption}>
-                            {orderStatusLabel(statusOption)}
-                          </option>
-                        ))}
-                      </select>
-                      <button className="rounded bg-emerald-600 px-2 py-1 text-xs font-semibold text-white">
-                        OK
-                      </button>
-                    </form>
+                    {canEditReservations ? (
+                      <form action={updateStatus} className="flex items-center justify-end gap-2">
+                        <input type="hidden" name="orderId" value={reservation.id} />
+                        <input type="hidden" name="redirectTo" value={redirectTo} />
+                        <select
+                          name="status"
+                          defaultValue={reservation.status}
+                          className="rounded border border-slate-200 px-2 py-1 text-xs"
+                        >
+                          {ADMIN_ORDER_STATUSES.map((statusOption) => (
+                            <option key={statusOption} value={statusOption}>
+                              {orderStatusLabel(statusOption)}
+                            </option>
+                          ))}
+                        </select>
+                        <button className="rounded bg-emerald-600 px-2 py-1 text-xs font-semibold text-white">
+                          OK
+                        </button>
+                      </form>
+                    ) : (
+                      <span className="text-xs font-medium text-slate-500">Lecture seule</span>
+                    )}
                   </td>
                 </tr>
               ))}

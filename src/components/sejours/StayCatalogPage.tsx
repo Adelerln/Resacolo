@@ -173,6 +173,9 @@ function StayCard({ stay }: { stay: Stay }) {
         seasonBadge={season.badgeText}
         durationLabel={stay.duration || 'Durée à venir'}
         priceFromEuros={stay.priceFrom}
+        csePriceFromEuros={stay.csePriceFrom ?? null}
+        cseAidFromEuros={stay.cseAidFrom ?? null}
+        cseLabel={stay.cseLabel ?? null}
         coverUrl={stay.coverImage || getMockImageUrl(mockImages.sejours.fallbackCover, 1200, 80)}
         href={`/sejours/${stay.canonicalSlug}`}
         organizerLogoUrl={stay.organizer.logoUrl ?? null}
@@ -612,7 +615,18 @@ export function StayCatalogPage({
       destinations: withSelectedFallbacks(destinationBase, filterOptions.destinations, filters.destinations),
       organizers: withSelectedFallbacks(organizerBase, filterOptions.organizers, filters.organizerIds)
     };
-  }, [deferredFilters, deferredSearchQuery, filterOptions, indexedStays]);
+  }, [
+    deferredFilters,
+    deferredSearchQuery,
+    filterOptions,
+    filters.ageBands,
+    filters.categories,
+    filters.destinationTypes,
+    filters.destinations,
+    filters.organizerIds,
+    filters.seasonIds,
+    indexedStays
+  ]);
   const sortedStays = useMemo(
     () => applyStayCatalogSort(filteredStays, sort, { randomSeed }),
     [filteredStays, randomSeed, sort]

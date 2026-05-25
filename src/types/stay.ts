@@ -61,6 +61,10 @@ export interface StaySessionOption {
   price: number | null;
   status: string;
   transportOptions: StayTransportOption[];
+  cseAidCents?: number;
+  familyCentsAfterAid?: number;
+  cseEligible?: boolean;
+  cseLabel?: string | null;
 }
 
 export interface StayBookingOptions {
@@ -150,6 +154,9 @@ export interface Stay {
   ageRange: string;
   duration: string;
   priceFrom: number | null;
+  csePriceFrom?: number | null;
+  cseAidFrom?: number | null;
+  cseLabel?: string | null;
   period: string[];
   categories: StayCategory[];
   highlights: string[];

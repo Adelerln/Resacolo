@@ -1,20 +1,12 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { AdminSidebarNav } from '@/components/admin/AdminSidebarNav';
-import { requireRole } from '@/lib/auth/require';
-
-const adminNavLinks = [
-  { href: '/admin', label: 'Dashboard' },
-  { href: '/admin/sejours', label: 'Séjours' },
-  { href: '/admin/finances', label: 'Recettes' },
-  { href: '/admin/reservations', label: 'Réservations' },
-  { href: '/admin/utilisateurs', label: 'Utilisateurs' },
-  { href: '/admin/organizers', label: 'Organismes' },
-  { href: '/admin/partenaires', label: 'Partenaires' }
-];
+import { requireAnyRole } from '@/lib/auth/require';
+import { getAdminNavLinksForRole, isAdminWorkspaceRole } from '@/lib/admin-access';
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
-  await requireRole('ADMIN');
+  const session = await requireAnyRole(['ADMIN', 'ADMIN_SALES', 'MNEMOS']);
+  const adminNavLinks = isAdminWorkspaceRole(session.role) ? getAdminNavLinksForRole(session.role) : [];
 
   return (
     <div className="min-h-screen bg-slate-50 lg:h-screen lg:overflow-hidden">

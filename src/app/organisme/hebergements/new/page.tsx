@@ -14,6 +14,7 @@ import { requireOrganizerPageAccess } from '@/lib/organizer-backoffice-access.se
 import { withOrganizerQuery } from '@/lib/organizers.server';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { slugify } from '@/lib/utils';
+import type { Json } from '@/types/supabase';
 import {
   buildGoogleMapsEmbedIframeHtml,
   extractGoogleMapsEmbedSrcFromInput,
@@ -134,13 +135,18 @@ export default async function NewAccommodationPage({ searchParams }: PageProps) 
       insertResult.error &&
       String(insertResult.error.message ?? '').toLowerCase().includes('map_iframe_html')
     ) {
-      const legacyInsertPayload = { ...insertPayload };
-      delete legacyInsertPayload.map_iframe_html;
-      legacyInsertPayload.ai_extracted_data = mergeMapIframeHtmlIntoAiExtractedData(
-        legacyInsertPayload.ai_extracted_data,
-        normalizedMapIframeHtml
-      );
-      insertResult = await supabase.from('accommodations').insert(legacyInsertPayload).select('id').single();
+      const { map_iframe_html: _mapIframeHtml, ...legacyInsertPayload } = insertPayload;
+      insertResult = await supabase
+        .from('accommodations')
+        .insert({
+          ...legacyInsertPayload,
+          ai_extracted_data: mergeMapIframeHtmlIntoAiExtractedData(
+            legacyInsertPayload.ai_extracted_data,
+            normalizedMapIframeHtml
+          ) as Json
+        })
+        .select('id')
+        .single();
     }
 
     const insertedAccommodation = insertResult.data;

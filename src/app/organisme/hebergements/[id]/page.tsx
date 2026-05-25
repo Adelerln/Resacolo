@@ -18,6 +18,7 @@ import { withOrganizerQuery } from '@/lib/organizers.server';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { accommodationStatusBadgeClassName, accommodationStatusLabel } from '@/lib/ui/labels';
 import { slugify } from '@/lib/utils';
+import type { Json } from '@/types/supabase';
 import {
   buildGoogleMapsEmbedIframeHtml,
   extractGoogleMapsEmbedSrcFromInput,
@@ -251,15 +252,17 @@ export default async function AccommodationDetailPage({ params: paramsPromise, s
       updateResult.error &&
       String(updateResult.error.message ?? '').toLowerCase().includes('map_iframe_html')
     ) {
-      const legacyUpdatePayload = { ...updatePayload };
-      delete legacyUpdatePayload.map_iframe_html;
-      legacyUpdatePayload.ai_extracted_data = mergeMapIframeHtmlIntoAiExtractedData(
-        rowBeforeSave.ai_extracted_data,
-        normalizedMapIframeHtml
-      );
+      const { map_iframe_html: _mapIframeHtml, ...legacyUpdatePayload } = updatePayload;
+      const legacyUpdateWithMap = {
+        ...legacyUpdatePayload,
+        ai_extracted_data: mergeMapIframeHtmlIntoAiExtractedData(
+          rowBeforeSave.ai_extracted_data,
+          normalizedMapIframeHtml
+        ) as Json
+      };
       updateResult = await supabase
         .from('accommodations')
-        .update(legacyUpdatePayload)
+        .update(legacyUpdateWithMap)
         .eq('id', params.id)
         .eq('organizer_id', selectedOrganizerId);
     }

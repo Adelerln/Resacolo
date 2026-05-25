@@ -10,7 +10,7 @@ const qfRowSchema = z.object({
   fixedCents: z.number().min(0).int().nullable()
 });
 
-const partnerCatalogRulesSchema: z.ZodType<PartnerCatalogRules> = z.object({
+const partnerCatalogRulesSchema = z.object({
   version: z.number().int().min(1).default(1),
   blockingRules: z.object({
     ageMin: z.number().int().min(0).nullable(),

@@ -135,10 +135,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Corps de requête invalide.' }, { status: 400 });
     }
 
-    const input = isFormRequest ? registerClientFullSchema.parse(body) : registerClientCheckoutSchema.parse(body);
-    const fullParsed = isFormRequest
-      ? ({ success: true, data: input } as const)
-      : registerClientFullSchema.safeParse(body);
+    const fullInput = isFormRequest ? registerClientFullSchema.parse(body) : null;
+    const checkoutInput = isFormRequest ? null : registerClientCheckoutSchema.parse(body);
+    const input = fullInput ?? checkoutInput!;
     safeRedirectTo = sanitizeRelativePath(input.redirectTo, '/mon-compte');
     const email = input.email.toLowerCase();
     const name = `${input.firstName} ${input.lastName}`.trim();
@@ -173,27 +172,26 @@ export async function POST(req: Request) {
     }
 
     try {
-      const parent2Name =
-        fullParsed.success
-          ? joinNameParts(fullParsed.data.parent2FirstName, fullParsed.data.parent2LastName)
-          : '';
+      const parent2Name = fullInput
+        ? joinNameParts(fullInput.parent2FirstName, fullInput.parent2LastName)
+        : '';
 
       await upsertFamilyProfileFromRegistration({
         userId: data.user.id,
         firstName: input.firstName,
         lastName: input.lastName,
         email,
-        phone: fullParsed.success ? fullParsed.data.phone : '',
-        addressLine1: fullParsed.success ? fullParsed.data.addressLine1 : '',
-        addressLine2: fullParsed.success ? fullParsed.data.addressLine2 : '',
-        postalCode: fullParsed.success ? fullParsed.data.postalCode : '',
-        city: fullParsed.success ? fullParsed.data.city : '',
+        phone: fullInput?.phone ?? '',
+        addressLine1: fullInput?.addressLine1 ?? '',
+        addressLine2: fullInput?.addressLine2 ?? '',
+        postalCode: fullInput?.postalCode ?? '',
+        city: fullInput?.city ?? '',
         parent2Name,
         parent2Status:
-          fullParsed.success && fullParsed.data.parent2Status !== '' ? fullParsed.data.parent2Status : undefined,
-        parent2StatusOther: fullParsed.success ? fullParsed.data.parent2StatusOther : '',
-        parent2Phone: fullParsed.success ? fullParsed.data.parent2Phone : '',
-        parent2Email: fullParsed.success ? fullParsed.data.parent2Email : ''
+          fullInput && fullInput.parent2Status !== '' ? fullInput.parent2Status : undefined,
+        parent2StatusOther: fullInput?.parent2StatusOther ?? '',
+        parent2Phone: fullInput?.parent2Phone ?? '',
+        parent2Email: fullInput?.parent2Email ?? ''
       });
     } catch (profileError) {
       if (isFormRequest) {

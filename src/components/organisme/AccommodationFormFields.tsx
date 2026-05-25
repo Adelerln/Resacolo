@@ -1,17 +1,15 @@
-import AccommodationTypeField from '@/components/organisme/AccommodationTypeField';
-export {
-  ACCOMMODATION_TYPE_OPTIONS,
-  formatAccommodationType
-} from '@/components/organisme/accommodation-type';
 'use client';
 
+import AccommodationTypeField from '@/components/organisme/AccommodationTypeField';
 import GoogleMapsCityInput from '@/components/common/GoogleMapsCityInput';
 import {
   stripStockPmrPhraseFromAccessibility,
 } from '@/lib/accommodation-location';
-import { ACCOMMODATION_TYPE_OPTIONS, formatAccommodationType } from '@/lib/accommodation-types';
 
-export { ACCOMMODATION_TYPE_OPTIONS, formatAccommodationType };
+export {
+  ACCOMMODATION_TYPE_OPTIONS,
+  formatAccommodationType
+} from '@/components/organisme/accommodation-type';
 
 type AccommodationFormValues = {
   name?: string | null;

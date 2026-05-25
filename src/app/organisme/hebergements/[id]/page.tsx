@@ -8,7 +8,6 @@ import {
   parseAccommodationType
 } from '@/components/organisme/accommodation-type';
 import OrganizerPageHeader from '@/components/organisme/OrganizerPageHeader';
-import { formatAccommodationType } from '@/lib/accommodation-types';
 import SavedToast from '@/components/common/SavedToast';
 import {
   buildAccessibilityInfoFromForm,
@@ -168,7 +167,22 @@ export default async function AccommodationDetailPage({ params: paramsPromise, s
     const parsedAccommodationType = parseAccommodationType(accommodationType);
 
     if (!name || !parsedAccommodationType.baseType) {
-    const accommodationType = String(formData.get('accommodation_type') ?? '').trim();
+      redirect(
+        withOrganizerQuery(
+          `/organisme/hebergements/${params.id}?error=missing-fields`,
+          selectedOrganizerId
+        )
+      );
+    }
+    if (parsedAccommodationType.baseType === 'mixte' && parsedAccommodationType.mixedTypes.length === 0) {
+      redirect(
+        withOrganizerQuery(
+          `/organisme/hebergements/${params.id}?error=missing-mixed-types`,
+          selectedOrganizerId
+        )
+      );
+    }
+
     const description = String(formData.get('description') ?? '').trim();
     const addressInput = normalizeAccommodationAddress({
       addressText: String(formData.get('address_text') ?? '').trim(),
@@ -190,23 +204,6 @@ export default async function AccommodationDetailPage({ params: paramsPromise, s
         : rowBeforeSave.status;
     const validatedByUserId = isUuid(session.userId) ? session.userId : null;
     const mediaUrls = parseAccommodationMediaUrls(formData.get('media_urls'));
-
-    if (!name || !accommodationType) {
-      redirect(
-        withOrganizerQuery(
-          `/organisme/hebergements/${params.id}?error=missing-fields`,
-          selectedOrganizerId
-        )
-      );
-    }
-    if (parsedAccommodationType.baseType === 'mixte' && parsedAccommodationType.mixedTypes.length === 0) {
-      redirect(
-        withOrganizerQuery(
-          `/organisme/hebergements/${params.id}?error=missing-mixed-types`,
-          selectedOrganizerId
-        )
-      );
-    }
 
     const addressError = validateAccommodationAddress(addressInput);
     if (addressError) {

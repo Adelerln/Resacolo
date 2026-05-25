@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation';
 import AccommodationFormFields from '@/components/organisme/AccommodationFormFields';
 import { buildAccommodationTypeValue, parseAccommodationType } from '@/components/organisme/accommodation-type';
 import { requireRole } from '@/lib/auth/require';
-import { resolveOrganizerSelection, withOrganizerQuery } from '@/lib/organizers.server';
+import { withOrganizerQuery } from '@/lib/organizers.server';
 import OrganizerPageHeader from '@/components/organisme/OrganizerPageHeader';
 import { parseAccommodationMediaUrls, replaceAccommodationMedia } from '@/lib/accommodations';
 import {
@@ -14,7 +14,6 @@ import {
   validateAndParseAccommodationCenterCoordinates,
 } from '@/lib/accommodation-location';
 import { requireOrganizerPageAccess } from '@/lib/organizer-backoffice-access.server';
-import { withOrganizerQuery } from '@/lib/organizers.server';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { slugify } from '@/lib/utils';
 import type { Json } from '@/types/supabase';
@@ -58,7 +57,6 @@ export default async function NewAccommodationPage({ searchParams }: PageProps) 
       .map((value) => String(value).trim());
     const accommodationType = buildAccommodationTypeValue(selectedAccommodationType, mixedAccommodationTypes);
     const parsedAccommodationType = parseAccommodationType(accommodationType);
-    const accommodationType = String(formData.get('accommodation_type') ?? '').trim();
     const description = String(formData.get('description') ?? '').trim();
     const addressInput = normalizeAccommodationAddress({
       addressText: String(formData.get('address_text') ?? '').trim(),

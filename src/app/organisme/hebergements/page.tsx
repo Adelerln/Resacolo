@@ -7,7 +7,6 @@ import AccommodationLinkedStaysDropdown from '@/components/organisme/Accommodati
 import SavedToast from '@/components/common/SavedToast';
 import { formatAccommodationType } from '@/components/organisme/accommodation-type';
 import { requireRole } from '@/lib/auth/require';
-import { formatAccommodationType } from '@/lib/accommodation-types';
 import { extractAccommodationLocationMeta } from '@/lib/accommodation-location';
 import { deleteAccommodationForOrganizer } from '@/lib/accommodations';
 import { requireOrganizerPageAccess } from '@/lib/organizer-backoffice-access.server';

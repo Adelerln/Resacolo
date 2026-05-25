@@ -20,6 +20,10 @@ type SortKey =
   | 'user_count'
   | 'last_connection';
 type SortDirection = 'asc' | 'desc';
+type SearchParamsValue = string | string[] | undefined;
+type AdminPartnersPageProps = {
+  searchParams?: Promise<Record<string, SearchParamsValue>> | Record<string, SearchParamsValue>;
+};
 type PartnerRow = Pick<
   CollectivityRow,
   'id' | 'name' | 'code' | 'offer_mode' | 'contact_email' | 'created_at'
@@ -28,7 +32,74 @@ type PartnerRow = Pick<
   userCount: number;
 };
 
-export default async function AdminPartnersPage() {
+const SORT_KEYS: SortKey[] = [
+  'name',
+  'code',
+  'offer_mode',
+  'contact_email',
+  'created_at',
+  'user_count',
+  'last_connection'
+];
+
+function isSortKey(value: string | null): value is SortKey {
+  return Boolean(value && SORT_KEYS.includes(value as SortKey));
+}
+
+function isSortDirection(value: string | null): value is SortDirection {
+  return value === 'asc' || value === 'desc';
+}
+
+function getSingleSearchParam(value: SearchParamsValue): string | null {
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) return value[0] ?? null;
+  return null;
+}
+
+function normalizeNullableString(value: string | null | undefined) {
+  return (value ?? '').trim().toLocaleLowerCase('fr-FR');
+}
+
+function compareNullableStrings(left: string | null | undefined, right: string | null | undefined) {
+  return normalizeNullableString(left).localeCompare(normalizeNullableString(right), 'fr', { sensitivity: 'base' });
+}
+
+function compareNullableDates(left: string | null | undefined, right: string | null | undefined) {
+  const leftValue = left ? new Date(left).getTime() : 0;
+  const rightValue = right ? new Date(right).getTime() : 0;
+  return leftValue - rightValue;
+}
+
+function compareNumbers(left: number, right: number) {
+  return left - right;
+}
+
+function getNextSortDirection(
+  activeSort: SortKey | null,
+  activeDirection: SortDirection | null,
+  column: SortKey
+): SortDirection | null {
+  if (activeSort !== column) return 'asc';
+  if (activeDirection === 'asc') return 'desc';
+  return null;
+}
+
+function getSortIndicator(
+  activeSort: SortKey | null,
+  activeDirection: SortDirection | null,
+  column: SortKey
+) {
+  if (activeSort !== column) return '↕';
+  return activeDirection === 'asc' ? '↑' : '↓';
+}
+
+function formatLastConnection(value: string | null) {
+  if (!value) return '—';
+  return new Date(value).toLocaleDateString('fr-FR');
+}
+
+export default async function AdminPartnersPage({ searchParams }: AdminPartnersPageProps) {
+  const resolvedSearchParams = searchParams instanceof Promise ? await searchParams : searchParams;
   const session = await requireAdminSection('partners');
   const canEditPartners = isAdminWorkspaceRole(session.role) && canMutateAdminSection(session.role, 'partners');
   const supabase = getServerSupabaseClient();

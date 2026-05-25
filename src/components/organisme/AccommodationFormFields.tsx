@@ -5,7 +5,6 @@ import {
   stripStockPmrPhraseFromAccessibility,
 } from '@/lib/accommodation-location';
 import { ACCOMMODATION_TYPE_OPTIONS, formatAccommodationType } from '@/lib/accommodation-types';
-import { extractGoogleMapsEmbedSrcFromInput } from '@/lib/google-maps-iframe';
 
 export { ACCOMMODATION_TYPE_OPTIONS, formatAccommodationType };
 
@@ -38,7 +37,6 @@ export default function AccommodationFormFields({
   values = {},
   submitLabel
 }: AccommodationFormFieldsProps) {
-  const mapEmbedSrc = extractGoogleMapsEmbedSrcFromInput(values.map_iframe_html ?? '');
   return (
     <>
       <div className="grid gap-4 md:grid-cols-2">
@@ -178,19 +176,6 @@ export default function AccommodationFormFields({
             placeholder={'<iframe src="https://www.google.com/maps/d/u/2/embed?mid=..." width="640" height="480"></iframe>'}
           />
         </label>
-        {mapEmbedSrc ? (
-          <div className="mt-3 overflow-hidden rounded-lg border border-slate-200">
-            <div className="aspect-[4/3] w-full">
-              <iframe
-                src={mapEmbedSrc}
-                className="h-full w-full"
-                loading="lazy"
-                referrerPolicy="no-referrer-when-downgrade"
-                title="Aperçu carte hébergement"
-              />
-            </div>
-          </div>
-        ) : null}
       </div>
 
       <div className="rounded-xl border border-slate-100 p-4">

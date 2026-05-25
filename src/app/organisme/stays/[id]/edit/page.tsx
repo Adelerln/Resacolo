@@ -8,6 +8,10 @@ import { withOrganizerQuery } from '@/lib/organizers.server';
 import { getReservedSessionCounts } from '@/lib/session-reservations';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { extractAccommodationLocationMeta } from '@/lib/accommodation-location';
+import {
+  extractGoogleMapsEmbedSrcFromInput,
+  readMapIframeHtmlFromAiExtractedData
+} from '@/lib/google-maps-iframe';
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -77,7 +81,7 @@ export default async function OrganizerStayEditTunnelPage({ params: paramsPromis
     supabase
       .from('accommodations')
       .select(
-        'id,name,accommodation_type,address_text,postal_code,city,department_code,region_text,country,description,bed_info,bathroom_info,catering_info,accessibility_info,status'
+        'id,name,accommodation_type,address_text,postal_code,city,department_code,region_text,country,description,bed_info,bathroom_info,catering_info,accessibility_info,status,map_iframe_html,ai_extracted_data'
       )
       .eq('organizer_id', selectedOrganizerId)
       .order('name', { ascending: true }),
@@ -134,7 +138,10 @@ export default async function OrganizerStayEditTunnelPage({ params: paramsPromis
       locationCity: locationMeta.locationCity,
       locationDepartmentCode: locationMeta.locationDepartmentCode,
       locationCountry: locationMeta.locationCountry,
-      itinerantZone: locationMeta.itinerantZone
+      itinerantZone: locationMeta.itinerantZone,
+      mapEmbedSrc: extractGoogleMapsEmbedSrcFromInput(
+        accommodation.map_iframe_html ?? readMapIframeHtmlFromAiExtractedData(accommodation.ai_extracted_data) ?? ''
+      )
     };
   });
   const stayAccommodationLinks = stayAccommodationLinksRaw ?? [];
@@ -210,14 +217,16 @@ export default async function OrganizerStayEditTunnelPage({ params: paramsPromis
             ? {
                 id: linkedAccommodation.id,
                 name: linkedAccommodation.name,
-                accommodationType: linkedAccommodation.accommodation_type
+                accommodationType: linkedAccommodation.accommodation_type,
+                mapEmbedSrc: linkedAccommodation.mapEmbedSrc
               }
             : null
         }
         organizerAccommodationPickerOptions={accommodations.map((row) => ({
           id: row.id,
           name: row.name,
-          accommodationType: row.accommodation_type
+          accommodationType: row.accommodation_type,
+          mapEmbedSrc: row.mapEmbedSrc
         }))}
       />
     </div>

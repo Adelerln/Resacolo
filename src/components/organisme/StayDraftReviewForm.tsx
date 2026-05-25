@@ -98,12 +98,14 @@ type StayDraftReviewFormProps = {
     id: string;
     name: string;
     accommodationType: string | null;
+    mapEmbedSrc?: string | null;
   } | null;
   /** Séjour publié : fiches hébergement du catalogue pour remplacer le lien. */
   organizerAccommodationPickerOptions?: Array<{
     id: string;
     name: string;
     accommodationType: string | null;
+    mapEmbedSrc?: string | null;
   }>;
   publishedSessionsStep?: ReactNode;
 };
@@ -335,6 +337,12 @@ export default function StayDraftReviewForm({
   const [currentLinkedAccommodation, setCurrentLinkedAccommodation] = useState(linkedAccommodation);
   const [selectedLinkedAccommodationId, setSelectedLinkedAccommodationId] = useState<string | null>(
     () => linkedAccommodation?.id ?? null
+  );
+  const selectedLinkedAccommodation = useMemo(
+    () =>
+      organizerAccommodationPickerOptions.find((option) => option.id === (selectedLinkedAccommodationId ?? '')) ??
+      null,
+    [organizerAccommodationPickerOptions, selectedLinkedAccommodationId]
   );
   const [isUnlinkingAccommodation, setIsUnlinkingAccommodation] = useState(false);
   const [activeStep, setActiveStep] = useState<DraftReviewStepId>(() =>
@@ -1805,6 +1813,23 @@ export default function StayDraftReviewForm({
                   ) : null}
                 </label>
               )}
+              {selectedLinkedAccommodation?.mapEmbedSrc ? (
+                <div className="overflow-hidden rounded-xl border border-slate-200">
+                  <div className="border-b border-slate-100 bg-slate-50 px-4 py-3">
+                    <p className="text-sm font-semibold text-slate-900">Aperçu de la carte du lieu</p>
+                    <p className="mt-1 text-xs text-slate-500">{selectedLinkedAccommodation.name}</p>
+                  </div>
+                  <div className="aspect-[4/3] w-full">
+                    <iframe
+                      src={selectedLinkedAccommodation.mapEmbedSrc}
+                      className="h-full w-full"
+                      loading="lazy"
+                      referrerPolicy="no-referrer-when-downgrade"
+                      title={`Carte de ${selectedLinkedAccommodation.name}`}
+                    />
+                  </div>
+                </div>
+              ) : null}
             </div>
           ) : null}
 

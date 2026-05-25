@@ -5,6 +5,7 @@ import {
   stripStockPmrPhraseFromAccessibility,
 } from '@/lib/accommodation-location';
 import { ACCOMMODATION_TYPE_OPTIONS, formatAccommodationType } from '@/lib/accommodation-types';
+import { extractGoogleMapsEmbedSrcFromInput } from '@/lib/google-maps-iframe';
 
 export { ACCOMMODATION_TYPE_OPTIONS, formatAccommodationType };
 
@@ -25,6 +26,7 @@ type AccommodationFormValues = {
   center_latitude?: number | string | null;
   center_longitude?: number | string | null;
   media_urls?: string[] | null;
+  map_iframe_html?: string | null;
 };
 
 type AccommodationFormFieldsProps = {
@@ -36,6 +38,7 @@ export default function AccommodationFormFields({
   values = {},
   submitLabel
 }: AccommodationFormFieldsProps) {
+  const mapEmbedSrc = extractGoogleMapsEmbedSrcFromInput(values.map_iframe_html ?? '');
   return (
     <>
       <div className="grid gap-4 md:grid-cols-2">
@@ -159,6 +162,36 @@ export default function AccommodationFormFields({
           className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
         />
       </label>
+
+      <div className="rounded-xl border border-slate-100 p-4">
+        <h3 className="text-sm font-semibold text-slate-900">Carte Google Maps (iframe)</h3>
+        <p className="mt-2 text-sm text-slate-500">
+          Collez le code iframe Google Maps (ou l&apos;URL embed) pour afficher la carte de ce lieu.
+        </p>
+        <label className="mt-3 block text-sm font-medium text-slate-700">
+          Code iframe
+          <textarea
+            name="map_iframe_html"
+            rows={4}
+            defaultValue={values.map_iframe_html ?? ''}
+            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 font-mono text-xs"
+            placeholder={'<iframe src="https://www.google.com/maps/d/u/2/embed?mid=..." width="640" height="480"></iframe>'}
+          />
+        </label>
+        {mapEmbedSrc ? (
+          <div className="mt-3 overflow-hidden rounded-lg border border-slate-200">
+            <div className="aspect-[4/3] w-full">
+              <iframe
+                src={mapEmbedSrc}
+                className="h-full w-full"
+                loading="lazy"
+                referrerPolicy="no-referrer-when-downgrade"
+                title="Aperçu carte hébergement"
+              />
+            </div>
+          </div>
+        ) : null}
+      </div>
 
       <div className="rounded-xl border border-slate-100 p-4">
         <h3 className="text-sm font-semibold text-slate-900">Couchage</h3>

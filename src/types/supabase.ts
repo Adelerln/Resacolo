@@ -1593,6 +1593,7 @@ export type Database = {
           id: string
           indoor_features: string | null
           medical_proximity: string | null
+          map_iframe_html: string | null
           name: string
           organizer_id: string
           outdoor_features: string | null
@@ -1625,6 +1626,7 @@ export type Database = {
           id?: string
           indoor_features?: string | null
           medical_proximity?: string | null
+          map_iframe_html?: string | null
           name: string
           organizer_id: string
           outdoor_features?: string | null
@@ -1657,6 +1659,7 @@ export type Database = {
           id?: string
           indoor_features?: string | null
           medical_proximity?: string | null
+          map_iframe_html?: string | null
           name?: string
           organizer_id?: string
           outdoor_features?: string | null

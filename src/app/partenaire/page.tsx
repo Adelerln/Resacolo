@@ -40,9 +40,6 @@ export default async function PartnerHome() {
     <div className="space-y-6">
       <div>
         <h1 className="admin-page-title">Dashboard partenaire</h1>
-        <p className="admin-page-subtitle mt-1">
-          {dashboard.partnerName} · Fenêtre analysée: {dashboard.periodLabel}
-        </p>
       </div>
 
       {dashboard.emptyState.hasNoBeneficiaries ? (

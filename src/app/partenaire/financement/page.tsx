@@ -61,20 +61,80 @@ export default async function FinancementPage({ searchParams }: PageProps) {
     }
 
     const financeMode = normalizePartnerFinanceMode(String(formData.get('finance_mode') ?? 'TOTAL'));
+    const financePercentValue =
+      financeMode === 'PERCENT' ? parsePercent(formData.get('finance_percent_value')) : null;
+    const financeFixedCents =
+      financeMode === 'FIXED' ? parseEurosToCents(formData.get('finance_fixed_euros')) : null;
+    const updatePayload: {
+      finance_mode: string;
+      finance_percent_value: number | null;
+      finance_rules_text: string | null;
+      updated_at: string;
+      finance_fixed_cents?: number | null;
+    } = {
+      finance_mode: financeMode,
+      finance_percent_value: financePercentValue,
+      finance_rules_text: normalizeOptionalString(formData.get('finance_rules_text')),
+      updated_at: new Date().toISOString()
+    };
+    if (financeMode === 'FIXED') {
+      updatePayload.finance_fixed_cents = financeFixedCents;
+    }
+
     const supabase = getServerSupabaseClient();
-    const { error } = await supabase
-      .from('collectivities')
-      .update({
-        finance_mode: financeMode,
-        finance_percent_value: financeMode === 'PERCENT' ? parsePercent(formData.get('finance_percent_value')) : null,
-        finance_fixed_cents: financeMode === 'FIXED' ? parseEurosToCents(formData.get('finance_fixed_euros')) : null,
-        finance_rules_text: normalizeOptionalString(formData.get('finance_rules_text')),
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', collectivityId);
+    const { error } = await supabase.from('collectivities').update(updatePayload).eq('id', collectivityId);
 
     if (error) {
-      redirect(`/partenaire/financement?error=${encodeURIComponent(error.message)}`);
+      const message = String(error.message ?? '');
+      const financeColumnMissing =
+        message.includes("Could not find the 'finance_mode' column") ||
+        message.includes("Could not find the 'finance_percent_value' column") ||
+        message.includes("Could not find the 'finance_fixed_cents' column") ||
+        message.includes("Could not find the 'finance_rules_text' column");
+
+      if (financeColumnMissing) {
+        const { error: legacyError } = await supabase
+          .from('collectivities')
+          .update({
+            finance_rules_text: normalizeOptionalString(formData.get('finance_rules_text')),
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', collectivityId);
+
+        if (legacyError) {
+          const legacyMessage = String(legacyError.message ?? '');
+          if (legacyMessage.includes("Could not find the 'finance_rules_text' column")) {
+            const { error: minimalError } = await supabase
+              .from('collectivities')
+              .update({
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', collectivityId);
+
+            if (minimalError) {
+              redirect(`/partenaire/financement?error=${encodeURIComponent(minimalError.message)}`);
+            }
+
+            revalidatePath('/partenaire/financement');
+            redirect('/partenaire/financement?saved=1');
+          }
+
+          redirect(`/partenaire/financement?error=${encodeURIComponent(legacyError.message)}`);
+        }
+
+        revalidatePath('/partenaire/financement');
+        redirect('/partenaire/financement?saved=1');
+      }
+
+      if (
+        message.includes("Could not find the 'finance_fixed_cents' column") &&
+        financeMode === 'FIXED'
+      ) {
+        redirect(
+          '/partenaire/financement?error=Le%20mode%20Forfait%20n%27est%20pas%20disponible%20sur%20cet%20environnement.%20Utilisez%20le%20mode%20Total%20ou%20Pourcentage.'
+        );
+      }
+      redirect(`/partenaire/financement?error=${encodeURIComponent(message)}`);
     }
 
     revalidatePath('/partenaire/financement');

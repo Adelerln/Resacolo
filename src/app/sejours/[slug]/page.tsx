@@ -5,6 +5,8 @@ import { DEFAULT_STAY_OG_IMAGE_PATH, toAbsoluteUrl } from '@/lib/seo';
 import { getStays, getStayCanonicalPath, resolveStayBySlug } from '@/lib/stays';
 import { buildStaySeoKeywords, buildStaySeoMetaDescription, buildStaySeoTitle } from '@/lib/stay-seo';
 import { StayDetailView } from '@/components/sejours/StayDetailView';
+import { getCurrentUser } from '@/lib/auth/session';
+import { applyCsePricingToStay, readUserPublishedCseRules } from '@/lib/cse-pricing';
 
 interface StayDetailPageProps {
   params: Promise<{ slug: string }>;
@@ -206,7 +208,9 @@ export default async function StayDetailPage({ params }: StayDetailPageProps) {
     permanentRedirect(resolved.canonicalPath);
   }
 
-  const stay = resolved.stay;
+  const session = await getCurrentUser();
+  const rules = session?.userId ? await readUserPublishedCseRules(session.userId) : null;
+  const stay = rules ? applyCsePricingToStay(resolved.stay, rules) : resolved.stay;
   const productJsonLd = serializeJsonLd(buildStayProductJsonLd(stay));
   const breadcrumbJsonLd = serializeJsonLd(buildStayBreadcrumbJsonLd(stay));
 

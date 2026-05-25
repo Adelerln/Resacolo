@@ -1,5 +1,6 @@
 import Link from 'next/link';
-import { requireRole } from '@/lib/auth/require';
+import { requireAdminSection } from '@/lib/auth/require';
+import { canMutateAdminSection, isAdminWorkspaceRole } from '@/lib/admin-access';
 import { normalizePartnerOffer, PARTNER_OFFER_LABELS } from '@/lib/partner-offers';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import type { Database } from '@/types/supabase';
@@ -27,75 +28,9 @@ type PartnerRow = Pick<
   userCount: number;
 };
 
-type PageProps = {
-  searchParams?: Promise<{
-    sort?: string | string[];
-    dir?: string | string[];
-  }>;
-};
-
-const SORTABLE_COLUMNS: ReadonlyArray<SortKey> = [
-  'name',
-  'code',
-  'offer_mode',
-  'contact_email',
-  'created_at',
-  'user_count',
-  'last_connection'
-];
-
-function getSingleSearchParam(value: string | string[] | undefined) {
-  return Array.isArray(value) ? value[0] : value;
-}
-
-function isSortKey(value: string | undefined): value is SortKey {
-  return Boolean(value && SORTABLE_COLUMNS.includes(value as SortKey));
-}
-
-function isSortDirection(value: string | undefined): value is SortDirection {
-  return value === 'asc' || value === 'desc';
-}
-
-function getNextSortDirection(activeSort: SortKey | null, activeDirection: SortDirection | null, column: SortKey) {
-  if (activeSort !== column) return 'asc';
-  if (activeDirection === 'asc') return 'desc';
-  return null;
-}
-
-function getSortIndicator(activeSort: SortKey | null, activeDirection: SortDirection | null, column: SortKey) {
-  if (activeSort !== column || !activeDirection) return '↕';
-  return activeDirection === 'asc' ? '↑' : '↓';
-}
-
-function compareNullableStrings(left: string | null | undefined, right: string | null | undefined) {
-  if (!left && !right) return 0;
-  if (!left) return 1;
-  if (!right) return -1;
-  return left.localeCompare(right, 'fr', { sensitivity: 'base' });
-}
-
-function compareNullableDates(left: string | null | undefined, right: string | null | undefined) {
-  if (!left && !right) return 0;
-  if (!left) return 1;
-  if (!right) return -1;
-  return new Date(left).getTime() - new Date(right).getTime();
-}
-
-function compareNumbers(left: number, right: number) {
-  return left - right;
-}
-
-function formatLastConnection(value: string | null) {
-  if (!value) return '—';
-  return new Intl.DateTimeFormat('fr-FR', {
-    dateStyle: 'short',
-    timeStyle: 'short'
-  }).format(new Date(value));
-}
-
-export default async function AdminPartnersPage({ searchParams }: PageProps) {
-  await requireRole('ADMIN');
-  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+export default async function AdminPartnersPage() {
+  const session = await requireAdminSection('partners');
+  const canEditPartners = isAdminWorkspaceRole(session.role) && canMutateAdminSection(session.role, 'partners');
   const supabase = getServerSupabaseClient();
   const requestedSort = getSingleSearchParam(resolvedSearchParams?.sort);
   const requestedDirection = getSingleSearchParam(resolvedSearchParams?.dir);
@@ -219,12 +154,14 @@ export default async function AdminPartnersPage({ searchParams }: PageProps) {
           <h1 className="admin-page-title">Partenaires</h1>
           <p className="admin-page-subtitle mt-1">Créez et suivez les collectivités partenaires.</p>
         </div>
-        <Link
-          href="/admin/partenaires/nouveau"
-          className="inline-flex min-h-[44px] items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white"
-        >
-          Créer un partenaire
-        </Link>
+        {canEditPartners ? (
+          <Link
+            href="/admin/partenaires/nouveau"
+            className="inline-flex min-h-[44px] items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white"
+          >
+            Créer un partenaire
+          </Link>
+        ) : null}
       </div>
 
       {error ? (
@@ -267,7 +204,7 @@ export default async function AdminPartnersPage({ searchParams }: PageProps) {
                       href={`/admin/partenaires/${partner.id}`}
                       className="inline-flex min-h-[36px] items-center rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:border-slate-300 hover:text-slate-900"
                     >
-                      Gérer
+                      {canEditPartners ? 'Gérer' : 'Voir'}
                     </Link>
                   </td>
                 </tr>

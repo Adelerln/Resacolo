@@ -7,6 +7,7 @@ import { listPartnerCatalogStays, readPartnerCollectivity } from '@/lib/partner.
 import RangeField from '@/components/partner/RangeField';
 import ClickMultiSelectField from '@/components/partner/ClickMultiSelectField';
 import CountryDropdownField from '@/components/partner/CountryDropdownField';
+import CatalogQfVisibilityEnhancer from '@/components/partner/CatalogQfVisibilityEnhancer';
 import {
   evaluatePartnerCatalogEligibility,
   getDefaultPartnerCatalogRules,
@@ -347,6 +348,16 @@ function parseRulesFromFormData(formData: FormData): PartnerCatalogRules {
     });
   }
 
+  if (rules.financialRules.aidMode === 'PERCENT') {
+    rules.financialRules.fixedCents = null;
+  } else if (rules.financialRules.aidMode === 'FIXED') {
+    rules.financialRules.percentValue = null;
+    rules.qfScale = [];
+  } else {
+    rules.financialRules.percentValue = null;
+    rules.financialRules.fixedCents = null;
+  }
+
   return rules;
 }
 
@@ -391,13 +402,7 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
     if (!nextSession.tenantId) redirect('/partenaire/catalogue?error=Aucune%20collectivite%20liee');
     if (!canAccessPartnerSection(accessRole, 'catalog')) redirect('/partenaire');
 
-    let rules: PartnerCatalogRules;
-    try {
-      rules = parseAndValidatePartnerCatalogRules(parseRulesFromFormData(formData));
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Règles invalides';
-      redirect(`/partenaire/catalogue?error=${encodeURIComponent(message)}`);
-    }
+    const rules: PartnerCatalogRules = normalizePartnerCatalogRules(parseRulesFromFormData(formData));
 
     const supabase = getServerSupabaseClient();
     const { error } = await supabase
@@ -466,6 +471,14 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
   const draftRules = normalizePartnerCatalogRules(
     collectivity.catalog_rules_draft ?? getDefaultPartnerCatalogRules()
   );
+  const draftValidationWarning = (() => {
+    try {
+      parseAndValidatePartnerCatalogRules(draftRules);
+      return null;
+    } catch (error) {
+      return error instanceof Error ? error.message : 'Brouillon incomplet';
+    }
+  })();
   const publishedRules = normalizePartnerCatalogRules(
     collectivity.catalog_rules_published ?? draftRules
   );
@@ -556,6 +569,15 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
   const displayedRows = debugMode
     ? catalogRows
     : catalogRows.filter((row) => row.eligibility.status === 'ELIGIBLE');
+  const avgAidCents =
+    catalogRows.length > 0
+      ? Math.round(catalogRows.reduce((sum, row) => sum + row.simulation.aidCents, 0) / catalogRows.length)
+      : 0;
+  const avgFamilyCents =
+    catalogRows.length > 0
+      ? Math.round(catalogRows.reduce((sum, row) => sum + row.simulation.familyCents, 0) / catalogRows.length)
+      : 0;
+  const zeroAidCount = catalogRows.filter((row) => row.simulation.aidCents === 0).length;
 
   return (
     <div className="space-y-6">
@@ -600,13 +622,19 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
           Règles publiées.
         </p>
       ) : null}
+      {draftValidationWarning ? (
+        <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+          Brouillon enregistré avec avertissement: {draftValidationWarning}
+        </p>
+      ) : null}
 
       <form action={saveDraft} className="space-y-4">
+        <CatalogQfVisibilityEnhancer />
         <input type="hidden" name="version" value={String(draftRules.version)} />
         <input type="hidden" name="qf_row_count" value={String(Math.max(qfRows.length, 8))} />
 
         <details open className="rounded-2xl border border-slate-200 bg-white p-5">
-          <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-semibold text-slate-900">
+          <summary className="flex cursor-pointer list-none items-center justify-between text-2xl font-semibold text-slate-900">
             <span>Éligibilité du séjour</span>
             <span aria-hidden="true" className="text-base text-slate-500">
               ▾
@@ -734,44 +762,59 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
         </details>
 
         <details open className="rounded-2xl border border-slate-200 bg-white p-5">
-          <summary className="cursor-pointer list-none text-sm font-semibold text-slate-900">
+          <summary className="cursor-pointer list-none text-2xl font-semibold text-slate-900">
             Règles financières
           </summary>
-          <div className="mt-4 grid gap-4 md:grid-cols-3">
-            <label className="text-sm font-medium text-slate-700">
-              Type d’aide
-              <select
-                name="aid_mode"
-                defaultValue={draftRules.financialRules.aidMode}
-                className={fieldClassName()}
+          <div className="mt-4 space-y-4">
+            <div className="grid gap-4 md:grid-cols-3">
+              <label className="text-sm font-medium text-slate-700">
+                Type d’aide
+                <select
+                  name="aid_mode"
+                  defaultValue={draftRules.financialRules.aidMode}
+                  className={fieldClassName()}
+                >
+                  <option value="PERCENT">Pourcentage</option>
+                  <option value="FIXED">Forfait</option>
+                  <option value="QF_SCALE">Barème QF</option>
+                </select>
+              </label>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <label
+                id="partner-finance-base-percent"
+                className={`text-sm font-medium text-slate-700 ${
+                  draftRules.financialRules.aidMode === 'PERCENT' ? '' : 'hidden'
+                }`}
               >
-                <option value="PERCENT">Pourcentage</option>
-                <option value="FIXED">Forfait</option>
-                <option value="QF_SCALE">Barème QF</option>
-              </select>
-            </label>
+                Taux d’aide (%)
+                <input
+                  name="aid_percent"
+                  defaultValue={draftRules.financialRules.percentValue ?? ''}
+                  className={fieldClassName()}
+                />
+              </label>
+              <label
+                id="partner-finance-base-fixed"
+                className={`text-sm font-medium text-slate-700 ${
+                  draftRules.financialRules.aidMode === 'FIXED' ? '' : 'hidden'
+                }`}
+              >
+                Forfait d’aide (€)
+                <input
+                  name="aid_fixed_eur"
+                  defaultValue={
+                    draftRules.financialRules.fixedCents != null
+                      ? (draftRules.financialRules.fixedCents / 100).toString()
+                      : ''
+                  }
+                  className={fieldClassName()}
+                />
+              </label>
+            </div>
+            <div className="grid gap-4 md:grid-cols-3">
             <label className="text-sm font-medium text-slate-700">
-              Taux (%)
-              <input
-                name="aid_percent"
-                defaultValue={draftRules.financialRules.percentValue ?? ''}
-                className={fieldClassName()}
-              />
-            </label>
-            <label className="text-sm font-medium text-slate-700">
-              Forfait (€)
-              <input
-                name="aid_fixed_eur"
-                defaultValue={
-                  draftRules.financialRules.fixedCents != null
-                    ? (draftRules.financialRules.fixedCents / 100).toString()
-                    : ''
-                }
-                className={fieldClassName()}
-              />
-            </label>
-            <label className="text-sm font-medium text-slate-700">
-              Plafond/séjour (€)
+              Plafond / séjour (€)
               <input
                 name="cap_per_stay_eur"
                 defaultValue={
@@ -783,7 +826,7 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
               />
             </label>
             <label className="text-sm font-medium text-slate-700">
-              Plafond/enfant/an (€)
+              Plafond / enfant / an (€)
               <input
                 name="cap_per_child_year_eur"
                 defaultValue={
@@ -795,7 +838,7 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
               />
             </label>
             <label className="text-sm font-medium text-slate-700">
-              Plafond/famille/an (€)
+              Plafond / famille / an (€)
               <input
                 name="cap_per_family_year_eur"
                 defaultValue={
@@ -807,7 +850,7 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
               />
             </label>
             <label className="text-sm font-medium text-slate-700">
-              Plafond/jour (€)
+              Plafond / jour (€)
               <input
                 name="cap_per_day_eur"
                 defaultValue={
@@ -819,7 +862,7 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
               />
             </label>
             <label className="text-sm font-medium text-slate-700">
-              Nb max séjours/enfant/an
+              Nb max séjours / enfant / an
               <input
                 name="max_stays_per_child_year"
                 defaultValue={draftRules.financialRules.maxStaysPerChildYear ?? ''}
@@ -827,7 +870,7 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
               />
             </label>
             <label className="text-sm font-medium text-slate-700">
-              Nb max jours aidés/an
+              Nb max jours aidés / an
               <input
                 name="max_subsidized_days_year"
                 defaultValue={draftRules.financialRules.maxSubsidizedDaysYear ?? ''}
@@ -835,7 +878,7 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
               />
             </label>
             <label className="text-sm font-medium text-slate-700">
-              Reste min (%)
+              Reste à charge min (%)
               <input
                 name="min_family_remainder_percent"
                 defaultValue={draftRules.financialRules.minFamilyRemainderPercent ?? ''}
@@ -843,7 +886,7 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
               />
             </label>
             <label className="text-sm font-medium text-slate-700">
-              Reste min (€)
+              Reste à charge min (€)
               <input
                 name="min_family_remainder_eur"
                 defaultValue={
@@ -870,11 +913,20 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
                 className={fieldClassName()}
               />
             </label>
+            </div>
           </div>
         </details>
 
-        <details className="rounded-2xl border border-slate-200 bg-white p-5">
-          <summary className="cursor-pointer list-none text-sm font-semibold text-slate-900">
+        <details
+          id="partner-finance-qf-block"
+          className={`rounded-2xl border p-5 transition ${
+            draftRules.financialRules.aidMode === 'QF_SCALE'
+              ? 'border-amber-300 bg-amber-50/60 ring-1 ring-amber-200 shadow-sm'
+              : 'hidden border-slate-200 bg-white'
+          }`}
+          open={draftRules.financialRules.aidMode === 'QF_SCALE'}
+        >
+          <summary className="cursor-pointer list-none text-2xl font-semibold text-amber-900">
             Barème QF
           </summary>
           <div className="mt-4 overflow-x-auto">
@@ -942,10 +994,20 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
         </details>
 
         <details open className="rounded-2xl border border-slate-200 bg-white p-5">
-          <summary className="cursor-pointer list-none text-sm font-semibold text-slate-900">
+          <summary className="cursor-pointer list-none text-2xl font-semibold text-slate-900">
             Aperçu impact catalogue
           </summary>
           <div className="mt-4 space-y-2 text-sm text-slate-700">
+            <p>
+              Aide moyenne: <span className="font-semibold">{formatCurrencyFromCents(avgAidCents)}</span>
+            </p>
+            <p>
+              Reste famille moyen:{' '}
+              <span className="font-semibold">{formatCurrencyFromCents(avgFamilyCents)}</span>
+            </p>
+            <p>
+              Sessions avec aide à 0: <span className="font-semibold">{zeroAidCount}</span>
+            </p>
             {topExclusions.length > 0 ? (
               topExclusions.map(([reason, count]) => (
                 <p key={reason}>
@@ -992,6 +1054,9 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
                 <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-slate-700">
                   Aide {formatCurrencyFromCents(row.simulation.aidCents)}
                 </span>
+                <span className="inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-amber-900">
+                  {row.simulation.appliedSummary}
+                </span>
               </div>
             </summary>
             <div className="mt-3 text-sm text-slate-700">
@@ -1004,8 +1069,13 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
               {row.eligibility.status === 'INELIGIBLE' && row.eligibility.reasons[0] ? (
                 <p className="mt-1 text-rose-700">Motif principal: {row.eligibility.reasons[0].message}</p>
               ) : null}
+              {row.simulation.appliedCapLabels.length > 0 ? (
+                <p className="mt-1 text-amber-700">Contraintes appliquées: {row.simulation.appliedCapLabels.join(' · ')}</p>
+              ) : null}
               {row.simulation.warnings.length > 0 ? (
-                <p className="mt-1 text-amber-700">{row.simulation.warnings[0]}</p>
+                <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-amber-700">
+                  {row.simulation.warnings[0]}
+                </p>
               ) : null}
             </div>
           </details>

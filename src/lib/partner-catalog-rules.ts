@@ -83,7 +83,7 @@ export function getDefaultPartnerCatalogRules(): PartnerCatalogRules {
     },
     financialRules: {
       aidMode: 'PERCENT',
-      percentValue: 30,
+      percentValue: null,
       fixedCents: null,
       capPerStayCents: null,
       capPerChildYearCents: null,
@@ -140,6 +140,12 @@ function validateQfScaleRows(rows: QfScaleRow[]) {
     if (row.maxQf != null && row.maxQf < row.minQf) {
       throw new Error(`Tranche QF invalide (${row.minQf}-${row.maxQf}).`);
     }
+    if (row.aidMode === 'PERCENT' && row.percentValue == null) {
+      throw new Error(`Tranche QF invalide (${row.minQf}-${row.maxQf ?? '∞'}) : taux obligatoire.`);
+    }
+    if (row.aidMode === 'FIXED' && row.fixedCents == null) {
+      throw new Error(`Tranche QF invalide (${row.minQf}-${row.maxQf ?? '∞'}) : forfait obligatoire.`);
+    }
     if (i === 0) continue;
     const prev = sorted[i - 1];
     if (prev.maxQf == null) {
@@ -167,6 +173,12 @@ export function parseAndValidatePartnerCatalogRules(value: unknown): PartnerCata
   }
   if (parsed.financialRules.qfMin != null && parsed.financialRules.qfMax != null && parsed.financialRules.qfMin > parsed.financialRules.qfMax) {
     throw new Error('Le QF minimum ne peut pas dépasser le QF maximum.');
+  }
+  if (parsed.financialRules.aidMode === 'PERCENT' && parsed.financialRules.percentValue == null) {
+    throw new Error("Le type d'aide Pourcentage nécessite un taux.");
+  }
+  if (parsed.financialRules.aidMode === 'FIXED' && parsed.financialRules.fixedCents == null) {
+    throw new Error("Le type d'aide Forfait nécessite un montant fixe.");
   }
 
   if (parsed.financialRules.aidMode === 'QF_SCALE' && parsed.qfScale.length === 0) {
@@ -321,6 +333,7 @@ export function simulatePartnerAid(input: {
 }): AidSimulationResult {
   const totalCents = Math.max(0, Math.round(input.priceCents));
   const warnings: string[] = [];
+  const appliedCapLabels: string[] = [];
   let aidCents = 0;
   let appliedMode: AidSimulationResult['appliedMode'] = input.rules.financialRules.aidMode;
   const financial = input.rules.financialRules;
@@ -344,10 +357,19 @@ export function simulatePartnerAid(input: {
   }
 
   if (financial.capPerStayCents != null) {
-    aidCents = Math.min(aidCents, financial.capPerStayCents);
+    const nextAid = Math.min(aidCents, financial.capPerStayCents);
+    if (nextAid < aidCents) {
+      appliedCapLabels.push(`Plafond séjour ${Math.round(financial.capPerStayCents / 100)}€`);
+    }
+    aidCents = nextAid;
   }
   if (financial.capPerDayCents != null) {
-    aidCents = Math.min(aidCents, financial.capPerDayCents * Math.max(1, input.durationDays));
+    const perDayCap = financial.capPerDayCents * Math.max(1, input.durationDays);
+    const nextAid = Math.min(aidCents, perDayCap);
+    if (nextAid < aidCents) {
+      appliedCapLabels.push(`Plafond jour ${Math.round(financial.capPerDayCents / 100)}€`);
+    }
+    aidCents = nextAid;
   }
   if (financial.capPerChildYearCents != null || financial.capPerFamilyYearCents != null || financial.maxStaysPerChildYear != null || financial.maxSubsidizedDaysYear != null) {
     warnings.push("Les plafonds/quotas annuels sont configurés mais ne sont pas totalement simulables dans l'aperçu catalogue.");
@@ -361,17 +383,35 @@ export function simulatePartnerAid(input: {
     if (familyCents < minRemainder) {
       familyCents = minRemainder;
       aidCents = Math.max(0, totalCents - familyCents);
+      appliedCapLabels.push(`Reste minimum ${financial.minFamilyRemainderPercent}%`);
     }
   }
   if (financial.minFamilyRemainderCents != null && familyCents < financial.minFamilyRemainderCents) {
     familyCents = financial.minFamilyRemainderCents;
     aidCents = Math.max(0, totalCents - familyCents);
+    appliedCapLabels.push(`Reste minimum ${Math.round(financial.minFamilyRemainderCents / 100)}€`);
   }
+
+  const appliedSummaryBase =
+    appliedMode === 'PERCENT'
+      ? `${financial.percentValue ?? 0}%`
+      : appliedMode === 'FIXED'
+        ? `${Math.round((financial.fixedCents ?? 0) / 100)}€`
+        : appliedMode === 'QF_ROW_PERCENT'
+          ? 'Barème QF (%)'
+          : appliedMode === 'QF_ROW_FIXED'
+            ? 'Barème QF (€)'
+            : 'Barème QF';
+  const appliedSummary = appliedCapLabels.length > 0
+    ? `${appliedSummaryBase} · ${appliedCapLabels.join(' · ')}`
+    : appliedSummaryBase;
 
   return {
     aidCents,
     familyCents,
     appliedMode,
+    appliedCapLabels,
+    appliedSummary,
     warnings
   };
 }

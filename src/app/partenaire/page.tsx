@@ -139,8 +139,15 @@ export default async function PartnerHome() {
           <div className="border-b border-slate-100 px-5 py-4">
             <h2 className="admin-section-title">Dernières réservations</h2>
           </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-[640px] w-full text-left text-sm">
+          <div className="overflow-hidden">
+            <table className="w-full table-fixed text-left text-sm">
+              <colgroup>
+                <col className="w-[18%]" />
+                <col className="w-[20%]" />
+                <col className="w-[28%]" />
+                <col className="w-[16%]" />
+                <col className="w-[18%]" />
+              </colgroup>
               <thead className="bg-slate-50 text-xs uppercase text-slate-500">
                 <tr>
                   <th className="px-4 py-3">Commande</th>
@@ -154,13 +161,21 @@ export default async function PartnerHome() {
                 {dashboard.recentReservations.map((reservation) => (
                   <tr key={reservation.id} className="border-t border-slate-100">
                     <td className="px-4 py-3 text-slate-600">
-                      <p className="font-medium text-slate-900">#{reservation.id.slice(0, 8).toUpperCase()}</p>
-                      <p className="mt-1 text-xs text-slate-500">{formatDate(reservation.createdAt)}</p>
+                      <p className="font-medium text-slate-900 whitespace-nowrap">#{reservation.id.slice(0, 8).toUpperCase()}</p>
+                      <p className="mt-1 text-xs text-slate-500 whitespace-nowrap">{formatDate(reservation.createdAt)}</p>
                     </td>
-                    <td className="px-4 py-3 text-slate-700">{reservation.beneficiaryName}</td>
-                    <td className="px-4 py-3 text-slate-700">{reservation.stayTitle}</td>
-                    <td className="px-4 py-3 text-slate-700">{reservation.statusLabel}</td>
-                    <td className="px-4 py-3 font-semibold text-slate-900">{reservation.totalLabel}</td>
+                    <td className="px-4 py-3 text-slate-700">
+                      <p className="break-words">{reservation.beneficiaryName}</p>
+                    </td>
+                    <td className="px-4 py-3 text-slate-700">
+                      <p className="break-words">{reservation.stayTitle}</p>
+                    </td>
+                    <td className="px-4 py-3 text-slate-700">
+                      <p className="whitespace-nowrap">{reservation.statusLabel}</p>
+                    </td>
+                    <td className="px-4 py-3 font-semibold text-slate-900">
+                      <p className="whitespace-nowrap">{reservation.totalLabel}</p>
+                    </td>
                   </tr>
                 ))}
                 {dashboard.recentReservations.length === 0 ? (

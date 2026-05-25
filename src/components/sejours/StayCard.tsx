@@ -26,6 +26,9 @@ export function StayCard({ stay }: StayCardProps) {
         seasonBadge={season.badgeText}
         durationLabel={stay.duration || 'Durée à venir'}
         priceFromEuros={stay.priceFrom}
+        csePriceFromEuros={stay.csePriceFrom ?? null}
+        cseAidFromEuros={stay.cseAidFrom ?? null}
+        cseLabel={stay.cseLabel ?? null}
         coverUrl={stay.coverImage || getMockImageUrl(mockImages.sejours.fallbackCover, 1200, 80)}
         href={`/sejours/${stay.canonicalSlug}`}
         organizerLogoUrl={stay.organizer.logoUrl ?? null}

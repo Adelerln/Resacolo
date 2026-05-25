@@ -1,13 +1,31 @@
 import { getServerSupabaseClient } from '@/lib/supabase/server';
+import { getCurrentUser } from '@/lib/auth/session';
+import { evaluatePartnerCatalogEligibility, simulatePartnerAid } from '@/lib/partner-catalog-rules';
+import { normalizePartnerCatalogRules } from '@/lib/partner-catalog-rules';
 import type { CartItem } from '@/types/cart';
 import type { Database } from '@/types/supabase';
 import { formatEuroFromCents, type CheckoutPricing, type CheckoutPricingItem } from '@/types/checkout';
+import type { PartnerCatalogRules } from '@/types/partner-catalog-rules';
 
 type SessionRow = Pick<
   Database['public']['Tables']['sessions']['Row'],
   'id' | 'stay_id' | 'status' | 'capacity_total' | 'capacity_reserved' | 'start_date' | 'end_date'
 >;
-type StayRow = Pick<Database['public']['Tables']['stays']['Row'], 'id' | 'organizer_id' | 'title' | 'status'>;
+type StayRow = Pick<
+  Database['public']['Tables']['stays']['Row'],
+  | 'id'
+  | 'organizer_id'
+  | 'title'
+  | 'status'
+  | 'age_min'
+  | 'age_max'
+  | 'categories'
+  | 'destination_country'
+  | 'destination_countries'
+  | 'transport_mode'
+  | 'required_documents_text'
+  | 'supervision_text'
+>;
 type SessionPriceRow = Pick<Database['public']['Tables']['session_prices']['Row'], 'session_id' | 'amount_cents'>;
 type TransportRow = Pick<
   Database['public']['Tables']['transport_options']['Row'],
@@ -109,7 +127,9 @@ async function fetchStay(stayId: string): Promise<StayRow> {
   const supabase = getServerSupabaseClient();
   const { data, error } = await supabase
     .from('stays')
-    .select('id,organizer_id,title,status')
+    .select(
+      'id,organizer_id,title,status,age_min,age_max,categories,destination_country,destination_countries,transport_mode,required_documents_text,supervision_text'
+    )
     .eq('id', stayId)
     .maybeSingle();
 
@@ -118,6 +138,32 @@ async function fetchStay(stayId: string): Promise<StayRow> {
   }
 
   return data;
+}
+
+function getSimulationQfValue(rules: PartnerCatalogRules) {
+  return rules.financialRules.qfMax != null
+    ? ((rules.financialRules.qfMin ?? 0) + rules.financialRules.qfMax) / 2
+    : (rules.financialRules.qfMin ?? 1200);
+}
+
+async function readCheckoutCseRulesForCurrentUser() {
+  const session = await getCurrentUser();
+  if (!session?.userId) return null;
+  const supabase = getServerSupabaseClient();
+  const { data: client } = await supabase
+    .from('clients')
+    .select('collectivity_id')
+    .eq('user_id', session.userId)
+    .maybeSingle();
+  if (!client?.collectivity_id) return null;
+
+  const { data: collectivity } = await supabase
+    .from('collectivities')
+    .select('catalog_rules_published')
+    .eq('id', client.collectivity_id)
+    .maybeSingle();
+  if (!collectivity?.catalog_rules_published) return null;
+  return normalizePartnerCatalogRules(collectivity.catalog_rules_published);
 }
 
 async function fetchSessionPrice(sessionId: string): Promise<SessionPriceRow> {
@@ -229,6 +275,8 @@ function assertRowBelongsToStay(optionStayId: string | null, stayId: string, lab
 }
 
 export async function repriceCart(items: CartItem[]): Promise<CheckoutPricing> {
+  const cseRules = await readCheckoutCseRulesForCurrentUser();
+  const qfValue = cseRules ? getSimulationQfValue(cseRules) : null;
   const pricedItems = await Promise.all(
     items.map(async (cartItem): Promise<CheckoutPricingItem> => {
       const sessionId = cartItem.selection.sessionId;
@@ -339,6 +387,57 @@ export async function repriceCart(items: CartItem[]): Promise<CheckoutPricing> {
 
       const optionsPriceCents = transportPriceCents + insurancePriceCents + extraOptionPriceCents;
       const totalPriceCents = basePriceCents + optionsPriceCents;
+      let cseAidCents = 0;
+      let familyCentsAfterAid = totalPriceCents;
+      let cseEligible = false;
+      let cseLabel: string | null = null;
+
+      if (cseRules && qfValue != null) {
+        const eligibility = evaluatePartnerCatalogEligibility({
+          rules: cseRules,
+          stay: {
+            age_min: stay.age_min,
+            age_max: stay.age_max,
+            categories: stay.categories ?? [],
+            destination_country: stay.destination_country,
+            destination_countries: stay.destination_countries,
+            transport_mode: stay.transport_mode ?? 'NONE',
+            required_documents_text: stay.required_documents_text,
+            education_project_path: null,
+            supervision_text: stay.supervision_text
+          },
+          session: {
+            start_date: session.start_date,
+            end_date: session.end_date
+          },
+          priceCents: totalPriceCents,
+          organizer: {
+            is_resacolo_member: true
+          }
+        });
+
+        if (eligibility.status === 'ELIGIBLE') {
+          const simulation = simulatePartnerAid({
+            rules: cseRules,
+            priceCents: totalPriceCents,
+            durationDays: Math.max(
+              1,
+              Math.ceil(
+                (new Date(`${session.end_date}T00:00:00Z`).getTime() -
+                  new Date(`${session.start_date}T00:00:00Z`).getTime()) /
+                  (24 * 60 * 60 * 1000)
+              ) + 1
+            ),
+            qfValue
+          });
+          cseAidCents = simulation.aidCents;
+          familyCentsAfterAid = simulation.familyCents;
+          cseEligible = simulation.aidCents > 0;
+          cseLabel = simulation.aidCents > 0 ? simulation.appliedSummary : 'Non éligible CSE';
+        } else {
+          cseLabel = 'Non éligible CSE';
+        }
+      }
 
       return {
         cartItemId: cartItem.id,
@@ -359,16 +458,27 @@ export async function repriceCart(items: CartItem[]): Promise<CheckoutPricing> {
         transportOptionId: pickStoredTransportOptionId(cartItem),
         insuranceOptionId: persistedInsuranceOptionId,
         extraOptionId: cartItem.selection.extraOptionId,
-        extraOptionLabel
+        extraOptionLabel,
+        cseAidCents,
+        familyCentsAfterAid,
+        cseEligible,
+        cseLabel
       };
     })
   );
 
   const totalCents = pricedItems.reduce((sum, item) => sum + item.totalPriceCents, 0);
+  const familyTotalCentsAfterAid = pricedItems.reduce(
+    (sum, item) => sum + (item.familyCentsAfterAid ?? item.totalPriceCents),
+    0
+  );
+  const cseTotalAidCents = pricedItems.reduce((sum, item) => sum + (item.cseAidCents ?? 0), 0);
 
   return {
     items: pricedItems,
     totalCents,
+    familyTotalCentsAfterAid,
+    cseTotalAidCents,
     currency: 'EUR'
   };
 }

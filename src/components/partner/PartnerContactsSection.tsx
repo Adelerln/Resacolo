@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useTransition } from 'react';
 
 type PartnerContactRow = {
   id: string;
@@ -24,6 +24,46 @@ export default function PartnerContactsSection({
   deleteContactAction: (formData: FormData) => void;
 }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isPending, startTransition] = useTransition();
+  const [fullName, setFullName] = useState('');
+  const [roleLabel, setRoleLabel] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [isPrimary, setIsPrimary] = useState(false);
+
+  const resetModalFields = () => {
+    setFullName('');
+    setRoleLabel('');
+    setEmail('');
+    setPhone('');
+    setIsPrimary(false);
+  };
+
+  const handleDeleteContact = (contactId: string) => {
+    if (!window.confirm('Supprimer ce contact partenaire ?')) return;
+    const formData = new FormData();
+    formData.set('contact_id', contactId);
+    startTransition(() => {
+      deleteContactAction(formData);
+    });
+  };
+
+  const handleAddContact = () => {
+    if (!fullName.trim() || !email.trim()) return;
+    const formData = new FormData();
+    formData.set('full_name', fullName.trim());
+    formData.set('role_label', roleLabel.trim());
+    formData.set('email', email.trim());
+    formData.set('phone', phone.trim());
+    if (isPrimary) {
+      formData.set('is_primary', 'on');
+    }
+    startTransition(() => {
+      addContactAction(formData);
+    });
+    setIsModalOpen(false);
+    resetModalFields();
+  };
 
   return (
     <div className="space-y-4">
@@ -76,19 +116,14 @@ export default function PartnerContactsSection({
                   </td>
                   <td className="px-4 py-3 text-right">
                     {contactsTableAvailable ? (
-                      <form
-                        action={deleteContactAction}
-                        onSubmit={(event) => {
-                          if (!window.confirm('Supprimer ce contact partenaire ?')) {
-                            event.preventDefault();
-                          }
-                        }}
+                      <button
+                        type="button"
+                        disabled={isPending}
+                        onClick={() => handleDeleteContact(contact.id)}
+                        className="rounded-lg border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-700 transition hover:border-rose-300 hover:text-rose-800 disabled:cursor-not-allowed disabled:opacity-60"
                       >
-                        <input type="hidden" name="contact_id" value={contact.id} />
-                        <button className="rounded-lg border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-700 transition hover:border-rose-300 hover:text-rose-800">
-                          Supprimer
-                        </button>
-                      </form>
+                        Supprimer
+                      </button>
                     ) : (
                       <span className="text-xs font-medium text-slate-400">Lecture seule</span>
                     )}
@@ -126,12 +161,13 @@ export default function PartnerContactsSection({
               </button>
             </div>
 
-            <form action={addContactAction} className="mt-6 space-y-4">
+            <div className="mt-6 space-y-4">
               <div className="grid gap-4 md:grid-cols-2">
                 <label className="text-sm font-medium text-slate-700">
                   Nom complet
                   <input
-                    name="full_name"
+                    value={fullName}
+                    onChange={(event) => setFullName(event.target.value)}
                     required
                     className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900"
                   />
@@ -139,7 +175,8 @@ export default function PartnerContactsSection({
                 <label className="text-sm font-medium text-slate-700">
                   Fonction
                   <input
-                    name="role_label"
+                    value={roleLabel}
+                    onChange={(event) => setRoleLabel(event.target.value)}
                     className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900"
                     placeholder="Ex: RH, CSE, Comptabilité"
                   />
@@ -149,7 +186,8 @@ export default function PartnerContactsSection({
                 <label className="text-sm font-medium text-slate-700">
                   Email
                   <input
-                    name="email"
+                    value={email}
+                    onChange={(event) => setEmail(event.target.value)}
                     type="email"
                     required
                     className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900"
@@ -158,28 +196,42 @@ export default function PartnerContactsSection({
                 <label className="text-sm font-medium text-slate-700">
                   Téléphone
                   <input
-                    name="phone"
+                    value={phone}
+                    onChange={(event) => setPhone(event.target.value)}
                     className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900"
                   />
                 </label>
               </div>
               <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
-                <input type="checkbox" name="is_primary" className="h-4 w-4 rounded border-slate-300" />
+                <input
+                  type="checkbox"
+                  checked={isPrimary}
+                  onChange={(event) => setIsPrimary(event.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300"
+                />
                 Définir comme contact principal
               </label>
               <div className="flex items-center justify-end gap-3 pt-2">
                 <button
                   type="button"
-                  onClick={() => setIsModalOpen(false)}
+                  onClick={() => {
+                    setIsModalOpen(false);
+                    resetModalFields();
+                  }}
                   className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600"
                 >
                   Annuler
                 </button>
-                <button className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white">
+                <button
+                  type="button"
+                  disabled={isPending || !fullName.trim() || !email.trim()}
+                  onClick={handleAddContact}
+                  className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                >
                   Ajouter le contact
                 </button>
               </div>
-            </form>
+            </div>
           </div>
         </div>
       ) : null}

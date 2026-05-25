@@ -1,3 +1,4 @@
+import { PasswordInput } from '@/components/auth/PasswordInput';
 import { requireRole } from '@/lib/auth/require';
 import {
   PASSWORD_POLICY_HTML_PATTERN,
@@ -66,15 +67,15 @@ export default async function AdminPartnerNewPage({ searchParams }: PageProps) {
           </label>
           <label className="block text-sm font-medium text-slate-700">
             Mot de passe temporaire
-            <input
+            <PasswordInput
               name="temp_password"
-              type="password"
               minLength={PASSWORD_POLICY_MIN_LENGTH}
               pattern={PASSWORD_POLICY_HTML_PATTERN}
               title={PASSWORD_POLICY_MESSAGE}
               autoComplete="new-password"
               required
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+              className="mt-1"
+              inputClassName="w-full rounded-lg border border-slate-200 px-3 py-2 pr-11"
             />
             <span className="mt-1 block text-xs font-normal text-slate-500">{PASSWORD_POLICY_MESSAGE}</span>
           </label>

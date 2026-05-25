@@ -4,12 +4,10 @@ import { requirePartner } from '@/lib/auth/require';
 import { canAccessPartnerSection, getPartnerAccessRoleFromSession } from '@/lib/partner-access';
 import {
   clampPartnerFinanceCents,
-  computePartnerFinanceSplit,
   normalizePartnerFinanceMode,
   PARTNER_FINANCE_MODE_LABELS
 } from '@/lib/partner-offers';
 import {
-  listPartnerBeneficiaryUserIds,
   listPartnerReservations,
   readPartnerCollectivity
 } from '@/lib/partner.server';
@@ -122,14 +120,13 @@ export default async function PartnerReservationsPage() {
     }
 
     const supabase = getServerSupabaseClient();
-    const allowedUserIds = await listPartnerBeneficiaryUserIds(collectivityId, session.userId);
     const { data: order, error: orderError } = await supabase
       .from('orders')
-      .select('id,client_user_id')
+      .select('id,collectivity_id')
       .eq('id', orderId)
       .maybeSingle();
 
-    if (orderError || !order || !allowedUserIds.includes(order.client_user_id)) {
+    if (orderError || !order || order.collectivity_id !== collectivityId) {
       redirect('/partenaire/reservations');
     }
 
@@ -198,7 +195,7 @@ export default async function PartnerReservationsPage() {
       <div>
         <h1 className="admin-page-title">Réservations</h1>
         <p className="admin-page-subtitle mt-1">
-          Commandes des ayants-droit actuellement rattachés à {collectivity.name}.
+          Commandes ayant utilisé le code CSE de {collectivity.name}, y compris dans l&apos;historique.
         </p>
       </div>
 
@@ -224,14 +221,6 @@ export default async function PartnerReservationsPage() {
             </thead>
             <tbody>
               {reservations.map((reservation) => {
-                const split = computePartnerFinanceSplit({
-                  mode: collectivity.finance_mode,
-                  totalCents: reservation.totalCents,
-                  percentValue: collectivity.finance_percent_value,
-                  fixedCents: collectivity.finance_fixed_cents,
-                  manualPartnerCents: reservation.manualContributionCents
-                });
-
                 return (
                   <tr key={reservation.id} className="border-t border-slate-100 align-top">
                     <td className="px-4 py-3 text-slate-600">
@@ -275,7 +264,9 @@ export default async function PartnerReservationsPage() {
                             min="0"
                             step="0.01"
                             defaultValue={
-                              split.partnerCents > 0 ? String((split.partnerCents / 100).toFixed(2).replace('.', '.')) : ''
+                              reservation.partnerContributionCents > 0
+                                ? String((reservation.partnerContributionCents / 100).toFixed(2).replace('.', '.'))
+                                : ''
                             }
                             className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
                             placeholder="Montant partenaire"
@@ -285,11 +276,15 @@ export default async function PartnerReservationsPage() {
                           </button>
                         </form>
                       ) : (
-                        <div className="font-semibold text-slate-900">{formatCurrencyFromCents(split.partnerCents)}</div>
+                        <div className="font-semibold text-slate-900">
+                          {formatCurrencyFromCents(reservation.partnerContributionCents)}
+                        </div>
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      <div className="font-semibold text-slate-900">{formatCurrencyFromCents(split.clientCents)}</div>
+                      <div className="font-semibold text-slate-900">
+                        {formatCurrencyFromCents(reservation.clientContributionCents)}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -297,7 +292,7 @@ export default async function PartnerReservationsPage() {
               {reservations.length === 0 && (
                 <tr>
                   <td className="px-4 py-6 text-slate-500" colSpan={9}>
-                    Aucune réservation trouvée pour vos ayants-droit rattachés.
+                    Aucune réservation liée à votre code CSE.
                   </td>
                 </tr>
               )}

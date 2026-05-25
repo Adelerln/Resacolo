@@ -1,5 +1,4 @@
 import {
-  computePartnerFinanceSplit,
   normalizePartnerFinanceMode,
   PARTNER_FINANCE_MODE_LABELS
 } from '@/lib/partner-offers';
@@ -141,18 +140,13 @@ export async function buildPartnerDashboardModel(input: {
   let finalizedCount = 0;
   let totalCents30d = 0;
   let partnerCents30d = 0;
+  let clientCents30d = 0;
 
   for (const reservation of reservations30d) {
     if (FINALIZED_STATUSES.has(reservation.status)) finalizedCount += 1;
     totalCents30d += reservation.totalCents;
-    const split = computePartnerFinanceSplit({
-      mode: collectivity.finance_mode,
-      totalCents: reservation.totalCents,
-      percentValue: collectivity.finance_percent_value,
-      fixedCents: collectivity.finance_fixed_cents,
-      manualPartnerCents: reservation.manualContributionCents
-    });
-    partnerCents30d += split.partnerCents;
+    partnerCents30d += reservation.partnerContributionCents;
+    clientCents30d += reservation.clientContributionCents;
   }
 
   const stayStats = new Map<string, { title: string; reservationsCount: number; totalCents: number }>();
@@ -189,7 +183,7 @@ export async function buildPartnerDashboardModel(input: {
       finalizedRate30d: reservations30d.length > 0 ? (finalizedCount / reservations30d.length) * 100 : 0,
       totalCents30d,
       partnerCents30d,
-      clientCents30d: Math.max(0, totalCents30d - partnerCents30d)
+      clientCents30d
     },
     dailyReservationsSeries: Array.from(dailyReservationsMap.entries()).map(([key, value]) => ({
       dayKey: key,

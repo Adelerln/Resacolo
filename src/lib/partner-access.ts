@@ -1,5 +1,7 @@
 export type PartnerAccessRole = 'PARTNER_ADMIN' | 'PARTNER_BENEFICIARY_MANAGER';
 export type StoredPartnerMembershipRole = 'OWNER' | 'PARTNER_AGENT';
+export const PARTNER_MEMBERSHIP_ROLE_CONSTRAINT_MESSAGE =
+  "Le schéma Supabase de collectivity_members doit être mis à jour pour autoriser les rôles partenaire.";
 
 export type PartnerWorkspaceSection =
   | 'dashboard'
@@ -62,6 +64,11 @@ export function normalizePartnerAccessRole(value: string | null | undefined): Pa
 
 export function toStoredPartnerMembershipRole(role: PartnerAccessRole): StoredPartnerMembershipRole {
   return role === 'PARTNER_ADMIN' ? 'OWNER' : 'PARTNER_AGENT';
+}
+
+export function isCollectivityMembersRoleConstraintError(error: { message?: string; code?: string } | null | undefined) {
+  const message = String(error?.message ?? '');
+  return error?.code === '23514' && message.includes('collectivity_members_role_check');
 }
 
 export function canAccessPartnerSection(role: PartnerAccessRole, section: PartnerWorkspaceSection) {

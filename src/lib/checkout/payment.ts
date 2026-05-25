@@ -2,9 +2,14 @@ import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { resolveCheckoutCollectivityForUser } from '@/lib/account-profile/server';
 import type { CartItem } from '@/types/cart';
 import type { CheckoutContact, CheckoutParticipant, CheckoutPricing } from '@/types/checkout';
-import type { Json } from '@/types/supabase';
+import type { Json, Database } from '@/types/supabase';
 import { CheckoutValidationError, repriceCart } from '@/lib/checkout/pricing';
 import { buildMoneticoLivePayload, getMoneticoMode, type MoneticoPayload } from '@/lib/checkout/monetico';
+import {
+  clampPartnerFinanceCents,
+  clampPartnerFinancePercent,
+  normalizePartnerFinanceMode
+} from '@/lib/partner-offers';
 
 type PrepareCheckoutPaymentInput = {
   checkoutId: string;
@@ -22,6 +27,10 @@ type PrepareCheckoutPaymentResult = {
 };
 
 const HOLD_MINUTES = 30;
+type CollectivityFinanceRow = Pick<
+  Database['public']['Tables']['collectivities']['Row'],
+  'id' | 'finance_mode' | 'finance_percent_value' | 'finance_fixed_cents'
+>;
 
 function toJsonValue(value: unknown): Json {
   if (value == null) return null;
@@ -114,6 +123,111 @@ function createMoneticoPayload(input: {
     formMethod: 'POST',
     formFields: {}
   };
+}
+
+function distributeCentsAcrossOrderItems(
+  totalTargetCents: number,
+  itemTotals: Array<{ id: string; totalCents: number }>
+) {
+  if (itemTotals.length === 0) return [] as Array<{ id: string; cents: number }>;
+  const sanitizedTarget = Math.max(0, Math.round(totalTargetCents));
+  const positiveTotal = itemTotals.reduce((sum, item) => sum + Math.max(item.totalCents, 0), 0);
+
+  if (positiveTotal <= 0) {
+    return itemTotals.map((item, index) => ({
+      id: item.id,
+      cents: index === itemTotals.length - 1 ? sanitizedTarget : 0
+    }));
+  }
+
+  let allocated = 0;
+  return itemTotals.map((item, index) => {
+    if (index === itemTotals.length - 1) {
+      return { id: item.id, cents: sanitizedTarget - allocated };
+    }
+    const cents = Math.floor((sanitizedTarget * Math.max(item.totalCents, 0)) / positiveTotal);
+    allocated += cents;
+    return { id: item.id, cents };
+  });
+}
+
+async function readCollectivityFinance(collectivityId: string) {
+  const supabase = getServerSupabaseClient();
+  const { data, error } = await supabase
+    .from('collectivities')
+    .select('id,finance_mode,finance_percent_value,finance_fixed_cents')
+    .eq('id', collectivityId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Impossible de charger la configuration CSE du checkout : ${error.message}`);
+  }
+
+  return data as CollectivityFinanceRow | null;
+}
+
+async function snapshotCollectivityContributions(input: {
+  collectivityId: string;
+  approvedAt: string;
+  orderItems: Array<{ id: string; totalCents: number }>;
+}) {
+  const collectivity = await readCollectivityFinance(input.collectivityId);
+  if (!collectivity || input.orderItems.length === 0) return;
+
+  const mode = normalizePartnerFinanceMode(collectivity.finance_mode);
+  if (mode === 'NONE' || mode === 'MANUAL') return;
+
+  const supabase = getServerSupabaseClient();
+  const now = new Date().toISOString();
+
+  if (mode === 'PERCENT' || mode === 'TOTAL') {
+    const percentValue = mode === 'TOTAL' ? 100 : clampPartnerFinancePercent(collectivity.finance_percent_value);
+    const { error } = await supabase.from('collectivity_contributions').upsert(
+      input.orderItems.map((item) => ({
+        collectivity_id: input.collectivityId,
+        order_item_id: item.id,
+        mode: 'PERCENT' as const,
+        fixed_cents: null,
+        percent_value: percentValue,
+        cap_cents: null,
+        status: 'APPROVED' as const,
+        approved_at: input.approvedAt,
+        approved_by_user_id: null,
+        updated_at: now
+      })),
+      { onConflict: 'order_item_id' }
+    );
+
+    if (error) {
+      throw new Error(`Impossible de figer la prise en charge CSE : ${error.message}`);
+    }
+    return;
+  }
+
+  const totalCents = input.orderItems.reduce((sum, item) => sum + Math.max(item.totalCents, 0), 0);
+  const fixedTargetCents = clampPartnerFinanceCents(collectivity.finance_fixed_cents, totalCents);
+  if (fixedTargetCents <= 0) return;
+
+  const allocations = distributeCentsAcrossOrderItems(fixedTargetCents, input.orderItems);
+  const { error } = await supabase.from('collectivity_contributions').upsert(
+    allocations.map((allocation) => ({
+      collectivity_id: input.collectivityId,
+      order_item_id: allocation.id,
+      mode: 'FIXED' as const,
+      fixed_cents: allocation.cents,
+      percent_value: null,
+      cap_cents: null,
+      status: 'APPROVED' as const,
+      approved_at: input.approvedAt,
+      approved_by_user_id: null,
+      updated_at: now
+    })),
+    { onConflict: 'order_item_id' }
+  );
+
+  if (error) {
+    throw new Error(`Impossible de figer la prise en charge CSE : ${error.message}`);
+  }
 }
 
 async function createOrUpdateClientProfile(
@@ -210,6 +324,7 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
   }
 
   const orderItemIds: string[] = [];
+  const orderItemsForCollectivitySnapshot: Array<{ id: string; totalCents: number }> = [];
 
   for (const pricedItem of pricing.items) {
     const participant = participantByItem.get(pricedItem.cartItemId);
@@ -243,6 +358,10 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
     }
 
     orderItemIds.push(orderItem.id);
+    orderItemsForCollectivitySnapshot.push({
+      id: orderItem.id,
+      totalCents: pricedItem.totalPriceCents
+    });
 
     if (pricedItem.extraOptionId && pricedItem.extraOptionLabel) {
       const { error: extraInsertError } = await supabase.from('order_item_extra_options').insert({
@@ -268,6 +387,14 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
     if (holdError) {
       throw new Error('Impossible de réserver temporairement la session.');
     }
+  }
+
+  if (collectivity?.collectivityId) {
+    await snapshotCollectivityContributions({
+      collectivityId: collectivity.collectivityId,
+      approvedAt: requestedAt,
+      orderItems: orderItemsForCollectivitySnapshot
+    });
   }
 
   const reference = createMoneticoReference(input.checkoutId, order.id);

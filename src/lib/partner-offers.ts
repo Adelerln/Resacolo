@@ -95,3 +95,26 @@ export function computePartnerFinanceSplit(input: {
     clientCents
   };
 }
+
+export function computePartnerContributionSnapshotCents(input: {
+  mode: string | null | undefined;
+  totalCents: number;
+  percentValue?: number | null;
+  fixedCents?: number | null;
+  capCents?: number | null;
+}) {
+  const totalCents = Math.max(0, Math.round(input.totalCents));
+  let partnerCents = 0;
+
+  if (input.mode === 'PERCENT') {
+    partnerCents = Math.round((totalCents * clampPartnerFinancePercent(input.percentValue)) / 100);
+  } else {
+    partnerCents = Number.isFinite(input.fixedCents) ? Math.max(0, Math.round(Number(input.fixedCents))) : 0;
+  }
+
+  if (Number.isFinite(input.capCents)) {
+    partnerCents = Math.min(partnerCents, Math.max(0, Math.round(Number(input.capCents))));
+  }
+
+  return clampPartnerFinanceCents(partnerCents, totalCents);
+}

@@ -111,7 +111,8 @@ export default async function AdminPartnerEditPage({ params, searchParams }: Pag
         ...member,
         email,
         first_name: firstName,
-        last_name: lastName
+        last_name: lastName,
+        role_label: contact?.role_label ?? null
       };
     })
   );

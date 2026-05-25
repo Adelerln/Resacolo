@@ -16,6 +16,10 @@ function formatDate(value: string) {
   return new Date(value).toLocaleDateString('fr-FR');
 }
 
+function formatReservationCount(count: number) {
+  return count === 1 ? '1 réservation' : `${count} réservations`;
+}
+
 export default async function PartnerHome() {
   const session = await requirePartner();
   const collectivityId = session.tenantId;
@@ -100,7 +104,7 @@ export default async function PartnerHome() {
                     className="w-full rounded-sm bg-emerald-500/85 transition group-hover:bg-emerald-500"
                     style={{ height: `${height}%` }}
                     title={`${point.label}: ${point.count}`}
-                    aria-label={`${point.label}: ${point.count} réservations`}
+                    aria-label={`${point.label}: ${formatReservationCount(point.count)}`}
                   />
                 </div>
               );
@@ -193,7 +197,7 @@ export default async function PartnerHome() {
               <div key={stay.stayTitle} className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
                 <p className="font-medium text-slate-900">{stay.stayTitle}</p>
                 <p className="mt-1 text-sm text-slate-600">
-                  {stay.reservationsCount} réservations · {stay.totalLabel}
+                  {formatReservationCount(stay.reservationsCount)} · {stay.totalLabel}
                 </p>
               </div>
             ))}

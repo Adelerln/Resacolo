@@ -45,7 +45,7 @@ const ORGANIZER_ROLE_LABELS: Record<OrganizerAccessRole, string> = {
 };
 
 const STAFF_ROLE_LABELS: Record<StaffAccessRole, string> = {
-  ADMIN: 'Admin plateforme',
+  ADMIN: 'Compte organisme',
   ADMIN_SALES: 'Commercial'
 };
 

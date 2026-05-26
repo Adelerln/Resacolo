@@ -5,6 +5,11 @@ import { requirePartner } from '@/lib/auth/require';
 import { canAccessPartnerSection, getPartnerAccessRoleFromSession } from '@/lib/partner-access';
 import { normalizePartnerFinanceMode } from '@/lib/partner-offers';
 import { readPartnerCollectivity } from '@/lib/partner.server';
+import {
+  buildFeatureActivationMessage,
+  isMissingAnyColumnError,
+  isMissingColumnError
+} from '@/lib/supabase-schema-errors';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 
 type PageProps = {
@@ -96,11 +101,12 @@ export default async function FinancementPage({ searchParams }: PageProps) {
 
     if (error) {
       const message = String(error.message ?? '');
-      const financeColumnMissing =
-        message.includes("Could not find the 'finance_mode' column") ||
-        message.includes("Could not find the 'finance_percent_value' column") ||
-        message.includes("Could not find the 'finance_fixed_cents' column") ||
-        message.includes("Could not find the 'finance_rules_text' column");
+      const financeColumnMissing = isMissingAnyColumnError(error, [
+        'finance_mode',
+        'finance_percent_value',
+        'finance_fixed_cents',
+        'finance_rules_text'
+      ]);
 
       if (financeColumnMissing) {
         const { error: legacyError } = await supabase
@@ -112,8 +118,7 @@ export default async function FinancementPage({ searchParams }: PageProps) {
           .eq('id', collectivityId);
 
         if (legacyError) {
-          const legacyMessage = String(legacyError.message ?? '');
-          if (legacyMessage.includes("Could not find the 'finance_rules_text' column")) {
+          if (isMissingColumnError(legacyError, 'finance_rules_text')) {
             const { error: minimalError } = await supabase
               .from('collectivities')
               .update({
@@ -137,11 +142,18 @@ export default async function FinancementPage({ searchParams }: PageProps) {
       }
 
       if (
-        message.includes("Could not find the 'finance_fixed_cents' column") &&
+        isMissingColumnError(error, 'finance_fixed_cents') &&
         financeMode === 'FIXED'
       ) {
         redirect(
           '/partenaire/financement?error=Le%20mode%20Forfait%20n%27est%20pas%20disponible%20sur%20cet%20environnement.%20Utilisez%20le%20mode%20Total%20ou%20Pourcentage.'
+        );
+      }
+      if (isMissingAnyColumnError(error, ['finance_mode', 'finance_percent_value', 'finance_rules_text'])) {
+        redirect(
+          `/partenaire/financement?error=${encodeURIComponent(
+            buildFeatureActivationMessage('La configuration de financement')
+          )}`
         );
       }
       redirect(`/partenaire/financement?error=${encodeURIComponent(message)}`);

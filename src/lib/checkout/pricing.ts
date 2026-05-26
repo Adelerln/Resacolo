@@ -2,6 +2,7 @@ import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { getCurrentUser } from '@/lib/auth/session';
 import { evaluatePartnerCatalogEligibility, simulatePartnerAid } from '@/lib/partner-catalog-rules';
 import { normalizePartnerCatalogRules } from '@/lib/partner-catalog-rules';
+import { isMissingColumnError } from '@/lib/supabase-schema-errors';
 import type { CartItem } from '@/types/cart';
 import type { Database } from '@/types/supabase';
 import { formatEuroFromCents, type CheckoutPricing, type CheckoutPricingItem } from '@/types/checkout';
@@ -157,11 +158,14 @@ async function readCheckoutCseRulesForCurrentUser() {
     .maybeSingle();
   if (!client?.collectivity_id) return null;
 
-  const { data: collectivity } = await supabase
+  const { data: collectivity, error: collectivityError } = await supabase
     .from('collectivities')
     .select('catalog_rules_published')
     .eq('id', client.collectivity_id)
     .maybeSingle();
+  if (collectivityError && isMissingColumnError(collectivityError, 'catalog_rules_published')) {
+    return null;
+  }
   if (!collectivity?.catalog_rules_published) return null;
   return normalizePartnerCatalogRules(collectivity.catalog_rules_published);
 }

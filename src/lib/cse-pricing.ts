@@ -4,6 +4,7 @@ import {
   normalizePartnerCatalogRules,
   simulatePartnerAid
 } from '@/lib/partner-catalog-rules';
+import { isMissingColumnError } from '@/lib/supabase-schema-errors';
 import type { PartnerCatalogRules } from '@/types/partner-catalog-rules';
 import type { Stay } from '@/types/stay';
 
@@ -32,11 +33,15 @@ export async function readUserPublishedCseRules(userId: string) {
   const collectivityId = client?.collectivity_id ?? null;
   if (!collectivityId) return null;
 
-  const { data: collectivity } = await supabase
+  const { data: collectivity, error: collectivityError } = await supabase
     .from('collectivities')
     .select('id,catalog_rules_published')
     .eq('id', collectivityId)
     .maybeSingle();
+
+  if (collectivityError && isMissingColumnError(collectivityError, 'catalog_rules_published')) {
+    return null;
+  }
 
   if (!collectivity?.catalog_rules_published) return null;
   return normalizePartnerCatalogRules(collectivity.catalog_rules_published);

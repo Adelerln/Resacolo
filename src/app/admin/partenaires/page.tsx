@@ -20,6 +20,10 @@ type SortKey =
   | 'user_count'
   | 'last_connection';
 type SortDirection = 'asc' | 'desc';
+type SearchParamsValue = string | string[] | undefined;
+type AdminPartnersPageProps = {
+  searchParams?: Promise<Record<string, SearchParamsValue>> | Record<string, SearchParamsValue>;
+};
 type PartnerRow = Pick<
   CollectivityRow,
   'id' | 'name' | 'code' | 'offer_mode' | 'contact_email' | 'created_at'
@@ -52,20 +56,32 @@ function getSingleSearchParam(value: string | string[] | undefined) {
 
 function isSortKey(value: string | null): value is SortKey {
   return value !== null && SORT_KEYS.includes(value as SortKey);
+function isSortKey(value: string | null): value is SortKey {
+  return Boolean(value && SORT_KEYS.includes(value as SortKey));
 }
 
 function isSortDirection(value: string | null): value is SortDirection {
   return value === 'asc' || value === 'desc';
 }
 
-function compareNullableStrings(left: string | null, right: string | null) {
-  return (left ?? '').localeCompare(right ?? '', 'fr');
+function getSingleSearchParam(value: SearchParamsValue): string | null {
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) return value[0] ?? null;
+  return null;
 }
 
-function compareNullableDates(left: string | null, right: string | null) {
-  const leftTime = left ? new Date(left).getTime() : 0;
-  const rightTime = right ? new Date(right).getTime() : 0;
-  return leftTime - rightTime;
+function normalizeNullableString(value: string | null | undefined) {
+  return (value ?? '').trim().toLocaleLowerCase('fr-FR');
+}
+
+function compareNullableStrings(left: string | null | undefined, right: string | null | undefined) {
+  return normalizeNullableString(left).localeCompare(normalizeNullableString(right), 'fr', { sensitivity: 'base' });
+}
+
+function compareNullableDates(left: string | null | undefined, right: string | null | undefined) {
+  const leftValue = left ? new Date(left).getTime() : 0;
+  const rightValue = right ? new Date(right).getTime() : 0;
+  return leftValue - rightValue;
 }
 
 function compareNumbers(left: number, right: number) {
@@ -93,10 +109,11 @@ function getSortIndicator(
 
 function formatLastConnection(value: string | null) {
   if (!value) return '—';
-  return new Date(value).toLocaleString('fr-FR');
+  return new Date(value).toLocaleDateString('fr-FR');
 }
 
-export default async function AdminPartnersPage({ searchParams }: PageProps) {
+export default async function AdminPartnersPage({ searchParams }: AdminPartnersPageProps) {
+  const resolvedSearchParams = searchParams instanceof Promise ? await searchParams : searchParams;
   const session = await requireAdminSection('partners');
   const canEditPartners = isAdminWorkspaceRole(session.role) && canMutateAdminSection(session.role, 'partners');
   const supabase = getServerSupabaseClient();

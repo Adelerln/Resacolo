@@ -5,7 +5,7 @@ import { canAccessPartnerSection, getPartnerAccessRoleFromSession } from '@/lib/
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { listPartnerCatalogStays, readPartnerCollectivity } from '@/lib/partner.server';
 import RangeField from '@/components/partner/RangeField';
-import ClickMultiSelectField from '@/components/partner/ClickMultiSelectField';
+import StayTypeRulesCards from '@/components/partner/StayTypeRulesCards';
 import CountryDropdownField from '@/components/partner/CountryDropdownField';
 import CatalogQfVisibilityEnhancer from '@/components/partner/CatalogQfVisibilityEnhancer';
 import {
@@ -15,6 +15,11 @@ import {
   parseAndValidatePartnerCatalogRules,
   simulatePartnerAid
 } from '@/lib/partner-catalog-rules';
+import {
+  buildFeatureActivationMessage,
+  isMissingAnyColumnError,
+  isMissingColumnError
+} from '@/lib/supabase-schema-errors';
 import type { PartnerCatalogRules } from '@/types/partner-catalog-rules';
 
 type PageProps = {
@@ -23,6 +28,8 @@ type PageProps = {
     published?: string;
     error?: string;
     debug?: string;
+    am?: string;
+    ap?: string;
   }>;
 };
 
@@ -65,6 +72,16 @@ function parseArray(formData: FormData, key: string) {
 
 function sanitizeRedirectQueryValue(value: string | undefined) {
   return value ? decodeURIComponent(value) : null;
+}
+
+function buildCatalogErrorRedirectWithDraftState(formData: FormData, errorMessage: string) {
+  const params = new URLSearchParams();
+  params.set('error', errorMessage);
+  const aidMode = String(formData.get('aid_mode') ?? '').trim();
+  const aidPercent = String(formData.get('aid_percent') ?? '').trim();
+  if (aidMode) params.set('am', aidMode);
+  if (aidPercent) params.set('ap', aidPercent);
+  return `/partenaire/catalogue?${params.toString()}`;
 }
 
 function formatCurrencyFromCents(value: number) {
@@ -414,7 +431,13 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
       .eq('id', nextSession.tenantId);
 
     if (error) {
-      redirect(`/partenaire/catalogue?error=${encodeURIComponent(error.message)}`);
+      if (isMissingColumnError(error, 'catalog_rules_draft')) {
+        redirect(buildCatalogErrorRedirectWithDraftState(
+          formData,
+          buildFeatureActivationMessage('L’enregistrement du catalogue')
+        ));
+      }
+      redirect(buildCatalogErrorRedirectWithDraftState(formData, error.message));
     }
     revalidatePath('/partenaire/catalogue');
     redirect('/partenaire/catalogue?saved=1');
@@ -434,6 +457,13 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
       .eq('id', nextSession.tenantId)
       .maybeSingle();
     if (readError) {
+      if (isMissingColumnError(readError, 'catalog_rules_draft')) {
+        redirect(
+          `/partenaire/catalogue?error=${encodeURIComponent(
+            buildFeatureActivationMessage('Le catalogue partenaire')
+          )}`
+        );
+      }
       redirect(`/partenaire/catalogue?error=${encodeURIComponent(readError.message)}`);
     }
 
@@ -443,7 +473,7 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
         data?.catalog_rules_draft ?? getDefaultPartnerCatalogRules()
       );
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Brouillon invalide';
+      const message = error instanceof Error ? error.message : 'Configuration invalide';
       redirect(`/partenaire/catalogue?error=${encodeURIComponent(message)}`);
     }
 
@@ -457,6 +487,13 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
       })
       .eq('id', nextSession.tenantId);
     if (error) {
+      if (isMissingAnyColumnError(error, ['catalog_rules_published', 'catalog_rules_published_at'])) {
+        redirect(
+          `/partenaire/catalogue?error=${encodeURIComponent(
+            buildFeatureActivationMessage('La publication des règles catalogue')
+          )}`
+        );
+      }
       redirect(`/partenaire/catalogue?error=${encodeURIComponent(error.message)}`);
     }
     revalidatePath('/partenaire/catalogue');
@@ -471,12 +508,23 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
   const draftRules = normalizePartnerCatalogRules(
     collectivity.catalog_rules_draft ?? getDefaultPartnerCatalogRules()
   );
+  const runtimeAidModeParam = String(params?.am ?? '').trim();
+  const runtimeAidPercentParam = String(params?.ap ?? '').trim();
+  if (runtimeAidModeParam === 'PERCENT' || runtimeAidModeParam === 'FIXED' || runtimeAidModeParam === 'QF_SCALE') {
+    draftRules.financialRules.aidMode = runtimeAidModeParam;
+  }
+  if (runtimeAidPercentParam) {
+    const parsed = Number.parseFloat(runtimeAidPercentParam.replace(',', '.'));
+    if (Number.isFinite(parsed)) {
+      draftRules.financialRules.percentValue = parsed;
+    }
+  }
   const draftValidationWarning = (() => {
     try {
       parseAndValidatePartnerCatalogRules(draftRules);
       return null;
     } catch (error) {
-      return error instanceof Error ? error.message : 'Brouillon incomplet';
+      return error instanceof Error ? error.message : 'Configuration incomplète';
     }
   })();
   const publishedRules = normalizePartnerCatalogRules(
@@ -587,7 +635,7 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
             <div>
               <h1 className="admin-page-title">Catalogue</h1>
               <p className="admin-page-subtitle mt-1">
-                Paramétrage des règles d’éligibilité CSE pour CSEM BRED Banque Populaire.
+                Paramétrage des règles d’éligibilité CSE pour {collectivity.name ?? 'votre partenaire'}.
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -614,7 +662,7 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
       ) : null}
       {isSaved ? (
         <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-          Brouillon enregistré.
+          Enregistré.
         </p>
       ) : null}
       {isPublished ? (
@@ -624,11 +672,11 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
       ) : null}
       {draftValidationWarning ? (
         <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-          Brouillon enregistré avec avertissement: {draftValidationWarning}
+          Enregistré avec avertissement: {draftValidationWarning}
         </p>
       ) : null}
 
-      <form action={saveDraft} className="space-y-4">
+      <form id="partner-catalog-form" action={saveDraft} className="space-y-4">
         <CatalogQfVisibilityEnhancer />
         <input type="hidden" name="version" value={String(draftRules.version)} />
         <input type="hidden" name="qf_row_count" value={String(Math.max(qfRows.length, 8))} />
@@ -695,43 +743,13 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
               </label>
             </div>
 
-            <div className="grid gap-4 lg:grid-cols-3">
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 lg:col-span-2">
-                <h3 className="text-sm font-semibold text-emerald-900">Autorisations</h3>
-                <div className="mt-3 grid gap-3 md:grid-cols-2">
-                  <ClickMultiSelectField
-                    label="Types autorisés"
-                    name="stay_types_allowed"
-                    options={stayTypeOptions}
-                    initialValues={draftRules.blockingRules.stayTypesAllowed}
-                    tone="positive"
-                    emptyMessage="Aucun type disponible dans le catalogue"
-                  />
-                  <ClickMultiSelectField
-                    label="Saisons autorisées"
-                    name="seasons_allowed"
-                    options={seasonOptions}
-                    initialValues={draftRules.blockingRules.seasonsAllowed}
-                    tone="positive"
-                    emptyMessage="Aucune saison disponible dans le catalogue"
-                  />
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-rose-200 bg-rose-50 p-4">
-                <h3 className="text-sm font-semibold text-rose-900">Exclusions</h3>
-                <div className="mt-3">
-                  <ClickMultiSelectField
-                    label="Types exclus"
-                    name="stay_types_excluded"
-                    options={stayTypeOptions}
-                    initialValues={draftRules.blockingRules.stayTypesExcluded}
-                    tone="negative"
-                    emptyMessage="Aucun type disponible dans le catalogue"
-                  />
-                </div>
-              </div>
-            </div>
+            <StayTypeRulesCards
+              stayTypeOptions={stayTypeOptions}
+              seasonOptions={seasonOptions}
+              initialAllowed={draftRules.blockingRules.stayTypesAllowed}
+              initialExcluded={draftRules.blockingRules.stayTypesExcluded}
+              initialSeasons={draftRules.blockingRules.seasonsAllowed}
+            />
 
             <div className="grid gap-4 md:grid-cols-2">
               <CountryDropdownField
@@ -1020,12 +1038,17 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
           </div>
         </details>
 
-        <div className="flex justify-end">
-          <button className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">
-            Enregistrer le brouillon
-          </button>
-        </div>
       </form>
+
+      <div className="pointer-events-none fixed bottom-4 right-4 z-40">
+        <button
+          type="submit"
+          form="partner-catalog-form"
+          className="pointer-events-auto rounded-lg bg-emerald-600 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-900/20 transition hover:bg-emerald-700"
+        >
+          Enregistrer
+        </button>
+      </div>
 
       <section className="space-y-3">
         <h2 className="admin-section-title">Catalogue appliqué</h2>

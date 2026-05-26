@@ -3,6 +3,11 @@ import { canAccessPartnerSection, getPartnerAccessRoleFromSession } from '@/lib/
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { requireApiAuth } from '@/lib/auth/api';
 import { parseAndValidatePartnerCatalogRules } from '@/lib/partner-catalog-rules';
+import {
+  buildFeatureActivationMessage,
+  isMissingAnyColumnError,
+  isMissingColumnError
+} from '@/lib/supabase-schema-errors';
 
 export const runtime = 'nodejs';
 
@@ -25,6 +30,12 @@ export async function POST() {
     .maybeSingle();
 
   if (readError) {
+    if (isMissingColumnError(readError, 'catalog_rules_draft')) {
+      return NextResponse.json(
+        { errors: [buildFeatureActivationMessage('Le catalogue partenaire')], warnings: [] },
+        { status: 503 }
+      );
+    }
     return NextResponse.json({ errors: [readError.message], warnings: [] }, { status: 500 });
   }
 
@@ -49,6 +60,12 @@ export async function POST() {
     .eq('id', session.tenantId);
 
   if (error) {
+    if (isMissingAnyColumnError(error, ['catalog_rules_published', 'catalog_rules_published_at'])) {
+      return NextResponse.json(
+        { errors: [buildFeatureActivationMessage('La publication des règles catalogue')], warnings: [] },
+        { status: 503 }
+      );
+    }
     return NextResponse.json({ errors: [error.message], warnings: [] }, { status: 500 });
   }
 

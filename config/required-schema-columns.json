@@ -1,0 +1,11 @@
+[
+  { "feature": "catalog_partner_rules", "table": "collectivities", "column": "catalog_rules_draft" },
+  { "feature": "catalog_partner_rules", "table": "collectivities", "column": "catalog_rules_published" },
+  { "feature": "catalog_partner_rules", "table": "collectivities", "column": "catalog_rules_published_at" },
+  { "feature": "partner_financing", "table": "collectivities", "column": "finance_mode" },
+  { "feature": "partner_financing", "table": "collectivities", "column": "finance_percent_value" },
+  { "feature": "partner_financing", "table": "collectivities", "column": "finance_fixed_cents" },
+  { "feature": "partner_financing", "table": "collectivities", "column": "finance_rules_text" },
+  { "feature": "accommodation_map", "table": "accommodations", "column": "map_iframe_html" }
+]
+

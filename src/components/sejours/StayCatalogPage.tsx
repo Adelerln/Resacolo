@@ -9,6 +9,7 @@ import { OrganizerStayPreviewCard } from '@/components/organisateurs/OrganizerSt
 import { staySessionsAppearFullyBooked } from '@/lib/stay-catalog-availability';
 import { getMockImageUrl, mockImages } from '@/lib/mockImages';
 import { resolveStaySeasonPicto } from '@/lib/organizer-profile-options';
+import { getStayDisplayedPrice } from '@/lib/stay-partner-pricing';
 import { mapToCanonicalStayRegion } from '@/lib/stay-regions';
 import {
   Accordion,
@@ -173,9 +174,8 @@ function StayCard({ stay }: { stay: Stay }) {
         seasonBadge={season.badgeText}
         durationLabel={stay.duration || 'Durée à venir'}
         priceFromEuros={stay.priceFrom}
-        csePriceFromEuros={stay.csePriceFrom ?? null}
-        cseAidFromEuros={stay.cseAidFrom ?? null}
-        cseLabel={stay.cseLabel ?? null}
+        partnerPriceFromEuros={stay.partnerPriceFrom ?? null}
+        partnerDiscountPercent={stay.partnerDiscountPercent ?? null}
         coverUrl={stay.coverImage || getMockImageUrl(mockImages.sejours.fallbackCover, 1200, 80)}
         href={`/sejours/${stay.canonicalSlug}`}
         organizerLogoUrl={stay.organizer.logoUrl ?? null}
@@ -450,7 +450,7 @@ export function StayCatalogPage({
     const ageMins = stays.map((s) => s.ageMin).filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
     const ageMaxs = stays.map((s) => s.ageMax).filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
     const priceValues = stays
-      .map((s) => s.priceFrom)
+      .map((s) => getStayDisplayedPrice(s))
       .filter((v): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0);
 
     const ageMin = ageMins.length ? Math.max(0, Math.min(...ageMins)) : 3;

@@ -5,12 +5,21 @@ import { PasswordInput } from '@/components/auth/PasswordInput';
 
 type LoginMode = 'family' | 'pro';
 
-function mapLoginErrorMessage(code: string | undefined) {
+type LoginErrorDebug = {
+  errorDetail?: string;
+  errorStatus?: string;
+  errorCodeSupabase?: string;
+  supabaseHost?: string;
+};
+
+function mapLoginErrorMessageProduction(code: string | undefined) {
   switch (code) {
     case 'invalid-credentials':
       return 'Identifiants invalides.';
     case 'email-not-confirmed':
       return 'Compte non validé. Vérifiez votre boîte mail et cliquez sur le lien de confirmation.';
+    case 'rate-limited':
+      return 'Trop de tentatives de connexion. Attendez quelques minutes puis réessayez.';
     case 'wrong-login-space-family':
       return 'Ce compte n’appartient pas à l’espace Famille. Sélectionnez l’espace Organisateur / Partenaire.';
     case 'wrong-login-space-pro':
@@ -24,6 +33,39 @@ function mapLoginErrorMessage(code: string | undefined) {
     default:
       return null;
   }
+}
+
+function mapLoginErrorMessage(code: string | undefined, debug?: LoginErrorDebug) {
+  const isDev = process.env.NODE_ENV === 'development';
+  if (!isDev || !code) {
+    return mapLoginErrorMessageProduction(code);
+  }
+
+  const debugLines: string[] = [];
+  if (debug?.supabaseHost) debugLines.push(`Projet Supabase (local) : ${debug.supabaseHost}`);
+  if (debug?.errorCodeSupabase) debugLines.push(`Code Supabase : ${debug.errorCodeSupabase}`);
+  if (debug?.errorStatus) debugLines.push(`Statut HTTP : ${debug.errorStatus}`);
+  if (debug?.errorDetail) debugLines.push(`Message : ${debug.errorDetail}`);
+
+  if (code === 'rate-limited') {
+    return [
+      'Supabase limite temporairement les connexions (trop de requêtes).',
+      'Attendez 5 à 15 minutes sans réessayer, puis reconnectez-vous.',
+      ...debugLines
+    ].join('\n');
+  }
+  if (code === 'invalid-credentials') {
+    return [
+      'Connexion refusée par Supabase (email ou mot de passe incorrect pour ce projet).',
+      ...debugLines
+    ].join('\n');
+  }
+
+  const base = mapLoginErrorMessageProduction(code);
+  if (base && debugLines.length > 0) {
+    return [base, ...debugLines].join('\n');
+  }
+  return base;
 }
 
 function sanitizeRelativePath(value: string | undefined, fallback: string) {
@@ -71,20 +113,40 @@ export default async function LoginPage({
     registered?: string;
     reset?: string;
     forceLogin?: string;
+    errorDetail?: string;
+    errorStatus?: string;
+    errorCodeSupabase?: string;
+    supabaseHost?: string;
   }>;
 }) {
   if (process.env.MOCK_UI === '1') {
     return null;
   }
 
-  const { redirectTo, error, mode, registered, reset, forceLogin } = searchParams ? await searchParams : {};
+  const {
+    redirectTo,
+    error,
+    mode,
+    registered,
+    reset,
+    forceLogin,
+    errorDetail,
+    errorStatus,
+    errorCodeSupabase,
+    supabaseHost
+  } = searchParams ? await searchParams : {};
   const effectiveMode = normalizeMode(mode);
   const shouldBypassSessionRedirect = forceLogin === '1';
   const safeRedirectTo = sanitizeRelativePath(
     redirectTo,
     effectiveMode === 'family' ? '/mon-compte' : '/admin'
   );
-  const loginError = mapLoginErrorMessage(error);
+  const loginError = mapLoginErrorMessage(error, {
+    errorDetail,
+    errorStatus,
+    errorCodeSupabase,
+    supabaseHost
+  });
 
   if (!shouldBypassSessionRedirect) {
     const session = await getCurrentUser();
@@ -165,7 +227,7 @@ export default async function LoginPage({
         ) : null}
 
         {loginError ? (
-          <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+          <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 whitespace-pre-wrap">
             {loginError}
           </div>
         ) : null}

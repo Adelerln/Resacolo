@@ -6,6 +6,7 @@ import type { Stay } from '@/types/stay';
 import { StayFilters, StayFilterState } from '@/components/sejours/StayFilters';
 import { StayList } from '@/components/sejours/StayList';
 import { FILTER_LABELS } from '@/lib/constants';
+import { getStayDisplayedPrice } from '@/lib/stay-partner-pricing';
 import type { StayAudience, StayCategory, StayDuration, StayFilters as StayFiltersMeta } from '@/types/stay';
 
 type StayPeriod = StayFiltersMeta['periods'][number];
@@ -94,7 +95,8 @@ function applyFilters(stays: Stay[], filters: StayFilterState) {
       return false;
     }
 
-    if (filters.priceMax && stay.priceFrom && stay.priceFrom > filters.priceMax) {
+    const displayedPrice = getStayDisplayedPrice(stay);
+    if (filters.priceMax && displayedPrice && displayedPrice > filters.priceMax) {
       return false;
     }
 

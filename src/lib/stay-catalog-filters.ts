@@ -1,4 +1,5 @@
 import { FILTER_LABELS } from '@/lib/constants';
+import { getStayDisplayedPrice } from '@/lib/stay-partner-pricing';
 import {
   buildStayDestinationSearchText,
   buildStayPrimaryDestinationFilterLabel
@@ -160,7 +161,8 @@ function isFinitePositivePrice(value: unknown): value is number {
 }
 
 function stayPriceForSort(stay: Stay) {
-  return isFinitePositivePrice(stay.priceFrom) ? stay.priceFrom : null;
+  const displayedPrice = getStayDisplayedPrice(stay);
+  return isFinitePositivePrice(displayedPrice) ? displayedPrice : null;
 }
 
 function compareFallbackStable(left: Stay, right: Stay) {

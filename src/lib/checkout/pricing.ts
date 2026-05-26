@@ -2,6 +2,7 @@ import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { getCurrentUser } from '@/lib/auth/session';
 import { evaluatePartnerCatalogEligibility, simulatePartnerAid } from '@/lib/partner-catalog-rules';
 import { normalizePartnerCatalogRules } from '@/lib/partner-catalog-rules';
+import { computePartnerDiscountedPrice } from '@/lib/stay-partner-pricing';
 import { isMissingColumnError } from '@/lib/supabase-schema-errors';
 import type { CartItem } from '@/types/cart';
 import type { Database } from '@/types/supabase';
@@ -26,6 +27,7 @@ type StayRow = Pick<
   | 'transport_mode'
   | 'required_documents_text'
   | 'supervision_text'
+  | 'partner_discount_percent'
 >;
 type SessionPriceRow = Pick<Database['public']['Tables']['session_prices']['Row'], 'session_id' | 'amount_cents'>;
 type TransportRow = Pick<
@@ -129,7 +131,7 @@ async function fetchStay(stayId: string): Promise<StayRow> {
   const { data, error } = await supabase
     .from('stays')
     .select(
-      'id,organizer_id,title,status,age_min,age_max,categories,destination_country,destination_countries,transport_mode,required_documents_text,supervision_text'
+      'id,organizer_id,title,status,age_min,age_max,categories,destination_country,destination_countries,transport_mode,required_documents_text,supervision_text,partner_discount_percent'
     )
     .eq('id', stayId)
     .maybeSingle();
@@ -168,6 +170,19 @@ async function readCheckoutCseRulesForCurrentUser() {
   }
   if (!collectivity?.catalog_rules_published) return null;
   return normalizePartnerCatalogRules(collectivity.catalog_rules_published);
+}
+
+async function currentUserHasCollectivityAffiliation() {
+  const session = await getCurrentUser();
+  if (!session?.userId) return false;
+  const supabase = getServerSupabaseClient();
+  const { data: client } = await supabase
+    .from('clients')
+    .select('collectivity_id')
+    .eq('user_id', session.userId)
+    .maybeSingle();
+
+  return Boolean(client?.collectivity_id);
 }
 
 async function fetchSessionPrice(sessionId: string): Promise<SessionPriceRow> {
@@ -279,7 +294,10 @@ function assertRowBelongsToStay(optionStayId: string | null, stayId: string, lab
 }
 
 export async function repriceCart(items: CartItem[]): Promise<CheckoutPricing> {
-  const cseRules = await readCheckoutCseRulesForCurrentUser();
+  const [cseRules, hasCollectivityAffiliation] = await Promise.all([
+    readCheckoutCseRulesForCurrentUser(),
+    currentUserHasCollectivityAffiliation()
+  ]);
   const qfValue = cseRules ? getSimulationQfValue(cseRules) : null;
   const pricedItems = await Promise.all(
     items.map(async (cartItem): Promise<CheckoutPricingItem> => {
@@ -304,7 +322,13 @@ export async function repriceCart(items: CartItem[]): Promise<CheckoutPricing> {
 
       assertSessionAvailability(session);
 
-      const basePriceCents = sessionPrice.amount_cents;
+      const publicBasePriceCents = sessionPrice.amount_cents;
+      const discountedBasePriceEuros =
+        hasCollectivityAffiliation && typeof stay.partner_discount_percent === 'number'
+          ? computePartnerDiscountedPrice(publicBasePriceCents / 100, stay.partner_discount_percent)
+          : null;
+      const basePriceCents =
+        discountedBasePriceEuros != null ? Math.round(discountedBasePriceEuros * 100) : publicBasePriceCents;
 
       let transportPriceCents = 0;
       let transportLabel: string | null = null;

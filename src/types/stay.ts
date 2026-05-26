@@ -59,6 +59,8 @@ export interface StaySessionOption {
   startDate: string;
   endDate: string;
   price: number | null;
+  partnerDiscountedPrice?: number | null;
+  partnerDiscountPercent?: number | null;
   status: string;
   transportOptions: StayTransportOption[];
   cseAidCents?: number;
@@ -154,6 +156,8 @@ export interface Stay {
   ageRange: string;
   duration: string;
   priceFrom: number | null;
+  partnerDiscountPercent?: number | null;
+  partnerPriceFrom?: number | null;
   csePriceFrom?: number | null;
   cseAidFrom?: number | null;
   cseLabel?: string | null;

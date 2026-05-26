@@ -73,9 +73,28 @@ function classifyLoginError(error: unknown): string {
   return 'server';
 }
 
-function classifySignInErrorCode(error: unknown): 'email-not-confirmed' | 'invalid-credentials' {
+function classifySignInErrorCode(
+  error: unknown
+): 'email-not-confirmed' | 'rate-limited' | 'invalid-credentials' {
   const message =
     error instanceof Error ? error.message.toLowerCase() : String(error ?? '').toLowerCase();
+  const code =
+    error && typeof error === 'object' && 'code' in error
+      ? String((error as { code?: string }).code ?? '').toLowerCase()
+      : '';
+  const status =
+    error && typeof error === 'object' && 'status' in error
+      ? Number((error as { status?: number }).status)
+      : null;
+
+  if (
+    status === 429 ||
+    code.includes('rate_limit') ||
+    message.includes('rate limit') ||
+    message.includes('too many requests')
+  ) {
+    return 'rate-limited';
+  }
   if (
     message.includes('email not confirmed') ||
     message.includes('email_not_confirmed') ||
@@ -86,18 +105,51 @@ function classifySignInErrorCode(error: unknown): 'email-not-confirmed' | 'inval
   return 'invalid-credentials';
 }
 
+function getSupabaseHostLabel() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!url) return 'non-configuré';
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return 'url-invalide';
+  }
+}
+
+function sanitizeErrorDetail(value: string | undefined) {
+  if (!value) return null;
+  const trimmed = value.trim().slice(0, 240);
+  if (!trimmed) return null;
+  return trimmed.replace(/[^\w\s.,:;!?()\-'àâäéèêëïîôùûüçÀÂÄÉÈÊËÏÎÔÙÛÜÇ/@]/g, '') || null;
+}
+
+function appendLoginDebugParams(
+  url: URL,
+  options?: { detail?: string | null; status?: string | number | null; code?: string | null }
+) {
+  if (process.env.NODE_ENV !== 'development') return;
+  url.searchParams.set('supabaseHost', getSupabaseHostLabel());
+  const detail = sanitizeErrorDetail(options?.detail ?? undefined);
+  if (detail) url.searchParams.set('errorDetail', detail);
+  if (options?.status != null && String(options.status).length > 0) {
+    url.searchParams.set('errorStatus', String(options.status));
+  }
+  if (options?.code) url.searchParams.set('errorCodeSupabase', options.code);
+}
+
 function buildLoginErrorUrl({
   req,
   loginPath,
   errorCode,
   redirectTo,
-  loginMode
+  loginMode,
+  debug
 }: {
   req: Request;
   loginPath: string;
   errorCode: string;
   redirectTo?: string;
   loginMode?: 'family' | 'pro';
+  debug?: { detail?: string | null; status?: string | number | null; code?: string | null };
 }) {
   const url = new URL(loginPath, req.url);
   url.searchParams.set('error', errorCode);
@@ -108,7 +160,22 @@ function buildLoginErrorUrl({
   if (loginMode) {
     url.searchParams.set('mode', loginMode);
   }
+  appendLoginDebugParams(url, debug);
   return url;
+}
+
+function formatSignInErrorDetail(error: unknown) {
+  if (!error || typeof error !== 'object') {
+    return { detail: 'Aucune réponse utilisateur Supabase.', status: null, code: null };
+  }
+  const authError = error as { message?: string; status?: number; code?: string };
+  const parts = [authError.message?.trim()].filter(Boolean);
+  if (authError.code) parts.push(`code=${authError.code}`);
+  return {
+    detail: parts.join(' · ') || 'Erreur auth sans message.',
+    status: authError.status ?? null,
+    code: authError.code ?? null
+  };
 }
 
 function getOptionalField(input: unknown, key: string) {
@@ -174,6 +241,7 @@ export async function POST(req: Request) {
 
     if (signInError || !signInData.user) {
       const errorCode = classifySignInErrorCode(signInError);
+      const signInDebug = formatSignInErrorDetail(signInError);
       if (expectsJson) {
         if (errorCode === 'email-not-confirmed') {
           return NextResponse.json({ error: 'Email not confirmed', code: errorCode }, { status: 403 });
@@ -186,7 +254,8 @@ export async function POST(req: Request) {
           loginPath,
           errorCode,
           redirectTo: input.redirectTo,
-          loginMode: input.loginMode
+          loginMode: input.loginMode,
+          debug: signInDebug
         }),
         { status: 303 }
       );
@@ -224,6 +293,7 @@ export async function POST(req: Request) {
   } catch (error) {
     console.error('[auth/login] unexpected error:', error);
     const errorCode = classifyLoginError(error);
+    const detail = error instanceof Error ? error.message : String(error ?? '');
     if (expectsJson) {
       return NextResponse.json({ error: 'Authentication error', code: errorCode }, { status: 500 });
     }
@@ -233,7 +303,8 @@ export async function POST(req: Request) {
         loginPath,
         errorCode,
         redirectTo,
-        loginMode
+        loginMode,
+        debug: { detail, status: null, code: null }
       }),
       { status: 303 }
     );

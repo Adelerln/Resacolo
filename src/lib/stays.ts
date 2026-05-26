@@ -866,6 +866,10 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
       const durations = deriveDurationFilters(durationDays);
       const transport = mapTransport(stay.transport_mode);
       const categories = normalizeStayCategories(stay.categories ?? []);
+      const partnerDiscountPercent =
+        typeof stay.partner_discount_percent === 'number' && Number.isFinite(stay.partner_discount_percent)
+          ? Math.max(0, Math.min(100, stay.partner_discount_percent))
+          : null;
       const sharedTransportOptions = transportOptionsByStayId.get(stay.id) ?? [];
       const displayLocation = buildStayDisplayLocation(destination, stayAccommodations);
       const visibleBookingSessionItems = sessionItems.filter(
@@ -887,6 +891,7 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
             startDate: sessionItem.start_date,
             endDate: sessionItem.end_date,
             price: sessionPrice ? sessionPrice.amount_cents / 100 : null,
+            partnerDiscountPercent,
             status: effectiveStatus,
             transportOptions: transportForSession
           };
@@ -985,6 +990,7 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
         ageRange: formatStayAgeRange(stay.ages, stay.age_min, stay.age_max),
         duration: formatDurationLabel(durationDays),
         priceFrom: minSessionPrice,
+        partnerDiscountPercent,
         period: periodLabels,
         categories,
         highlights: [],

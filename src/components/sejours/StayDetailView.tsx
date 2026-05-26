@@ -13,6 +13,7 @@ import { formatSessionDateRangeFr } from '@/lib/cart/formatSessionRange';
 import { createCartItemFromStay } from '@/lib/cart/normalizeCartItem';
 import { FILTER_LABELS } from '@/lib/constants';
 import { getMockImageUrl, mockImages } from '@/lib/mockImages';
+import { getSessionDisplayedBasePrice, getStayDisplayedPrice } from '@/lib/stay-partner-pricing';
 import StayLocationMap from '@/components/sejours/StayLocationMap';
 import { buildStayIntroText } from '@/lib/stay-seo';
 import { slugify } from '@/lib/utils';
@@ -101,12 +102,35 @@ function formatSessionLabel(session: StaySessionOption) {
   const end = new Date(session.endDate).toLocaleDateString('fr-FR');
   const status = session.status === 'FULL' ? ' (COMPLET)' : '';
   const price =
-    session.familyCentsAfterAid != null
+    session.partnerDiscountedPrice != null
+      ? ` · ${formatPrice(session.partnerDiscountedPrice)} au lieu de ${formatPrice(session.price)}`
+      : session.familyCentsAfterAid != null
       ? ` · ${formatPrice(session.familyCentsAfterAid / 100)} (après CSE)`
       : session.price != null
         ? ` · ${formatPrice(session.price)}`
         : '';
   return `${start} - ${end}${status}${price}`;
+}
+
+function computeDisplayedTotal(input: {
+  basePrice: number | null;
+  transportAmount: number;
+  extraOptionAmount: number;
+  insuranceOption: StayInsuranceOption | null;
+}) {
+  if (input.basePrice == null) return null;
+
+  let total = input.basePrice;
+  total += input.transportAmount;
+  total += input.extraOptionAmount;
+
+  if (input.insuranceOption?.amount != null) {
+    total += input.insuranceOption.amount;
+  } else if (input.insuranceOption?.percentValue != null) {
+    total += (input.basePrice * input.insuranceOption.percentValue) / 100;
+  }
+
+  return Math.round(total * 100) / 100;
 }
 
 function formatTransportLabel(option: StayTransportOption, displayAmount?: number) {
@@ -603,29 +627,44 @@ export function StayDetailView({ stay }: { stay: Stay }) {
     [extraOptions, selectedExtraOptionId]
   );
   const isSelectedSessionUnavailable = selectedSession ? selectedSession.status !== 'OPEN' : false;
+  const publicBasePrice = useMemo(() => {
+    if (selectedSession?.price != null) return selectedSession.price;
+    if (typeof stay.priceFrom === 'number' && Number.isFinite(stay.priceFrom)) return stay.priceFrom;
+    return null;
+  }, [selectedSession, stay.priceFrom]);
+  const displayedBasePrice = useMemo(
+    () => getSessionDisplayedBasePrice(selectedSession, stay),
+    [selectedSession, stay]
+  );
   const estimatedPrice = useMemo(() => {
-    const basePrice =
-      selectedSession?.familyCentsAfterAid != null
-        ? selectedSession.familyCentsAfterAid / 100
-        : selectedSession?.price ?? stay.csePriceFrom ?? stay.priceFrom;
-    if (basePrice == null) return stay.priceFrom;
-    let total = basePrice;
-    total += selectedTransportAmount;
-    if (selectedExtraOption) total += selectedExtraOption.amount;
-    if (selectedInsuranceOption?.amount != null) {
-      total += selectedInsuranceOption.amount;
-    } else if (selectedInsuranceOption?.percentValue != null) {
-      total += (basePrice * selectedInsuranceOption.percentValue) / 100;
-    }
-    return Math.round(total * 100) / 100;
+    return computeDisplayedTotal({
+      basePrice: displayedBasePrice,
+      transportAmount: selectedTransportAmount,
+      extraOptionAmount: selectedExtraOption?.amount ?? 0,
+      insuranceOption: selectedInsuranceOption
+    });
   }, [
+    displayedBasePrice,
     selectedExtraOption,
     selectedInsuranceOption,
-    selectedSession,
-    selectedTransportAmount,
-    stay.csePriceFrom,
-    stay.priceFrom
+    selectedTransportAmount
   ]);
+  const estimatedPublicPrice = useMemo(
+    () =>
+      computeDisplayedTotal({
+        basePrice: publicBasePrice,
+        transportAmount: selectedTransportAmount,
+        extraOptionAmount: selectedExtraOption?.amount ?? 0,
+        insuranceOption: selectedInsuranceOption
+      }),
+    [publicBasePrice, selectedExtraOption, selectedInsuranceOption, selectedTransportAmount]
+  );
+  const partnerDiscountAmount =
+    estimatedPublicPrice != null &&
+    estimatedPrice != null &&
+    estimatedPrice < estimatedPublicPrice
+      ? Math.round((estimatedPublicPrice - estimatedPrice) * 100) / 100
+      : null;
   const hasStartedSelection = Boolean(
     selectedSessionId ||
       selectedTransportId ||
@@ -1402,18 +1441,35 @@ export function StayDetailView({ stay }: { stay: Stay }) {
               <h2 className="font-display text-lg font-semibold text-slate-900">
                 Informations & Réservation
               </h2>
-              <p className="mt-2 text-2xl font-bold text-accent-600">
-                {hasStartedSelection && estimatedPrice != null ? (
-                  <span>
-                    <span className="inline-block">{formatPrice(estimatedPrice)}</span>
-                    <span className="block text-sm font-medium text-accent-500 sm:inline sm:ml-2">
-                      (sélection actuelle)
+              <div className="mt-2">
+                {partnerDiscountAmount != null && estimatedPublicPrice != null ? (
+                  <p className="text-sm font-semibold text-slate-400 line-through">
+                    {formatPrice(estimatedPublicPrice)}
+                  </p>
+                ) : null}
+                <p className="text-2xl font-bold text-accent-600">
+                  {hasStartedSelection && estimatedPrice != null ? (
+                    <span>
+                      <span className="inline-block">{formatPrice(estimatedPrice)}</span>
+                      <span className="block text-sm font-medium text-accent-500 sm:inline sm:ml-2">
+                        (sélection actuelle)
+                      </span>
                     </span>
-                  </span>
-                ) : (
-                  `À partir de ${formatPrice(stay.priceFrom)}`
-                )}
-              </p>
+                  ) : (
+                    `À partir de ${formatPrice(getStayDisplayedPrice(stay))}`
+                  )}
+                </p>
+                {partnerDiscountAmount != null ? (
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <span className="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-800">
+                      -{Math.round(stay.partnerDiscountPercent ?? 0)}%
+                    </span>
+                    <span className="text-sm font-semibold text-emerald-700">
+                      Remise partenaire : -{formatPrice(partnerDiscountAmount)}
+                    </span>
+                  </div>
+                ) : null}
+              </div>
 
               <form className="mt-6 space-y-4" onSubmit={(e) => e.preventDefault()}>
                 <div>

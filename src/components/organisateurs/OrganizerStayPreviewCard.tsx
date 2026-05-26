@@ -15,6 +15,8 @@ export type OrganizerStayPreviewCardProps = {
   seasonBadge: string;
   durationLabel: string;
   priceFromEuros: number | null;
+  partnerPriceFromEuros?: number | null;
+  partnerDiscountPercent?: number | null;
   csePriceFromEuros?: number | null;
   cseAidFromEuros?: number | null;
   cseLabel?: string | null;
@@ -40,6 +42,8 @@ export function OrganizerStayPreviewCard({
   seasonBadge,
   durationLabel,
   priceFromEuros,
+  partnerPriceFromEuros = null,
+  partnerDiscountPercent = null,
   csePriceFromEuros = null,
   cseAidFromEuros = null,
   cseLabel = null,
@@ -64,9 +68,18 @@ export function OrganizerStayPreviewCard({
       : !subtitle && body.trim() !== normalizedTitle
         ? body
         : null;
+  const hasPartnerPrice =
+    partnerPriceFromEuros != null &&
+    priceFromEuros != null &&
+    partnerPriceFromEuros < priceFromEuros;
+  const hasLegacyCsePrice = !hasPartnerPrice && csePriceFromEuros != null;
+  const pricePillLabel =
+    hasPartnerPrice && partnerDiscountPercent != null
+      ? `-${Math.round(partnerDiscountPercent)}%`
+      : null;
   const hoverEnabled = !disableBlueHoverEffect;
   const groupEnabled = hoverEnabled || liftOnHover;
-  const articleClass = `${groupEnabled ? 'group ' : ''}flex h-full w-full flex-col overflow-hidden border border-slate-200 bg-white shadow-[0_18px_40px_-28px_rgba(15,23,42,0.35)] ${compact ? 'min-h-[492px] max-w-[304px] rounded-[24px]' : 'min-h-[516px] max-w-[320px] rounded-[28px]'} ${liftOnHover ? 'transition duration-200 hover:-translate-y-1.5 hover:shadow-[0_24px_50px_-28px_rgba(15,23,42,0.42)]' : ''}`;
+  const articleClass = `${groupEnabled ? 'group ' : ''}flex h-full w-full flex-col overflow-hidden border border-slate-200 bg-white shadow-[0_18px_40px_-28px_rgba(15,23,42,0.35)] ${compact ? `${hasPartnerPrice ? 'min-h-[522px]' : 'min-h-[492px]'} max-w-[304px] rounded-[24px]` : `${hasPartnerPrice ? 'min-h-[548px]' : 'min-h-[516px]'} max-w-[320px] rounded-[28px]`} ${liftOnHover ? 'transition duration-200 hover:-translate-y-1.5 hover:shadow-[0_24px_50px_-28px_rgba(15,23,42,0.42)]' : ''}`;
   const agePillClass = `absolute bottom-0 left-0 z-20 inline-flex translate-y-[42%] items-center rounded-r-2xl bg-[#FA8500] font-bold text-white shadow-[0_14px_28px_-18px_rgba(15,23,42,0.45)] ${compact ? 'min-h-8 px-3.5 py-1.5 text-[11px]' : 'min-h-9 px-4 py-2 text-xs'}`;
   const seasonPillClass = hoverEnabled
     ? `absolute bottom-0 right-0 z-20 inline-flex translate-y-[42%] items-center gap-1.5 rounded-l-2xl bg-white font-bold uppercase tracking-[0.06em] text-[#FA8500] shadow-[0_14px_28px_-18px_rgba(15,23,42,0.45)] transition-colors group-hover:text-[#37B5F5] ${compact ? 'min-h-8 px-3 py-1.5 text-[11px]' : 'min-h-9 px-3.5 py-2 text-xs'}`
@@ -97,6 +110,18 @@ export function OrganizerStayPreviewCard({
   const onRequestClass = hoverEnabled
     ? `${compact ? 'text-base' : 'text-lg'} font-bold text-[#FA8500] transition-colors group-hover:text-white`
     : `${compact ? 'text-base' : 'text-lg'} font-bold text-[#FA8500]`;
+  const publicPriceClass = hoverEnabled
+    ? 'text-xs font-medium text-slate-400 line-through transition-colors group-hover:text-white/70'
+    : 'text-xs font-medium text-slate-400 line-through';
+  const partnerPriceRowClass = hoverEnabled
+    ? 'mt-1 flex items-center justify-center gap-2 transition-colors group-hover:text-white'
+    : 'mt-1 flex items-center justify-center gap-2';
+  const partnerBadgeClass = hoverEnabled
+    ? 'inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-bold text-emerald-800 transition-colors group-hover:bg-white group-hover:text-accent-700'
+    : 'inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-bold text-emerald-800';
+  const helperLineClass = hoverEnabled
+    ? 'mt-1 text-[11px] font-semibold text-emerald-700 transition-colors group-hover:text-white/85'
+    : 'mt-1 text-[11px] font-semibold text-emerald-700';
   const ctaClass = `mt-auto flex w-full shrink-0 items-center justify-center border-t border-white/15 bg-[linear-gradient(151deg,var(--color-primary)_38%,#52b0ea_100%)] px-4 ${compact ? 'py-3 text-[12px]' : 'py-3.5 text-sm'} font-bold uppercase tracking-wide text-white transition-opacity ${hoverEnabled ? 'group-hover:opacity-95' : ''}`;
   const fullCtaClass = `mt-auto flex w-full shrink-0 items-center justify-center border-t border-slate-200 bg-white px-4 ${compact ? 'py-3 text-[12px]' : 'py-3.5 text-sm'} font-bold uppercase tracking-wide text-[#FA8500]`;
 
@@ -193,53 +218,78 @@ export function OrganizerStayPreviewCard({
           <div className={teaserSlotClass}>
             <p className={teaserClass}>{teaser ?? '\u00A0'}</p>
           </div>
-          <p className={priceLineClass}>
-            {csePriceFromEuros != null ? (
-              <>
-                À partir de{' '}
+          {hasPartnerPrice ? (
+            <div className={`${compact ? 'mt-3' : 'mt-4'} shrink-0`}>
+              <p className={publicPriceClass}>
+                {priceFromEuros?.toLocaleString('fr-FR', {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2
+                })}
+                €
+              </p>
+              <div className={partnerPriceRowClass}>
                 <span className={priceValueClass}>
-                  {csePriceFromEuros.toLocaleString('fr-FR', {
+                  {partnerPriceFromEuros.toLocaleString('fr-FR', {
                     minimumFractionDigits: 2,
                     maximumFractionDigits: 2
                   })}
                   €
                 </span>
-                {priceFromEuros != null ? (
-                  <span className="ml-2 text-xs font-medium text-slate-500 line-through">
-                    {priceFromEuros.toLocaleString('fr-FR', {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2
-                    })}
-                    €
+                {pricePillLabel ? <span className={partnerBadgeClass}>{pricePillLabel}</span> : null}
+              </div>
+              <p className={helperLineClass}>Tarif partenaire</p>
+            </div>
+          ) : (
+            <>
+              <p className={priceLineClass}>
+                {hasLegacyCsePrice ? (
+                  <>
+                    À partir de{' '}
+                    <span className={priceValueClass}>
+                      {csePriceFromEuros.toLocaleString('fr-FR', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2
+                      })}
+                      €
+                    </span>
+                    {priceFromEuros != null ? (
+                      <span className="ml-2 text-xs font-medium text-slate-500 line-through">
+                        {priceFromEuros.toLocaleString('fr-FR', {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2
+                        })}
+                        €
+                      </span>
+                    ) : null}
+                  </>
+                ) : priceFromEuros != null ? (
+                  <>
+                    À partir de{' '}
+                    <span className={priceValueClass}>
+                      {priceFromEuros.toLocaleString('fr-FR', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2
+                      })}
+                      €
+                    </span>
+                  </>
+                ) : (
+                  <span className={onRequestClass}>
+                    Sur demande
                   </span>
-                ) : null}
-              </>
-            ) : priceFromEuros != null ? (
-              <>
-                À partir de{' '}
-                <span className={priceValueClass}>
-                  {priceFromEuros.toLocaleString('fr-FR', {
+                )}
+              </p>
+              {hasLegacyCsePrice ? (
+                <p className={helperLineClass}>
+                  {cseLabel ?? 'Déduction CSE estimée'}
+                  {cseAidFromEuros != null ? ` · Aide dès ${cseAidFromEuros.toLocaleString('fr-FR', {
                     minimumFractionDigits: 2,
                     maximumFractionDigits: 2
-                  })}
-                  €
-                </span>
-              </>
-            ) : (
-              <span className={onRequestClass}>
-                Sur demande
-              </span>
-            )}
-          </p>
-          {csePriceFromEuros != null ? (
-            <p className="mt-1 text-[11px] font-semibold text-emerald-700">
-              {cseLabel ?? 'Déduction CSE estimée'}
-              {cseAidFromEuros != null ? ` · Aide dès ${cseAidFromEuros.toLocaleString('fr-FR', {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2
-              })}€` : ''}
-            </p>
-          ) : null}
+                  })}€` : ''}
+                </p>
+              ) : null}
+            </>
+          )}
         </div>
 
         {isFullyBooked ? (

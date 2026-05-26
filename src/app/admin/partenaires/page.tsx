@@ -28,10 +28,79 @@ type PartnerRow = Pick<
   userCount: number;
 };
 
-export default async function AdminPartnersPage() {
+type PageProps = {
+  searchParams?: Promise<{
+    sort?: string | string[];
+    dir?: string | string[];
+  }>;
+};
+
+const SORT_KEYS: SortKey[] = [
+  'name',
+  'code',
+  'offer_mode',
+  'contact_email',
+  'created_at',
+  'user_count',
+  'last_connection'
+];
+
+function getSingleSearchParam(value: string | string[] | undefined) {
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value ?? null;
+}
+
+function isSortKey(value: string | null): value is SortKey {
+  return value !== null && SORT_KEYS.includes(value as SortKey);
+}
+
+function isSortDirection(value: string | null): value is SortDirection {
+  return value === 'asc' || value === 'desc';
+}
+
+function compareNullableStrings(left: string | null, right: string | null) {
+  return (left ?? '').localeCompare(right ?? '', 'fr');
+}
+
+function compareNullableDates(left: string | null, right: string | null) {
+  const leftTime = left ? new Date(left).getTime() : 0;
+  const rightTime = right ? new Date(right).getTime() : 0;
+  return leftTime - rightTime;
+}
+
+function compareNumbers(left: number, right: number) {
+  return left - right;
+}
+
+function getNextSortDirection(
+  activeSort: SortKey | null,
+  activeDirection: SortDirection | null,
+  column: SortKey
+): SortDirection | null {
+  if (activeSort !== column) return 'asc';
+  if (activeDirection === 'asc') return 'desc';
+  return null;
+}
+
+function getSortIndicator(
+  activeSort: SortKey | null,
+  activeDirection: SortDirection | null,
+  column: SortKey
+) {
+  if (activeSort !== column) return '↕';
+  return activeDirection === 'asc' ? '↑' : '↓';
+}
+
+function formatLastConnection(value: string | null) {
+  if (!value) return '—';
+  return new Date(value).toLocaleString('fr-FR');
+}
+
+export default async function AdminPartnersPage({ searchParams }: PageProps) {
   const session = await requireAdminSection('partners');
   const canEditPartners = isAdminWorkspaceRole(session.role) && canMutateAdminSection(session.role, 'partners');
   const supabase = getServerSupabaseClient();
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const requestedSort = getSingleSearchParam(resolvedSearchParams?.sort);
   const requestedDirection = getSingleSearchParam(resolvedSearchParams?.dir);
   const activeSort = isSortKey(requestedSort) ? requestedSort : null;

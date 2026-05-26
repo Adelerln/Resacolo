@@ -11,7 +11,11 @@ export const revalidate = 0;
 export default async function OrganismeUsersPage({
   searchParams
 }: {
-  searchParams?: Promise<{ organizerId?: string | string[] }>;
+  searchParams?: Promise<{
+    organizerId?: string | string[];
+    success?: string | string[];
+    error?: string | string[];
+  }>;
 }) {
   const resolved = searchParams ? await searchParams : undefined;
   const { selectedOrganizerId, accessRole } = await requireOrganizerPageAccess({
@@ -37,6 +41,8 @@ export default async function OrganismeUsersPage({
   );
 
   const isOwner = accessRole === 'OWNER';
+  const successParam = Array.isArray(resolved?.success) ? resolved?.success[0] : resolved?.success;
+  const errorParam = Array.isArray(resolved?.error) ? resolved?.error[0] : resolved?.error;
 
   return (
     <div className="space-y-6">
@@ -49,6 +55,16 @@ export default async function OrganismeUsersPage({
           Seul un <strong>Propriétaire</strong> peut ajouter/modifier/supprimer des utilisateurs.
         </p>
       )}
+      {errorParam ? (
+        <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          {decodeURIComponent(errorParam)}
+        </p>
+      ) : null}
+      {successParam ? (
+        <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+          {decodeURIComponent(successParam)}
+        </p>
+      ) : null}
 
       {isOwner && (
         <form

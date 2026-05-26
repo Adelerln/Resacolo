@@ -32,13 +32,6 @@ type PartnerRow = Pick<
   userCount: number;
 };
 
-type PageProps = {
-  searchParams?: Promise<{
-    sort?: string | string[];
-    dir?: string | string[];
-  }>;
-};
-
 const SORT_KEYS: SortKey[] = [
   'name',
   'code',
@@ -49,13 +42,6 @@ const SORT_KEYS: SortKey[] = [
   'last_connection'
 ];
 
-function getSingleSearchParam(value: string | string[] | undefined) {
-  if (Array.isArray(value)) return value[0] ?? null;
-  return value ?? null;
-}
-
-function isSortKey(value: string | null): value is SortKey {
-  return value !== null && SORT_KEYS.includes(value as SortKey);
 function isSortKey(value: string | null): value is SortKey {
   return Boolean(value && SORT_KEYS.includes(value as SortKey));
 }
@@ -117,7 +103,6 @@ export default async function AdminPartnersPage({ searchParams }: AdminPartnersP
   const session = await requireAdminSection('partners');
   const canEditPartners = isAdminWorkspaceRole(session.role) && canMutateAdminSection(session.role, 'partners');
   const supabase = getServerSupabaseClient();
-  const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const requestedSort = getSingleSearchParam(resolvedSearchParams?.sort);
   const requestedDirection = getSingleSearchParam(resolvedSearchParams?.dir);
   const activeSort = isSortKey(requestedSort) ? requestedSort : null;

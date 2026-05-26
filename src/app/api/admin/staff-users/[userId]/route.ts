@@ -19,6 +19,16 @@ function normalizeRequestedStaffRole(value: string | null | undefined): StaffRol
   return null;
 }
 
+function isStaffRoleCheckViolation(error: { code?: string | null; message?: string | null } | null | undefined) {
+  const message = String(error?.message ?? '');
+  return error?.code === '23514' && message.includes('staff_users_role_check');
+}
+
+function getRoleCandidates(role: StaffRole) {
+  if (role === 'ADMIN') return ['ADMIN', 'PLATFORM_ADMIN', 'ADMIN_RESACOLO', 'SUPPORT'];
+  return ['SALES_ADMIN', 'ADMIN_SALES'];
+}
+
 function isMnemosRole(value: string | null | undefined) {
   return String(value ?? '')
     .trim()
@@ -86,11 +96,30 @@ export async function POST(req: Request, context: { params: Promise<{ userId: st
   const { data: previousUserData } = await supabase.auth.admin.getUserById(userId);
   const previousMetadata = previousUserData.user?.user_metadata ?? {};
 
-  const { error: roleError } = await supabase.from('staff_users').update({ role }).eq('user_id', userId);
+  let roleError: { message?: string | null; code?: string | null } | null = null;
+  for (const candidateRole of getRoleCandidates(role)) {
+    const { error } = await supabase
+      .from('staff_users')
+      .update({ role: candidateRole })
+      .eq('user_id', userId);
+    if (!error) {
+      roleError = null;
+      break;
+    }
+    roleError = error;
+    if (!isStaffRoleCheckViolation(error)) break;
+  }
   if (roleError) {
+    if (isStaffRoleCheckViolation(roleError) && role === 'ADMIN_SALES') {
+      return redirectUrl(req, redirectTo, {
+        editUserId: userId,
+        error:
+          "Le rôle Commercial n'est pas autorisé par la base sur cet environnement. Applique la migration staff_users_role_check."
+      });
+    }
     return redirectUrl(req, redirectTo, {
       editUserId: userId,
-      error: roleError.message
+      error: roleError.message ?? "Impossible d'attribuer le rôle staff."
     });
   }
 

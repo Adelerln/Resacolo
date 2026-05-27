@@ -44,6 +44,7 @@ type MultiFilterKey =
   | 'ageBands'
   | 'destinationTypes'
   | 'destinations'
+  | 'departureCities'
   | 'organizerIds';
 
 const ACCORDION_DEFAULT_OPEN = [
@@ -53,6 +54,7 @@ const ACCORDION_DEFAULT_OPEN = [
   'categories',
   'destinationTypes',
   'destinations',
+  'departureCities',
   'organizerIds'
 ];
 
@@ -225,6 +227,7 @@ function FiltersPanel({
     { key: 'categories', label: 'TYPE DE SÉJOUR', options: options.categories },
     { key: 'destinationTypes', label: 'FORMAT DE DESTINATION', options: options.destinationTypes },
     { key: 'destinations', label: 'DESTINATIONS', options: options.destinations },
+    { key: 'departureCities', label: 'VILLE DE DÉPART', options: options.departureCities },
     { key: 'organizerIds', label: 'ORGANISATEURS', options: options.organizers }
   ];
 
@@ -257,7 +260,7 @@ function FiltersPanel({
 
     return (
       <AccordionItem key={group.key} value={group.key}>
-        <AccordionTrigger className="py-2.5 text-[12px] tracking-[0.07em] text-slate-900">
+        <AccordionTrigger className="py-2.5 pr-1 text-[12px] tracking-[0.07em] text-slate-900">
           <span className="inline-flex items-center gap-2">
             {group.label}
             {selectedCount > 0 && (
@@ -301,24 +304,30 @@ function FiltersPanel({
               <p className="text-[11px] text-slate-500">Une seule destination sélectionnable à la fois.</p>
             </div>
           ) : (
-            <ul className="space-y-1">
+            <div
+              className={group.key === 'departureCities' ? 'max-h-56 overflow-y-auto pr-2' : undefined}
+            >
+              <ul className="space-y-1.5">
               {group.options.map((option) => (
                 <li key={option.value}>
-                  <label className="flex items-start gap-2 rounded-lg px-1 py-0.5 text-[13px] text-slate-700">
+                  <label className="flex items-start gap-2 rounded-lg px-2 py-1 text-[13px] leading-5 text-slate-700 transition hover:bg-slate-50">
                     <input
                       type="checkbox"
-                      className="mt-0.5 h-3.5 w-3.5 rounded border-slate-300 text-brand-600"
+                      className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-slate-300 text-brand-600"
                       checked={selectedValues.includes(option.value)}
                       onChange={() => onToggle(group.key, option.value)}
                     />
-                    <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
-                      <span className="min-w-0 truncate">{option.label}</span>
-                      <span className="shrink-0 text-[11px] text-slate-500">{option.count}</span>
+                    <span className="flex min-w-0 flex-1 items-start justify-between gap-2">
+                      <span className="min-w-0 break-words whitespace-normal">{option.label}</span>
+                      <span className="mt-0.5 shrink-0 rounded-full bg-slate-100 px-1.5 py-0 text-[11px] font-medium text-slate-600">
+                        {option.count}
+                      </span>
                     </span>
                   </label>
                 </li>
               ))}
-            </ul>
+              </ul>
+            </div>
           )}
         </AccordionContent>
       </AccordionItem>
@@ -360,7 +369,7 @@ function FiltersPanel({
               )}
             </span>
           </AccordionTrigger>
-          <AccordionContent className="pb-1.5">
+          <AccordionContent className="pb-1.5 overflow-visible">
             <RangeSlider
               min={bounds.age.min}
               max={bounds.age.max}
@@ -376,6 +385,7 @@ function FiltersPanel({
         </AccordionItem>
 
         {renderFilterGroup('destinations')}
+        {renderFilterGroup('departureCities')}
 
         <AccordionItem value="priceRange">
           <AccordionTrigger className="py-2.5 text-[12px] tracking-[0.07em] text-slate-900">
@@ -388,7 +398,7 @@ function FiltersPanel({
               )}
             </span>
           </AccordionTrigger>
-          <AccordionContent className="pb-1.5">
+          <AccordionContent className="pb-1.5 overflow-visible">
             <RangeSlider
               min={bounds.price.min}
               max={bounds.price.max}
@@ -514,6 +524,7 @@ export function StayCatalogPage({
         categories: filters.categories,
         destinationTypes: filters.destinationTypes,
         destinations: filters.destinations,
+        departureCities: filters.departureCities,
         organizerIds: filters.organizerIds,
         ageBands: filters.ageBands,
         ageMin: ageIsDefault ? null : ageMin,
@@ -527,6 +538,7 @@ export function StayCatalogPage({
       filters.categories,
       filters.destinationTypes,
       filters.destinations,
+      filters.departureCities,
       filters.organizerIds,
       filters.seasonIds,
       filters.ageBands,
@@ -601,6 +613,9 @@ export function StayCatalogPage({
     const organizerBase = buildStayCatalogFilterOptions(
       applyStayCatalogFilters(indexedStays, { ...deferredFilters, organizerIds: [] }, deferredSearchQuery)
     ).organizers;
+    const departureCityBase = buildStayCatalogFilterOptions(
+      applyStayCatalogFilters(indexedStays, { ...deferredFilters, departureCities: [] }, deferredSearchQuery)
+    ).departureCities;
 
     return {
       ...filterOptions,
@@ -613,6 +628,11 @@ export function StayCatalogPage({
         filters.destinationTypes
       ),
       destinations: withSelectedFallbacks(destinationBase, filterOptions.destinations, filters.destinations),
+      departureCities: withSelectedFallbacks(
+        departureCityBase,
+        filterOptions.departureCities,
+        filters.departureCities
+      ),
       organizers: withSelectedFallbacks(organizerBase, filterOptions.organizers, filters.organizerIds)
     };
   }, [
@@ -623,6 +643,7 @@ export function StayCatalogPage({
     filters.categories,
     filters.destinationTypes,
     filters.destinations,
+    filters.departureCities,
     filters.organizerIds,
     filters.seasonIds,
     indexedStays

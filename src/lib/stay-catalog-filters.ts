@@ -28,6 +28,7 @@ export type StayCatalogFilterOptions = {
   ageBands: StayCatalogAgeFilterOption[];
   destinationTypes: StayCatalogFilterOption[];
   destinations: StayCatalogFilterOption[];
+  departureCities: StayCatalogFilterOption[];
   organizers: StayCatalogFilterOption[];
 };
 
@@ -38,6 +39,7 @@ export type StayCatalogFilterState = {
   ageBands: StayAgeBandValue[];
   destinationTypes: string[];
   destinations: string[];
+  departureCities: string[];
   organizerIds: string[];
   ageMin: number | null;
   ageMax: number | null;
@@ -128,6 +130,7 @@ export const EMPTY_STAY_CATALOG_FILTERS: StayCatalogFilterState = {
   ageBands: [],
   destinationTypes: [],
   destinations: [],
+  departureCities: [],
   organizerIds: [],
   ageMin: null,
   ageMax: null,
@@ -252,6 +255,33 @@ function stayDestinationTypeValue(stay: Stay) {
   if (stay.categories.includes('itinerant')) return 'itinerant';
   if (stay.categories.includes('etranger')) return 'fixed_abroad';
   return 'fixed_france';
+}
+
+function normalizeDepartureCityLabel(input: string | null | undefined) {
+  const raw = normalizeSpaces(String(input ?? ''));
+  if (!raw) return '';
+
+  // Some imported feeds persist chained labels like:
+  // "BORDEAUX → BORDEAUX → BORDEAUX ...". Keep only the first city.
+  const primary = normalizeSpaces(raw.split('→')[0] ?? raw);
+  if (!primary) return '';
+
+  return primary;
+}
+
+function getStayDepartureCities(stay: Stay) {
+  const cityByKey = new Map<string, string>();
+  for (const session of stay.bookingOptions?.sessions ?? []) {
+    for (const option of session.transportOptions ?? []) {
+      const city = normalizeDepartureCityLabel(option.departureCity);
+      if (!city) continue;
+      const key = normalizeCatalogText(city);
+      if (!key) continue;
+      // Keep a stable, readable label while deduping case/accents variants.
+      if (!cityByKey.has(key)) cityByKey.set(key, city);
+    }
+  }
+  return Array.from(cityByKey.values());
 }
 
 function getDestinationTypeLabel(value: string) {
@@ -486,6 +516,7 @@ export function stayCatalogFilterStateKey(state: StayCatalogFilterState) {
     buildStateKeyValues(state.ageBands),
     buildStateKeyValues(state.destinationTypes),
     buildStateKeyValues(state.destinations),
+    buildStateKeyValues(state.departureCities),
     buildStateKeyValues(state.organizerIds),
     `${state.ageMin ?? ''}-${state.ageMax ?? ''}`,
     `${state.priceMin ?? ''}-${state.priceMax ?? ''}`
@@ -503,6 +534,7 @@ export function countActiveStayCatalogFilters(state: StayCatalogFilterState) {
     state.ageBands.length +
     state.destinationTypes.length +
     state.destinations.length +
+    state.departureCities.length +
     state.organizerIds.length +
     hasAgeRange +
     hasPriceRange
@@ -514,6 +546,7 @@ export function buildStayCatalogFilterOptions(stays: Stay[]): StayCatalogFilterO
   const categoryCounts = new Map<string, { label: string; count: number }>();
   const destinationTypeCounts = new Map<string, { label: string; count: number }>();
   const destinationCounts = new Map<string, { label: string; count: number }>();
+  const departureCityCounts = new Map<string, { label: string; count: number }>();
   const organizerCounts = new Map<string, { label: string; count: number }>();
   const ageBandCounts = new Map<StayAgeBandValue, number>(
     AGE_BANDS.map((band) => [band.value, 0])
@@ -570,6 +603,19 @@ export function buildStayCatalogFilterOptions(stays: Stay[]): StayCatalogFilterO
         });
       }
     }
+
+    getStayDepartureCities(stay).forEach((city) => {
+      const value = toDestinationValue(city);
+      const current = departureCityCounts.get(value);
+      if (current) {
+        current.count += 1;
+      } else {
+        departureCityCounts.set(value, {
+          label: city,
+          count: 1
+        });
+      }
+    });
 
     const organizerLabel = cleanText(stay.organizer.name) || 'Organisateur';
     const organizerValue = cleanText(stay.organizerId) || toDestinationValue(organizerLabel);
@@ -629,6 +675,14 @@ export function buildStayCatalogFilterOptions(stays: Stay[]): StayCatalogFilterO
     }))
     .sort((left, right) => compareLabel(left.label, right.label));
 
+  const departureCities = Array.from(departureCityCounts.entries())
+    .map(([value, data]) => ({
+      value,
+      label: data.label,
+      count: data.count
+    }))
+    .sort((left, right) => compareLabel(left.label, right.label));
+
   const organizers = Array.from(organizerCounts.entries())
     .map(([value, data]) => ({
       value,
@@ -649,6 +703,7 @@ export function buildStayCatalogFilterOptions(stays: Stay[]): StayCatalogFilterO
     ageBands,
     destinationTypes,
     destinations,
+    departureCities,
     organizers
   };
 }
@@ -695,6 +750,11 @@ export function parseStayCatalogFiltersFromSearchParams(
     options.organizers
   );
 
+  const departureCities = resolveValuesFromOptions(
+    readParamList(searchParams, ['departureCities', 'departureCity', 'departures', 'departure']),
+    options.departureCities
+  );
+
   const ageMinRaw = parseRangeNumber(searchParams.get('ageMin') ?? searchParams.get('age_min'));
   const ageMaxRaw = parseRangeNumber(searchParams.get('ageMax') ?? searchParams.get('age_max'));
   const priceMinRaw = parseRangeNumber(searchParams.get('priceMin') ?? searchParams.get('price_min'));
@@ -707,6 +767,7 @@ export function parseStayCatalogFiltersFromSearchParams(
     ageBands,
     destinationTypes,
     destinations,
+    departureCities,
     organizerIds,
     ageMin: ageMinRaw != null ? clampNumber(ageMinRaw, 0, 99) : null,
     ageMax: ageMaxRaw != null ? clampNumber(ageMaxRaw, 0, 99) : null,
@@ -727,6 +788,7 @@ export function serializeStayCatalogFiltersToSearchParams(state: StayCatalogFilt
     params.set('destinationTypes', uniq(state.destinationTypes).join(','));
   }
   if (state.destinations.length > 0) params.set('destinations', uniq(state.destinations).join(','));
+  if (state.departureCities.length > 0) params.set('departureCities', uniq(state.departureCities).join(','));
   if (state.organizerIds.length > 0) params.set('organizers', uniq(state.organizerIds).join(','));
   if (state.ageMin != null) params.set('ageMin', String(state.ageMin));
   if (state.ageMax != null) params.set('ageMax', String(state.ageMax));
@@ -889,6 +951,13 @@ export function applyStayCatalogFilters(
       const destinationLabel = stayDestinationLabel(stay);
       const destinationValue = destinationLabel ? toDestinationValue(destinationLabel) : '';
       if (!destinationValue || !state.destinations.includes(destinationValue)) {
+        return false;
+      }
+    }
+
+    if (state.departureCities.length > 0) {
+      const departureValues = getStayDepartureCities(stay).map(toDestinationValue);
+      if (!departureValues.some((value) => state.departureCities.includes(value))) {
         return false;
       }
     }

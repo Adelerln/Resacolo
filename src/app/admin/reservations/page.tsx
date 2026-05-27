@@ -287,7 +287,6 @@ export default async function AdminRequestsPage({ searchParams }: { searchParams
     <div className="space-y-6">
       <div>
         <h1 className="admin-page-title">Toutes les réservations</h1>
-        <p className="admin-page-subtitle mt-1">Suivi des commandes et de leur statut réel dans Supabase.</p>
       </div>
       {activeFilters.length ? (
         <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">

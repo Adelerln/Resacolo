@@ -238,9 +238,6 @@ export default async function AdminHome() {
     <div className="space-y-4">
       <div>
         <h1 className="admin-page-title">Dashboard admin</h1>
-        <p className="admin-page-subtitle mt-1">
-          Vue d&apos;ensemble des séjours, réservations et organismes.
-        </p>
       </div>
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">

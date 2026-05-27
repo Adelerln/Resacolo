@@ -98,6 +98,12 @@ function formatLastConnection(value: string | null) {
   return new Date(value).toLocaleDateString('fr-FR');
 }
 
+function getOfferBadgeClass(offerMode: string | null | undefined) {
+  return normalizePartnerOffer(offerMode) === 'IDENTITE'
+    ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+    : 'bg-sky-100 text-sky-800 border-sky-200';
+}
+
 export default async function AdminPartnersPage({ searchParams }: AdminPartnersPageProps) {
   const resolvedSearchParams = searchParams instanceof Promise ? await searchParams : searchParams;
   const session = await requireAdminSection('partners');
@@ -223,7 +229,6 @@ export default async function AdminPartnersPage({ searchParams }: AdminPartnersP
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="admin-page-title">Partenaires</h1>
-          <p className="admin-page-subtitle mt-1">Créez et suivez les collectivités partenaires.</p>
         </div>
         {canEditPartners ? (
           <Link
@@ -249,6 +254,7 @@ export default async function AdminPartnersPage({ searchParams }: AdminPartnersP
                 <th className="px-4 py-3">{renderSortableHeader('Nom', 'name')}</th>
                 <th className="px-4 py-3">{renderSortableHeader('Code', 'code')}</th>
                 <th className="px-4 py-3">{renderSortableHeader('Offre', 'offer_mode')}</th>
+                <th className="px-4 py-3">Type d&apos;abonnement</th>
                 <th className="px-4 py-3">{renderSortableHeader('Email', 'contact_email')}</th>
                 <th className="px-4 py-3">{renderSortableHeader('Créé le', 'created_at')}</th>
                 <th className="px-4 py-3">{renderSortableHeader('Utilisateurs', 'user_count')}</th>
@@ -263,6 +269,15 @@ export default async function AdminPartnersPage({ searchParams }: AdminPartnersP
                   <td className="px-4 py-3 text-slate-600">{partner.code}</td>
                   <td className="px-4 py-3 text-slate-600">
                     {PARTNER_OFFER_LABELS[normalizePartnerOffer(partner.offer_mode)]}
+                  </td>
+                  <td className="px-4 py-3">
+                    <span
+                      className={`inline-flex min-h-[28px] items-center rounded-full border px-3 py-1 text-xs font-semibold ${getOfferBadgeClass(
+                        partner.offer_mode
+                      )}`}
+                    >
+                      {PARTNER_OFFER_LABELS[normalizePartnerOffer(partner.offer_mode)]}
+                    </span>
                   </td>
                   <td className="px-4 py-3 text-slate-600">{partner.contact_email ?? '—'}</td>
                   <td className="px-4 py-3 text-slate-600">
@@ -282,7 +297,7 @@ export default async function AdminPartnersPage({ searchParams }: AdminPartnersP
               ))}
               {partners.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-6 text-slate-500">
+                  <td colSpan={9} className="px-4 py-6 text-slate-500">
                     Aucun partenaire enregistré.
                   </td>
                 </tr>

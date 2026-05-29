@@ -14,6 +14,10 @@ import { createCartItemFromStay } from '@/lib/cart/normalizeCartItem';
 import { FILTER_LABELS } from '@/lib/constants';
 import { getMockImageUrl, mockImages } from '@/lib/mockImages';
 import { getSessionDisplayedBasePrice, getStayDisplayedPrice } from '@/lib/stay-partner-pricing';
+import {
+  canonicalTransportCityKey,
+  formatTransportCityLabel
+} from '@/lib/transport-city-normalization';
 import StayLocationMap from '@/components/sejours/StayLocationMap';
 import { buildStayIntroText } from '@/lib/stay-seo';
 import { slugify } from '@/lib/utils';
@@ -134,8 +138,8 @@ function computeDisplayedTotal(input: {
 }
 
 function formatTransportLabel(option: StayTransportOption, displayAmount?: number) {
-  const normalizedDeparture = normalizeTransportCityDisplay(option.departureCity);
-  const normalizedReturn = normalizeTransportCityDisplay(option.returnCity);
+  const normalizedDeparture = formatTransportCityLabel(option.departureCity);
+  const normalizedReturn = formatTransportCityLabel(option.returnCity);
   const cities = [normalizedDeparture, normalizedReturn].filter(Boolean);
   const route =
     cities.length === 0
@@ -147,23 +151,6 @@ function formatTransportLabel(option: StayTransportOption, displayAmount?: numbe
   return `${route} · ${formatPrice(amount)}`;
 }
 
-function normalizeTransportCityDisplay(value: string | null | undefined) {
-  const clean = String(value ?? '')
-    .trim()
-    .replace(/\s+/g, ' ');
-  if (!clean) return '';
-
-  const parts = clean
-    .split(/\s*(?:→|->)\s*/g)
-    .map((part) => part.trim())
-    .filter(Boolean);
-  if (parts.length <= 1) return clean;
-
-  const uniqueParts = Array.from(new Set(parts.map((part) => part.toUpperCase().replace(/\s+/g, ' '))));
-  if (uniqueParts.length === 1) return parts[0];
-  return clean;
-}
-
 function formatInsuranceLabel(option: StayInsuranceOption) {
   if (option.amount != null) {
     return `${option.label} · ${formatPrice(option.amount)}`;
@@ -172,10 +159,6 @@ function formatInsuranceLabel(option: StayInsuranceOption) {
     return `${option.label} · ${option.percentValue}%`;
   }
   return option.label;
-}
-
-function getUniqueStrings(values: string[]) {
-  return Array.from(new Set(values.filter(Boolean)));
 }
 
 function normalizeDiscoveryText(value: string) {
@@ -570,13 +553,33 @@ export function StayDetailView({ stay }: { stay: Stay }) {
     () => sessionTransportOptions.filter((option) => option.returnCity.trim()),
     [sessionTransportOptions]
   );
-  const departureCities = useMemo(
-    () => getUniqueStrings(departureTransportOptions.map((option) => option.departureCity)),
-    [departureTransportOptions]
+  const departureCities = useMemo(() => {
+    const map = new Map<string, string>();
+    departureTransportOptions.forEach((option) => {
+      const key = canonicalTransportCityKey(option.departureCity);
+      if (!key || map.has(key)) return;
+      map.set(key, formatTransportCityLabel(option.departureCity));
+    });
+    return Array.from(map.entries()).map(([value, label]) => ({ value, label }));
+  }, [departureTransportOptions]);
+  const returnCities = useMemo(() => {
+    const map = new Map<string, string>();
+    returnTransportOptions.forEach((option) => {
+      const key = canonicalTransportCityKey(option.returnCity);
+      if (!key || map.has(key)) return;
+      map.set(key, formatTransportCityLabel(option.returnCity));
+    });
+    return Array.from(map.entries()).map(([value, label]) => ({ value, label }));
+  }, [returnTransportOptions]);
+  const departureCityValues = useMemo(() => departureCities.map((city) => city.value), [departureCities]);
+  const returnCityValues = useMemo(() => returnCities.map((city) => city.value), [returnCities]);
+  const selectedDepartureCityLabel = useMemo(
+    () => departureCities.find((city) => city.value === selectedDepartureCity)?.label ?? '',
+    [departureCities, selectedDepartureCity]
   );
-  const returnCities = useMemo(
-    () => getUniqueStrings(returnTransportOptions.map((option) => option.returnCity)),
-    [returnTransportOptions]
+  const selectedReturnCityLabel = useMemo(
+    () => returnCities.find((city) => city.value === selectedReturnCity)?.label ?? '',
+    [returnCities, selectedReturnCity]
   );
   const selectedTransportOption = useMemo(() => {
     if (transportMode === 'Sans transport' || isDifferentiatedTransport) return null;
@@ -585,12 +588,18 @@ export function StayDetailView({ stay }: { stay: Stay }) {
   const selectedDepartureTransportOption = useMemo(() => {
     if (!isDifferentiatedTransport) return null;
     return (
-      departureTransportOptions.find((option) => option.departureCity === selectedDepartureCity) ?? null
+      departureTransportOptions.find(
+        (option) => canonicalTransportCityKey(option.departureCity) === selectedDepartureCity
+      ) ?? null
     );
   }, [departureTransportOptions, isDifferentiatedTransport, selectedDepartureCity]);
   const selectedReturnTransportOption = useMemo(() => {
     if (!isDifferentiatedTransport) return null;
-    return returnTransportOptions.find((option) => option.returnCity === selectedReturnCity) ?? null;
+    return (
+      returnTransportOptions.find(
+        (option) => canonicalTransportCityKey(option.returnCity) === selectedReturnCity
+      ) ?? null
+    );
   }, [isDifferentiatedTransport, returnTransportOptions, selectedReturnCity]);
   const selectedTransportAmount = useMemo(() => {
     if (transportMode === 'Sans transport') return 0;
@@ -715,17 +724,17 @@ export function StayDetailView({ stay }: { stay: Stay }) {
 
   useEffect(() => {
     if (!isDifferentiatedTransport) return;
-    if (selectedDepartureCity && !departureCities.includes(selectedDepartureCity)) {
+    if (selectedDepartureCity && !departureCityValues.includes(selectedDepartureCity)) {
       setSelectedDepartureCity('');
     }
-  }, [departureCities, isDifferentiatedTransport, selectedDepartureCity]);
+  }, [departureCityValues, isDifferentiatedTransport, selectedDepartureCity]);
 
   useEffect(() => {
     if (!isDifferentiatedTransport) return;
-    if (selectedReturnCity && !returnCities.includes(selectedReturnCity)) {
+    if (selectedReturnCity && !returnCityValues.includes(selectedReturnCity)) {
       setSelectedReturnCity('');
     }
-  }, [isDifferentiatedTransport, returnCities, selectedReturnCity]);
+  }, [isDifferentiatedTransport, returnCityValues, selectedReturnCity]);
 
   useEffect(() => {
     if (!selectedInsuranceId) return;
@@ -810,13 +819,13 @@ export function StayDetailView({ stay }: { stay: Stay }) {
         const opt = selectedDepartureTransportOption;
         chunks.push(`Aller : ${formatTransportLabel(opt, opt.amount / 2)}`);
       } else if (selectedDepartureCity) {
-        chunks.push(`Aller : ${normalizeTransportCityDisplay(selectedDepartureCity)}`);
+        chunks.push(`Aller : ${selectedDepartureCityLabel || formatTransportCityLabel(selectedDepartureCity)}`);
       }
       if (selectedReturnTransportOption) {
         const opt = selectedReturnTransportOption;
         chunks.push(`Retour : ${formatTransportLabel(opt, opt.amount / 2)}`);
       } else if (selectedReturnCity) {
-        chunks.push(`Retour : ${normalizeTransportCityDisplay(selectedReturnCity)}`);
+        chunks.push(`Retour : ${selectedReturnCityLabel || formatTransportCityLabel(selectedReturnCity)}`);
       }
       transportLine = chunks.length > 0 ? chunks.join(' — ') : 'Transport aller / retour';
     } else if (selectedTransportOption) {
@@ -834,8 +843,9 @@ export function StayDetailView({ stay }: { stay: Stay }) {
           transportOptionId: selectedTransportOption?.id ?? null,
           departureTransportOptionId: selectedDepartureTransportOption?.id ?? null,
           returnTransportOptionId: selectedReturnTransportOption?.id ?? null,
-          departureCity: selectedDepartureCity || null,
-          returnCity: selectedReturnCity || null,
+          departureCity:
+            selectedDepartureTransportOption?.departureCity || selectedDepartureCityLabel || null,
+          returnCity: selectedReturnTransportOption?.returnCity || selectedReturnCityLabel || null,
           insuranceOptionId: selectedInsuranceOption?.id ?? null,
           extraOptionId: selectedExtraOption?.id ?? null
         },
@@ -1521,8 +1531,8 @@ export function StayDetailView({ stay }: { stay: Stay }) {
                               : 'Aucun transport aller'}
                         </option>
                         {departureCities.map((city) => (
-                          <option key={city} value={city}>
-                            {normalizeTransportCityDisplay(city)}
+                          <option key={city.value} value={city.value}>
+                            {city.label}
                           </option>
                         ))}
                       </select>
@@ -1546,8 +1556,8 @@ export function StayDetailView({ stay }: { stay: Stay }) {
                               : 'Aucun transport retour'}
                         </option>
                         {returnCities.map((city) => (
-                          <option key={city} value={city}>
-                            {normalizeTransportCityDisplay(city)}
+                          <option key={city.value} value={city.value}>
+                            {city.label}
                           </option>
                         ))}
                       </select>

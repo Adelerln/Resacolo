@@ -63,6 +63,12 @@ import {
   type DraftVideoEntry
 } from '@/lib/stay-draft-url-extract';
 import {
+  normalizePaymentAids,
+  paymentAidLabel,
+  PAYMENT_AID_VALUES,
+  type PaymentAidValue
+} from '@/lib/payment-aids';
+import {
   draftReviewControlClass,
   draftReviewFieldGroupClass,
   draftReviewSectionClass

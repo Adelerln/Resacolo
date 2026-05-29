@@ -3,11 +3,18 @@ import test from 'node:test';
 import {
   EMPTY_STAY_CATALOG_FILTERS,
   applyStayCatalogFilters,
-  buildStayCatalogFilterOptions
+  buildStayCatalogFilterOptions,
+  parseStayCatalogFiltersFromSearchParams,
+  serializeStayCatalogFiltersToSearchParams
 } from '@/lib/stay-catalog-filters';
 import type { Stay } from '@/types/stay';
 
-function createStay(input: { id: string; title: string; departureCity: string }): Stay {
+function createStay(input: {
+  id: string;
+  title: string;
+  departureCity: string;
+  paymentAids?: Array<'ancv_paper' | 'ancv_connect' | 'caf_vouchers'>;
+}): Stay {
   return {
     id: input.id,
     title: input.title,
@@ -30,6 +37,7 @@ function createStay(input: { id: string; title: string; departureCity: string })
     period: ['ete'],
     categories: ['mer'],
     highlights: [],
+    paymentAids: input.paymentAids ?? [],
     filters: {
       categories: ['mer'],
       audiences: ['10-12'],
@@ -98,3 +106,28 @@ test('applyStayCatalogFilters matches stays across departure city variants', () 
   );
 });
 
+test('buildStayCatalogFilterOptions counts payment aids', () => {
+  const stays = [
+    createStay({ id: 'stay-1', title: 'Séjour 1', departureCity: 'PARIS', paymentAids: ['ancv_paper'] }),
+    createStay({ id: 'stay-2', title: 'Séjour 2', departureCity: 'Lyon', paymentAids: ['ancv_connect', 'caf_vouchers'] })
+  ];
+  const options = buildStayCatalogFilterOptions(stays);
+  assert.equal(options.paymentAids.length, 3);
+});
+
+test('payment aids filters serialize and parse from URL', () => {
+  const state = {
+    ...EMPTY_STAY_CATALOG_FILTERS,
+    paymentAids: ['ancv_connect', 'caf_vouchers'] as Array<'ancv_connect' | 'caf_vouchers'>
+  };
+  const params = serializeStayCatalogFiltersToSearchParams(state);
+  const parsed = parseStayCatalogFiltersFromSearchParams(params, {
+    ...buildStayCatalogFilterOptions([]),
+    paymentAids: [
+      { value: 'ancv_paper', label: 'ANCV', count: 0 },
+      { value: 'ancv_connect', label: 'ANCV Connect', count: 0 },
+      { value: 'caf_vouchers', label: 'Bons CAF', count: 0 }
+    ]
+  });
+  assert.deepEqual(parsed.paymentAids, ['ancv_connect', 'caf_vouchers']);
+});

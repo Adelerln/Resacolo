@@ -400,6 +400,9 @@ export default function StayDraftReviewForm({
   const [supervisionText, setSupervisionText] = useState(initialPayload.supervision_text);
   const [requiredDocumentsText, setRequiredDocumentsText] = useState(initialPayload.required_documents_text);
   const [transportText, setTransportText] = useState(initialPayload.transport_text);
+  const [selectedPaymentAids, setSelectedPaymentAids] = useState<PaymentAidValue[]>(
+    normalizePaymentAids(initialPayload.payment_aids)
+  );
   const [transportMode, setTransportMode] = useState(initialPayload.transport_mode);
   const [partnerDiscountPercent, setPartnerDiscountPercent] = useState(() =>
     initialPayload.partner_discount_percent != null && Number.isFinite(initialPayload.partner_discount_percent)
@@ -838,6 +841,13 @@ export default function StayDraftReviewForm({
     });
   }
 
+  function togglePaymentAid(aid: PaymentAidValue, checked: boolean) {
+    setSelectedPaymentAids((current) => {
+      if (checked) return Array.from(new Set([...current, aid]));
+      return current.filter((value) => value !== aid);
+    });
+  }
+
   function toggleSeason(option: { id: string; name: string }, checked: boolean) {
     const seasonKey = normalizeSeasonKey(option.name);
     if (!seasonKey) return;
@@ -1146,6 +1156,7 @@ export default function StayDraftReviewForm({
       program_text: programText,
       supervision_text: supervisionText,
       transport_text: transportText,
+      payment_aids: normalizePaymentAids(selectedPaymentAids),
       transport_mode: transportMode,
       categories,
       ages,
@@ -1255,6 +1266,7 @@ export default function StayDraftReviewForm({
       program_text: programText,
       supervision_text: supervisionText,
       transport_text: transportText,
+      payment_aids: normalizePaymentAids(selectedPaymentAids),
       transport_mode: transportMode,
       categories,
       ages,
@@ -2227,6 +2239,33 @@ export default function StayDraftReviewForm({
             Préciser en phrases si le trajet se fait en train, en train puis en car, en car, en avion ou sur place.
           </span>
         </label>
+
+        <div className="block text-sm font-medium text-slate-700">
+          <span>Aides au paiement</span>
+          <div className="mt-2 grid gap-2 sm:grid-cols-3">
+            {PAYMENT_AID_VALUES.map((aid) => {
+              const checked = selectedPaymentAids.includes(aid);
+              return (
+                <label
+                  key={aid}
+                  className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${
+                    checked
+                      ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
+                      : 'border-slate-200 bg-white text-slate-700'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={(event) => togglePaymentAid(aid, event.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300"
+                  />
+                  <span>{paymentAidLabel(aid)}</span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
 
         <div className="grid gap-4 md:grid-cols-2">
           <div className="block text-sm font-medium text-slate-700">

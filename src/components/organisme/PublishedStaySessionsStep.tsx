@@ -75,7 +75,7 @@ export default function PublishedStaySessionsStep({
                 </div>
                 {getSessionPriceAmountCents(sessionItem) !== null && (
                   <div className="text-xs text-slate-500">
-                    Prix:{' '}
+                    Prix :{' '}
                     {(getSessionPriceAmountCents(sessionItem)! / 100).toLocaleString('fr-FR', {
                       style: 'currency',
                       currency: 'EUR'

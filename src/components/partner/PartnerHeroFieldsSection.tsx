@@ -39,7 +39,7 @@ export default function PartnerHeroFieldsSection({
           onChange={(event) => setHeroEnabled(event.target.checked)}
           className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-600"
         />
-        Activer le hero CSE sous le header (pages publiques)
+        Activer un bandeau en page d&apos;accueil pour vos ayant-droits
       </label>
 
       <div className={heroEnabled ? 'contents' : 'hidden'}>
@@ -51,7 +51,7 @@ export default function PartnerHeroFieldsSection({
             maxLength={80}
             defaultValue={initialHeroTitle ?? ''}
             className={fieldClassName()}
-            placeholder="Ex: Bienvenue aux familles du CSE Horizon"
+            placeholder="Ex. : Bienvenue aux familles du CSE Horizon"
           />
         </label>
         <label className="text-sm font-medium text-slate-700">
@@ -62,7 +62,7 @@ export default function PartnerHeroFieldsSection({
             maxLength={40}
             defaultValue={initialHeroCtaLabel ?? ''}
             className={fieldClassName()}
-            placeholder="Ex: Voir notre sélection"
+            placeholder="Ex. : Voir notre sélection"
           />
         </label>
         <label className="md:col-span-2 text-sm font-medium text-slate-700">
@@ -73,7 +73,7 @@ export default function PartnerHeroFieldsSection({
             maxLength={280}
             defaultValue={initialHeroBody ?? ''}
             className={fieldClassName()}
-            placeholder="Ex: Profitez de tarifs négociés et d'une sélection pensée pour vos enfants."
+            placeholder="Ex. : Profitez de tarifs négociés et d'une sélection pensée pour vos enfants."
           />
         </label>
         <label className="md:col-span-2 text-sm font-medium text-slate-700">
@@ -84,7 +84,7 @@ export default function PartnerHeroFieldsSection({
             maxLength={500}
             defaultValue={initialHeroCtaUrl ?? ''}
             className={fieldClassName()}
-            placeholder="Ex: /sejours"
+            placeholder="Ex. : /sejours"
           />
         </label>
       </div>

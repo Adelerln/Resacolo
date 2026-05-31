@@ -24,6 +24,8 @@ export type PartnerCatalogRules = {
     destinationMode: 'ANY' | 'FRANCE_ONLY' | 'EUROPE_ONLY';
     countriesAllowed: string[];
     countriesExcluded: string[];
+    organizersAllowed: string[];
+    organizersExcluded: string[];
     activitiesAllowed: string[];
     activitiesExcluded: string[];
     transportIncludedRequired: boolean;
@@ -51,6 +53,10 @@ export type PartnerCatalogRules = {
     qfMax: number | null;
   };
   qfScale: QfScaleRow[];
+  meta?: {
+    /** Pays déjà vus sur le site ; sert à détecter les nouvelles destinations. */
+    knownSiteCountries: string[];
+  };
 };
 
 export type EligibilityReasonCode =
@@ -65,6 +71,8 @@ export type EligibilityReasonCode =
   | 'STAY_TYPE_NOT_ALLOWED'
   | 'DESTINATION_NOT_ALLOWED'
   | 'COUNTRY_EXCLUDED'
+  | 'ORGANIZER_NOT_ALLOWED'
+  | 'ORGANIZER_EXCLUDED'
   | 'ACTIVITY_EXCLUDED'
   | 'ACTIVITY_NOT_ALLOWED'
   | 'TRANSPORT_REQUIRED'

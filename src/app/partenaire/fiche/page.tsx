@@ -233,6 +233,120 @@ export default async function PartnerProfilePage({ searchParams }: PageProps) {
     redirect('/partenaire/fiche?saved=1');
   }
 
+  async function updatePartnerContact(formData: FormData) {
+    'use server';
+
+    const session = await requirePartner();
+    const collectivityId = session.tenantId;
+    const accessRole = getPartnerAccessRoleFromSession(session);
+    if (!collectivityId) {
+      redirect('/partenaire/fiche?error=Aucune%20collectivite%20liee');
+    }
+    if (!canAccessPartnerSection(accessRole, 'partner-profile')) {
+      redirect('/partenaire');
+    }
+
+    const contactId = String(formData.get('contact_id') ?? '').trim();
+    const fullName = String(formData.get('full_name') ?? '').trim();
+    const email = String(formData.get('email') ?? '').trim();
+    const roleLabel = normalizeOptionalString(formData.get('role_label'));
+    const phone = normalizeOptionalString(formData.get('phone'));
+    const wantsPrimary = formData.get('is_primary') === 'on';
+
+    if (!contactId) {
+      redirect('/partenaire/fiche?error=Contact%20introuvable');
+    }
+    if (!fullName || !email) {
+      redirect('/partenaire/fiche?error=Le%20nom%20et%20l%27email%20du%20contact%20sont%20obligatoires');
+    }
+
+    const supabase = getServerSupabaseClient();
+    const { data: targetContact, error: targetContactError } = await supabase
+      .from('collectivity_contacts')
+      .select('id,is_primary')
+      .eq('id', contactId)
+      .eq('collectivity_id', collectivityId)
+      .maybeSingle();
+
+    if (targetContactError) {
+      if (isCollectivityContactsTableMissingError(targetContactError)) {
+        redirect('/partenaire/fiche?error=La%20table%20des%20contacts%20n%27est%20pas%20encore%20visible%20par%20Supabase.%20Rechargez%20la%20page%20dans%20un%20instant.');
+      }
+      redirect(`/partenaire/fiche?error=${encodeURIComponent(targetContactError.message)}`);
+    }
+    if (!targetContact) {
+      redirect('/partenaire/fiche?error=Contact%20introuvable');
+    }
+
+    if (wantsPrimary) {
+      const { error: resetPrimaryError } = await supabase
+        .from('collectivity_contacts')
+        .update({ is_primary: false, updated_at: new Date().toISOString() })
+        .eq('collectivity_id', collectivityId)
+        .eq('is_primary', true);
+
+      if (resetPrimaryError) {
+        redirect(`/partenaire/fiche?error=${encodeURIComponent(resetPrimaryError.message)}`);
+      }
+    }
+
+    const { error: updateError } = await supabase
+      .from('collectivity_contacts')
+      .update({
+        full_name: fullName,
+        role_label: roleLabel,
+        email,
+        phone,
+        is_primary: wantsPrimary,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', contactId)
+      .eq('collectivity_id', collectivityId);
+
+    if (updateError) {
+      redirect(`/partenaire/fiche?error=${encodeURIComponent(updateError.message)}`);
+    }
+
+    if (targetContact.is_primary && !wantsPrimary) {
+      const { data: nextContact, error: nextContactError } = await supabase
+        .from('collectivity_contacts')
+        .select('id')
+        .eq('collectivity_id', collectivityId)
+        .neq('id', contactId)
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      if (nextContactError) {
+        redirect(`/partenaire/fiche?error=${encodeURIComponent(nextContactError.message)}`);
+      }
+
+      if (nextContact) {
+        const { error: promoteError } = await supabase
+          .from('collectivity_contacts')
+          .update({ is_primary: true, updated_at: new Date().toISOString() })
+          .eq('id', nextContact.id);
+
+        if (promoteError) {
+          redirect(`/partenaire/fiche?error=${encodeURIComponent(promoteError.message)}`);
+        }
+      }
+    }
+
+    try {
+      await syncLegacyCollectivityContactFields(collectivityId);
+    } catch (error) {
+      redirect(
+        `/partenaire/fiche?error=${encodeURIComponent(
+          error instanceof Error ? error.message : 'Impossible de synchroniser le contact principal'
+        )}`
+      );
+    }
+
+    revalidatePath('/partenaire/fiche');
+    redirect('/partenaire/fiche?saved=1');
+  }
+
   async function deletePartnerContact(formData: FormData) {
     'use server';
 
@@ -459,6 +573,7 @@ export default async function PartnerProfilePage({ searchParams }: PageProps) {
             members={members}
             contactsTableAvailable={contactsTableAvailable}
             addContactAction={addPartnerContact}
+            updateContactAction={updatePartnerContact}
             deleteContactAction={deletePartnerContact}
             initialMode={openMemberModal}
             initialMemberId={selectedMemberId}

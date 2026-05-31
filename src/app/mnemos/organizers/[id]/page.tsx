@@ -265,7 +265,7 @@ export default async function MnemosOrganizerDetailPage({ params, searchParams }
               name="q"
               defaultValue={resolvedSearchParams?.q ?? ''}
               className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
-              placeholder="ex: adele.rolin@gmail.com"
+              placeholder="Ex. : adele.rolin@gmail.com"
             />
           </label>
           <button className="justify-self-start rounded-md border border-slate-600 px-3 py-1.5 text-xs font-semibold text-slate-200">
@@ -305,7 +305,7 @@ export default async function MnemosOrganizerDetailPage({ params, searchParams }
                     <td className="px-3 py-2 text-xs text-slate-400">
                       <div>Attribue le {new Date(row.granted_at ?? row.created_at).toLocaleString('fr-FR')}</div>
                       <div>{revokedLabel}</div>
-                      {row.revoke_reason ? <div>Motif: {row.revoke_reason}</div> : null}
+                      {row.revoke_reason ? <div>Motif : {row.revoke_reason}</div> : null}
                     </td>
                     <td className="px-3 py-2">
                       {canManageAccess ? (

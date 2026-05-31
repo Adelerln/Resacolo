@@ -2,10 +2,15 @@ import {
   normalizePartnerFinanceMode,
   PARTNER_FINANCE_MODE_LABELS
 } from '@/lib/partner-offers';
+import { FINALIZED_ORDER_STATUSES } from '@/lib/order-workflow';
 import {
-  FINALIZED_ORDER_STATUSES,
-  orderStatusLabel
-} from '@/lib/order-workflow';
+  findNewSiteCountries,
+  listSiteStayCountryLabels
+} from '@/lib/partner-catalog-countries';
+import {
+  getDefaultPartnerCatalogRules,
+  normalizePartnerCatalogRules
+} from '@/lib/partner-catalog-rules';
 import {
   listPartnerBeneficiaries,
   listPartnerReservations,
@@ -16,19 +21,40 @@ import type { Database } from '@/types/supabase';
 const DASHBOARD_WINDOW_DAYS = 30;
 const RECENT_RESERVATIONS_LIMIT = 6;
 const TOP_STAYS_LIMIT = 5;
-const DASHBOARD_STATUSES: Database['public']['Enums']['order_status'][] = [
-  'REQUESTED',
-  'PENDING_PAYMENT',
-  'PARTIALLY_PAID',
-  'PAID',
-  'CANCELLED',
-  'TRANSFERRED'
+/** Libellés partenaire : plusieurs statuts techniques partagent le même libellé. */
+const PARTNER_STATUS_GROUPS: Array<{
+  key: string;
+  label: string;
+  statuses: Database['public']['Enums']['order_status'][];
+}> = [
+  { key: 'requested', label: 'Demande à traiter', statuses: ['REQUESTED'] },
+  {
+    key: 'pending',
+    label: 'En attente de paiement',
+    statuses: ['PENDING_PAYMENT', 'VALIDATED', 'BOOKED']
+  },
+  { key: 'partial', label: 'Partiellement payée', statuses: ['PARTIALLY_PAID'] },
+  { key: 'paid', label: 'Payée', statuses: ['PAID', 'CONFIRMED'] },
+  { key: 'cancelled', label: 'Annulée', statuses: ['CANCELLED'] },
+  { key: 'transferred', label: 'Transférée', statuses: ['TRANSFERRED'] }
 ];
 
+function startOfLocalDay(date: Date) {
+  const value = new Date(date);
+  value.setHours(0, 0, 0, 0);
+  return value;
+}
+
+function endOfLocalDay(date: Date) {
+  const value = new Date(date);
+  value.setHours(23, 59, 59, 999);
+  return value;
+}
+
 function dayKey(date: Date) {
-  const y = date.getUTCFullYear();
-  const m = String(date.getUTCMonth() + 1).padStart(2, '0');
-  const d = String(date.getUTCDate()).padStart(2, '0');
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
 }
 
@@ -67,7 +93,7 @@ export type PartnerDashboardViewModel = {
     count: number;
   }>;
   statusBreakdown: Array<{
-    status: Database['public']['Enums']['order_status'];
+    key: string;
     label: string;
     count: number;
   }>;
@@ -93,6 +119,7 @@ export type PartnerDashboardViewModel = {
     hasNoBeneficiaries: boolean;
     message: string | null;
   };
+  pendingNewCountries: string[];
 };
 
 export async function buildPartnerDashboardModel(input: {
@@ -101,25 +128,36 @@ export async function buildPartnerDashboardModel(input: {
   now?: Date;
 }): Promise<PartnerDashboardViewModel> {
   const now = input.now ?? new Date();
-  const minDate = new Date(now);
-  minDate.setUTCDate(minDate.getUTCDate() - (DASHBOARD_WINDOW_DAYS - 1));
-  minDate.setUTCHours(0, 0, 0, 0);
+  const minDate = startOfLocalDay(now);
+  minDate.setDate(minDate.getDate() - (DASHBOARD_WINDOW_DAYS - 1));
+  const maxDate = endOfLocalDay(now);
 
-  const [collectivity, beneficiaries, reservations] = await Promise.all([
+  const [collectivity, beneficiaries, reservations, siteCountries] = await Promise.all([
     readPartnerCollectivity(input.collectivityId),
     listPartnerBeneficiaries(input.collectivityId, input.userId),
-    listPartnerReservations(input.collectivityId, input.userId)
+    listPartnerReservations(input.collectivityId, input.userId),
+    listSiteStayCountryLabels()
   ]);
+
+  const catalogRules = normalizePartnerCatalogRules(
+    collectivity.catalog_rules_draft ??
+      collectivity.catalog_rules_published ??
+      getDefaultPartnerCatalogRules()
+  );
+  const pendingNewCountries = findNewSiteCountries(
+    siteCountries,
+    catalogRules.meta?.knownSiteCountries ?? []
+  );
 
   const reservations30d = reservations.filter((reservation) => {
     const date = new Date(reservation.createdAt);
-    return Number.isFinite(date.getTime()) && date >= minDate && date <= now;
+    return Number.isFinite(date.getTime()) && date >= minDate && date <= maxDate;
   });
 
   const dailyReservationsMap = new Map<string, { label: string; count: number }>();
   for (let i = 0; i < DASHBOARD_WINDOW_DAYS; i += 1) {
     const day = new Date(minDate);
-    day.setUTCDate(minDate.getUTCDate() + i);
+    day.setDate(minDate.getDate() + i);
     const key = dayKey(day);
     dailyReservationsMap.set(key, { label: formatDateLabelFR(day), count: 0 });
   }
@@ -130,14 +168,11 @@ export async function buildPartnerDashboardModel(input: {
     if (row) row.count += 1;
   }
 
-  const statusCount = new Map<Database['public']['Enums']['order_status'], number>(
-    DASHBOARD_STATUSES.map((status) => [status, 0])
-  );
+  const statusCountByGroup = new Map(PARTNER_STATUS_GROUPS.map((group) => [group.key, 0]));
   for (const reservation of reservations30d) {
-    const current = statusCount.get(reservation.status);
-    if (typeof current === 'number') {
-      statusCount.set(reservation.status, current + 1);
-    }
+    const group = PARTNER_STATUS_GROUPS.find((entry) => entry.statuses.includes(reservation.status));
+    if (!group) continue;
+    statusCountByGroup.set(group.key, (statusCountByGroup.get(group.key) ?? 0) + 1);
   }
 
   let finalizedCount = 0;
@@ -193,10 +228,10 @@ export async function buildPartnerDashboardModel(input: {
       label: value.label,
       count: value.count
     })),
-    statusBreakdown: DASHBOARD_STATUSES.map((status) => ({
-      status,
-      label: orderStatusLabel(status),
-      count: statusCount.get(status) ?? 0
+    statusBreakdown: PARTNER_STATUS_GROUPS.map((group) => ({
+      key: group.key,
+      label: group.label,
+      count: statusCountByGroup.get(group.key) ?? 0
     })),
     recentReservations: reservations.slice(0, RECENT_RESERVATIONS_LIMIT).map((reservation) => ({
       id: reservation.id,
@@ -230,6 +265,7 @@ export async function buildPartnerDashboardModel(input: {
         beneficiaries.length === 0
           ? "Aucun ayant-droit n'est rattaché. Commencez par communiquer votre code CSE aux familles."
           : null
-    }
+    },
+    pendingNewCountries
   };
 }

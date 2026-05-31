@@ -3,11 +3,7 @@ import { revalidatePath } from 'next/cache';
 import { requirePartner } from '@/lib/auth/require';
 import { orderStatusBadgeClassName } from '@/lib/order-workflow';
 import { canAccessPartnerSection, getPartnerAccessRoleFromSession } from '@/lib/partner-access';
-import {
-  clampPartnerFinanceCents,
-  normalizePartnerFinanceMode,
-  PARTNER_FINANCE_MODE_LABELS
-} from '@/lib/partner-offers';
+import { clampPartnerFinanceCents, normalizePartnerFinanceMode, PARTNER_FINANCE_MODE_LABELS } from '@/lib/partner-offers';
 import {
   listPartnerReservations,
   readPartnerCollectivity
@@ -91,11 +87,6 @@ export default async function PartnerReservationsPage() {
       redirect('/partenaire');
     }
 
-    const collectivity = await readPartnerCollectivity(collectivityId);
-    if (normalizePartnerFinanceMode(collectivity.finance_mode) !== 'MANUAL') {
-      redirect('/partenaire/reservations');
-    }
-
     const orderId = String(formData.get('order_id') ?? '').trim();
     if (!orderId) {
       redirect('/partenaire/reservations');
@@ -123,43 +114,39 @@ export default async function PartnerReservationsPage() {
 
     const totalCents = orderItems.reduce((sum, item) => sum + (item.total_price_cents ?? 0), 0);
     const manualPartnerCents = clampPartnerFinanceCents(parseEurosToCents(formData.get('manual_partner_euros')), totalCents);
-    const orderItemIds = orderItems.map((item) => item.id);
+    const allocations =
+      manualPartnerCents > 0
+        ? distributeCentsAcrossItems(
+            manualPartnerCents,
+            orderItems.map((item) => ({
+              id: item.id,
+              totalCents: item.total_price_cents ?? 0
+            }))
+          )
+        : orderItems.map((item) => ({
+            id: item.id,
+            cents: 0
+          }));
 
-    if (manualPartnerCents <= 0) {
-      await supabase
-        .from('collectivity_contributions')
-        .delete()
-        .eq('collectivity_id', collectivityId)
-        .in('order_item_id', orderItemIds);
-    } else {
-      const allocations = distributeCentsAcrossItems(
-        manualPartnerCents,
-        orderItems.map((item) => ({
-          id: item.id,
-          totalCents: item.total_price_cents ?? 0
-        }))
-      );
+    const now = new Date().toISOString();
+    const { error: upsertError } = await supabase.from('collectivity_contributions').upsert(
+      allocations.map((allocation) => ({
+        collectivity_id: collectivityId,
+        order_item_id: allocation.id,
+        mode: 'FIXED' as const,
+        fixed_cents: allocation.cents,
+        percent_value: null,
+        cap_cents: null,
+        status: 'APPROVED' as const,
+        approved_at: now,
+        approved_by_user_id: session.userId,
+        updated_at: now
+      })),
+      { onConflict: 'order_item_id' }
+    );
 
-      const now = new Date().toISOString();
-      const { error: upsertError } = await supabase.from('collectivity_contributions').upsert(
-        allocations.map((allocation) => ({
-          collectivity_id: collectivityId,
-          order_item_id: allocation.id,
-          mode: 'FIXED' as const,
-          fixed_cents: allocation.cents,
-          percent_value: null,
-          cap_cents: null,
-          status: 'APPROVED' as const,
-          approved_at: now,
-          approved_by_user_id: session.userId,
-          updated_at: now
-        })),
-        { onConflict: 'order_item_id' }
-      );
-
-      if (upsertError) {
-        redirect(`/partenaire/reservations?error=${encodeURIComponent(upsertError.message)}`);
-      }
+    if (upsertError) {
+      redirect(`/partenaire/reservations?error=${encodeURIComponent(upsertError.message)}`);
     }
 
     revalidatePath('/partenaire/reservations');
@@ -187,13 +174,12 @@ export default async function PartnerReservationsPage() {
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
         <div className="overflow-x-auto">
-          <table className="min-w-[1360px] w-full text-left text-sm">
+          <table className="min-w-[1180px] w-full text-left text-sm">
             <thead className="bg-slate-50 text-xs uppercase text-slate-500">
               <tr>
-                <th className="px-4 py-3">Commande</th>
+                <th className="whitespace-nowrap px-4 py-3">Commande</th>
                 <th className="px-4 py-3">Bénéficiaire</th>
                 <th className="px-4 py-3">Séjour</th>
-                <th className="px-4 py-3">Session</th>
                 <th className="px-4 py-3">Participants</th>
                 <th className="px-4 py-3">Statut</th>
                 <th className="px-4 py-3">Total</th>
@@ -205,7 +191,7 @@ export default async function PartnerReservationsPage() {
               {reservations.map((reservation) => {
                 return (
                   <tr key={reservation.id} className="border-t border-slate-100 align-top">
-                    <td className="px-4 py-3 text-slate-600">
+                    <td className="whitespace-nowrap px-4 py-3 text-slate-600">
                       <p className="font-medium text-slate-900">#{reservation.id.slice(0, 8).toUpperCase()}</p>
                       <p className="mt-1 text-xs text-slate-500">{formatDate(reservation.createdAt)}</p>
                     </td>
@@ -217,7 +203,6 @@ export default async function PartnerReservationsPage() {
                       <p className="font-medium text-slate-900">{reservation.stayTitle}</p>
                       <p className="mt-1 text-xs text-slate-500">{reservation.stayLocation}</p>
                     </td>
-                    <td className="px-4 py-3 text-slate-600">{reservation.sessionLabel}</td>
                     <td className="px-4 py-3 text-slate-600">{reservation.childrenLabel}</td>
                     <td className="px-4 py-3">
                       <div className="flex flex-col items-start gap-2">
@@ -237,31 +222,25 @@ export default async function PartnerReservationsPage() {
                     </td>
                     <td className="px-4 py-3 font-semibold text-slate-900">{reservation.totalLabel}</td>
                     <td className="px-4 py-3">
-                      {financeMode === 'MANUAL' ? (
-                        <form action={saveManualContribution} className="flex min-w-[220px] flex-col gap-2">
-                          <input type="hidden" name="order_id" value={reservation.id} />
-                          <input
-                            type="number"
-                            name="manual_partner_euros"
-                            min="0"
-                            step="0.01"
-                            defaultValue={
-                              reservation.partnerContributionCents > 0
-                                ? String((reservation.partnerContributionCents / 100).toFixed(2).replace('.', '.'))
-                                : ''
-                            }
-                            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
-                            placeholder="Montant partenaire"
-                          />
-                          <button className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white">
-                            Enregistrer
-                          </button>
-                        </form>
-                      ) : (
-                        <div className="font-semibold text-slate-900">
-                          {formatCurrencyFromCents(reservation.partnerContributionCents)}
-                        </div>
-                      )}
+                      <form action={saveManualContribution} className="flex min-w-[220px] flex-col gap-2">
+                        <input type="hidden" name="order_id" value={reservation.id} />
+                        <input
+                          type="number"
+                          name="manual_partner_euros"
+                          min="0"
+                          step="0.01"
+                          defaultValue={
+                            reservation.partnerContributionCents > 0
+                              ? String((reservation.partnerContributionCents / 100).toFixed(2).replace('.', '.'))
+                              : ''
+                          }
+                          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+                          placeholder="Montant partenaire"
+                        />
+                        <button className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white">
+                          Enregistrer
+                        </button>
+                      </form>
                     </td>
                     <td className="px-4 py-3">
                       <div className="font-semibold text-slate-900">
@@ -273,7 +252,7 @@ export default async function PartnerReservationsPage() {
               })}
               {reservations.length === 0 && (
                 <tr>
-                  <td className="px-4 py-6 text-slate-500" colSpan={9}>
+                  <td className="px-4 py-6 text-slate-500" colSpan={8}>
                     Aucune réservation liée à votre code CSE.
                   </td>
                 </tr>

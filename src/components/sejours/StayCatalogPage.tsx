@@ -178,6 +178,9 @@ function StayCard({ stay }: { stay: Stay }) {
         priceFromEuros={stay.priceFrom}
         partnerPriceFromEuros={stay.partnerPriceFrom ?? null}
         partnerDiscountPercent={stay.partnerDiscountPercent ?? null}
+        partnerFinanceMode={stay.partnerFinanceMode ?? null}
+        partnerFinancePercentValue={stay.partnerFinancePercentValue ?? null}
+        partnerFinanceFixedCents={stay.partnerFinanceFixedCents ?? null}
         coverUrl={stay.coverImage || getMockImageUrl(mockImages.sejours.fallbackCover, 1200, 80)}
         href={`/sejours/${stay.canonicalSlug}`}
         organizerLogoUrl={stay.organizer.logoUrl ?? null}

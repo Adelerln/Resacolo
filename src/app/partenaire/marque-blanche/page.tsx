@@ -214,7 +214,7 @@ export default async function MarqueBlanchePage({ searchParams }: PageProps) {
                 rows={4}
                 defaultValue={collectivity.brand_welcome_text ?? ''}
                 className={fieldClassName()}
-                placeholder="Ex: Bienvenue sur l'espace CSE Horizon."
+                placeholder="Ex. : Bienvenue sur l'espace CSE Horizon."
               />
             </label>
           </div>

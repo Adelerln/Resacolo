@@ -70,7 +70,7 @@ export default async function AdminPartnerEditPage({ params, searchParams }: Pag
     .maybeSingle();
 
   if (error) {
-    return <p className="text-sm text-rose-700">Impossible de charger le partenaire: {error.message}</p>;
+    return <p className="text-sm text-rose-700">Impossible de charger le partenaire : {error.message}</p>;
   }
   if (!collectivity) {
     redirect('/admin/partenaires');

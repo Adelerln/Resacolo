@@ -14,6 +14,7 @@ import { createCartItemFromStay } from '@/lib/cart/normalizeCartItem';
 import { FILTER_LABELS } from '@/lib/constants';
 import { getMockImageUrl, mockImages } from '@/lib/mockImages';
 import { getSessionDisplayedBasePrice, getStayDisplayedPrice } from '@/lib/stay-partner-pricing';
+import { computePartnerFinanceDisplay, normalizePartnerFinanceMode } from '@/lib/partner-offers';
 import StayLocationMap from '@/components/sejours/StayLocationMap';
 import { buildStayIntroText } from '@/lib/stay-seo';
 import { slugify } from '@/lib/utils';
@@ -673,6 +674,17 @@ export function StayDetailView({ stay }: { stay: Stay }) {
       selectedInsuranceId ||
       selectedExtraOptionId
   );
+  const normalizedFinanceMode = stay.partnerFinanceMode ? normalizePartnerFinanceMode(stay.partnerFinanceMode) : null;
+  const financeReferencePrice = hasStartedSelection && estimatedPrice != null ? estimatedPrice : getStayDisplayedPrice(stay);
+  const partnerFinanceDisplay = useMemo(() => {
+    if (financeReferencePrice == null || !stay.partnerFinanceMode) return null;
+    return computePartnerFinanceDisplay({
+      mode: stay.partnerFinanceMode,
+      totalCents: Math.round(financeReferencePrice * 100),
+      percentValue: stay.partnerFinancePercentValue,
+      fixedCents: stay.partnerFinanceFixedCents
+    });
+  }, [financeReferencePrice, stay.partnerFinanceFixedCents, stay.partnerFinanceMode, stay.partnerFinancePercentValue]);
 
   useEffect(() => {
     setSelectedSessionId('');
@@ -1467,6 +1479,32 @@ export function StayDetailView({ stay }: { stay: Stay }) {
                     <span className="text-sm font-semibold text-emerald-700">
                       Remise partenaire : -{formatPrice(partnerDiscountAmount)}
                     </span>
+                  </div>
+                ) : null}
+                {normalizedFinanceMode === 'MANUAL' ? (
+                  <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900">
+                    Le prix affiché n&apos;est pas encore définitif. Votre réservation sera transmise au partenaire comme une demande de devis.
+                  </div>
+                ) : partnerFinanceDisplay ? (
+                  <div className="mt-3 space-y-1 text-sm">
+                    {partnerFinanceDisplay.partnerCents != null && partnerFinanceDisplay.partnerCents > 0 ? (
+                      <p className="font-semibold text-emerald-700">
+                        Prise en charge partenaire : {formatPrice(partnerFinanceDisplay.partnerCents / 100)}
+                        {normalizedFinanceMode === 'PERCENT' && typeof stay.partnerFinancePercentValue === 'number'
+                          ? ` (${stay.partnerFinancePercentValue.toLocaleString('fr-FR', {
+                              minimumFractionDigits: 0,
+                              maximumFractionDigits: 2
+                            })} %)`
+                          : ''}
+                      </p>
+                    ) : null}
+                    {partnerFinanceDisplay.familyCents != null ? (
+                      <p className="font-semibold text-slate-700">
+                        {partnerFinanceDisplay.familyCents === 0
+                          ? 'Aucun règlement demandé au moment de la réservation'
+                          : `Reste à régler : ${formatPrice(partnerFinanceDisplay.familyCents / 100)}`}
+                      </p>
+                    ) : null}
                   </div>
                 ) : null}
               </div>

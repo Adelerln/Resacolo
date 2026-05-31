@@ -94,7 +94,7 @@ export default function RejoindreResacoloPage() {
                   Numéro Atout France (IM + 9 chiffres) *
                 </label>
                 <input
-                  placeholder="ex : IM012345678"
+                  placeholder="Ex. : IM012345678"
                   className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 shadow-sm outline-none focus:border-brand-600"
                 />
               </div>
@@ -106,7 +106,7 @@ export default function RejoindreResacoloPage() {
                   Numéro SDJES (format XXXORGXXXX) *
                 </label>
                 <input
-                  placeholder="ex : 123ORG4567"
+                  placeholder="Ex. : 123ORG4567"
                   pattern="^[0-9]{3}ORG[0-9]{4}$"
                   title="Format attendu : 123ORG4567"
                   className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 uppercase shadow-sm outline-none focus:border-brand-600"

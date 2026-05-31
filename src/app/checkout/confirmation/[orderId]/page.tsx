@@ -39,12 +39,24 @@ export default function CheckoutConfirmationPage() {
   const isVacafRequestMode = mode === 'requested-vacaf' || mode === 'dev-bypass-requested-vacaf';
   const isAncvConnectRequestMode =
     mode === 'requested-ancv-connect' || mode === 'dev-bypass-requested-ancv-connect';
+  const isPartnerTotalMode = mode === 'partner-total' || mode === 'dev-bypass-partner-total';
+  const isPartnerManualQuoteMode =
+    mode === 'partner-manual-quote' || mode === 'dev-bypass-partner-manual-quote';
   const isManualConfirmationMode =
-    isCvPaperMode || isDeferredMode || isVacafRequestMode || isAncvConnectRequestMode;
+    isCvPaperMode ||
+    isDeferredMode ||
+    isVacafRequestMode ||
+    isAncvConnectRequestMode ||
+    isPartnerTotalMode ||
+    isPartnerManualQuoteMode;
   const displayedSubtitle = isVacafRequestMode
     ? 'Votre demande a été transmise à l’organisme pour vérification VACAF/AVE.'
     : isAncvConnectRequestMode
       ? 'Votre demande a été transmise à l’organisme pour traitement ANCV Connect.'
+      : isPartnerManualQuoteMode
+        ? 'Votre demande de devis a été transmise à votre partenaire.'
+        : isPartnerTotalMode
+          ? 'Votre réservation est enregistrée sans paiement immédiat.'
       : isCvPaperMode
     ? 'Votre commande est enregistrée. Le règlement en ANCV papier sera finalisé hors ligne.'
     : isDeferredMode
@@ -55,7 +67,13 @@ export default function CheckoutConfirmationPage() {
     if (!orderId) return;
 
     if (
-      (mode === 'dev-bypass' || mode === 'dev-bypass-cv-paper' || mode === 'dev-bypass-deferred') &&
+      (
+        mode === 'dev-bypass' ||
+        mode === 'dev-bypass-cv-paper' ||
+        mode === 'dev-bypass-deferred' ||
+        mode === 'dev-bypass-partner-total' ||
+        mode === 'dev-bypass-partner-manual-quote'
+      ) &&
       (isDevBypassCheckout() || process.env.NODE_ENV === 'development')
     ) {
       const devBypassPaidStorageKey = `resacolo-dev-bypass-paid:${orderId}`;
@@ -70,6 +88,10 @@ export default function CheckoutConfirmationPage() {
         ? 'DEMANDE VACAF (SIMULÉE)'
         : isAncvConnectRequestMode
           ? 'DEMANDE ANCV CONNECT (SIMULÉE)'
+          : isPartnerManualQuoteMode
+            ? 'DEMANDE DE DEVIS (SIMULÉE)'
+            : isPartnerTotalMode
+              ? 'PRISE EN CHARGE PARTENAIRE (SIMULÉE)'
         : isCvPaperMode
         ? 'ANCV PAPIER (SIMULÉ)'
         : isDeferredMode
@@ -184,7 +206,7 @@ export default function CheckoutConfirmationPage() {
         <div className="space-y-4 rounded-xl border border-slate-300 bg-slate-50 p-4">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-slate-600">
-              Numéro de commande: <span className="font-semibold text-slate-900">{order.orderId}</span>
+              Numéro de commande : <span className="font-semibold text-slate-900">{order.orderId}</span>
             </p>
             {order.organizerContactEmail ? (
               <a
@@ -202,10 +224,10 @@ export default function CheckoutConfirmationPage() {
           </div>
           <div className="space-y-4">
             <p className="text-sm text-slate-600">
-              Statut commande: <span className="font-semibold text-slate-900">{order.status}</span>
+              Statut commande : <span className="font-semibold text-slate-900">{order.status}</span>
             </p>
             <p className="text-sm text-slate-600">
-              Statut paiement:{' '}
+              Statut paiement :{' '}
               <span className="font-semibold text-slate-900">
                 {isCvPaperMode
                   ? 'En attente de règlement ANCV papier'
@@ -215,11 +237,15 @@ export default function CheckoutConfirmationPage() {
                       ? 'En attente de vérification VACAF/AVE'
                       : isAncvConnectRequestMode
                         ? 'En attente de contact organisme'
+                        : isPartnerManualQuoteMode
+                          ? 'En attente du devis partenaire'
+                          : isPartnerTotalMode
+                            ? 'Pris en charge par le partenaire'
                     : order.paymentStatus ?? 'En attente'}
               </span>
             </p>
             <p className="text-sm text-slate-600">
-              Total: <span className="font-semibold text-slate-900">{formatEuroFromCents(order.totalCents)}</span>
+              Total : <span className="font-semibold text-slate-900">{formatEuroFromCents(order.totalCents)}</span>
             </p>
           </div>
           {order.paidAt ? (
@@ -244,6 +270,24 @@ export default function CheckoutConfirmationPage() {
                 </span>
               </p>
             </div>
+          ) : isPartnerManualQuoteMode ? (
+            <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5">
+              <p className="flex items-start gap-2 text-sm font-semibold text-amber-900">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                <span>
+                  Votre demande de devis est bien transmise. Votre partenaire doit maintenant préciser son montant de prise en charge avant validation finale.
+                </span>
+              </p>
+            </div>
+          ) : isPartnerTotalMode ? (
+            <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2.5">
+              <p className="flex items-start gap-2 text-sm font-semibold text-emerald-900">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                <span>
+                  Votre réservation est bien enregistrée. Aucun règlement ne vous est demandé : votre partenaire réglera la totalité auprès de ResaColo.
+                </span>
+              </p>
+            </div>
           ) : isCvPaperMode ? (
             <p className="text-sm text-amber-700">
               Votre commande est bien enregistrée. Le règlement en ANCV papier sera traité directement avec l&apos;organisateur.
@@ -259,9 +303,13 @@ export default function CheckoutConfirmationPage() {
             <p className="text-sm text-amber-700">Le paiement n’est pas encore confirmé. Cette page se met à jour automatiquement.</p>
           )}
           {mode === 'monetico-mock' ? (
-            <p className="text-xs text-slate-500">Mode de test local: paiement Monetico mock simulé.</p>
+            <p className="text-xs text-slate-500">Mode de test local : paiement Monetico mock simulé.</p>
           ) : null}
-          {mode === 'dev-bypass' || mode === 'dev-bypass-cv-paper' || mode === 'dev-bypass-deferred' ? (
+          {mode === 'dev-bypass' ||
+          mode === 'dev-bypass-cv-paper' ||
+          mode === 'dev-bypass-deferred' ||
+          mode === 'dev-bypass-partner-total' ||
+          mode === 'dev-bypass-partner-manual-quote' ? (
             <p className="text-xs text-amber-800">
               Mode dev : confirmation fictive (NEXT_PUBLIC_DEV_BYPASS_CHECKOUT=1), sans commande en base et sans
               paiement réel.

@@ -1,11 +1,8 @@
 import { redirect } from 'next/navigation';
+import { PartnerBeneficiariesTable } from '@/components/partner/PartnerBeneficiariesTable';
 import { requirePartner } from '@/lib/auth/require';
 import { canAccessPartnerSection, getPartnerAccessRoleFromSession } from '@/lib/partner-access';
 import { listPartnerBeneficiaries, readPartnerCollectivity } from '@/lib/partner.server';
-
-function formatDate(value: string) {
-  return new Date(value).toLocaleDateString('fr-FR');
-}
 
 export default async function BeneficiairesPage() {
   const session = await requirePartner();
@@ -30,12 +27,23 @@ export default async function BeneficiairesPage() {
     listPartnerBeneficiaries(collectivityId, session.userId)
   ]);
 
+  const tableRows = beneficiaries.map((beneficiary) => ({
+    id: beneficiary.id,
+    name: beneficiary.name,
+    familyName: beneficiary.familyName,
+    email: beneficiary.email,
+    phone: beneficiary.phone,
+    city: beneficiary.city,
+    attachedAt: beneficiary.attachedAt
+  }));
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="admin-page-title">Bénéficiaires</h1>
         <p className="admin-page-subtitle mt-1">
-          Ayants-droit rattachés à {collectivity.name} via le code <span className="font-semibold text-slate-800">{collectivity.code}</span>.
+          Ayants-droit rattachés à {collectivity.name} via le code{' '}
+          <span className="font-semibold text-slate-800">{collectivity.code}</span>.
         </p>
       </div>
 
@@ -52,39 +60,7 @@ export default async function BeneficiairesPage() {
         </article>
       </section>
 
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-        <div className="overflow-x-auto">
-          <table className="min-w-[760px] w-full text-left text-sm">
-            <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-              <tr>
-                <th className="px-4 py-3">Bénéficiaire</th>
-                <th className="px-4 py-3">Email</th>
-                <th className="px-4 py-3">Téléphone</th>
-                <th className="px-4 py-3">Ville</th>
-                <th className="px-4 py-3">Rattaché le</th>
-              </tr>
-            </thead>
-            <tbody>
-              {beneficiaries.map((beneficiary) => (
-                <tr key={beneficiary.id} className="border-t border-slate-100">
-                  <td className="px-4 py-3 font-medium text-slate-900">{beneficiary.name}</td>
-                  <td className="px-4 py-3 text-slate-600">{beneficiary.email}</td>
-                  <td className="px-4 py-3 text-slate-600">{beneficiary.phone}</td>
-                  <td className="px-4 py-3 text-slate-600">{beneficiary.city}</td>
-                  <td className="px-4 py-3 text-slate-600">{formatDate(beneficiary.attachedAt)}</td>
-                </tr>
-              ))}
-              {beneficiaries.length === 0 && (
-                <tr>
-                  <td className="px-4 py-6 text-slate-500" colSpan={5}>
-                    Aucun ayant-droit n&apos;est encore rattaché à votre collectivité.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <PartnerBeneficiariesTable beneficiaries={tableRows} />
     </div>
   );
 }

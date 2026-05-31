@@ -3,6 +3,7 @@ import { getCurrentUser } from '@/lib/auth/session';
 import { evaluatePartnerCatalogEligibility, simulatePartnerAid } from '@/lib/partner-catalog-rules';
 import { normalizePartnerCatalogRules } from '@/lib/partner-catalog-rules';
 import { computePartnerDiscountedPrice } from '@/lib/stay-partner-pricing';
+import { computePartnerFinanceDisplay, normalizePartnerFinanceMode } from '@/lib/partner-offers';
 import { isMissingColumnError } from '@/lib/supabase-schema-errors';
 import type { CartItem } from '@/types/cart';
 import type { Database } from '@/types/supabase';
@@ -47,6 +48,10 @@ type ResolvedInsuranceOption = {
   percent_value: number | null;
   source: 'INSURANCE_OPTION' | 'EXTRA_INSURANCE';
 };
+type CollectivityFinanceRow = Pick<
+  Database['public']['Tables']['collectivities']['Row'],
+  'id' | 'finance_mode' | 'finance_percent_value' | 'finance_fixed_cents'
+>;
 
 export class CheckoutValidationError extends Error {
   constructor(message: string) {
@@ -172,9 +177,9 @@ async function readCheckoutCseRulesForCurrentUser() {
   return normalizePartnerCatalogRules(collectivity.catalog_rules_published);
 }
 
-async function currentUserHasCollectivityAffiliation() {
+async function readCheckoutPartnerFinanceForCurrentUser() {
   const session = await getCurrentUser();
-  if (!session?.userId) return false;
+  if (!session?.userId) return null;
   const supabase = getServerSupabaseClient();
   const { data: client } = await supabase
     .from('clients')
@@ -182,7 +187,15 @@ async function currentUserHasCollectivityAffiliation() {
     .eq('user_id', session.userId)
     .maybeSingle();
 
-  return Boolean(client?.collectivity_id);
+  if (!client?.collectivity_id) return null;
+
+  const { data: collectivity } = await supabase
+    .from('collectivities')
+    .select('id,finance_mode,finance_percent_value,finance_fixed_cents')
+    .eq('id', client.collectivity_id)
+    .maybeSingle();
+
+  return (collectivity as CollectivityFinanceRow | null) ?? null;
 }
 
 async function fetchSessionPrice(sessionId: string): Promise<SessionPriceRow> {
@@ -294,10 +307,11 @@ function assertRowBelongsToStay(optionStayId: string | null, stayId: string, lab
 }
 
 export async function repriceCart(items: CartItem[]): Promise<CheckoutPricing> {
-  const [cseRules, hasCollectivityAffiliation] = await Promise.all([
+  const [cseRules, partnerFinance] = await Promise.all([
     readCheckoutCseRulesForCurrentUser(),
-    currentUserHasCollectivityAffiliation()
+    readCheckoutPartnerFinanceForCurrentUser()
   ]);
+  const hasCollectivityAffiliation = Boolean(partnerFinance);
   const qfValue = cseRules ? getSimulationQfValue(cseRules) : null;
   const pricedItems = await Promise.all(
     items.map(async (cartItem): Promise<CheckoutPricingItem> => {
@@ -415,6 +429,14 @@ export async function repriceCart(items: CartItem[]): Promise<CheckoutPricing> {
 
       const optionsPriceCents = transportPriceCents + insurancePriceCents + extraOptionPriceCents;
       const totalPriceCents = basePriceCents + optionsPriceCents;
+      const financeDisplay = partnerFinance
+        ? computePartnerFinanceDisplay({
+            mode: partnerFinance.finance_mode,
+            totalCents: totalPriceCents,
+            percentValue: partnerFinance.finance_percent_value,
+            fixedCents: partnerFinance.finance_fixed_cents
+          })
+        : null;
       let cseAidCents = 0;
       let familyCentsAfterAid = totalPriceCents;
       let cseEligible = false;
@@ -440,6 +462,7 @@ export async function repriceCart(items: CartItem[]): Promise<CheckoutPricing> {
           },
           priceCents: totalPriceCents,
           organizer: {
+            id: stay.organizer_id,
             is_resacolo_member: true
           }
         });
@@ -487,6 +510,12 @@ export async function repriceCart(items: CartItem[]): Promise<CheckoutPricing> {
         insuranceOptionId: persistedInsuranceOptionId,
         extraOptionId: cartItem.selection.extraOptionId,
         extraOptionLabel,
+        financeMode: financeDisplay?.mode ?? null,
+        financePartnerContributionCents: financeDisplay?.partnerCents ?? null,
+        financeFamilyPayableCents: financeDisplay?.familyCents ?? null,
+        financePercentValue: partnerFinance?.finance_percent_value ?? null,
+        financeFixedCents: partnerFinance?.finance_fixed_cents ?? null,
+        financeRequiresQuote: financeDisplay?.requiresQuote ?? false,
         cseAidCents,
         familyCentsAfterAid,
         cseEligible,
@@ -496,6 +525,14 @@ export async function repriceCart(items: CartItem[]): Promise<CheckoutPricing> {
   );
 
   const totalCents = pricedItems.reduce((sum, item) => sum + item.totalPriceCents, 0);
+  const financePartnerContributionTotalCents = pricedItems.reduce(
+    (sum, item) => sum + Math.max(0, item.financePartnerContributionCents ?? 0),
+    0
+  );
+  const financeRequiresQuote = pricedItems.some((item) => item.financeRequiresQuote);
+  const financeFamilyPayableTotalCents = financeRequiresQuote
+    ? null
+    : pricedItems.reduce((sum, item) => sum + Math.max(0, item.financeFamilyPayableCents ?? item.totalPriceCents), 0);
   const familyTotalCentsAfterAid = pricedItems.reduce(
     (sum, item) => sum + (item.familyCentsAfterAid ?? item.totalPriceCents),
     0
@@ -505,6 +542,12 @@ export async function repriceCart(items: CartItem[]): Promise<CheckoutPricing> {
   return {
     items: pricedItems,
     totalCents,
+    financeMode: partnerFinance ? normalizePartnerFinanceMode(partnerFinance.finance_mode) : null,
+    financePartnerContributionTotalCents,
+    financeFamilyPayableTotalCents,
+    financePercentValue: partnerFinance?.finance_percent_value ?? null,
+    financeFixedCents: partnerFinance?.finance_fixed_cents ?? null,
+    financeRequiresQuote,
     familyTotalCentsAfterAid,
     cseTotalAidCents,
     currency: 'EUR'

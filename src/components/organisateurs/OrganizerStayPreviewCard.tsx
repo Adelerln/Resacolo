@@ -2,6 +2,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { MapPin } from 'lucide-react';
 import type { ReactNode } from 'react';
+import { normalizePartnerFinanceMode } from '@/lib/partner-offers';
 
 const MAP_BLEU = '/image/sejours/pictos_fichesejour/map-bleu.png';
 
@@ -17,6 +18,9 @@ export type OrganizerStayPreviewCardProps = {
   priceFromEuros: number | null;
   partnerPriceFromEuros?: number | null;
   partnerDiscountPercent?: number | null;
+  partnerFinanceMode?: string | null;
+  partnerFinancePercentValue?: number | null;
+  partnerFinanceFixedCents?: number | null;
   csePriceFromEuros?: number | null;
   cseAidFromEuros?: number | null;
   cseLabel?: string | null;
@@ -44,6 +48,9 @@ export function OrganizerStayPreviewCard({
   priceFromEuros,
   partnerPriceFromEuros = null,
   partnerDiscountPercent = null,
+  partnerFinanceMode = null,
+  partnerFinancePercentValue = null,
+  partnerFinanceFixedCents = null,
   csePriceFromEuros = null,
   cseAidFromEuros = null,
   cseLabel = null,
@@ -124,6 +131,23 @@ export function OrganizerStayPreviewCard({
     : 'mt-1 text-[11px] font-semibold text-emerald-700';
   const ctaClass = `mt-auto flex w-full shrink-0 items-center justify-center border-t border-white/15 bg-[linear-gradient(151deg,var(--color-primary)_38%,#52b0ea_100%)] px-4 ${compact ? 'py-3 text-[12px]' : 'py-3.5 text-sm'} font-bold uppercase tracking-wide text-white transition-opacity ${hoverEnabled ? 'group-hover:opacity-95' : ''}`;
   const fullCtaClass = `mt-auto flex w-full shrink-0 items-center justify-center border-t border-slate-200 bg-white px-4 ${compact ? 'py-3 text-[12px]' : 'py-3.5 text-sm'} font-bold uppercase tracking-wide text-[#FA8500]`;
+  const normalizedFinanceMode = partnerFinanceMode ? normalizePartnerFinanceMode(partnerFinanceMode) : null;
+  const financeHelperText =
+    normalizedFinanceMode === 'TOTAL'
+      ? 'Tarif partenaire · prise en charge totale'
+      : normalizedFinanceMode === 'PERCENT' && typeof partnerFinancePercentValue === 'number'
+        ? `Tarif partenaire · ${partnerFinancePercentValue.toLocaleString('fr-FR', {
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 2
+          })} % pris en charge`
+        : normalizedFinanceMode === 'FIXED' && typeof partnerFinanceFixedCents === 'number'
+          ? `Tarif partenaire · jusqu'à ${(partnerFinanceFixedCents / 100).toLocaleString('fr-FR', {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2
+            })} € pris en charge`
+            : normalizedFinanceMode === 'MANUAL'
+              ? 'Tarif affiché · demande de devis'
+            : 'Tarif partenaire';
 
   return (
     <article className={articleClass}>
@@ -237,7 +261,7 @@ export function OrganizerStayPreviewCard({
                 </span>
                 {pricePillLabel ? <span className={partnerBadgeClass}>{pricePillLabel}</span> : null}
               </div>
-              <p className={helperLineClass}>Tarif partenaire</p>
+              <p className={helperLineClass}>{financeHelperText}</p>
             </div>
           ) : (
             <>

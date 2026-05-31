@@ -167,6 +167,7 @@ export interface Stay {
   activitiesText?: string;
   programText?: string;
   transportText?: string;
+  paymentAids?: Array<'ancv_paper' | 'ancv_connect' | 'caf_vouchers'>;
   coverImage?: string;
   galleryImages?: string[];
   videoUrls?: string[];

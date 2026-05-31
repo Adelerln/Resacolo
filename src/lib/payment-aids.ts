@@ -1,0 +1,67 @@
+export const PAYMENT_AID_VALUES = ['ancv_paper', 'ancv_connect', 'caf_vouchers'] as const;
+
+export type PaymentAidValue = (typeof PAYMENT_AID_VALUES)[number];
+
+const PAYMENT_AID_SET = new Set<string>(PAYMENT_AID_VALUES);
+
+export function isPaymentAidValue(value: string): value is PaymentAidValue {
+  return PAYMENT_AID_SET.has(value);
+}
+
+export function normalizePaymentAids(value: unknown): PaymentAidValue[] {
+  if (!Array.isArray(value)) return [];
+  const normalized = value
+    .map((item) => String(item ?? '').trim())
+    .filter((item): item is PaymentAidValue => isPaymentAidValue(item));
+  return Array.from(new Set(normalized));
+}
+
+export function paymentAidLabel(value: PaymentAidValue) {
+  if (value === 'ancv_paper') return 'ANCV';
+  if (value === 'ancv_connect') return 'ANCV Connect';
+  return 'Bons CAF';
+}
+
+function normalizeText(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+}
+
+export function detectPaymentAidsFromText(input: {
+  description?: string | null;
+  programText?: string | null;
+  transportText?: string | null;
+  requiredDocumentsText?: string | null;
+  rawPayload?: unknown;
+}) {
+  const rawPayloadText =
+    input.rawPayload && typeof input.rawPayload === 'object' ? JSON.stringify(input.rawPayload) : '';
+  const scan = normalizeText(
+    [
+      input.description ?? '',
+      input.programText ?? '',
+      input.transportText ?? '',
+      input.requiredDocumentsText ?? '',
+      rawPayloadText
+    ]
+      .filter(Boolean)
+      .join('\n')
+  );
+
+  const aids = new Set<PaymentAidValue>();
+
+  if (/\b(ancv\s*connect|cv\s*connect)\b/.test(scan)) {
+    aids.add('ancv_connect');
+  }
+  if (/\b(ancv|cheque\s*vacances|cheques\s*vacances|chq?\s*vacances)\b/.test(scan) && !/\b(ancv\s*connect|cv\s*connect)\b/.test(scan)) {
+    aids.add('ancv_paper');
+  }
+  if (/\b(caf|vacaf|bons?\s*caf)\b/.test(scan)) {
+    aids.add('caf_vouchers');
+  }
+
+  return Array.from(aids);
+}
+

@@ -5,6 +5,12 @@ import {
   buildStayPrimaryDestinationFilterLabel
 } from '@/lib/stay-destination';
 import { staySessionsAppearFullyBooked } from '@/lib/stay-catalog-availability';
+import { normalizePaymentAids, paymentAidLabel, type PaymentAidValue } from '@/lib/payment-aids';
+import {
+  canonicalTransportCityKey,
+  formatTransportCityLabel,
+  normalizeTransportCityRaw
+} from '@/lib/transport-city-normalization';
 import { slugify } from '@/lib/utils';
 import type { Stay } from '@/types/stay';
 
@@ -29,6 +35,7 @@ export type StayCatalogFilterOptions = {
   destinationTypes: StayCatalogFilterOption[];
   destinations: StayCatalogFilterOption[];
   departureCities: StayCatalogFilterOption[];
+  paymentAids: StayCatalogFilterOption[];
   organizers: StayCatalogFilterOption[];
 };
 
@@ -40,6 +47,7 @@ export type StayCatalogFilterState = {
   destinationTypes: string[];
   destinations: string[];
   departureCities: string[];
+  paymentAids: PaymentAidValue[];
   organizerIds: string[];
   ageMin: number | null;
   ageMax: number | null;
@@ -131,6 +139,7 @@ export const EMPTY_STAY_CATALOG_FILTERS: StayCatalogFilterState = {
   destinationTypes: [],
   destinations: [],
   departureCities: [],
+  paymentAids: [],
   organizerIds: [],
   ageMin: null,
   ageMax: null,
@@ -257,28 +266,16 @@ function stayDestinationTypeValue(stay: Stay) {
   return 'fixed_france';
 }
 
-function normalizeDepartureCityLabel(input: string | null | undefined) {
-  const raw = normalizeSpaces(String(input ?? ''));
-  if (!raw) return '';
-
-  // Some imported feeds persist chained labels like:
-  // "BORDEAUX → BORDEAUX → BORDEAUX ...". Keep only the first city.
-  const primary = normalizeSpaces(raw.split('→')[0] ?? raw);
-  if (!primary) return '';
-
-  return primary;
-}
-
 function getStayDepartureCities(stay: Stay) {
   const cityByKey = new Map<string, string>();
   for (const session of stay.bookingOptions?.sessions ?? []) {
     for (const option of session.transportOptions ?? []) {
-      const city = normalizeDepartureCityLabel(option.departureCity);
+      const city = normalizeTransportCityRaw(option.departureCity);
       if (!city) continue;
-      const key = normalizeCatalogText(city);
+      const key = canonicalTransportCityKey(city);
       if (!key) continue;
       // Keep a stable, readable label while deduping case/accents variants.
-      if (!cityByKey.has(key)) cityByKey.set(key, city);
+      if (!cityByKey.has(key)) cityByKey.set(key, formatTransportCityLabel(city));
     }
   }
   return Array.from(cityByKey.values());
@@ -517,6 +514,7 @@ export function stayCatalogFilterStateKey(state: StayCatalogFilterState) {
     buildStateKeyValues(state.destinationTypes),
     buildStateKeyValues(state.destinations),
     buildStateKeyValues(state.departureCities),
+    buildStateKeyValues(state.paymentAids),
     buildStateKeyValues(state.organizerIds),
     `${state.ageMin ?? ''}-${state.ageMax ?? ''}`,
     `${state.priceMin ?? ''}-${state.priceMax ?? ''}`
@@ -535,6 +533,7 @@ export function countActiveStayCatalogFilters(state: StayCatalogFilterState) {
     state.destinationTypes.length +
     state.destinations.length +
     state.departureCities.length +
+    state.paymentAids.length +
     state.organizerIds.length +
     hasAgeRange +
     hasPriceRange
@@ -547,6 +546,7 @@ export function buildStayCatalogFilterOptions(stays: Stay[]): StayCatalogFilterO
   const destinationTypeCounts = new Map<string, { label: string; count: number }>();
   const destinationCounts = new Map<string, { label: string; count: number }>();
   const departureCityCounts = new Map<string, { label: string; count: number }>();
+  const paymentAidCounts = new Map<string, { label: string; count: number }>();
   const organizerCounts = new Map<string, { label: string; count: number }>();
   const ageBandCounts = new Map<StayAgeBandValue, number>(
     AGE_BANDS.map((band) => [band.value, 0])
@@ -605,15 +605,26 @@ export function buildStayCatalogFilterOptions(stays: Stay[]): StayCatalogFilterO
     }
 
     getStayDepartureCities(stay).forEach((city) => {
-      const value = toDestinationValue(city);
+      const key = canonicalTransportCityKey(city);
+      if (!key) return;
+      const value = toDestinationValue(key);
       const current = departureCityCounts.get(value);
       if (current) {
         current.count += 1;
       } else {
         departureCityCounts.set(value, {
-          label: city,
+          label: formatTransportCityLabel(city),
           count: 1
         });
+      }
+    });
+
+    normalizePaymentAids(stay.paymentAids).forEach((aid) => {
+      const current = paymentAidCounts.get(aid);
+      if (current) {
+        current.count += 1;
+      } else {
+        paymentAidCounts.set(aid, { label: paymentAidLabel(aid), count: 1 });
       }
     });
 
@@ -683,6 +694,14 @@ export function buildStayCatalogFilterOptions(stays: Stay[]): StayCatalogFilterO
     }))
     .sort((left, right) => compareLabel(left.label, right.label));
 
+  const paymentAids = Array.from(paymentAidCounts.entries())
+    .map(([value, data]) => ({
+      value,
+      label: data.label,
+      count: data.count
+    }))
+    .sort((left, right) => compareLabel(left.label, right.label));
+
   const organizers = Array.from(organizerCounts.entries())
     .map(([value, data]) => ({
       value,
@@ -704,6 +723,7 @@ export function buildStayCatalogFilterOptions(stays: Stay[]): StayCatalogFilterO
     destinationTypes,
     destinations,
     departureCities,
+    paymentAids,
     organizers
   };
 }
@@ -754,6 +774,10 @@ export function parseStayCatalogFiltersFromSearchParams(
     readParamList(searchParams, ['departureCities', 'departureCity', 'departures', 'departure']),
     options.departureCities
   );
+  const paymentAids = resolveValuesFromOptions(
+    readParamList(searchParams, ['paymentAids', 'paymentAid']),
+    options.paymentAids
+  ) as PaymentAidValue[];
 
   const ageMinRaw = parseRangeNumber(searchParams.get('ageMin') ?? searchParams.get('age_min'));
   const ageMaxRaw = parseRangeNumber(searchParams.get('ageMax') ?? searchParams.get('age_max'));
@@ -768,6 +792,7 @@ export function parseStayCatalogFiltersFromSearchParams(
     destinationTypes,
     destinations,
     departureCities,
+    paymentAids,
     organizerIds,
     ageMin: ageMinRaw != null ? clampNumber(ageMinRaw, 0, 99) : null,
     ageMax: ageMaxRaw != null ? clampNumber(ageMaxRaw, 0, 99) : null,
@@ -789,6 +814,7 @@ export function serializeStayCatalogFiltersToSearchParams(state: StayCatalogFilt
   }
   if (state.destinations.length > 0) params.set('destinations', uniq(state.destinations).join(','));
   if (state.departureCities.length > 0) params.set('departureCities', uniq(state.departureCities).join(','));
+  if (state.paymentAids.length > 0) params.set('paymentAids', uniq(state.paymentAids).join(','));
   if (state.organizerIds.length > 0) params.set('organizers', uniq(state.organizerIds).join(','));
   if (state.ageMin != null) params.set('ageMin', String(state.ageMin));
   if (state.ageMax != null) params.set('ageMax', String(state.ageMax));
@@ -956,8 +982,18 @@ export function applyStayCatalogFilters(
     }
 
     if (state.departureCities.length > 0) {
-      const departureValues = getStayDepartureCities(stay).map(toDestinationValue);
+      const departureValues = getStayDepartureCities(stay)
+        .map((city) => canonicalTransportCityKey(city))
+        .filter(Boolean)
+        .map(toDestinationValue);
       if (!departureValues.some((value) => state.departureCities.includes(value))) {
+        return false;
+      }
+    }
+
+    if (state.paymentAids.length > 0) {
+      const stayPaymentAids = normalizePaymentAids(stay.paymentAids);
+      if (!stayPaymentAids.some((aid) => state.paymentAids.includes(aid))) {
         return false;
       }
     }

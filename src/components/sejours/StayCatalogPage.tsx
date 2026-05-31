@@ -45,6 +45,7 @@ type MultiFilterKey =
   | 'destinationTypes'
   | 'destinations'
   | 'departureCities'
+  | 'paymentAids'
   | 'organizerIds';
 
 const ACCORDION_DEFAULT_OPEN = [
@@ -52,9 +53,9 @@ const ACCORDION_DEFAULT_OPEN = [
   'ageRange',
   'seasonIds',
   'categories',
-  'destinationTypes',
   'destinations',
   'departureCities',
+  'paymentAids',
   'organizerIds'
 ];
 
@@ -225,9 +226,9 @@ function FiltersPanel({
   }> = [
     { key: 'seasonIds', label: 'SAISON', options: options.seasons },
     { key: 'categories', label: 'TYPE DE SÉJOUR', options: options.categories },
-    { key: 'destinationTypes', label: 'FORMAT DE DESTINATION', options: options.destinationTypes },
     { key: 'destinations', label: 'DESTINATIONS', options: options.destinations },
     { key: 'departureCities', label: 'VILLE DE DÉPART', options: options.departureCities },
+    { key: 'paymentAids', label: 'AIDES AU PAIEMENT', options: options.paymentAids },
     { key: 'organizerIds', label: 'ORGANISATEURS', options: options.organizers }
   ];
 
@@ -270,7 +271,7 @@ function FiltersPanel({
             )}
           </span>
         </AccordionTrigger>
-        <AccordionContent className="pb-1.5">
+        <AccordionContent className={group.key === 'departureCities' ? 'pb-0' : 'pb-1.5'}>
           {group.options.length === 0 ? (
             <p className="text-[11px] text-slate-500">Aucune option disponible.</p>
           ) : group.key === 'destinations' && groupedDestinationOptions ? (
@@ -305,12 +306,20 @@ function FiltersPanel({
             </div>
           ) : (
             <div
-              className={group.key === 'departureCities' ? 'max-h-56 overflow-y-auto pr-2' : undefined}
+              className={
+                group.key === 'departureCities' ? 'max-h-56 overflow-y-auto pr-1.5 -mb-1' : undefined
+              }
             >
-              <ul className="space-y-1.5">
+              <ul className={group.key === 'departureCities' ? 'space-y-0.5' : 'space-y-1.5'}>
               {group.options.map((option) => (
                 <li key={option.value}>
-                  <label className="flex items-start gap-2 rounded-lg px-2 py-1 text-[13px] leading-5 text-slate-700 transition hover:bg-slate-50">
+                  <label
+                    className={`flex items-start gap-2 rounded-lg text-slate-700 transition hover:bg-slate-50 ${
+                      group.key === 'departureCities'
+                        ? 'px-1.5 py-0.5 text-[12px] leading-4.5'
+                        : 'px-2 py-1 text-[13px] leading-5'
+                    }`}
+                  >
                     <input
                       type="checkbox"
                       className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-slate-300 text-brand-600"
@@ -386,6 +395,7 @@ function FiltersPanel({
 
         {renderFilterGroup('destinations')}
         {renderFilterGroup('departureCities')}
+        {renderFilterGroup('paymentAids')}
 
         <AccordionItem value="priceRange">
           <AccordionTrigger className="py-2.5 text-[12px] tracking-[0.07em] text-slate-900">
@@ -525,6 +535,7 @@ export function StayCatalogPage({
         destinationTypes: filters.destinationTypes,
         destinations: filters.destinations,
         departureCities: filters.departureCities,
+        paymentAids: filters.paymentAids,
         organizerIds: filters.organizerIds,
         ageBands: filters.ageBands,
         ageMin: ageIsDefault ? null : ageMin,
@@ -539,6 +550,7 @@ export function StayCatalogPage({
       filters.destinationTypes,
       filters.destinations,
       filters.departureCities,
+      filters.paymentAids,
       filters.organizerIds,
       filters.seasonIds,
       filters.ageBands,
@@ -616,6 +628,9 @@ export function StayCatalogPage({
     const departureCityBase = buildStayCatalogFilterOptions(
       applyStayCatalogFilters(indexedStays, { ...deferredFilters, departureCities: [] }, deferredSearchQuery)
     ).departureCities;
+    const paymentAidsBase = buildStayCatalogFilterOptions(
+      applyStayCatalogFilters(indexedStays, { ...deferredFilters, paymentAids: [] }, deferredSearchQuery)
+    ).paymentAids;
 
     return {
       ...filterOptions,
@@ -633,6 +648,7 @@ export function StayCatalogPage({
         filterOptions.departureCities,
         filters.departureCities
       ),
+      paymentAids: withSelectedFallbacks(paymentAidsBase, filterOptions.paymentAids, filters.paymentAids),
       organizers: withSelectedFallbacks(organizerBase, filterOptions.organizers, filters.organizerIds)
     };
   }, [
@@ -644,6 +660,7 @@ export function StayCatalogPage({
     filters.destinationTypes,
     filters.destinations,
     filters.departureCities,
+    filters.paymentAids,
     filters.organizerIds,
     filters.seasonIds,
     indexedStays

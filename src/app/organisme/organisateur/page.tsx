@@ -56,9 +56,9 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
   }
 
   const organizerSelectWithCatalog =
-    'id,name,contact_email,description,hero_intro_text,founded_year,age_min,age_max,logo_path,education_project_path,slug,season_keys,stay_type_keys,activity_keys';
+    'id,name,contact_email,description,hero_intro_text,founded_year,age_min,age_max,logo_path,education_project_path,slug,season_keys,stay_type_keys,activity_keys,accepts_ancv_paper,accepts_ancv_connect,is_vacaf_approved';
   const organizerSelectFallback =
-    'id,name,contact_email,description,hero_intro_text,founded_year,age_min,age_max,logo_path,education_project_path,slug';
+    'id,name,contact_email,description,hero_intro_text,founded_year,age_min,age_max,logo_path,education_project_path,slug,accepts_ancv_paper,accepts_ancv_connect,is_vacaf_approved';
 
   const organizerQueryWithCatalog = await supabase
     .from('organizers')
@@ -155,6 +155,9 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
       formData.getAll('activity_keys'),
       ORGANIZER_ACTIVITY_OPTIONS
     );
+    const acceptsAncvPaper = formData.get('accepts_ancv_paper') === 'on';
+    const acceptsAncvConnect = formData.get('accepts_ancv_connect') === 'on';
+    const isVacafApproved = formData.get('is_vacaf_approved') === 'on';
     const logoFile = formData.get('logo');
     const projectFile = formData.get('education_project');
     const cgvFile = formData.get('cgv_file');
@@ -192,6 +195,9 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
       season_keys: seasonKeys,
       stay_type_keys: stayTypeKeys,
       activity_keys: activityKeys,
+      accepts_ancv_paper: acceptsAncvPaper,
+      accepts_ancv_connect: acceptsAncvConnect,
+      is_vacaf_approved: isVacafApproved,
       slug
     };
 
@@ -304,6 +310,38 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
                 className="organizer-input bg-slate-50"
               />
             </label>
+          </div>
+          <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <p className="text-sm font-semibold text-slate-900">Modes de règlement et aides acceptés</p>
+            <div className="mt-3 grid gap-3 md:grid-cols-3">
+              <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
+                <input
+                  name="accepts_ancv_paper"
+                  type="checkbox"
+                  defaultChecked={Boolean(organizer.accepts_ancv_paper)}
+                  className="mt-0.5 h-4 w-4 rounded border-slate-300"
+                />
+                <span>J&apos;accepte les chèques-vacances papier</span>
+              </label>
+              <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
+                <input
+                  name="accepts_ancv_connect"
+                  type="checkbox"
+                  defaultChecked={Boolean(organizer.accepts_ancv_connect)}
+                  className="mt-0.5 h-4 w-4 rounded border-slate-300"
+                />
+                <span>J&apos;accepte ANCV Connect</span>
+              </label>
+              <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
+                <input
+                  name="is_vacaf_approved"
+                  type="checkbox"
+                  defaultChecked={Boolean(organizer.is_vacaf_approved)}
+                  className="mt-0.5 h-4 w-4 rounded border-slate-300"
+                />
+                <span>Je suis agréé VACAF National / CAF AVE</span>
+              </label>
+            </div>
           </div>
           <div className="mt-4 grid gap-4 md:grid-cols-3">
             <label className="block text-sm font-medium text-slate-700">

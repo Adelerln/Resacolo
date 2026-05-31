@@ -1,10 +1,19 @@
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { resolveCheckoutCollectivityForUser } from '@/lib/account-profile/server';
+import { markCheckoutCartConverted } from '@/lib/checkout/cart-tracking';
 import type { CartItem } from '@/types/cart';
 import type { CheckoutContact, CheckoutParticipant, CheckoutPricing } from '@/types/checkout';
 import type { Json, Database } from '@/types/supabase';
 import { CheckoutValidationError, repriceCart } from '@/lib/checkout/pricing';
 import { buildMoneticoLivePayload, getMoneticoMode, type MoneticoPayload } from '@/lib/checkout/monetico';
+import { readOrganizerCheckoutSettings } from '@/lib/organizer-checkout-settings';
+import {
+  computeImmediatePaymentAmountCents,
+  parseAmountEurosToCents,
+  resolveInitialOrderStatus,
+  resolveOrderRequestKind,
+  resolvePaidOrderStatus
+} from '@/lib/order-workflow';
 import {
   clampPartnerFinanceCents,
   clampPartnerFinancePercent,
@@ -64,6 +73,23 @@ function asJsonRecord(value: unknown): Record<string, Json | undefined> {
 
 function getParticipantMap(participants: CheckoutParticipant[]) {
   return new Map(participants.map((participant) => [participant.cartItemId, participant]));
+}
+
+function parsePaymentModeFromPayload(rawPayload: Json | null | undefined): CheckoutContact['paymentMode'] {
+  if (!rawPayload || typeof rawPayload !== 'object' || Array.isArray(rawPayload)) return 'FULL';
+  const contact = (rawPayload as Record<string, unknown>).contact;
+  if (!contact || typeof contact !== 'object' || Array.isArray(contact)) return 'FULL';
+  const paymentMode = (contact as Record<string, unknown>).paymentMode;
+  if (
+    paymentMode === 'FULL' ||
+    paymentMode === 'DEPOSIT_200' ||
+    paymentMode === 'CV_CONNECT' ||
+    paymentMode === 'CV_PAPER' ||
+    paymentMode === 'DEFERRED'
+  ) {
+    return paymentMode;
+  }
+  return 'FULL';
 }
 
 function validateParticipants(items: CartItem[], participants: CheckoutParticipant[]) {
@@ -276,6 +302,27 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
   const supabase = getServerSupabaseClient();
   const participantByItem = validateParticipants(input.items, input.participants);
   const pricing = await repriceCart(input.items);
+  const organizerId = pricing.items[0]?.organizerId ?? input.items[0]?.organizerId ?? '';
+  if (!organizerId) {
+    throw new Error("Impossible d'identifier l'organisme de la réservation.");
+  }
+  if (pricing.items.some((item) => item.organizerId !== organizerId)) {
+    throw new Error("Le panier ne peut contenir que des séjours d'un même organisme.");
+  }
+  const organizerSettings = await readOrganizerCheckoutSettings(organizerId);
+  const requestKind = resolveOrderRequestKind(input.contact, organizerSettings);
+  const initialStatus = resolveInitialOrderStatus(input.contact, organizerSettings);
+  const immediatePaymentAmountCents = computeImmediatePaymentAmountCents(pricing.totalCents, input.contact.paymentMode);
+
+  if (input.contact.paymentMode === 'CV_CONNECT' && !organizerSettings.accepts_ancv_connect) {
+    throw new Error("Cet organisme n'accepte pas ANCV Connect.");
+  }
+  if (input.contact.paymentMode === 'CV_PAPER' && !organizerSettings.accepts_ancv_paper) {
+    throw new Error("Cet organisme n'accepte pas les chèques-vacances papier.");
+  }
+  if (input.contact.vacafNumber.trim() && !organizerSettings.is_vacaf_approved) {
+    throw new Error("Cet organisme n'est pas agréé VACAF National.");
+  }
   const collectivity = await resolveCheckoutCollectivityForUser({
     userId: input.clientUserId,
     requestedCode: input.contact.cseOrganization
@@ -283,7 +330,9 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
 
   const { data: existingPaymentRow } = await supabase
     .from('payments')
-    .select('id,order_id,status,monetico_transaction_id,monetico_reference,raw_payload,orders!inner(id,client_user_id,status)')
+    .select(
+      'id,order_id,status,amount_cents,monetico_transaction_id,monetico_reference,raw_payload,orders!inner(id,client_user_id,status)'
+    )
     .eq('orders.client_user_id', input.clientUserId)
     .neq('status', 'FAILED')
     .neq('orders.status', 'CANCELLED')
@@ -303,7 +352,7 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
       paymentId: existingPaymentRow.id,
       reference,
       transactionId,
-      amountCents: pricing.totalCents,
+      amountCents: existingPaymentRow.amount_cents ?? immediatePaymentAmountCents,
       currency: pricing.currency,
       customerEmail: input.contact.email
     });
@@ -333,8 +382,13 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
     .insert({
       client_user_id: input.clientUserId,
       collectivity_id: collectivity?.collectivityId ?? null,
-      status: 'REQUESTED',
-      requested_at: requestedAt
+      status: initialStatus,
+      requested_at: initialStatus === 'REQUESTED' ? requestedAt : null,
+      vacaf_number_snapshot: input.contact.vacafNumber.trim() || null,
+      ancv_connect_matricule: input.contact.ancvConnectMatricule.trim() || null,
+      ancv_connect_requested_amount_cents:
+        requestKind === 'ANCV_CONNECT' ? parseAmountEurosToCents(input.contact.ancvConnectAmount) : null,
+      request_kind: requestKind
     })
     .select('id')
     .single();
@@ -422,7 +476,7 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
     .from('payments')
     .insert({
       order_id: order.id,
-      amount_cents: pricing.totalCents,
+      amount_cents: immediatePaymentAmountCents,
       currency: pricing.currency,
       status: 'PENDING',
       monetico_reference: reference,
@@ -450,7 +504,7 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
     paymentId: payment.id,
     reference,
     transactionId,
-    amountCents: pricing.totalCents,
+    amountCents: immediatePaymentAmountCents,
     currency: pricing.currency,
     customerEmail: input.contact.email
   });
@@ -472,6 +526,8 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
   if (paymentUpdateError) {
     throw new Error('Impossible de synchroniser le paiement Monetico.');
   }
+
+  await markCheckoutCartConverted(input.checkoutId, order.id);
 
   return {
     orderId: order.id,
@@ -504,7 +560,7 @@ export async function markOrderPaid(input: {
   const supabase = getServerSupabaseClient();
   const { data: existingPayment } = await supabase
     .from('payments')
-    .select('raw_payload')
+    .select('amount_cents,raw_payload')
     .eq('id', input.paymentId)
     .eq('order_id', input.orderId)
     .maybeSingle();
@@ -529,11 +585,31 @@ export async function markOrderPaid(input: {
   }
 
   const paidAt = new Date().toISOString();
+  const { data: orderItems } = await supabase
+    .from('order_items')
+    .select('id,total_price_cents')
+    .eq('order_id', input.orderId);
+  const { data: orderRow } = await supabase
+    .from('orders')
+    .select('external_aid_cents,external_paid_cents')
+    .eq('id', input.orderId)
+    .maybeSingle();
+  const totalCents = (orderItems ?? []).reduce((sum, item) => sum + (item.total_price_cents ?? 0), 0);
+  const paymentMode = parsePaymentModeFromPayload(existingPayment?.raw_payload);
+  const onlinePaidCents = Math.max(0, existingPayment?.amount_cents ?? 0);
+  const nextStatus = resolvePaidOrderStatus({
+    totalCents,
+    paymentMode,
+    externalAidCents: orderRow?.external_aid_cents ?? 0,
+    externalPaidCents: orderRow?.external_paid_cents ?? 0,
+    onlinePaidCents
+  });
   const { error: orderError } = await supabase
     .from('orders')
     .update({
-      status: 'PAID',
-      paid_at: paidAt
+      status: nextStatus,
+      paid_at: nextStatus === 'PAID' ? paidAt : null,
+      partially_paid_at: nextStatus === 'PARTIALLY_PAID' ? paidAt : null
     })
     .eq('id', input.orderId);
 
@@ -541,7 +617,6 @@ export async function markOrderPaid(input: {
     throw new Error('Impossible de mettre à jour la commande.');
   }
 
-  const { data: orderItems } = await supabase.from('order_items').select('id').eq('order_id', input.orderId);
   const orderItemIds = (orderItems ?? []).map((item) => item.id);
 
   if (orderItemIds.length > 0) {
@@ -556,13 +631,15 @@ export async function markOrderPaid(input: {
     }
   }
 
-  const { recordCommissionFeesOnOrderPaid } = await import('@/lib/resacolo-fee-ledger.server');
-  await recordCommissionFeesOnOrderPaid(supabase, input.orderId, paidAt);
+  if (nextStatus === 'PAID') {
+    const { recordCommissionFeesOnOrderPaid } = await import('@/lib/resacolo-fee-ledger.server');
+    await recordCommissionFeesOnOrderPaid(supabase, input.orderId, paidAt);
+  }
 
   return {
     orderId: input.orderId,
-    status: 'PAID',
-    paidAt
+    status: nextStatus,
+    paidAt: nextStatus === 'PAID' ? paidAt : null
   };
 }
 

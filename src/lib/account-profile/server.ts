@@ -10,6 +10,10 @@ import type {
 } from '@/types/family-profile';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import {
+  computeRemainingBalanceCents as computeOrderRemainingBalanceCents,
+  orderStatusLabel
+} from '@/lib/order-workflow';
+import {
   computePartnerContributionSnapshotCents,
   computePartnerFinanceSplit,
   partnerHasMarqueBlancheAccess
@@ -299,14 +303,6 @@ function formatDateRange(startDate: string | null | undefined, endDate: string |
   return `${start.toLocaleDateString('fr-FR')} au ${end.toLocaleDateString('fr-FR')}`;
 }
 
-function labelOrderStatus(status: string) {
-  if (status === 'PAID' || status === 'CONFIRMED') return 'Confirmé';
-  if (status === 'BOOKED' || status === 'VALIDATED') return 'Réservé';
-  if (status === 'REQUESTED') return 'Demande en cours';
-  if (status === 'CANCELLED') return 'Annulé';
-  return status;
-}
-
 const PAYMENT_MODE_LABELS: Record<FamilyProfile['paymentMode'], string> = {
   FULL: 'Paiement de la totalité en CB',
   DEPOSIT_200: "Paiement d'un acompte (200 €) en CB",
@@ -381,23 +377,6 @@ function buildTransportLegLine(
     return `${label} : ${trimmedCity} · ${formatEuroFromCents(amountCents)}`;
   }
   return `${label} : ${trimmedCity}`;
-}
-
-function computeRemainingBalanceCents(
-  totalCents: number,
-  paymentMode: FamilyProfile['paymentMode'],
-  settled: boolean
-) {
-  if (paymentMode === 'DEPOSIT_200') {
-    const paidCents = settled ? Math.min(20_000, totalCents) : 0;
-    return Math.max(0, totalCents - paidCents);
-  }
-
-  if (paymentMode === 'DEFERRED') {
-    return totalCents;
-  }
-
-  return settled ? 0 : totalCents;
 }
 
 function computeContributionCentsFromRow(
@@ -811,7 +790,7 @@ async function readReservations(userId: string): Promise<FamilyReservation[]> {
   const supabase = getServerSupabaseClient();
   const { data: orders, error: ordersError } = await supabase
     .from('orders')
-    .select('id,status,created_at,paid_at,collectivity_id')
+    .select('id,status,created_at,paid_at,partially_paid_at,collectivity_id,external_aid_cents,external_paid_cents')
     .eq('client_user_id', userId)
     .order('created_at', { ascending: false })
     .neq('status', 'CART');
@@ -965,6 +944,7 @@ async function readReservations(userId: string): Promise<FamilyReservation[]> {
     string,
     { amount_cents: number; currency: string; status: string; raw_payload: Json | null }
   >();
+  const successfulPaidCentsByOrder = new Map<string, number>();
   for (const payment of payments ?? []) {
     if (!paymentsByOrder.has(payment.order_id)) {
       paymentsByOrder.set(payment.order_id, {
@@ -973,6 +953,12 @@ async function readReservations(userId: string): Promise<FamilyReservation[]> {
         status: payment.status,
         raw_payload: payment.raw_payload
       });
+    }
+    if (payment.status === 'SUCCEEDED') {
+      successfulPaidCentsByOrder.set(
+        payment.order_id,
+        (successfulPaidCentsByOrder.get(payment.order_id) ?? 0) + payment.amount_cents
+      );
     }
   }
 
@@ -1018,9 +1004,7 @@ async function readReservations(userId: string): Promise<FamilyReservation[]> {
         .filter(Boolean);
       const child = children[0] || 'Participant';
       const payment = paymentsByOrder.get(order.id);
-      const totalCents =
-        payment?.amount_cents ??
-        itemsForOrder.reduce((sum, item) => sum + (item.total_price_cents ?? 0), 0);
+      const totalCents = itemsForOrder.reduce((sum, item) => sum + (item.total_price_cents ?? 0), 0);
       const currency = payment?.currency ?? 'EUR';
       const paymentMode = parsePaymentModeFromPayload(payment?.raw_payload);
       const collectivity = order.collectivity_id ? collectivitiesById.get(order.collectivity_id) ?? null : null;
@@ -1030,15 +1014,13 @@ async function readReservations(userId: string): Promise<FamilyReservation[]> {
         collectivity,
         totalCents
       });
-      const settled =
-        order.status === 'PAID' ||
-        order.status === 'CONFIRMED' ||
-        payment?.status === 'SUCCEEDED';
-      const remainingBalanceCents = computeRemainingBalanceCents(
-        financeSplit.clientCents,
-        paymentMode,
-        settled
-      );
+      const onlinePaidCents = successfulPaidCentsByOrder.get(order.id) ?? 0;
+      const remainingBalanceCents = computeOrderRemainingBalanceCents({
+        totalCents: financeSplit.clientCents,
+        externalAidCents: order.external_aid_cents ?? 0,
+        externalPaidCents: order.external_paid_cents ?? 0,
+        onlinePaidCents
+      });
 
       const extraEntries = itemsForOrder.flatMap((item) => extrasByOrderItemId.get(item.id) ?? []);
       const extraLines = Array.from(
@@ -1129,7 +1111,7 @@ async function readReservations(userId: string): Promise<FamilyReservation[]> {
         dates: formatDateRange(session?.start_date, session?.end_date),
         child,
         children,
-        status: labelOrderStatus(order.status),
+        status: orderStatusLabel(order.status),
         sessionStartDate: session?.start_date ?? null,
         sessionEndDate: session?.end_date ?? null,
         isPast: session?.end_date ? new Date(`${session.end_date}T23:59:59`).getTime() < Date.now() : false,
@@ -1149,7 +1131,12 @@ async function readReservations(userId: string): Promise<FamilyReservation[]> {
         extraLines,
         organizerContactEmail: organizer?.contact_email ?? null,
         organizerName: organizer?.name ?? null,
-        hasSuccessfulPayment: settled || Boolean(order.paid_at)
+        hasSuccessfulPayment:
+          order.status === 'PAID' ||
+          order.status === 'PARTIALLY_PAID' ||
+          order.status === 'CONFIRMED' ||
+          onlinePaidCents > 0 ||
+          (order.external_paid_cents ?? 0) > 0
       } satisfies FamilyReservation;
     })
     .sort((left, right) => {

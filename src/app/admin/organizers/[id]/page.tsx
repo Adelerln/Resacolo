@@ -11,7 +11,7 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 const organizerSelect =
-  'id,name,contact_email,created_at,description,hero_intro_text,founded_year,age_min,age_max,logo_path,logo_url,website_url,education_project_path,slug,is_founding_member,is_resacolo_member,profile_completeness_percent' as const;
+  'id,name,contact_email,created_at,description,hero_intro_text,founded_year,age_min,age_max,logo_path,logo_url,website_url,education_project_path,slug,is_founding_member,is_resacolo_member,profile_completeness_percent,accepts_ancv_paper,accepts_ancv_connect,is_vacaf_approved' as const;
 
 type OrganizerDetail = Database['public']['Tables']['organizers']['Row'];
 type OverviewRow = Database['public']['Views']['organizer_admin_overview']['Row'];
@@ -276,6 +276,39 @@ export default async function AdminOrganizerDetailPage({ params: paramsPromise, 
                 className="h-4 w-4 rounded border-slate-300"
               />
               Membre ResoColo
+            </label>
+          </div>
+        </div>
+
+        <div className="border-t border-slate-100 pt-6">
+          <h2 className="admin-section-title">Modes de règlement et aides</h2>
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            <label className="flex cursor-pointer items-start gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-700">
+              <input
+                type="checkbox"
+                name="accepts_ancv_paper"
+                defaultChecked={row.accepts_ancv_paper}
+                className="mt-0.5 h-4 w-4 rounded border-slate-300"
+              />
+              <span>Accepte les chèques-vacances papier</span>
+            </label>
+            <label className="flex cursor-pointer items-start gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-700">
+              <input
+                type="checkbox"
+                name="accepts_ancv_connect"
+                defaultChecked={row.accepts_ancv_connect}
+                className="mt-0.5 h-4 w-4 rounded border-slate-300"
+              />
+              <span>Accepte ANCV Connect</span>
+            </label>
+            <label className="flex cursor-pointer items-start gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-700">
+              <input
+                type="checkbox"
+                name="is_vacaf_approved"
+                defaultChecked={row.is_vacaf_approved}
+                className="mt-0.5 h-4 w-4 rounded border-slate-300"
+              />
+              <span>Agréé VACAF National / CAF AVE</span>
             </label>
           </div>
         </div>

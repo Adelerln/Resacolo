@@ -103,7 +103,7 @@ function formatSessionLabel(session: StaySessionOption) {
   const status = session.status === 'FULL' ? ' (COMPLET)' : '';
   const price =
     session.partnerDiscountedPrice != null
-      ? ` · ${formatPrice(session.partnerDiscountedPrice)} au lieu de ${formatPrice(session.price)}`
+      ? ` · ${formatPrice(session.partnerDiscountedPrice)}`
       : session.familyCentsAfterAid != null
       ? ` · ${formatPrice(session.familyCentsAfterAid / 100)} (après CSE)`
       : session.price != null

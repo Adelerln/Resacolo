@@ -38,7 +38,10 @@ export default function FamilyReservationDetailsModal({ reservation }: { reserva
   const [open, setOpen] = useState(false);
   const canContactOrganizer =
     Boolean(reservation.organizerContactEmail) &&
-    (['PAID', 'CONFIRMED', 'BOOKED', 'VALIDATED'].includes(reservation.orderStatus) || reservation.hasSuccessfulPayment);
+    (
+      ['PAID', 'PARTIALLY_PAID', 'PENDING_PAYMENT', 'REQUESTED', 'CONFIRMED'].includes(reservation.orderStatus) ||
+      reservation.hasSuccessfulPayment
+    );
 
   useEffect(() => {
     if (!open) return;

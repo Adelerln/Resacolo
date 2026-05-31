@@ -3,6 +3,10 @@ import {
   PARTNER_FINANCE_MODE_LABELS
 } from '@/lib/partner-offers';
 import {
+  FINALIZED_ORDER_STATUSES,
+  orderStatusLabel
+} from '@/lib/order-workflow';
+import {
   listPartnerBeneficiaries,
   listPartnerReservations,
   readPartnerCollectivity
@@ -12,14 +16,13 @@ import type { Database } from '@/types/supabase';
 const DASHBOARD_WINDOW_DAYS = 30;
 const RECENT_RESERVATIONS_LIMIT = 6;
 const TOP_STAYS_LIMIT = 5;
-const FINALIZED_STATUSES = new Set<Database['public']['Enums']['order_status']>(['PAID', 'CONFIRMED']);
 const DASHBOARD_STATUSES: Database['public']['Enums']['order_status'][] = [
   'REQUESTED',
-  'VALIDATED',
-  'BOOKED',
+  'PENDING_PAYMENT',
+  'PARTIALLY_PAID',
   'PAID',
-  'CONFIRMED',
-  'CANCELLED'
+  'CANCELLED',
+  'TRANSFERRED'
 ];
 
 function dayKey(date: Date) {
@@ -143,7 +146,7 @@ export async function buildPartnerDashboardModel(input: {
   let clientCents30d = 0;
 
   for (const reservation of reservations30d) {
-    if (FINALIZED_STATUSES.has(reservation.status)) finalizedCount += 1;
+    if (FINALIZED_ORDER_STATUSES.has(reservation.status)) finalizedCount += 1;
     totalCents30d += reservation.totalCents;
     partnerCents30d += reservation.partnerContributionCents;
     clientCents30d += reservation.clientContributionCents;
@@ -192,18 +195,7 @@ export async function buildPartnerDashboardModel(input: {
     })),
     statusBreakdown: DASHBOARD_STATUSES.map((status) => ({
       status,
-      label:
-        status === 'REQUESTED'
-          ? 'Demandée'
-          : status === 'VALIDATED'
-            ? 'Validée'
-            : status === 'BOOKED'
-              ? 'Réservée'
-              : status === 'PAID'
-                ? 'Payée'
-                : status === 'CONFIRMED'
-                  ? 'Confirmée'
-                  : 'Annulée',
+      label: orderStatusLabel(status),
       count: statusCount.get(status) ?? 0
     })),
     recentReservations: reservations.slice(0, RECENT_RESERVATIONS_LIMIT).map((reservation) => ({

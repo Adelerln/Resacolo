@@ -2,6 +2,10 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { requireAdminSection } from '@/lib/auth/require';
 import { canMutateAdminSection, isAdminWorkspaceRole } from '@/lib/admin-access';
+import {
+  orderStatusBadgeClassName,
+  orderStatusLabel
+} from '@/lib/order-workflow';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import type { Database } from '@/types/supabase';
 
@@ -11,11 +15,11 @@ type OrderUpdate = Database['public']['Tables']['orders']['Update'];
 
 const ADMIN_ORDER_STATUSES: OrderStatus[] = [
   'REQUESTED',
-  'VALIDATED',
-  'BOOKED',
+  'PENDING_PAYMENT',
+  'PARTIALLY_PAID',
   'PAID',
-  'CONFIRMED',
-  'CANCELLED'
+  'CANCELLED',
+  'TRANSFERRED'
 ];
 
 function normalizeSeasonLabel(seasonName: string | null | undefined) {
@@ -36,46 +40,6 @@ function formatDateRange(startDate: string | null | undefined, endDate: string |
   return formatDate(startDate ?? endDate);
 }
 
-function orderStatusLabel(status: OrderStatus | string | null | undefined) {
-  switch (status) {
-    case 'REQUESTED':
-      return 'Demandée';
-    case 'VALIDATED':
-      return 'Validée';
-    case 'BOOKED':
-      return 'Réservée';
-    case 'PAID':
-      return 'Payée';
-    case 'CONFIRMED':
-      return 'Confirmée';
-    case 'CANCELLED':
-      return 'Annulée';
-    case 'CART':
-      return 'Panier';
-    default:
-      return status ?? '-';
-  }
-}
-
-function orderStatusBadgeClassName(status: OrderStatus | string | null | undefined) {
-  switch (status) {
-    case 'REQUESTED':
-      return 'bg-amber-100 text-amber-900';
-    case 'VALIDATED':
-      return 'bg-sky-100 text-sky-900';
-    case 'BOOKED':
-      return 'bg-indigo-100 text-indigo-900';
-    case 'PAID':
-      return 'bg-emerald-100 text-emerald-900';
-    case 'CONFIRMED':
-      return 'bg-emerald-200 text-emerald-950';
-    case 'CANCELLED':
-      return 'bg-rose-100 text-rose-900';
-    default:
-      return 'bg-slate-100 text-slate-700';
-  }
-}
-
 function participantSummary(count: number) {
   return count > 1 ? `${count} participants` : `${count} participant`;
 }
@@ -83,8 +47,7 @@ function participantSummary(count: number) {
 function buildOrderStatusUpdate(
   current: {
     requested_at: string | null;
-    validated_at: string | null;
-    booked_at: string | null;
+    partially_paid_at?: string | null;
     paid_at: string | null;
   },
   nextStatus: OrderStatus
@@ -92,7 +55,8 @@ function buildOrderStatusUpdate(
   const now = new Date().toISOString();
   const update: OrderUpdate = {
     status: nextStatus,
-    cancelled_at: nextStatus === 'CANCELLED' ? now : null
+    cancelled_at: nextStatus === 'CANCELLED' ? now : null,
+    transferred_at: nextStatus === 'TRANSFERRED' ? now : null
   };
 
   if (nextStatus === 'REQUESTED') {
@@ -100,23 +64,17 @@ function buildOrderStatusUpdate(
     return update;
   }
 
-  if (nextStatus === 'VALIDATED') {
-    update.requested_at = current.requested_at ?? now;
-    update.validated_at = current.validated_at ?? now;
+  if (nextStatus === 'PENDING_PAYMENT') {
     return update;
   }
 
-  if (nextStatus === 'BOOKED') {
-    update.requested_at = current.requested_at ?? now;
-    update.validated_at = current.validated_at ?? now;
-    update.booked_at = current.booked_at ?? now;
+  if (nextStatus === 'PARTIALLY_PAID') {
+    update.partially_paid_at = current.partially_paid_at ?? now;
+    update.paid_at = null;
     return update;
   }
 
-  if (nextStatus === 'PAID' || nextStatus === 'CONFIRMED') {
-    update.requested_at = current.requested_at ?? now;
-    update.validated_at = current.validated_at ?? now;
-    update.booked_at = current.booked_at ?? now;
+  if (nextStatus === 'PAID') {
     update.paid_at = current.paid_at ?? now;
     return update;
   }
@@ -147,7 +105,7 @@ export default async function AdminRequestsPage({ searchParams }: { searchParams
   const { data: ordersRaw, error } = await supabase
     .from('orders')
     .select(
-      'id,status,created_at,requested_at,validated_at,booked_at,paid_at,client_user_id,collectivity_id'
+      'id,status,created_at,requested_at,partially_paid_at,paid_at,client_user_id,collectivity_id'
     )
     .neq('status', 'CART')
     .order('created_at', { ascending: false });

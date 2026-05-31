@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { requireAdminSection } from '@/lib/auth/require';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 
-const SEASON_ORDER_STATUSES = new Set(['VALIDATED', 'BOOKED', 'PAID', 'CONFIRMED']);
+const SEASON_ORDER_STATUSES = new Set(['PENDING_PAYMENT', 'PARTIALLY_PAID', 'PAID']);
 const RESERVATION_SEASON_LABELS = ['Hiver', 'Printemps', 'Été', 'Automne', "Fin d'année"] as const;
 
 type ReservationSeasonLabel = (typeof RESERVATION_SEASON_LABELS)[number];

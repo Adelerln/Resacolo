@@ -10,7 +10,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
   const [{ data: order, error: orderError }, { data: payments }, { data: orderItems }] = await Promise.all([
     supabase
       .from('orders')
-      .select('id,status,paid_at')
+      .select('id,status,paid_at,partially_paid_at')
       .eq('id', orderId)
       .maybeSingle(),
     supabase
@@ -30,7 +30,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
   }
 
   const payment = payments?.[0] ?? null;
-  const totalCents = payment?.amount_cents ?? (orderItems ?? []).reduce((sum, item) => sum + item.total_price_cents, 0);
+  const totalCents = (orderItems ?? []).reduce((sum, item) => sum + item.total_price_cents, 0) || payment?.amount_cents || 0;
   const firstOrderItem = (orderItems ?? [])[0] ?? null;
 
   let organizerContactEmail: string | null = null;
@@ -64,7 +64,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
   return NextResponse.json({
     orderId: order.id,
     status: order.status,
-    paidAt: order.paid_at,
+    paidAt: order.paid_at ?? order.partially_paid_at,
     paymentStatus: payment?.status ?? null,
     totalCents,
     currency: payment?.currency ?? 'EUR',

@@ -1,4 +1,5 @@
 import { getServerSupabaseClient } from '@/lib/supabase/server';
+import { orderStatusLabel } from '@/lib/order-workflow';
 import {
   computePartnerContributionSnapshotCents,
   computePartnerFinanceSplit
@@ -22,27 +23,6 @@ function buildClientDisplayName(profile: {
   parent1_last_name?: string | null;
 }) {
   return [profile.parent1_first_name, profile.parent1_last_name].filter(Boolean).join(' ').trim();
-}
-
-function formatOrderStatus(status: Database['public']['Enums']['order_status'] | string | null | undefined) {
-  switch (status) {
-    case 'REQUESTED':
-      return 'Demandée';
-    case 'VALIDATED':
-      return 'Validée';
-    case 'BOOKED':
-      return 'Réservée';
-    case 'PAID':
-      return 'Payée';
-    case 'CONFIRMED':
-      return 'Confirmée';
-    case 'CANCELLED':
-      return 'Annulée';
-    case 'CART':
-      return 'Panier';
-    default:
-      return status ?? '-';
-  }
 }
 
 function formatDate(value: string | null | undefined) {
@@ -342,7 +322,7 @@ export async function listPartnerReservations(collectivityId: string, excludedUs
       orderItemIds: itemsForOrder.map((item) => item.id),
       createdAt: order.created_at,
       status: order.status,
-      statusLabel: formatOrderStatus(order.status),
+      statusLabel: orderStatusLabel(order.status),
       beneficiaryName,
       beneficiaryEmail,
       stayTitle: firstStay?.title ?? 'Séjour inconnu',

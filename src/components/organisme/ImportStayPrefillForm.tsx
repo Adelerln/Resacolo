@@ -238,7 +238,7 @@ export default function ImportStayPrefillForm({
       </label>
 
       <label className="block text-sm font-medium text-slate-700">
-        Hébergement du séjour (obligatoire)
+        Hébergement ou Circuit du séjour (obligatoire)
         <select
           name="selectedAccommodationId"
           className="organizer-input"

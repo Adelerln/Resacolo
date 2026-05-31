@@ -31,6 +31,7 @@ import { isPartnerTariffExtraOptionLabel } from '@/lib/stay-draft-extra-options-
 import { sanitizeSeoPrimaryKeyword } from '@/lib/stay-seo';
 import { tryCanonicalizeStaySourceUrl } from '@/lib/stay-source-url-canonical';
 import { normalizeStayTitle } from '@/lib/stay-title';
+import { resolveStayDestination } from '@/lib/stay-destination-resolver';
 import { maybeRecordPublicationFeeWhenStayPublished } from '@/lib/resacolo-fee-ledger.server';
 import type { Database, Json } from '@/types/supabase';
 
@@ -1289,7 +1290,19 @@ async function updateOrInsertStay(
   const ageMax = ages.length > 0 ? ages[ages.length - 1] : draft.age_max;
   const normalizedTitle = normalizeStayTitle(draft.title);
   const normalizedRegion = mapToCanonicalStayRegion(draft.region_text);
-  const destination = readDraftDestinationFields(draftRawPayload);
+  const draftDestination = readDraftDestinationFields(draftRawPayload);
+  const destination = resolveStayDestination({
+    destinationType: draftDestination.destinationType,
+    destinationCity: draftDestination.destinationCity,
+    destinationPostalCode: draftDestination.destinationPostalCode,
+    destinationDepartmentCode: draftDestination.destinationDepartmentCode,
+    destinationRegion: draftDestination.destinationRegion,
+    destinationCountry: draftDestination.destinationCountry,
+    destinationCountries: draftDestination.destinationCountries,
+    destinationItineraryLabel: draftDestination.destinationItineraryLabel,
+    regionText: draft.region_text,
+    locationText: draft.location_text
+  });
   const seasonId = await resolveSeasonIdFromSessions(supabase, sessions);
 
   let previousStatus: string | null | undefined;

@@ -1,4 +1,5 @@
 import { mapToCanonicalStayRegion } from '@/lib/stay-regions';
+import { resolveStayDestination } from '@/lib/stay-destination-resolver';
 import type { Stay } from '@/types/stay';
 
 export const FRANCE_REGION_ID_BY_CANONICAL_NAME: Record<string, string> = {
@@ -94,9 +95,22 @@ export function deriveHomeDestinationAvailability(stays: Stay[]): HomeDestinatio
   let hasFranceDestinations = false;
 
   for (const stay of stays) {
-    const canonicalRegion = mapToCanonicalStayRegion(stay.destinationRegion ?? stay.region);
+    const resolved = resolveStayDestination({
+      destinationType: stay.destinationType ?? null,
+      destinationRegion: stay.destinationRegion ?? null,
+      destinationCountry: stay.destinationCountry ?? null,
+      destinationCountries: stay.destinationCountries ?? [],
+      destinationItineraryLabel: stay.destinationItineraryLabel ?? null,
+      regionText: stay.region ?? null,
+      locationText: stay.location ?? stay.displayLocation ?? null
+    });
+    const canonicalRegion = mapToCanonicalStayRegion(resolved.destinationRegion ?? stay.region);
 
-    if (stay.destinationType === 'fixed_france' && canonicalRegion && canonicalRegion !== 'Étranger') {
+    if (
+      (resolved.destinationType === 'fixed_france' || (canonicalRegion && canonicalRegion !== 'Étranger')) &&
+      canonicalRegion &&
+      canonicalRegion !== 'Étranger'
+    ) {
       hasFranceDestinations = true;
 
       const regionId = FRANCE_REGION_ID_BY_CANONICAL_NAME[canonicalRegion];
@@ -107,10 +121,10 @@ export function deriveHomeDestinationAvailability(stays: Stay[]): HomeDestinatio
     }
 
     const countries =
-      stay.destinationType === 'itinerant'
-        ? stay.destinationCountries ?? []
-        : stay.destinationCountry
-          ? [stay.destinationCountry]
+      resolved.destinationType === 'itinerant'
+        ? resolved.destinationCountries
+        : resolved.destinationCountry
+          ? [resolved.destinationCountry]
           : [];
 
     for (const country of countries) {

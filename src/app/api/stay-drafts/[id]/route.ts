@@ -27,6 +27,7 @@ const textFieldSchema = z.string().optional().default('');
 const arrayOfObjectsSchema = z.array(z.record(z.unknown())).optional().default([]);
 
 const bodySchema = z.object({
+  action: z.enum(['validate', 'publish']).optional().default('validate'),
   organizerId: z.string().optional(),
   title: z.string().trim().min(1, 'Le titre est requis.'),
   season_ids: z.array(z.string().trim().min(1)).optional().default([]),
@@ -344,7 +345,7 @@ function getFieldErrorsFromZod(error: z.ZodError): StayDraftReviewFieldErrors {
   return fieldErrors;
 }
 
-async function parseBody(req: Request): Promise<{ payload: StayDraftReviewPayload; organizerId?: string } | {
+async function parseBody(req: Request): Promise<{ payload: StayDraftReviewPayload; organizerId?: string; action: 'validate' | 'publish' } | {
   errors: StayDraftReviewFieldErrors;
 }> {
   const body = (await req.json().catch(() => null)) as unknown;
@@ -427,8 +428,136 @@ async function parseBody(req: Request): Promise<{ payload: StayDraftReviewPayloa
   }
   return {
     payload,
-    organizerId: normalizeString(data.organizerId) || undefined
+    organizerId: normalizeString(data.organizerId) || undefined,
+    action: data.action
   };
+}
+
+async function parsePublishBody(req: Request): Promise<{ organizerId?: string }> {
+  const body = (await req.json().catch(() => null)) as unknown;
+  const parsed = z
+    .object({
+      organizerId: z.string().optional()
+    })
+    .safeParse(body);
+  if (!parsed.success) return {};
+  return {
+    organizerId: normalizeString(parsed.data.organizerId) || undefined
+  };
+}
+
+async function handlePublishOnly(req: Request, params: { id: string }) {
+  const parsed = await parsePublishBody(req);
+  const access = await requireOrganizerApiAccess({
+    requestedOrganizerId: parsed.organizerId,
+    requiredSection: 'stays'
+  });
+  if (!access.ok) {
+    return NextResponse.json({ error: access.error }, { status: access.status });
+  }
+  const { selectedOrganizerId } = access.context;
+  const supabase = getServerSupabaseClient();
+
+  const { data: draft, error: draftError } = await supabase
+    .from('stay_drafts')
+    .select(REVIEW_DRAFT_SELECT)
+    .eq('id', params.id)
+    .eq('organizer_id', selectedOrganizerId)
+    .maybeSingle();
+
+  if (draftError || !draft) {
+    return NextResponse.json(
+      { error: draftError?.message ?? 'Brouillon introuvable.' },
+      { status: draft ? 500 : 404 }
+    );
+  }
+
+  const isValidated = normalizeStatus(draft.status) === 'validated' || Boolean(draft.validated_at);
+  if (!isValidated) {
+    return NextResponse.json(
+      { error: 'Le brouillon doit être validé visuellement avant publication.' },
+      { status: 400 }
+    );
+  }
+
+  let workingDraft = draft as StayDraftRow;
+  try {
+    workingDraft = await syncStayDraftPreviewAccommodation(supabase, workingDraft);
+  } catch (previewError) {
+    console.error('[stay-drafts/review] sync preview accommodation before publish-only', previewError);
+  }
+
+  try {
+    const publishResult = await publishStayDraftToLive({
+      supabase,
+      draft: workingDraft
+    });
+
+    const persistedDraft = await updateDraftPublicationMetadata({
+      supabase,
+      draftId: params.id,
+      organizerId: selectedOrganizerId,
+      rawPayload: publishResult.rawPayload,
+      publishedAt: publishResult.publishedAt,
+      publishError: null
+    });
+
+    return NextResponse.json({
+      success: true,
+      action: 'publish',
+      published: true,
+      liveStayId: publishResult.stayId,
+      publication: {
+        stay_id: publishResult.stayId,
+        published_at: publishResult.publishedAt,
+        synced_tables: publishResult.syncedTables
+      },
+      draft: persistedDraft
+    });
+  } catch (publishError) {
+    const step =
+      publishError instanceof PublishStayDraftError ? publishError.step : 'publish-live';
+    const message =
+      publishError instanceof Error
+        ? publishError.message
+        : 'Erreur inconnue pendant la publication live.';
+
+    const failedRawPayload = {
+      ...asObject(workingDraft.raw_payload),
+      publish_error: `${step}: ${message}`,
+      publish_failed_at: new Date().toISOString()
+    };
+
+    let failedPersistedDraft: StayDraftRow | null = null;
+    try {
+      failedPersistedDraft = await updateDraftPublicationMetadata({
+        supabase,
+        draftId: params.id,
+        organizerId: selectedOrganizerId,
+        rawPayload: failedRawPayload,
+        publishedAt: null,
+        publishError: `${step}: ${message}`
+      });
+    } catch (persistError) {
+      console.error('[stay-drafts/review] publish-only persist error', {
+        draftId: params.id,
+        organizerId: selectedOrganizerId,
+        error: persistError instanceof Error ? persistError.message : 'unknown'
+      });
+    }
+
+    return NextResponse.json(
+      {
+        error: `Publication live échouée (${step}) : ${message}`,
+        draftSaved: true,
+        action: 'publish',
+        published: false,
+        publication: null,
+        draft: failedPersistedDraft ?? workingDraft
+      },
+      { status: 502 }
+    );
+  }
 }
 
 async function handleUpdate(req: Request, params: { id: string }, mode: 'save' | 'validate') {
@@ -609,7 +738,7 @@ async function handleUpdate(req: Request, params: { id: string }, mode: 'save' |
 
   // Important: ne republie pas automatiquement sur une simple sauvegarde.
   // Un draft déjà validé/publié peut être ré-enregistré (PATCH) sans déclencher de publication live.
-  const shouldAttemptPublish = mode === 'validate';
+  const shouldAttemptPublish = mode === 'validate' && parsedBody.action === 'publish';
 
   console.info('[stay-drafts/review] décision publication', {
     draftId: workingDraft.id,
@@ -721,6 +850,7 @@ async function handleUpdate(req: Request, params: { id: string }, mode: 'save' |
 
   return NextResponse.json({
     success: true,
+    action: mode === 'save' ? 'save' : parsedBody.action,
     mode,
     published,
     liveStayId,
@@ -740,5 +870,11 @@ export async function POST(
   req: Request,
   context: { params: Promise<{ id: string }> }
 ) {
+  const body = (await req.clone().json().catch(() => null)) as
+    | { action?: string; organizerId?: string }
+    | null;
+  if (body?.action === 'publish') {
+    return handlePublishOnly(req, await context.params);
+  }
   return handleUpdate(req, await context.params, 'validate');
 }

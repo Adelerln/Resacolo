@@ -19,6 +19,7 @@ type ImportableDraftRow = {
   raw_payload: unknown;
   source_url: string;
   source_url_canonical?: string | null;
+  sessions_json?: unknown;
   transport_options_json?: unknown;
   validated_at?: string | null;
 };
@@ -157,22 +158,34 @@ function countRecoveredRawTransportOptions(rawPayload: unknown): number {
   ]);
 }
 
+function countDatedSessions(value: unknown): number {
+  return asRecordArray(value).filter((row) => {
+    const start = typeof row.start_date === 'string' ? row.start_date.trim() : '';
+    const end = typeof row.end_date === 'string' ? row.end_date.trim() : '';
+    return start.length > 0 && end.length > 0;
+  }).length;
+}
+
 function shouldRefreshExistingDraftImport(existingDraft: ImportableDraftRow, includePricing: boolean): {
   shouldRefresh: boolean;
   reason:
     | 'failed_status'
     | 'already_pending'
+    | 'missing_session_data'
+    | 'session_data_present'
     | 'pricing_not_requested'
     | 'pricing_now_requested'
     | 'transport_data_present'
     | 'missing_transport_data';
   currentPricedTransportCount: number;
   recoveredPricedTransportCount: number;
+  currentDatedSessionCount: number;
   previousIncludePricing: boolean | null;
 } {
   const status = normalizeStatus(existingDraft.status);
   const currentPricedTransportCount = countPricedTransportOptions(existingDraft.transport_options_json);
   const recoveredPricedTransportCount = countRecoveredRawTransportOptions(existingDraft.raw_payload);
+  const currentDatedSessionCount = countDatedSessions(existingDraft.sessions_json);
   const previousIncludePricing = readIncludePricingFromRawPayload(existingDraft.raw_payload);
 
   if (status === 'failed') {
@@ -181,6 +194,7 @@ function shouldRefreshExistingDraftImport(existingDraft: ImportableDraftRow, inc
       reason: 'failed_status',
       currentPricedTransportCount,
       recoveredPricedTransportCount,
+      currentDatedSessionCount,
       previousIncludePricing
     };
   }
@@ -191,6 +205,18 @@ function shouldRefreshExistingDraftImport(existingDraft: ImportableDraftRow, inc
       reason: 'already_pending',
       currentPricedTransportCount,
       recoveredPricedTransportCount,
+      currentDatedSessionCount,
+      previousIncludePricing
+    };
+  }
+
+  if (currentDatedSessionCount === 0) {
+    return {
+      shouldRefresh: true,
+      reason: 'missing_session_data',
+      currentPricedTransportCount,
+      recoveredPricedTransportCount,
+      currentDatedSessionCount,
       previousIncludePricing
     };
   }
@@ -201,6 +227,7 @@ function shouldRefreshExistingDraftImport(existingDraft: ImportableDraftRow, inc
       reason: 'pricing_not_requested',
       currentPricedTransportCount,
       recoveredPricedTransportCount,
+      currentDatedSessionCount,
       previousIncludePricing
     };
   }
@@ -211,6 +238,7 @@ function shouldRefreshExistingDraftImport(existingDraft: ImportableDraftRow, inc
       reason: 'pricing_now_requested',
       currentPricedTransportCount,
       recoveredPricedTransportCount,
+      currentDatedSessionCount,
       previousIncludePricing
     };
   }
@@ -221,6 +249,7 @@ function shouldRefreshExistingDraftImport(existingDraft: ImportableDraftRow, inc
       reason: 'transport_data_present',
       currentPricedTransportCount,
       recoveredPricedTransportCount,
+      currentDatedSessionCount,
       previousIncludePricing
     };
   }
@@ -230,6 +259,7 @@ function shouldRefreshExistingDraftImport(existingDraft: ImportableDraftRow, inc
     reason: 'missing_transport_data',
     currentPricedTransportCount,
     recoveredPricedTransportCount,
+    currentDatedSessionCount,
     previousIncludePricing
   };
 }

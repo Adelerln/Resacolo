@@ -109,6 +109,22 @@ export function resolveStatusAfterRequestResolution(input: {
   return 'PENDING_PAYMENT' as const;
 }
 
+/** Code court affiché aux familles (ex. #F5E4DFBB). */
+export function formatOrderReservationCode(orderId: string) {
+  const compact = orderId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toUpperCase();
+  return `#${compact}`;
+}
+
+export function formatCheckoutConfirmationOrderStatus(
+  status: OrderStatus | string | null | undefined,
+  options?: { isPartnerTotalCoverage?: boolean }
+) {
+  if (options?.isPartnerTotalCoverage) {
+    return 'Prise en charge totale';
+  }
+  return orderStatusLabel(status);
+}
+
 export function orderStatusLabel(status: OrderStatus | string | null | undefined) {
   switch (status) {
     case 'REQUESTED':

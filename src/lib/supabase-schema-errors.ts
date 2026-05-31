@@ -15,7 +15,22 @@ export function isMissingColumnError(
   column: string
 ) {
   const message = toMessage(input);
-  return message.includes(`Could not find the '${column}' column`);
+  const normalized = message.toLowerCase();
+  const columnLower = column.toLowerCase();
+
+  if (message.includes(`Could not find the '${column}' column`)) {
+    return true;
+  }
+
+  if (normalized.includes(`could not find the '${columnLower}' column`)) {
+    return true;
+  }
+
+  // Postgres / PostgREST variants, e.g. "column orders.partially_paid_at does not exist"
+  return (
+    normalized.includes(`${columnLower} does not exist`) ||
+    normalized.includes(`column ${columnLower} does not exist`)
+  );
 }
 
 export function isMissingAnyColumnError(
@@ -27,8 +42,13 @@ export function isMissingAnyColumnError(
 
 export function extractMissingColumn(input: SupabaseErrorLike | string | null | undefined) {
   const message = toMessage(input);
-  const match = message.match(/Could not find the '([^']+)' column/i);
-  return match?.[1] ?? null;
+  const cacheMatch = message.match(/Could not find the '([^']+)' column/i);
+  if (cacheMatch?.[1]) {
+    return cacheMatch[1];
+  }
+
+  const postgresMatch = message.match(/column (?:[a-z0-9_]+\.)?([a-z0-9_]+) does not exist/i);
+  return postgresMatch?.[1] ?? null;
 }
 
 export function buildFeatureActivationMessage(featureLabel: string) {

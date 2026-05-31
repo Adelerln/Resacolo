@@ -1,33 +1,91 @@
 import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
+import { CHECKOUT_CLIENT_COOKIE_NAME } from '@/lib/checkout/clientIdentity';
+import { getSession } from '@/lib/auth/session';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
+import { isMissingAnyColumnError } from '@/lib/supabase-schema-errors';
 
 export const runtime = 'nodejs';
 
-export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { id: orderId } = await params;
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+async function resolveOrderOwnerUserId() {
+  const session = await getSession();
+  if (session?.isClient && session.userId) {
+    return session.userId;
+  }
+
+  const store = await cookies();
+  const guestId = store.get(CHECKOUT_CLIENT_COOKIE_NAME)?.value?.trim();
+  if (guestId && isUuid(guestId)) {
+    return guestId;
+  }
+
+  return null;
+}
+
+async function readOrderRow(orderId: string, ownerUserId: string | null) {
   const supabase = getServerSupabaseClient();
 
-  const [{ data: order, error: orderError }, { data: payments }, { data: orderItems }] = await Promise.all([
-    supabase
+  let query = supabase
+    .from('orders')
+    .select('id,status,paid_at,partially_paid_at,client_user_id')
+    .eq('id', orderId);
+
+  if (ownerUserId) {
+    query = query.eq('client_user_id', ownerUserId);
+  }
+
+  let { data: order, error: orderError } = await query.maybeSingle();
+
+  if (orderError && isMissingAnyColumnError(orderError, ['partially_paid_at'])) {
+    let legacyQuery = supabase
       .from('orders')
-      .select('id,status,paid_at,partially_paid_at')
-      .eq('id', orderId)
-      .maybeSingle(),
+      .select('id,status,paid_at,client_user_id')
+      .eq('id', orderId);
+    if (ownerUserId) {
+      legacyQuery = legacyQuery.eq('client_user_id', ownerUserId);
+    }
+    const legacyResult = await legacyQuery.maybeSingle();
+    order = legacyResult.data
+      ? { ...legacyResult.data, partially_paid_at: null }
+      : null;
+    orderError = legacyResult.error;
+  }
+
+  return { order, orderError };
+}
+
+export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id: orderId } = await params;
+  if (!orderId || !isUuid(orderId)) {
+    return NextResponse.json({ error: 'Identifiant de commande invalide.' }, { status: 400 });
+  }
+
+  const ownerUserId = await resolveOrderOwnerUserId();
+  const { order, orderError } = await readOrderRow(orderId, ownerUserId);
+
+  if (orderError) {
+    console.error('orders/[id]: lecture commande échouée', orderError);
+    return NextResponse.json({ error: 'Impossible de charger la commande.' }, { status: 500 });
+  }
+
+  if (!order) {
+    return NextResponse.json({ error: 'Commande introuvable.' }, { status: 404 });
+  }
+
+  const supabase = getServerSupabaseClient();
+  const [{ data: payments }, { data: orderItems }] = await Promise.all([
     supabase
       .from('payments')
       .select('id,status,amount_cents,currency,updated_at')
       .eq('order_id', orderId)
       .order('updated_at', { ascending: false })
       .limit(1),
-    supabase
-      .from('order_items')
-      .select('total_price_cents,session_id')
-      .eq('order_id', orderId)
+    supabase.from('order_items').select('total_price_cents,session_id').eq('order_id', orderId)
   ]);
-
-  if (orderError || !order) {
-    return NextResponse.json({ error: 'Commande introuvable.' }, { status: 404 });
-  }
 
   const payment = payments?.[0] ?? null;
   const totalCents = (orderItems ?? []).reduce((sum, item) => sum + item.total_price_cents, 0) || payment?.amount_cents || 0;

@@ -96,6 +96,17 @@ export function computePartnerFinanceSplit(input: {
   };
 }
 
+export function isPartnerFullCoverageCheckout(pricing: {
+  financeRequiresQuote?: boolean;
+  financeFamilyPayableTotalCents?: number | null;
+  financePartnerContributionTotalCents?: number | null;
+}) {
+  if (pricing.financeRequiresQuote) return false;
+  const familyPayable = pricing.financeFamilyPayableTotalCents;
+  if (familyPayable == null || familyPayable > 0) return false;
+  return (pricing.financePartnerContributionTotalCents ?? 0) > 0;
+}
+
 export function computePartnerFinanceDisplay(input: {
   mode: string | null | undefined;
   totalCents: number;

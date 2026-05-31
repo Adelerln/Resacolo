@@ -1,3 +1,4 @@
+import { getSession } from '@/lib/auth/session';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { resolveCheckoutCollectivityForUser } from '@/lib/account-profile/server';
 import { markCheckoutCartConverted } from '@/lib/checkout/cart-tracking';
@@ -18,6 +19,7 @@ import {
   clampPartnerFinanceCents,
   clampPartnerFinancePercent,
   computePartnerContributionSnapshotCents,
+  isPartnerFullCoverageCheckout,
   normalizePartnerFinanceMode
 } from '@/lib/partner-offers';
 import { isMissingAnyColumnError } from '@/lib/supabase-schema-errors';
@@ -394,6 +396,8 @@ async function insertOrderWithCompatibilityFallback(input: {
 
 export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput): Promise<PrepareCheckoutPaymentResult> {
   const supabase = getServerSupabaseClient();
+  const session = await getSession();
+  const clientUserId = session?.isClient && session.userId ? session.userId : input.clientUserId;
   const participantByItem = validateParticipants(input.items, input.participants);
   const pricing = await repriceCart(input.items);
   const organizerId = pricing.items[0]?.organizerId ?? input.items[0]?.organizerId ?? '';
@@ -405,10 +409,7 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
   }
   const organizerSettings = await readOrganizerCheckoutSettings(organizerId);
   const requestKind = resolveOrderRequestKind(input.contact, organizerSettings);
-  const isPartnerTotalCoverage =
-    !requestKind &&
-    normalizePartnerFinanceMode(pricing.financeMode) === 'TOTAL' &&
-    (pricing.financeFamilyPayableTotalCents ?? 0) === 0;
+  const isPartnerTotalCoverage = !requestKind && isPartnerFullCoverageCheckout(pricing);
   const requestedAt = new Date().toISOString();
   const paidAt = isPartnerTotalCoverage ? requestedAt : null;
   const initialStatus = isPartnerTotalCoverage
@@ -429,7 +430,7 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
     throw new Error("Cet organisme n'est pas agréé VACAF National.");
   }
   const collectivity = await resolveCheckoutCollectivityForUser({
-    userId: input.clientUserId,
+    userId: clientUserId,
     requestedCode: input.contact.cseOrganization
   });
 
@@ -438,7 +439,7 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
     .select(
       'id,order_id,status,amount_cents,monetico_transaction_id,monetico_reference,raw_payload,orders!inner(id,client_user_id,status)'
     )
-    .eq('orders.client_user_id', input.clientUserId)
+    .eq('orders.client_user_id', clientUserId)
     .neq('status', 'FAILED')
     .neq('orders.status', 'CANCELLED')
     .filter('raw_payload->>checkoutId', 'eq', input.checkoutId)
@@ -478,10 +479,10 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
     };
   }
 
-  await createOrUpdateClientProfile(input.clientUserId, input.contact, collectivity?.collectivityId ?? null);
+  await createOrUpdateClientProfile(clientUserId, input.contact, collectivity?.collectivityId ?? null);
 
   const order = await insertOrderWithCompatibilityFallback({
-    clientUserId: input.clientUserId,
+    clientUserId,
     collectivityId: collectivity?.collectivityId ?? null,
     initialStatus,
     requestedAt,

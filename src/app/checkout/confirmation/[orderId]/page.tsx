@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, Mail } from 'lucide-react';
 import { CheckoutFrame } from '@/components/checkout/CheckoutFrame';
 import { useCart } from '@/context/CartContext';
@@ -10,6 +10,10 @@ import { useCheckout } from '@/context/CheckoutContext';
 import { getOrderStatus } from '@/lib/checkout/client';
 import { isDevBypassCheckout } from '@/lib/checkout/dev-bypass';
 import { formatEuroFromCents } from '@/types/checkout';
+import {
+  formatCheckoutConfirmationOrderStatus,
+  formatOrderReservationCode
+} from '@/lib/order-workflow';
 
 type OrderStatusResponse = {
   orderId: string;
@@ -149,7 +153,28 @@ export default function CheckoutConfirmationPage() {
         }
       } catch (error) {
         if (cancelled) return;
-        setErrorMessage(error instanceof Error ? error.message : 'Impossible de récupérer le statut de la commande.');
+        const message =
+          error instanceof Error ? error.message : 'Impossible de récupérer le statut de la commande.';
+        if (isManualConfirmationMode && orderId) {
+          setOrder({
+            orderId,
+            status: isPartnerTotalMode ? 'PAID' : isPartnerManualQuoteMode ? 'REQUESTED' : 'REQUESTED',
+            paidAt: isPartnerTotalMode ? new Date().toISOString() : null,
+            paymentStatus: null,
+            totalCents: 0,
+            currency: 'EUR',
+            organizerContactEmail: null,
+            organizerName: null
+          });
+          setErrorMessage(null);
+          if (!checkoutResetDoneRef.current) {
+            clearCart();
+            resetCheckout();
+            checkoutResetDoneRef.current = true;
+          }
+          return;
+        }
+        setErrorMessage(message);
       } finally {
         if (!cancelled) {
           setIsLoading(false);
@@ -184,11 +209,18 @@ export default function CheckoutConfirmationPage() {
     isCvPaperMode,
     isDeferredMode,
     isManualConfirmationMode,
+    isPartnerManualQuoteMode,
+    isPartnerTotalMode,
     isVacafRequestMode,
     mode,
     orderId,
     resetCheckout
   ]);
+
+  const reservationCode = useMemo(
+    () => (order ? formatOrderReservationCode(order.orderId) : null),
+    [order]
+  );
 
   return (
     <CheckoutFrame
@@ -202,18 +234,18 @@ export default function CheckoutConfirmationPage() {
         <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{errorMessage}</p>
       ) : null}
 
-      {order ? (
+      {order && reservationCode ? (
         <div className="space-y-4 rounded-xl border border-slate-300 bg-slate-50 p-4">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-slate-600">
-              Numéro de commande : <span className="font-semibold text-slate-900">{order.orderId}</span>
+              Code réservation : <span className="font-semibold text-slate-900">{reservationCode}</span>
             </p>
             {order.organizerContactEmail ? (
               <a
                 href={`mailto:${encodeURIComponent(order.organizerContactEmail)}?subject=${encodeURIComponent(
-                  `Réservation ${order.orderId} - Contact famille`
+                  `Réservation ${reservationCode} - Contact famille`
                 )}&body=${encodeURIComponent(
-                  `Bonjour${order.organizerName ? ` ${order.organizerName}` : ''},\n\nJe vous contacte concernant ma réservation ${order.orderId}.\n\nCordialement,`
+                  `Bonjour${order.organizerName ? ` ${order.organizerName}` : ''},\n\nJe vous contacte concernant ma réservation ${reservationCode}.\n\nCordialement,`
                 )}`}
                 className="inline-flex w-fit items-center justify-center gap-2 rounded-full border border-sky-500 bg-sky-200 px-3.5 py-2 text-sm font-semibold text-sky-950 transition hover:border-sky-600 hover:bg-sky-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 active:bg-sky-300/90"
               >
@@ -224,7 +256,12 @@ export default function CheckoutConfirmationPage() {
           </div>
           <div className="space-y-4">
             <p className="text-sm text-slate-600">
-              Statut commande : <span className="font-semibold text-slate-900">{order.status}</span>
+              Statut commande :{' '}
+              <span className="font-semibold text-slate-900">
+                {formatCheckoutConfirmationOrderStatus(order.status, {
+                  isPartnerTotalCoverage: isPartnerTotalMode
+                })}
+              </span>
             </p>
             <p className="text-sm text-slate-600">
               Statut paiement :{' '}
@@ -249,7 +286,10 @@ export default function CheckoutConfirmationPage() {
             </p>
           </div>
           {order.paidAt ? (
-            <p className="text-sm text-emerald-700">Paiement validé le {new Date(order.paidAt).toLocaleString('fr-FR')}.</p>
+            <p className="text-sm text-emerald-700">
+              {isPartnerTotalMode ? 'Réservation validée' : 'Paiement validé'} le{' '}
+              {new Date(order.paidAt).toLocaleString('fr-FR')}.
+            </p>
           ) : isVacafRequestMode ? (
             <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5">
               <p className="flex items-start gap-2 text-sm font-semibold text-amber-900">

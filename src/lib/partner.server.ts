@@ -200,7 +200,7 @@ export async function listPartnerReservations(collectivityId: string, excludedUs
 
   const { data: orders, error: ordersError } = await supabase
     .from('orders')
-    .select('id,status,created_at,requested_at,validated_at,booked_at,paid_at,client_user_id,collectivity_id')
+    .select('id,status,created_at,requested_at,validated_at,booked_at,paid_at,cancellation_reason,client_user_id,collectivity_id')
     .eq('collectivity_id', collectivityId)
     .neq('status', 'CART')
     .order('created_at', { ascending: false });
@@ -247,6 +247,13 @@ export async function listPartnerReservations(collectivityId: string, excludedUs
         .select('user_id,parent1_first_name,parent1_last_name,parent1_email')
         .in('user_id', clientUserIds)
     : { data: [], error: null };
+  const paymentsResponse = orderIds.length
+    ? await supabase
+        .from('payments')
+        .select('order_id,status,updated_at')
+        .in('order_id', orderIds)
+        .order('updated_at', { ascending: false })
+    : { data: [], error: null };
 
   if (sessionsResponse.error) {
     throw new Error(`Impossible de charger les sessions réservées : ${sessionsResponse.error.message}`);
@@ -259,6 +266,9 @@ export async function listPartnerReservations(collectivityId: string, excludedUs
   }
   if (contributionsResponse.error) {
     throw new Error(`Impossible de charger les contributions partenaire : ${contributionsResponse.error.message}`);
+  }
+  if (paymentsResponse.error) {
+    throw new Error(`Impossible de charger les paiements des réservations : ${paymentsResponse.error.message}`);
   }
 
   const sessions = sessionsResponse.data ?? [];
@@ -288,13 +298,27 @@ export async function listPartnerReservations(collectivityId: string, excludedUs
   const staysById = new Map((stays ?? []).map((row) => [row.id, row]));
   const clientsByUserId = new Map(clients.map((row) => [row.user_id, row]));
   const profilesByUserId = new Map(profiles.map((row) => [row.user_id, row]));
+  const latestPaymentStatusByOrderId = new Map<string, string>();
+  for (const payment of paymentsResponse.data ?? []) {
+    if (!latestPaymentStatusByOrderId.has(payment.order_id)) {
+      latestPaymentStatusByOrderId.set(payment.order_id, payment.status);
+    }
+  }
   const contributionByOrderItemId = new Map(
     (contributionsResponse.data ?? [])
       .filter((row) => row.status !== 'REJECTED')
       .map((row) => [row.order_item_id, row])
   );
 
-  return orderRows.map((order) => {
+  return orderRows
+    .filter((order) => {
+      const latestPaymentStatus = latestPaymentStatusByOrderId.get(order.id) ?? null;
+      if (order.status === 'CANCELLED' && order.cancellation_reason === 'PAYMENT_FAILED') {
+        return false;
+      }
+      return latestPaymentStatus !== 'FAILED';
+    })
+    .map((order) => {
     const itemsForOrder = itemsByOrderId.get(order.id) ?? [];
     const firstSession = itemsForOrder.length ? sessionsById.get(itemsForOrder[0].session_id) : null;
     const firstStay = firstSession ? staysById.get(firstSession.stay_id) : null;
@@ -338,30 +362,30 @@ export async function listPartnerReservations(collectivityId: string, excludedUs
     const partnerContributionCents = hasContributionSnapshot ? snapshotPartnerCents : fallbackSplit.partnerCents;
     const clientContributionCents = Math.max(0, totalCents - partnerContributionCents);
 
-    return {
-      id: order.id,
-      orderItemIds: itemsForOrder.map((item) => item.id),
-      createdAt: order.created_at,
-      status: order.status,
-      statusLabel: orderStatusLabel(order.status),
-      beneficiaryName,
-      beneficiaryEmail,
-      stayTitle: firstStay?.title ?? 'Séjour inconnu',
-      stayLocation:
-        firstStay?.location_text ||
-        [firstStay?.destination_city, firstStay?.destination_country].filter(Boolean).join(', ') ||
-        'Lieu non renseigné',
-      sessionLabel: formatDateRange(firstSession?.start_date, firstSession?.end_date),
-      childNames,
-      childrenLabel: childNames.length > 0 ? childNames.join(', ') : 'Aucun participant',
-      totalCents,
-      totalLabel: formatCurrencyFromCents(totalCents, 'EUR'),
-      partnerContributionCents,
-      clientContributionCents,
-      hasContributionSnapshot,
-      isTaggedToCollectivity: order.collectivity_id === collectivityId
-    };
-  });
+      return {
+        id: order.id,
+        orderItemIds: itemsForOrder.map((item) => item.id),
+        createdAt: order.created_at,
+        status: order.status,
+        statusLabel: orderStatusLabel(order.status),
+        beneficiaryName,
+        beneficiaryEmail,
+        stayTitle: firstStay?.title ?? 'Séjour inconnu',
+        stayLocation:
+          firstStay?.location_text ||
+          [firstStay?.destination_city, firstStay?.destination_country].filter(Boolean).join(', ') ||
+          'Lieu non renseigné',
+        sessionLabel: formatDateRange(firstSession?.start_date, firstSession?.end_date),
+        childNames,
+        childrenLabel: childNames.length > 0 ? childNames.join(', ') : 'Aucun participant',
+        totalCents,
+        totalLabel: formatCurrencyFromCents(totalCents, 'EUR'),
+        partnerContributionCents,
+        clientContributionCents,
+        hasContributionSnapshot,
+        isTaggedToCollectivity: order.collectivity_id === collectivityId
+      };
+    });
 }
 
 export type PartnerCollectivityProfile = Awaited<ReturnType<typeof readPartnerCollectivity>>;

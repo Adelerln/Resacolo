@@ -10,6 +10,7 @@ import {
 } from '@/lib/partner.server';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { PartnerContributionAmountEditor } from '@/components/partner/PartnerContributionAmountEditor';
+import type { Json } from '@/types/supabase';
 
 function formatDate(value: string) {
   return new Date(value).toLocaleDateString('fr-FR');
@@ -28,6 +29,28 @@ function parseEurosToCents(value: FormDataEntryValue | null) {
   const parsed = Number.parseFloat(String(value ?? '').replace(',', '.'));
   if (!Number.isFinite(parsed)) return 0;
   return Math.max(0, Math.round(parsed * 100));
+}
+
+function mergePaymentPayloadWithPartnerMessage(
+  rawPayload: unknown,
+  input: {
+    partnerMessage: string | null;
+    updatedAt: string;
+    partnerContributionCents: number;
+  }
+) : Json {
+  const basePayload =
+    rawPayload && typeof rawPayload === 'object' && !Array.isArray(rawPayload)
+      ? ({ ...(rawPayload as Record<string, Json | undefined>) } as Record<string, Json | undefined>)
+      : {};
+
+  basePayload.partnerFinanceUpdate = {
+    message: input.partnerMessage,
+    updatedAt: input.updatedAt,
+    partnerContributionCents: input.partnerContributionCents
+  };
+
+  return basePayload as Json;
 }
 
 function distributeCentsAcrossItems(totalTargetCents: number, itemTotals: Array<{ id: string; totalCents: number }>) {
@@ -114,6 +137,7 @@ export default async function PartnerReservationsPage() {
 
     const totalCents = orderItems.reduce((sum, item) => sum + (item.total_price_cents ?? 0), 0);
     const manualPartnerCents = clampPartnerFinanceCents(parseEurosToCents(formData.get('manual_partner_euros')), totalCents);
+    const partnerMessage = String(formData.get('partner_message') ?? '').trim() || null;
     const allocations =
       manualPartnerCents > 0
         ? distributeCentsAcrossItems(
@@ -149,6 +173,32 @@ export default async function PartnerReservationsPage() {
       redirect(`/partenaire/reservations?error=${encodeURIComponent(upsertError.message)}`);
     }
 
+    const { data: paymentRow } = await supabase
+      .from('payments')
+      .select('id,raw_payload')
+      .eq('order_id', orderId)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (paymentRow?.id) {
+      const { error: paymentUpdateError } = await supabase
+        .from('payments')
+        .update({
+          raw_payload: mergePaymentPayloadWithPartnerMessage(paymentRow.raw_payload, {
+            partnerMessage,
+            updatedAt: now,
+            partnerContributionCents: manualPartnerCents
+          })
+        })
+        .eq('id', paymentRow.id);
+
+      if (paymentUpdateError) {
+        redirect(`/partenaire/reservations?error=${encodeURIComponent(paymentUpdateError.message)}`);
+      }
+    }
+
+    revalidatePath('/mon-compte');
     revalidatePath('/partenaire/reservations');
     redirect('/partenaire/reservations');
   }
@@ -224,6 +274,7 @@ export default async function PartnerReservationsPage() {
                     <td className="px-4 py-3">
                       <PartnerContributionAmountEditor
                         orderId={reservation.id}
+                        beneficiaryName={reservation.beneficiaryName}
                         partnerContributionCents={reservation.partnerContributionCents}
                         saveAction={saveManualContribution}
                       />

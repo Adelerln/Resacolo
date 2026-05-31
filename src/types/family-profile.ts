@@ -72,6 +72,8 @@ export type FamilyReservation = {
   organizerContactEmail: string | null;
   organizerName: string | null;
   hasSuccessfulPayment: boolean;
+  partnerAdjustmentMessage: string | null;
+  partnerAdjustmentUpdatedAt: string | null;
 };
 
 export type FamilyCseAffiliation = {

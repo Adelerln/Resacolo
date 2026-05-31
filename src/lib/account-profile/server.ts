@@ -1,4 +1,6 @@
+import { cookies } from 'next/headers';
 import type { Json, Database } from '@/types/supabase';
+import { CHECKOUT_CLIENT_COOKIE_NAME } from '@/lib/checkout/clientIdentity';
 import type {
   FamilyCheckoutSyncInput,
   FamilyCseAffiliation,
@@ -9,6 +11,7 @@ import type {
   FamilyReservation
 } from '@/types/family-profile';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
+import { isMissingAnyColumnError } from '@/lib/supabase-schema-errors';
 import {
   computeRemainingBalanceCents as computeOrderRemainingBalanceCents,
   orderStatusLabel
@@ -23,6 +26,7 @@ type ClientProfileRow = Database['public']['Tables']['client_profiles']['Row'];
 type ClientProfileInsert = Database['public']['Tables']['client_profiles']['Insert'];
 type CollectivityRow = Database['public']['Tables']['collectivities']['Row'];
 type CollectivityContributionRow = Database['public']['Tables']['collectivity_contributions']['Row'];
+type OrderStatus = Database['public']['Enums']['order_status'];
 
 const DEFAULT_COUNTRY = 'France';
 const CLIENT_PROFILES_MISSING_ERROR =
@@ -71,6 +75,69 @@ function normalizeUpper(value: string | null | undefined) {
 function normalizeCollectivityCode(value: string | null | undefined) {
   return normalizeText(value).toUpperCase();
 }
+
+const CHECKOUT_EMAIL_PAYMENT_SCAN_LIMIT = 250;
+
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function normalizeContactEmail(value: string | null | undefined) {
+  const normalized = normalizeText(value).toLowerCase();
+  return normalized || null;
+}
+
+function extractCheckoutContactEmailFromRawPayload(rawPayload: Json | null | undefined): string | null {
+  if (!rawPayload || typeof rawPayload !== 'object' || Array.isArray(rawPayload)) {
+    return null;
+  }
+
+  const contact = (rawPayload as Record<string, unknown>).contact;
+  if (!contact || typeof contact !== 'object' || Array.isArray(contact)) {
+    return null;
+  }
+
+  const email = (contact as Record<string, unknown>).email;
+  return typeof email === 'string' ? normalizeContactEmail(email) : null;
+}
+
+async function resolveFamilyReservationOwnerUserIds(primaryUserId: string) {
+  const ids = new Set<string>([primaryUserId]);
+
+  try {
+    const store = await cookies();
+    const guestId = store.get(CHECKOUT_CLIENT_COOKIE_NAME)?.value?.trim();
+    if (guestId && isUuid(guestId)) {
+      ids.add(guestId);
+    }
+  } catch {
+    // Ignore cookie read failures in non-request contexts.
+  }
+
+  return Array.from(ids);
+}
+
+function mergeReservationOrdersById(orders: ReservationOrderRow[]) {
+  const byId = new Map<string, ReservationOrderRow>();
+  for (const order of orders) {
+    byId.set(order.id, order);
+  }
+
+  return Array.from(byId.values()).sort(
+    (left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime()
+  );
+}
+
+type ReservationOrderRow = {
+  id: string;
+  status: OrderStatus;
+  created_at: string;
+  paid_at: string | null;
+  partially_paid_at: string | null;
+  collectivity_id: string | null;
+  external_aid_cents: number;
+  external_paid_cents: number;
+};
 
 function buildFamilyCseAffiliation(collectivity: CollectivityRow): FamilyCseAffiliation {
   return {
@@ -551,11 +618,59 @@ async function readClientCollectivityId(userId: string) {
 
 async function readCollectivityById(collectivityId: string) {
   const supabase = getServerSupabaseClient();
+  const collectivitySelect =
+    'id,name,code,offer_mode,finance_mode,finance_percent_value,finance_fixed_cents,brand_primary_color,logo_url,logo_scale,logo_offset_x,logo_offset_y,hero_enabled,hero_title,hero_body,hero_cta_label,hero_cta_url';
   const { data, error } = await supabase
     .from('collectivities')
-    .select('*')
+    .select(collectivitySelect)
     .eq('id', collectivityId)
     .maybeSingle();
+
+  if (
+    error &&
+    isMissingAnyColumnError(error, [
+      'finance_mode',
+      'finance_percent_value',
+      'finance_fixed_cents',
+      'brand_primary_color',
+      'logo_scale',
+      'logo_offset_x',
+      'logo_offset_y',
+      'hero_enabled',
+      'hero_title',
+      'hero_body',
+      'hero_cta_label',
+      'hero_cta_url'
+    ])
+  ) {
+    const { data: legacyData, error: legacyError } = await supabase
+      .from('collectivities')
+      .select('id,name,code,offer_mode,logo_url')
+      .eq('id', collectivityId)
+      .maybeSingle();
+
+    if (legacyError) {
+      throw new Error(`Impossible de charger la collectivité liée : ${legacyError.message}`);
+    }
+
+    return legacyData
+      ? ({
+          ...legacyData,
+          finance_mode: 'TOTAL',
+          finance_percent_value: null,
+          finance_fixed_cents: null,
+          brand_primary_color: null,
+          logo_scale: 1,
+          logo_offset_x: 0,
+          logo_offset_y: 0,
+          hero_enabled: false,
+          hero_title: null,
+          hero_body: null,
+          hero_cta_label: null,
+          hero_cta_url: null
+        } as CollectivityRow)
+      : null;
+  }
 
   if (error) {
     throw new Error(`Impossible de charger la collectivité liée : ${error.message}`);
@@ -569,11 +684,59 @@ async function readCollectivityByCode(code: string) {
   if (!normalizedCode) return null;
 
   const supabase = getServerSupabaseClient();
+  const collectivitySelect =
+    'id,name,code,offer_mode,finance_mode,finance_percent_value,finance_fixed_cents,brand_primary_color,logo_url,logo_scale,logo_offset_x,logo_offset_y,hero_enabled,hero_title,hero_body,hero_cta_label,hero_cta_url';
   const { data, error } = await supabase
     .from('collectivities')
-    .select('*')
+    .select(collectivitySelect)
     .eq('code', normalizedCode)
     .maybeSingle();
+
+  if (
+    error &&
+    isMissingAnyColumnError(error, [
+      'finance_mode',
+      'finance_percent_value',
+      'finance_fixed_cents',
+      'brand_primary_color',
+      'logo_scale',
+      'logo_offset_x',
+      'logo_offset_y',
+      'hero_enabled',
+      'hero_title',
+      'hero_body',
+      'hero_cta_label',
+      'hero_cta_url'
+    ])
+  ) {
+    const { data: legacyData, error: legacyError } = await supabase
+      .from('collectivities')
+      .select('id,name,code,offer_mode,logo_url')
+      .eq('code', normalizedCode)
+      .maybeSingle();
+
+    if (legacyError) {
+      throw new Error(`Impossible de vérifier le code CSE : ${legacyError.message}`);
+    }
+
+    return legacyData
+      ? ({
+          ...legacyData,
+          finance_mode: 'TOTAL',
+          finance_percent_value: null,
+          finance_fixed_cents: null,
+          brand_primary_color: null,
+          logo_scale: 1,
+          logo_offset_x: 0,
+          logo_offset_y: 0,
+          hero_enabled: false,
+          hero_title: null,
+          hero_body: null,
+          hero_cta_label: null,
+          hero_cta_url: null
+        } as CollectivityRow)
+      : null;
+  }
 
   if (error) {
     throw new Error(`Impossible de vérifier le code CSE : ${error.message}`);
@@ -786,16 +949,189 @@ export async function resolveCheckoutCollectivityForUser(input: {
   });
 }
 
-async function readReservations(userId: string): Promise<FamilyReservation[]> {
+async function readReservations(
+  userId: string,
+  options?: { contactEmails?: string[] }
+): Promise<FamilyReservation[]> {
   const supabase = getServerSupabaseClient();
-  const { data: orders, error: ordersError } = await supabase
-    .from('orders')
-    .select('id,status,created_at,paid_at,partially_paid_at,collectivity_id,external_aid_cents,external_paid_cents')
-    .eq('client_user_id', userId)
-    .order('created_at', { ascending: false })
-    .neq('status', 'CART');
+  const ownerUserIds = await resolveFamilyReservationOwnerUserIds(userId);
 
-  if (ordersError || !orders?.length) {
+  async function readOrdersForClientUserIds(clientUserIds: string[]) {
+    let { data, error } = await supabase
+      .from('orders')
+      .select('id,status,created_at,paid_at,partially_paid_at,collectivity_id,external_aid_cents,external_paid_cents')
+      .in('client_user_id', clientUserIds)
+      .order('created_at', { ascending: false })
+      .neq('status', 'CART');
+
+    if (error && isMissingAnyColumnError(error, ['partially_paid_at', 'external_aid_cents', 'external_paid_cents'])) {
+      const legacyResult = await supabase
+        .from('orders')
+        .select('id,status,created_at,paid_at,collectivity_id')
+        .in('client_user_id', clientUserIds)
+        .order('created_at', { ascending: false })
+        .neq('status', 'CART');
+
+      return {
+        data: (legacyResult.data ?? []).map((order) => ({
+          ...order,
+          partially_paid_at: null,
+          external_aid_cents: 0,
+          external_paid_cents: 0
+        })) as ReservationOrderRow[],
+        error: legacyResult.error
+      };
+    }
+
+    return {
+      data: (data ?? []) as ReservationOrderRow[],
+      error
+    };
+  }
+
+  async function lookupOrderIdsByCheckoutEmail(normalizedEmail: string) {
+    const { data: paymentRows, error: paymentLookupError } = await supabase
+      .from('payments')
+      .select('order_id')
+      .filter('raw_payload->contact->>email', 'eq', normalizedEmail)
+      .order('updated_at', { ascending: false });
+
+    if (!paymentLookupError && paymentRows?.length) {
+      return Array.from(new Set(paymentRows.map((row) => row.order_id).filter(Boolean)));
+    }
+
+    const { data: recentPayments, error: scanError } = await supabase
+      .from('payments')
+      .select('order_id, raw_payload')
+      .order('updated_at', { ascending: false })
+      .limit(CHECKOUT_EMAIL_PAYMENT_SCAN_LIMIT);
+
+    if (scanError || !recentPayments?.length) {
+      return [] as string[];
+    }
+
+    return Array.from(
+      new Set(
+        recentPayments
+          .filter((row) => extractCheckoutContactEmailFromRawPayload(row.raw_payload) === normalizedEmail)
+          .map((row) => row.order_id)
+          .filter(Boolean)
+      )
+    );
+  }
+
+  async function readOrdersByCheckoutEmail(email: string) {
+    const normalizedEmail = normalizeContactEmail(email);
+    if (!normalizedEmail) {
+      return [] as ReservationOrderRow[];
+    }
+
+    const orderIds = await lookupOrderIdsByCheckoutEmail(normalizedEmail);
+    if (orderIds.length === 0) {
+      return [] as ReservationOrderRow[];
+    }
+
+    let { data, error } = await supabase
+      .from('orders')
+      .select('id,status,created_at,paid_at,partially_paid_at,collectivity_id,external_aid_cents,external_paid_cents')
+      .in('id', orderIds)
+      .order('created_at', { ascending: false })
+      .neq('status', 'CART');
+
+    if (error && isMissingAnyColumnError(error, ['partially_paid_at', 'external_aid_cents', 'external_paid_cents'])) {
+      const legacyResult = await supabase
+        .from('orders')
+        .select('id,status,created_at,paid_at,collectivity_id')
+        .in('id', orderIds)
+        .order('created_at', { ascending: false })
+        .neq('status', 'CART');
+
+      data = (legacyResult.data ?? []).map((order) => ({
+        ...order,
+        partially_paid_at: null,
+        external_aid_cents: 0,
+        external_paid_cents: 0
+      })) as ReservationOrderRow[];
+      error = legacyResult.error;
+    }
+
+    if (error || !data?.length) {
+      return [] as ReservationOrderRow[];
+    }
+
+    const { error: repairError } = await supabase
+      .from('orders')
+      .update({ client_user_id: userId })
+      .in(
+        'id',
+        data.map((order) => order.id)
+      );
+
+    if (repairError) {
+      console.warn('[account-profile] unable to repair orphan orders for family account', {
+        userId,
+        email: normalizedEmail,
+        error: repairError.message
+      });
+    }
+
+    return data as ReservationOrderRow[];
+  }
+
+  const contactEmails = new Set<string>();
+  for (const email of options?.contactEmails ?? []) {
+    const normalized = normalizeContactEmail(email);
+    if (normalized) {
+      contactEmails.add(normalized);
+    }
+  }
+
+  const { data: authUser } = await supabase.auth.admin.getUserById(userId);
+  const authEmail = normalizeContactEmail(authUser.user?.email);
+  if (authEmail) {
+    contactEmails.add(authEmail);
+  }
+
+  const { data: directOrders, error: directOrdersError } = await readOrdersForClientUserIds(ownerUserIds);
+  let orders = directOrders ?? [];
+
+  if (!directOrdersError) {
+    for (const email of contactEmails) {
+      const linkedOrders = await readOrdersByCheckoutEmail(email);
+      orders = mergeReservationOrdersById([...orders, ...linkedOrders]);
+    }
+  } else {
+    console.warn('[account-profile] direct reservation lookup failed, trying checkout email fallback', {
+      userId,
+      ownerUserIds,
+      error: directOrdersError.message
+    });
+    orders = [];
+    for (const email of contactEmails) {
+      const linkedOrders = await readOrdersByCheckoutEmail(email);
+      orders = mergeReservationOrdersById([...orders, ...linkedOrders]);
+    }
+  }
+
+  if (ownerUserIds.length > 1 && orders.length > 0) {
+    const { error: guestRepairError } = await supabase
+      .from('orders')
+      .update({ client_user_id: userId })
+      .in(
+        'id',
+        orders.map((order) => order.id)
+      );
+
+    if (guestRepairError) {
+      console.warn('[account-profile] unable to attach guest checkout orders to family account', {
+        userId,
+        ownerUserIds,
+        error: guestRepairError.message
+      });
+    }
+  }
+
+  if (!orders.length) {
     return [];
   }
 
@@ -850,6 +1186,30 @@ async function readReservations(userId: string): Promise<FamilyReservation[]> {
     ? await supabase.from('stays').select('id,title,organizer_id').in('id', Array.from(stayIds))
     : { data: [] as Array<{ id: string; title: string; organizer_id: string | null }> };
   const staysById = new Map((stays ?? []).map((stay) => [stay.id, stay]));
+  const { data: stayMediaRows } = stayIds.size
+    ? await supabase
+        .from('stay_media')
+        .select('stay_id,url,media_type,position')
+        .in('stay_id', Array.from(stayIds))
+        .order('position', { ascending: true })
+    : { data: [] as Array<{ stay_id: string; url: string; media_type: string | null; position: number }> };
+  const coverImageByStayId = new Map<string, string>();
+  const firstImageByStayId = new Map<string, string>();
+  for (const media of stayMediaRows ?? []) {
+    const url = normalizeText(media.url);
+    if (!media.stay_id || !url) continue;
+    if (media.media_type === 'cover' && !coverImageByStayId.has(media.stay_id)) {
+      coverImageByStayId.set(media.stay_id, url);
+    }
+    if (!firstImageByStayId.has(media.stay_id)) {
+      firstImageByStayId.set(media.stay_id, url);
+    }
+  }
+  for (const [stayId, url] of firstImageByStayId) {
+    if (!coverImageByStayId.has(stayId)) {
+      coverImageByStayId.set(stayId, url);
+    }
+  }
   const organizerIds = Array.from(
     new Set((stays ?? []).map((stay) => stay.organizer_id).filter((value): value is string => Boolean(value)))
   );
@@ -1108,6 +1468,7 @@ async function readReservations(userId: string): Promise<FamilyReservation[]> {
         orderId: order.id,
         orderStatus: order.status,
         title: stay?.title ?? 'Séjour réservé',
+        coverImage: session?.stay_id ? coverImageByStayId.get(session.stay_id) ?? null : null,
         dates: formatDateRange(session?.start_date, session?.end_date),
         child,
         children,
@@ -1219,15 +1580,38 @@ export async function getFamilyProfileSnapshot(input: {
   sessionName?: string | null;
   sessionEmail?: string | null;
 }): Promise<FamilyProfileSnapshot> {
-  const profile =
-    (await getFamilyProfile(input.userId)) ??
-    createDefaultProfile({
-      userId: input.userId,
-      sessionName: input.sessionName,
-      sessionEmail: input.sessionEmail
-    });
+  let profile: FamilyProfile;
+  try {
+    profile =
+      (await getFamilyProfile(input.userId)) ??
+      createDefaultProfile({
+        userId: input.userId,
+        sessionName: input.sessionName,
+        sessionEmail: input.sessionEmail
+      });
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      (error.message === CLIENT_PROFILES_MISSING_ERROR || isMissingClientProfilesTableError(error))
+    ) {
+      profile = createDefaultProfile({
+        userId: input.userId,
+        sessionName: input.sessionName,
+        sessionEmail: input.sessionEmail
+      });
+    } else {
+      throw error;
+    }
+  }
+  const contactEmails = Array.from(
+    new Set(
+      [normalizeContactEmail(input.sessionEmail), normalizeContactEmail(profile.email)].filter(
+        (email): email is string => Boolean(email)
+      )
+    )
+  );
   const [reservations, cseAffiliation] = await Promise.all([
-    readReservations(input.userId),
+    readReservations(input.userId, { contactEmails }),
     readFamilyCseAffiliation(input.userId)
   ]);
   return { profile, reservations, cseAffiliation };

@@ -3,7 +3,8 @@ import { cookies } from 'next/headers';
 import { getSession } from '@/lib/auth/session';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 
-const CLIENT_COOKIE_NAME = 'resacolo_client_id';
+export const CHECKOUT_CLIENT_COOKIE_NAME = 'resacolo_client_id';
+const CLIENT_COOKIE_NAME = CHECKOUT_CLIENT_COOKIE_NAME;
 const CHECKOUT_GUEST_DOMAIN = 'checkout.resacolo.local';
 
 function isUuid(value: string) {
@@ -50,7 +51,7 @@ function canUseGuestFallback() {
 
 export async function getOrCreateClientUserId() {
   const session = await getSession();
-  if (session?.role === 'CLIENT' && session.userId) {
+  if (session?.isClient && session.userId) {
     return session.userId;
   }
 
@@ -76,4 +77,21 @@ export async function getOrCreateClientUserId() {
   });
 
   return generated;
+}
+
+/** Identifiant client utilisé pour le checkout (session connectée ou invité cookie). */
+export async function resolveCheckoutClientUserId() {
+  const session = await getSession();
+  if (session?.isClient && session.userId) {
+    return session.userId;
+  }
+
+  const store = await cookies();
+  const existing = store.get(CLIENT_COOKIE_NAME)?.value;
+  if (existing && isUuid(existing)) {
+    const ensured = await ensureCheckoutUserId(existing);
+    if (ensured) return ensured;
+  }
+
+  return null;
 }

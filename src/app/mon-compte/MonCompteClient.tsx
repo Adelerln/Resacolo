@@ -37,9 +37,10 @@ type MonCompteClientProps = {
 };
 
 const ACCOUNT_PANEL_VISIBLE_ITEMS = 3;
-const ACCOUNT_PANEL_ITEM_MIN_HEIGHT = 'min-h-[120px]';
-/** 3 cartes d'environ 120px + 2 espacements de 12px. */
-const ACCOUNT_PANEL_LIST_MAX_HEIGHT = '24rem';
+/** Hauteur fixe partagée entre carte réservation et carte favori (colonne image 96px). */
+const ACCOUNT_PANEL_ITEM_HEIGHT = 'h-[9rem]';
+/** 3 cartes de 9rem + 2 espacements de 12px (space-y-3). */
+const ACCOUNT_PANEL_LIST_MAX_HEIGHT = 'calc(9rem * 3 + 0.75rem * 2)';
 
 /** Hauteur réservée identique sous les deux panneaux pour aligner le début des listes de cartes. */
 const ACCOUNT_PANEL_HEADER_CLASS =
@@ -283,29 +284,60 @@ export default function MonCompteClient({
                   {reservationList.map((reservation) => (
                     <li
                       key={reservation.orderId}
-                      className={`flex h-auto ${ACCOUNT_PANEL_ITEM_MIN_HEIGHT} flex-col rounded-xl border p-3 text-sm ${
+                      className={`grid ${ACCOUNT_PANEL_ITEM_HEIGHT} grid-cols-[96px_minmax(0,1fr)] overflow-hidden rounded-xl border text-sm ${
                         reservation.isPast
                           ? 'border-slate-300 bg-slate-100/90 text-slate-500'
                           : 'border-slate-300 bg-slate-50/60 text-slate-700'
                       }`}
                     >
-                      <div className="flex min-h-0 flex-1 flex-col gap-3 sm:flex-row sm:items-stretch sm:justify-between sm:gap-3">
-                        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-                          <p
-                            className={`line-clamp-2 font-display text-base font-semibold leading-snug ${
-                              reservation.isPast ? 'text-slate-500' : 'text-slate-900'
-                            }`}
-                          >
-                            {reservation.title}
-                          </p>
-                          <p className={`mt-1 flex items-center gap-2 text-xs ${reservation.isPast ? 'text-slate-400' : 'text-slate-500'}`}>
-                            <CalendarDays className="h-4 w-4 shrink-0" />
-                            <span className="min-w-0">{reservation.dates}</span>
-                          </p>
-                          <p className={`mt-0.5 truncate text-xs ${reservation.isPast ? 'text-slate-400' : 'text-slate-500'}`}>
-                            {reservation.child}
-                          </p>
-                          <div className="mt-auto flex min-w-0 flex-nowrap items-center gap-2 overflow-x-auto pt-1.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                      {reservation.coverImage ? (
+                        <div className="h-full overflow-hidden bg-slate-100">
+                          <img
+                            src={reservation.coverImage}
+                            alt={reservation.title}
+                            className={`h-full w-full object-cover ${reservation.isPast ? 'opacity-85' : ''}`}
+                            loading="lazy"
+                          />
+                        </div>
+                      ) : (
+                        <div
+                          className={`flex h-full items-center justify-center ${
+                            reservation.isPast
+                              ? 'bg-slate-200/80'
+                              : 'bg-gradient-to-br from-brand-100 via-blue-100 to-cyan-100'
+                          }`}
+                        >
+                          <CalendarDays
+                            className={`h-10 w-10 shrink-0 ${reservation.isPast ? 'text-slate-400' : 'text-brand-600'}`}
+                            aria-hidden
+                          />
+                        </div>
+                      )}
+                      <div className="flex h-full min-w-0 flex-col p-3">
+                        <p
+                          className={`line-clamp-2 font-display text-base font-semibold leading-snug ${
+                            reservation.isPast ? 'text-slate-500' : 'text-slate-900'
+                          }`}
+                        >
+                          {reservation.title}
+                        </p>
+                        <p
+                          className={`mt-1 flex items-center gap-2 text-xs ${
+                            reservation.isPast ? 'text-slate-400' : 'text-slate-500'
+                          }`}
+                        >
+                          <CalendarDays className="h-4 w-4 shrink-0" />
+                          <span className="min-w-0 truncate">{reservation.dates}</span>
+                        </p>
+                        <p
+                          className={`mt-0.5 truncate text-xs ${
+                            reservation.isPast ? 'text-slate-400' : 'text-slate-500'
+                          }`}
+                        >
+                          {reservation.child}
+                        </p>
+                        <div className="mt-auto flex min-h-0 items-end justify-between gap-2 pt-1.5">
+                          <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-2 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                             <span
                               className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-semibold ${
                                 reservation.isPast
@@ -327,10 +359,9 @@ export default function MonCompteClient({
                               Solde à régler : {formatMoneyCentsFr(reservation.remainingBalanceCents, reservation.currency)}
                             </span>
                           </div>
-                        </div>
-
-                        <div className="flex shrink-0 justify-end self-start pt-0.5 sm:mt-auto sm:self-end sm:pt-1">
-                          <FamilyReservationDetailsModal reservation={reservation} />
+                          <div className="shrink-0">
+                            <FamilyReservationDetailsModal reservation={reservation} />
+                          </div>
                         </div>
                       </div>
                     </li>
@@ -369,10 +400,10 @@ export default function MonCompteClient({
                       <Link
                         key={stay.id}
                         href={`/sejours/${stay.canonicalSlug}`}
-                        className={`grid h-auto ${ACCOUNT_PANEL_ITEM_MIN_HEIGHT} grid-cols-[96px_minmax(0,1fr)] overflow-hidden rounded-xl border border-slate-300 bg-gradient-to-r from-white via-white to-blue-50/40 text-sm text-slate-700 transition hover:border-slate-400 hover:shadow-sm`}
+                        className={`grid ${ACCOUNT_PANEL_ITEM_HEIGHT} grid-cols-[96px_minmax(0,1fr)] overflow-hidden rounded-xl border border-slate-300 bg-gradient-to-r from-white via-white to-blue-50/40 text-sm text-slate-700 transition hover:border-slate-400 hover:shadow-sm`}
                       >
                         {stayImage ? (
-                          <div className={`h-full ${ACCOUNT_PANEL_ITEM_MIN_HEIGHT} overflow-hidden bg-slate-100`}>
+                          <div className="h-full overflow-hidden bg-slate-100">
                             <img
                               src={stayImage}
                               alt={stay.title}
@@ -381,7 +412,7 @@ export default function MonCompteClient({
                             />
                           </div>
                         ) : (
-                          <div className={`flex h-full ${ACCOUNT_PANEL_ITEM_MIN_HEIGHT} items-center justify-center bg-gradient-to-r from-brand-100 via-blue-100 to-cyan-100`}>
+                          <div className="flex h-full items-center justify-center bg-gradient-to-r from-brand-100 via-blue-100 to-cyan-100">
                             <span className="px-3 text-center font-display text-sm font-semibold text-brand-700">
                               {stay.title}
                             </span>

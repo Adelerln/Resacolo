@@ -19,7 +19,9 @@ import { buildDevMockPricing, isDevBypassCheckout } from '@/lib/checkout/dev-byp
 import { getMockImageUrl, mockImages } from '@/lib/mockImages';
 import type { CheckoutContact, CheckoutParticipant, CheckoutPricing } from '@/types/checkout';
 import { resolveOrderRequestKind } from '@/lib/order-workflow';
+import { isPartnerFullCoverageCheckout } from '@/lib/partner-offers';
 import { formatNoPaymentAsBeneficiaryMessage } from '@/lib/partner-beneficiary-copy';
+import { fetchFamilyProfileSnapshot } from '@/lib/account-profile/client';
 
 function formatBirthdateFr(iso: string | undefined) {
   if (!iso?.trim()) return '—';
@@ -89,7 +91,9 @@ export default function CheckoutRecapitulatifPage() {
   const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
   const [organizerCgvUrl, setOrganizerCgvUrl] = useState('/cgv-organisateur');
   const [organizerCheckoutSettings, setOrganizerCheckoutSettings] = useState<OrganizerCheckoutSettings | null>(null);
+  const [hasCseAffiliation, setHasCseAffiliation] = useState<boolean | null>(null);
   const organizerId = items[0]?.organizerId ?? '';
+  const showComplementaryBenefitsCard = hasCseAffiliation === false;
   const requestKind = organizerCheckoutSettings
     ? resolveOrderRequestKind(
         { paymentMode: contact.paymentMode, vacafNumber: contact.vacafNumber },
@@ -103,7 +107,7 @@ export default function CheckoutRecapitulatifPage() {
   const financeMode = pricing?.financeMode ?? null;
   const financeRequiresQuote = Boolean(pricing?.financeRequiresQuote);
   const financeFamilyPayableTotalCents = pricing?.financeFamilyPayableTotalCents ?? null;
-  const isPartnerTotalCoverage = financeFamilyPayableTotalCents === 0 && financeMode === 'TOTAL';
+  const isPartnerTotalCoverage = pricing ? isPartnerFullCoverageCheckout(pricing) : false;
   const paymentRequiresOnlineStep =
     !financeRequiresQuote &&
     !isPartnerTotalCoverage &&
@@ -121,6 +125,31 @@ export default function CheckoutRecapitulatifPage() {
       router.prefetch('/checkout/paiement');
     }
   }, [paymentRequiresOnlineStep, router]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+
+    let cancelled = false;
+
+    async function loadCseAffiliation() {
+      try {
+        const snapshot = await fetchFamilyProfileSnapshot();
+        if (!cancelled) {
+          setHasCseAffiliation(Boolean(snapshot.cseAffiliation));
+        }
+      } catch {
+        if (!cancelled) {
+          setHasCseAffiliation(false);
+        }
+      }
+    }
+
+    void loadCseAffiliation();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hydrated]);
 
   const isContactComplete = Boolean(
     contact.email &&
@@ -482,60 +511,62 @@ export default function CheckoutRecapitulatifPage() {
           </div>
         </section>
 
-        <section className={SECTION_CARD_CLASS}>
-          <h2 className="font-display text-xl font-bold text-slate-900 sm:text-2xl">Avantages complémentaires</h2>
-          <div className="mt-5 space-y-5">
-            <div className="space-y-3">
-              <div>
-                <label htmlFor="recap-cse-affiliation" className={`${COMPACT_LABEL_BOLD_CLASS} block`}>
-                  Code d&apos;affiliation à un CSE (facultatif)
-                </label>
-                <p
-                  id="recap-cse-affiliation-hint"
-                  className="mt-1.5 text-sm leading-relaxed text-slate-500"
-                >
-                  Saisir votre code CSE, votre affiliation sera vérifiée.
-                </p>
-              </div>
-              <input
-                id="recap-cse-affiliation"
-                type="text"
-                value={contact.cseOrganization}
-                onChange={(event) => patchContact({ cseOrganization: event.target.value })}
-                className={INPUT_CLASS}
-                aria-describedby="recap-cse-affiliation-hint"
-              />
-            </div>
-
-            {organizerCheckoutSettings?.isVacafApproved ? (
-              <div className="space-y-3 border-t border-slate-100 pt-5">
+        {showComplementaryBenefitsCard ? (
+          <section className={SECTION_CARD_CLASS}>
+            <h2 className="font-display text-xl font-bold text-slate-900 sm:text-2xl">Avantages complémentaires</h2>
+            <div className="mt-5 space-y-5">
+              <div className="space-y-3">
                 <div>
-                  <p className={`${COMPACT_LABEL_BOLD_CLASS}`}>Aide CAF (VACAF / AVE)</p>
-                  <label htmlFor="recap-vacaf" className="mt-2 block text-sm font-medium text-slate-700">
-                    Matricule allocataire (facultatif)
+                  <label htmlFor="recap-cse-affiliation" className={`${COMPACT_LABEL_BOLD_CLASS} block`}>
+                    Code d&apos;affiliation à un CSE (facultatif)
                   </label>
                   <p
-                    id="recap-vacaf-hint"
+                    id="recap-cse-affiliation-hint"
                     className="mt-1.5 text-sm leading-relaxed text-slate-500"
                   >
-                    Si vous saisissez votre numéro allocataire, la commande partira en demande à traiter par
-                    l&apos;organisme du séjour pour contrôle AVE/VACAF.
+                    Saisir votre code CSE, votre affiliation sera vérifiée.
                   </p>
                 </div>
                 <input
-                  id="recap-vacaf"
+                  id="recap-cse-affiliation"
                   type="text"
-                  value={contact.vacafNumber}
-                  onChange={(event) =>
-                    patchContact({ vacafNumber: event.target.value.toUpperCase() })
-                  }
+                  value={contact.cseOrganization}
+                  onChange={(event) => patchContact({ cseOrganization: event.target.value })}
                   className={INPUT_CLASS}
-                  aria-describedby="recap-vacaf-hint"
+                  aria-describedby="recap-cse-affiliation-hint"
                 />
               </div>
-            ) : null}
-          </div>
-        </section>
+
+              {organizerCheckoutSettings?.isVacafApproved ? (
+                <div className="space-y-3 border-t border-slate-100 pt-5">
+                  <div>
+                    <p className={`${COMPACT_LABEL_BOLD_CLASS}`}>Aide CAF (VACAF / AVE)</p>
+                    <label htmlFor="recap-vacaf" className="mt-2 block text-sm font-medium text-slate-700">
+                      Matricule allocataire (facultatif)
+                    </label>
+                    <p
+                      id="recap-vacaf-hint"
+                      className="mt-1.5 text-sm leading-relaxed text-slate-500"
+                    >
+                      Si vous saisissez votre numéro allocataire, la commande partira en demande à traiter par
+                      l&apos;organisme du séjour pour contrôle AVE/VACAF.
+                    </p>
+                  </div>
+                  <input
+                    id="recap-vacaf"
+                    type="text"
+                    value={contact.vacafNumber}
+                    onChange={(event) =>
+                      patchContact({ vacafNumber: event.target.value.toUpperCase() })
+                    }
+                    className={INPUT_CLASS}
+                    aria-describedby="recap-vacaf-hint"
+                  />
+                </div>
+              ) : null}
+            </div>
+          </section>
+        ) : null}
 
         <section className={SECTION_CARD_CLASS}>
           <h2 className="font-display text-xl font-bold text-slate-900 sm:text-2xl">Mode de paiement</h2>

@@ -69,6 +69,8 @@ export interface StaySessionOption {
   cseLabel?: string | null;
 }
 
+export type StayPartnerFinanceMode = 'TOTAL' | 'NONE' | 'PERCENT' | 'FIXED' | 'MANUAL';
+
 export interface StayBookingOptions {
   transportMode: string;
   sessions: StaySessionOption[];
@@ -158,6 +160,9 @@ export interface Stay {
   priceFrom: number | null;
   partnerDiscountPercent?: number | null;
   partnerPriceFrom?: number | null;
+  partnerFinanceMode?: StayPartnerFinanceMode | null;
+  partnerFinancePercentValue?: number | null;
+  partnerFinanceFixedCents?: number | null;
   csePriceFrom?: number | null;
   cseAidFrom?: number | null;
   cseLabel?: string | null;

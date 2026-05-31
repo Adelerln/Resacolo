@@ -56,9 +56,9 @@ export function PartnerFinancementForm({
           aria-live="polite"
         >
           {mode === 'TOTAL' && (
-            <>Si la prise en charge est totale, le partenaire s&apos;engage à régler la totalité de l&apos;inscription auprès de l&apos;organisateur.</>
+            <>Si la prise en charge est totale, le partenaire s&apos;engage à régler la totalité de l&apos;inscription auprès de ResaColo.</>
           )}
-          {mode === 'NONE' && <>Si pas de financement, le client règle la totalité auprès de l&apos;organisateur.</>}
+          {mode === 'NONE' && <>Si pas de financement, le client règle la totalité auprès de ResaColo.</>}
           {mode === 'PERCENT' && (
             <>Si la quote-part de prise en charge se fait en %, alors la case « Pourcentage pris en charge » s&apos;affiche — et doit être renseignée par le partenaire.</>
           )}
@@ -92,7 +92,7 @@ export function PartnerFinancementForm({
                   step="0.01"
                   defaultValue={typeof initialPercentValue === 'number' ? String(initialPercentValue) : ''}
                   className={fieldClassName()}
-                  placeholder="Ex: 40"
+                  placeholder="Ex. : 40"
                 />
               </label>
             ) : null}
@@ -106,7 +106,7 @@ export function PartnerFinancementForm({
                   step="0.01"
                   defaultValue={typeof initialFixedEuros === 'number' ? String(initialFixedEuros) : ''}
                   className={fieldClassName()}
-                  placeholder="Ex: 150"
+                  placeholder="Ex. : 150"
                 />
               </label>
             ) : null}
@@ -114,13 +114,13 @@ export function PartnerFinancementForm({
         )}
 
         <label className="block text-sm font-medium text-slate-700">
-          Règles personnalisées
+          Mémo Règles personnalisées
           <textarea
             name="finance_rules_text"
             rows={4}
             defaultValue={initialRulesText ?? ''}
             className={fieldClassName()}
-            placeholder="Ex: prise en charge 50% pour les revenus < 30k."
+            placeholder="Ex. : prise en charge 50% pour les revenus < 30k."
           />
         </label>
       </form>

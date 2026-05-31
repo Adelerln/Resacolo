@@ -25,6 +25,8 @@ const partnerCatalogRulesSchema = z.object({
     destinationMode: z.enum(['ANY', 'FRANCE_ONLY', 'EUROPE_ONLY']),
     countriesAllowed: z.array(z.string().min(1)),
     countriesExcluded: z.array(z.string().min(1)),
+    organizersAllowed: z.array(z.string().min(1)),
+    organizersExcluded: z.array(z.string().min(1)),
     activitiesAllowed: z.array(z.string().min(1)),
     activitiesExcluded: z.array(z.string().min(1)),
     transportIncludedRequired: z.boolean(),
@@ -51,7 +53,12 @@ const partnerCatalogRulesSchema = z.object({
     qfMin: z.number().min(0).nullable(),
     qfMax: z.number().min(0).nullable()
   }),
-  qfScale: z.array(qfRowSchema)
+  qfScale: z.array(qfRowSchema),
+  meta: z
+    .object({
+      knownSiteCountries: z.array(z.string().min(1))
+    })
+    .optional()
 });
 
 export function getDefaultPartnerCatalogRules(): PartnerCatalogRules {
@@ -70,6 +77,8 @@ export function getDefaultPartnerCatalogRules(): PartnerCatalogRules {
       destinationMode: 'ANY',
       countriesAllowed: [],
       countriesExcluded: [],
+      organizersAllowed: [],
+      organizersExcluded: [],
       activitiesAllowed: [],
       activitiesExcluded: [],
       transportIncludedRequired: false,
@@ -96,7 +105,10 @@ export function getDefaultPartnerCatalogRules(): PartnerCatalogRules {
       qfMin: null,
       qfMax: null
     },
-    qfScale: []
+    qfScale: [],
+    meta: {
+      knownSiteCountries: []
+    }
   };
 }
 
@@ -127,8 +139,18 @@ export function normalizePartnerCatalogRules(value: unknown): PartnerCatalogRule
   merged.blockingRules.stayTypesExcluded = normalizeStringList(merged.blockingRules.stayTypesExcluded);
   merged.blockingRules.countriesAllowed = normalizeStringList(merged.blockingRules.countriesAllowed);
   merged.blockingRules.countriesExcluded = normalizeStringList(merged.blockingRules.countriesExcluded);
+  merged.blockingRules.organizersAllowed = normalizeStringList(merged.blockingRules.organizersAllowed);
+  merged.blockingRules.organizersExcluded = normalizeStringList(merged.blockingRules.organizersExcluded);
   merged.blockingRules.activitiesAllowed = normalizeStringList(merged.blockingRules.activitiesAllowed);
   merged.blockingRules.activitiesExcluded = normalizeStringList(merged.blockingRules.activitiesExcluded);
+
+  const meta =
+    record.meta && typeof record.meta === 'object'
+      ? (record.meta as PartnerCatalogRules['meta'])
+      : defaultRules.meta;
+  merged.meta = {
+    knownSiteCountries: normalizeStringList(meta?.knownSiteCountries)
+  };
 
   return merged;
 }
@@ -216,6 +238,7 @@ export function evaluatePartnerCatalogEligibility(input: {
   };
   priceCents: number;
   organizer: {
+    id: string;
     is_resacolo_member: boolean;
   };
 }): EligibilityResult {
@@ -292,6 +315,19 @@ export function evaluatePartnerCatalogEligibility(input: {
   }
   if (rules.accommodationRequired && !stay.supervision_text?.trim()) {
     reasons.push({ code: 'ACCOMMODATION_REQUIRED', message: 'Hébergement/nuitées requis.' });
+  }
+  const organizerId = String(input.organizer.id ?? '').trim();
+  if (rules.organizersAllowed.length > 0) {
+    const allowedSet = new Set(rules.organizersAllowed.map((entry) => entry.trim()));
+    if (!organizerId || !allowedSet.has(organizerId)) {
+      reasons.push({ code: 'ORGANIZER_NOT_ALLOWED', message: 'Organisateur non autorisé.' });
+    }
+  }
+  if (rules.organizersExcluded.length > 0) {
+    const excludedSet = new Set(rules.organizersExcluded.map((entry) => entry.trim()));
+    if (organizerId && excludedSet.has(organizerId)) {
+      reasons.push({ code: 'ORGANIZER_EXCLUDED', message: 'Organisateur exclu.' });
+    }
   }
   if (rules.partnerOrganizersOnly && !input.organizer.is_resacolo_member) {
     reasons.push({ code: 'PARTNER_ORGANIZER_REQUIRED', message: 'Organisateur partenaire requis.' });

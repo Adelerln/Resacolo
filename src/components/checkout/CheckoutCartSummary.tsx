@@ -1,5 +1,6 @@
 import type { CartItem } from '@/types/cart';
 import { formatEuroFromCents, type CheckoutPricing, type CheckoutPricingItem } from '@/types/checkout';
+import { normalizePartnerFinanceMode } from '@/lib/partner-offers';
 
 function formatUnitPrice(value: number | null) {
   if (value == null) return 'Sur demande';
@@ -53,6 +54,27 @@ function getDetailedItemSelectionLines(item: CartItem, priced: CheckoutPricingIt
       : undefined);
 
   return { session, transport, insurance, extra };
+}
+
+function getFinanceSummary(priced: CheckoutPricingItem | undefined) {
+  if (!priced?.financeMode) return null;
+
+  const mode = normalizePartnerFinanceMode(priced.financeMode);
+  if (mode === 'MANUAL' || priced.financeRequiresQuote) {
+    return 'Demande de devis : le montant final sera confirmé par votre partenaire.';
+  }
+
+  if (mode === 'TOTAL') {
+    return 'Prise en charge totale : aucun règlement demandé au moment de la réservation.';
+  }
+
+  if ((priced.financePartnerContributionCents ?? 0) > 0 && priced.financeFamilyPayableCents != null) {
+    return `Prise en charge partenaire : ${formatEuroFromCents(priced.financePartnerContributionCents ?? 0)} · Reste à régler : ${formatEuroFromCents(
+      priced.financeFamilyPayableCents
+    )}`;
+  }
+
+  return null;
 }
 
 export function CheckoutCartSummary({
@@ -137,11 +159,8 @@ export function CheckoutCartSummary({
                     <p className="text-xs text-slate-700 sm:text-sm">
                       Vendu par : <span className="font-semibold text-brand-600">{item.organizerName}</span>
                     </p>
-                    {priced && (priced.cseAidCents ?? 0) > 0 ? (
-                      <p className="pt-1 text-xs font-semibold text-emerald-700 sm:text-sm">
-                        Part CSE estimée: {formatEuroFromCents(priced.cseAidCents ?? 0)} · Reste famille:{' '}
-                        {formatEuroFromCents(priced.familyCentsAfterAid ?? priced.totalPriceCents)}
-                      </p>
+                    {getFinanceSummary(priced) ? (
+                      <p className="pt-1 text-xs font-semibold text-emerald-700 sm:text-sm">{getFinanceSummary(priced)}</p>
                     ) : null}
                     {itemExtra ? <div className="pt-2">{itemExtra}</div> : null}
                   </div>
@@ -157,10 +176,16 @@ export function CheckoutCartSummary({
                 {pricing ? formatEuroFromCents(pricing.totalCents) : formatUnitPrice(fallbackTotal)}
               </span>
             </div>
-            {pricing && (pricing.cseTotalAidCents ?? 0) > 0 ? (
+            {pricing?.financeRequiresQuote ? (
+              <div className="mt-2 text-xs font-semibold text-amber-700 sm:text-sm">
+                Demande de devis : le montant final sera confirmé par votre partenaire.
+              </div>
+            ) : pricing && pricing.financeFamilyPayableTotalCents != null && pricing.financeFamilyPayableTotalCents !== pricing.totalCents ? (
               <div className="mt-2 flex items-center justify-between text-xs font-semibold text-emerald-700 sm:text-sm">
-                <span>Total après déduction CSE estimée</span>
-                <span>{formatEuroFromCents(pricing.familyTotalCentsAfterAid ?? pricing.totalCents)}</span>
+                <span>
+                  {pricing.financeFamilyPayableTotalCents === 0 ? 'Aucun règlement demandé' : 'Reste à régler'}
+                </span>
+                <span>{formatEuroFromCents(pricing.financeFamilyPayableTotalCents)}</span>
               </div>
             ) : null}
           </div>
@@ -181,11 +206,8 @@ export function CheckoutCartSummary({
               <p className="text-sm font-semibold text-slate-900">{item.title}</p>
               <p className="mt-0.5 text-xs text-slate-500">{item.organizerName}</p>
               <p className="mt-2 text-sm font-semibold text-accent-600">{linePrice}</p>
-              {priced && (priced.cseAidCents ?? 0) > 0 ? (
-                <p className="mt-1 text-xs font-semibold text-emerald-700">
-                  Part CSE estimée: {formatEuroFromCents(priced.cseAidCents ?? 0)} · Reste famille:{' '}
-                  {formatEuroFromCents(priced.familyCentsAfterAid ?? priced.totalPriceCents)}
-                </p>
+              {getFinanceSummary(priced) ? (
+                <p className="mt-1 text-xs font-semibold text-emerald-700">{getFinanceSummary(priced)}</p>
               ) : null}
             </li>
           );
@@ -199,10 +221,14 @@ export function CheckoutCartSummary({
             {pricing ? formatEuroFromCents(pricing.totalCents) : formatUnitPrice(fallbackTotal)}
           </span>
         </div>
-        {pricing && (pricing.cseTotalAidCents ?? 0) > 0 ? (
+        {pricing?.financeRequiresQuote ? (
+          <div className="mt-1 text-xs font-semibold text-amber-700">
+            Demande de devis : le montant final sera confirmé par votre partenaire.
+          </div>
+        ) : pricing && pricing.financeFamilyPayableTotalCents != null && pricing.financeFamilyPayableTotalCents !== pricing.totalCents ? (
           <div className="mt-1 flex items-center justify-between text-xs font-semibold text-emerald-700">
-            <span>Total après déduction CSE estimée</span>
-            <span>{formatEuroFromCents(pricing.familyTotalCentsAfterAid ?? pricing.totalCents)}</span>
+            <span>{pricing.financeFamilyPayableTotalCents === 0 ? 'Aucun règlement demandé' : 'Reste à régler'}</span>
+            <span>{formatEuroFromCents(pricing.financeFamilyPayableTotalCents)}</span>
           </div>
         ) : null}
       </div>

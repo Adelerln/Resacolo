@@ -60,6 +60,12 @@ export type CheckoutPricingItem = {
   insuranceOptionId: string | null;
   extraOptionId: string | null;
   extraOptionLabel: string | null;
+  financeMode?: 'TOTAL' | 'NONE' | 'PERCENT' | 'FIXED' | 'MANUAL' | null;
+  financePartnerContributionCents?: number | null;
+  financeFamilyPayableCents?: number | null;
+  financePercentValue?: number | null;
+  financeFixedCents?: number | null;
+  financeRequiresQuote?: boolean;
   cseAidCents?: number;
   familyCentsAfterAid?: number;
   cseEligible?: boolean;
@@ -69,6 +75,12 @@ export type CheckoutPricingItem = {
 export type CheckoutPricing = {
   items: CheckoutPricingItem[];
   totalCents: number;
+  financeMode?: 'TOTAL' | 'NONE' | 'PERCENT' | 'FIXED' | 'MANUAL' | null;
+  financePartnerContributionTotalCents?: number | null;
+  financeFamilyPayableTotalCents?: number | null;
+  financePercentValue?: number | null;
+  financeFixedCents?: number | null;
+  financeRequiresQuote?: boolean;
   familyTotalCentsAfterAid?: number;
   cseTotalAidCents?: number;
   currency: 'EUR';

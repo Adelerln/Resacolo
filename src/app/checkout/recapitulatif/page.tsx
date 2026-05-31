@@ -99,7 +99,14 @@ export default function CheckoutRecapitulatifPage() {
         }
       )
     : null;
-  const paymentRequiresOnlineStep = requiresOnlinePaymentStep(contact.paymentMode, Boolean(requestKind));
+  const financeMode = pricing?.financeMode ?? null;
+  const financeRequiresQuote = Boolean(pricing?.financeRequiresQuote);
+  const financeFamilyPayableTotalCents = pricing?.financeFamilyPayableTotalCents ?? null;
+  const isPartnerTotalCoverage = financeFamilyPayableTotalCents === 0 && financeMode === 'TOTAL';
+  const paymentRequiresOnlineStep =
+    !financeRequiresQuote &&
+    !isPartnerTotalCoverage &&
+    requiresOnlinePaymentStep(contact.paymentMode, Boolean(requestKind));
   const availablePaymentModes = useMemo(() => {
     return PAYMENT_MODES.filter((mode) => {
       if (mode.value === 'CV_PAPER') return organizerCheckoutSettings?.acceptsAncvPaper ?? false;
@@ -284,6 +291,10 @@ export default function CheckoutRecapitulatifPage() {
               ? 'dev-bypass-requested-vacaf'
               : requestKind === 'ANCV_CONNECT'
                 ? 'dev-bypass-requested-ancv-connect'
+                : financeRequiresQuote
+                  ? 'dev-bypass-partner-manual-quote'
+                  : isPartnerTotalCoverage
+                    ? 'dev-bypass-partner-total'
                 : contact.paymentMode === 'CV_PAPER'
                   ? 'dev-bypass-cv-paper'
                   : 'dev-bypass-deferred';
@@ -337,6 +348,10 @@ export default function CheckoutRecapitulatifPage() {
             ? 'requested-vacaf'
             : requestKind === 'ANCV_CONNECT'
               ? 'requested-ancv-connect'
+              : financeRequiresQuote
+                ? 'partner-manual-quote'
+                : isPartnerTotalCoverage
+                  ? 'partner-total'
               : contact.paymentMode === 'CV_PAPER'
                 ? 'cv-paper'
                 : 'deferred'
@@ -527,51 +542,61 @@ export default function CheckoutRecapitulatifPage() {
         <section className={SECTION_CARD_CLASS}>
           <h2 className="font-display text-xl font-bold text-slate-900 sm:text-2xl">Mode de paiement</h2>
           <div className="mt-5 space-y-5">
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {availablePaymentModes.map((mode) => {
-                const isActive = contact.paymentMode === mode.value;
-                return (
-                  <label
-                    key={mode.value}
-                    className={`flex cursor-pointer items-start gap-3 rounded-[18px] border px-4 py-4 text-sm font-semibold transition ${
-                      isActive
-                        ? 'border-accent-400 bg-accent-50 text-accent-700'
-                        : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
-                    }`}
-                  >
-                    <span
-                      className={`mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded border-2 transition ${
+            {financeRequiresQuote ? (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                Aucun paiement n&apos;est demandé à ce stade. Vous êtes en train d&apos;envoyer une demande de devis à votre partenaire.
+              </div>
+            ) : isPartnerTotalCoverage ? (
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+                Aucun paiement n&apos;est demandé lors de cette réservation : votre partenaire prendra en charge la totalité auprès de ResaColo.
+              </div>
+            ) : (
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {availablePaymentModes.map((mode) => {
+                  const isActive = contact.paymentMode === mode.value;
+                  return (
+                    <label
+                      key={mode.value}
+                      className={`flex cursor-pointer items-start gap-3 rounded-[18px] border px-4 py-4 text-sm font-semibold transition ${
                         isActive
-                          ? 'border-accent-500 bg-accent-500 text-white'
-                          : 'border-slate-300 bg-white'
+                          ? 'border-accent-400 bg-accent-50 text-accent-700'
+                          : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
                       }`}
-                      aria-hidden
                     >
-                      {isActive ? <Check className="h-3 w-3 stroke-[3]" /> : null}
-                    </span>
-                    <input
-                      type="radio"
-                      name="recap-payment-mode"
-                      value={mode.value}
-                      checked={isActive}
-                      onChange={() =>
-                        patchContact(
-                          mode.value === 'CV_CONNECT'
-                            ? { paymentMode: mode.value }
-                            : {
-                                paymentMode: mode.value,
-                                ancvConnectMatricule: '',
-                                ancvConnectAmount: ''
-                              }
-                        )
-                      }
-                      className="sr-only"
-                    />
-                    <span className="min-w-0 flex-1 leading-snug">{mode.label}</span>
-                  </label>
-                );
-              })}
-            </div>
+                      <span
+                        className={`mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded border-2 transition ${
+                          isActive
+                            ? 'border-accent-500 bg-accent-500 text-white'
+                            : 'border-slate-300 bg-white'
+                        }`}
+                        aria-hidden
+                      >
+                        {isActive ? <Check className="h-3 w-3 stroke-[3]" /> : null}
+                      </span>
+                      <input
+                        type="radio"
+                        name="recap-payment-mode"
+                        value={mode.value}
+                        checked={isActive}
+                        onChange={() =>
+                          patchContact(
+                            mode.value === 'CV_CONNECT'
+                              ? { paymentMode: mode.value }
+                              : {
+                                  paymentMode: mode.value,
+                                  ancvConnectMatricule: '',
+                                  ancvConnectAmount: ''
+                                }
+                          )
+                        }
+                        className="sr-only"
+                      />
+                      <span className="min-w-0 flex-1 leading-snug">{mode.label}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
 
             {organizerCheckoutSettings ? (
               <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
@@ -588,7 +613,7 @@ export default function CheckoutRecapitulatifPage() {
               </div>
             ) : null}
 
-            {contact.paymentMode === 'CV_CONNECT' ? (
+            {contact.paymentMode === 'CV_CONNECT' && !financeRequiresQuote && !isPartnerTotalCoverage ? (
               <div className="grid gap-4 md:grid-cols-2">
                 <label className="block text-sm font-medium text-slate-700">
                   Matricule ANCV Connect *
@@ -597,7 +622,7 @@ export default function CheckoutRecapitulatifPage() {
                     value={contact.ancvConnectMatricule}
                     onChange={(event) => patchContact({ ancvConnectMatricule: event.target.value })}
                     className={INPUT_CLASS}
-                    placeholder="Ex: 123456789"
+                    placeholder="Ex. : 123456789"
                     required
                   />
                 </label>
@@ -609,7 +634,7 @@ export default function CheckoutRecapitulatifPage() {
                     value={contact.ancvConnectAmount}
                     onChange={(event) => patchContact({ ancvConnectAmount: event.target.value })}
                     className={INPUT_CLASS}
-                    placeholder="Ex: 150"
+                    placeholder="Ex. : 150"
                     required
                   />
                 </label>
@@ -621,6 +646,23 @@ export default function CheckoutRecapitulatifPage() {
                 {requestKind === 'VACAF'
                   ? "Cette commande ne sera pas payée en ligne : l'organisme devra vérifier vos droits VACAF/AVE et saisir le montant CAF applicable."
                   : "Cette commande ne sera pas payée en ligne : l'organisme devra vous recontacter et saisir le montant reçu en ANCV Connect."}
+              </div>
+            ) : null}
+            {financeMode === 'PERCENT' && typeof pricing?.financePercentValue === 'number' ? (
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+                Votre partenaire prend en charge {pricing.financePercentValue.toLocaleString('fr-FR', {
+                  minimumFractionDigits: 0,
+                  maximumFractionDigits: 2
+                })} % du tarif partenaire affiché.
+              </div>
+            ) : null}
+            {financeMode === 'FIXED' && typeof pricing?.financeFixedCents === 'number' ? (
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+                Votre partenaire prend en charge un montant fixe de{' '}
+                {new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(
+                  pricing.financeFixedCents / 100
+                )}{' '}
+                sur cette réservation.
               </div>
             ) : null}
 
@@ -672,15 +714,19 @@ export default function CheckoutRecapitulatifPage() {
                 <span>Total catalogue</span>
                 <span>{new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(pricing.totalCents / 100)}</span>
               </div>
-              {(pricing.cseTotalAidCents ?? 0) > 0 ? (
+              {pricing.financeRequiresQuote ? (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
+                  Le prix affiché correspond au coût actuel du séjour, mais le montant final à régler sera confirmé par votre partenaire après étude.
+                </div>
+              ) : pricing.financePartnerContributionTotalCents != null && pricing.financePartnerContributionTotalCents > 0 ? (
                 <>
                   <div className="flex items-center justify-between font-semibold text-emerald-700">
-                    <span>Part CSE estimée</span>
-                    <span>- {new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format((pricing.cseTotalAidCents ?? 0) / 100)}</span>
+                    <span>Prise en charge partenaire</span>
+                    <span>- {new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format((pricing.financePartnerContributionTotalCents ?? 0) / 100)}</span>
                   </div>
                   <div className="flex items-center justify-between text-base font-bold text-slate-900">
-                    <span>Reste famille estimé</span>
-                    <span>{new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format((pricing.familyTotalCentsAfterAid ?? pricing.totalCents) / 100)}</span>
+                    <span>{(pricing.financeFamilyPayableTotalCents ?? pricing.totalCents) === 0 ? 'Aucun règlement demandé' : 'Reste à régler'}</span>
+                    <span>{new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(((pricing.financeFamilyPayableTotalCents ?? pricing.totalCents)) / 100)}</span>
                   </div>
                 </>
               ) : null}
@@ -708,7 +754,11 @@ export default function CheckoutRecapitulatifPage() {
               ? 'Validation...'
               : paymentRequiresOnlineStep
                 ? 'Continuer vers paiement'
-                : 'Valider la commande'}
+                : financeRequiresQuote
+                  ? 'Envoyer ma demande de devis'
+                  : isPartnerTotalCoverage
+                    ? 'Valider la réservation'
+                    : 'Valider la commande'}
           </button>
         </div>
       </div>

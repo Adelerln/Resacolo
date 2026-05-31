@@ -17,6 +17,7 @@ import {
 import {
   clampPartnerFinanceCents,
   clampPartnerFinancePercent,
+  computePartnerContributionSnapshotCents,
   normalizePartnerFinanceMode
 } from '@/lib/partner-offers';
 import { isMissingAnyColumnError } from '@/lib/supabase-schema-errors';
@@ -221,8 +222,6 @@ async function snapshotCollectivityContributions(input: {
   if (!collectivity || input.orderItems.length === 0) return;
 
   const mode = normalizePartnerFinanceMode(collectivity.finance_mode);
-  if (mode === 'NONE' || mode === 'MANUAL') return;
-
   const supabase = getServerSupabaseClient();
   const now = new Date().toISOString();
 
@@ -251,10 +250,12 @@ async function snapshotCollectivityContributions(input: {
   }
 
   const totalCents = input.orderItems.reduce((sum, item) => sum + Math.max(item.totalCents, 0), 0);
-  const fixedTargetCents = clampPartnerFinanceCents(collectivity.finance_fixed_cents, totalCents);
-  if (fixedTargetCents <= 0) return;
-
-  const allocations = distributeCentsAcrossOrderItems(fixedTargetCents, input.orderItems);
+  const fixedTargetCents =
+    mode === 'FIXED' ? clampPartnerFinanceCents(collectivity.finance_fixed_cents, totalCents) : 0;
+  const allocations =
+    fixedTargetCents > 0
+      ? distributeCentsAcrossOrderItems(fixedTargetCents, input.orderItems)
+      : input.orderItems.map((item) => ({ id: item.id, cents: 0 }));
   const { error } = await supabase.from('collectivity_contributions').upsert(
     allocations.map((allocation) => ({
       collectivity_id: input.collectivityId,
@@ -312,7 +313,10 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
   const organizerSettings = await readOrganizerCheckoutSettings(organizerId);
   const requestKind = resolveOrderRequestKind(input.contact, organizerSettings);
   const initialStatus = resolveInitialOrderStatus(input.contact, organizerSettings);
-  const immediatePaymentAmountCents = computeImmediatePaymentAmountCents(pricing.totalCents, input.contact.paymentMode);
+  const immediatePaymentAmountCents = computeImmediatePaymentAmountCents(
+    pricing.financeFamilyPayableTotalCents ?? 0,
+    input.contact.paymentMode
+  );
 
   if (input.contact.paymentMode === 'CV_CONNECT' && !organizerSettings.accepts_ancv_connect) {
     throw new Error("Cet organisme n'accepte pas ANCV Connect.");
@@ -589,16 +593,47 @@ export async function markOrderPaid(input: {
     .from('order_items')
     .select('id,total_price_cents')
     .eq('order_id', input.orderId);
+  const orderItemIds = (orderItems ?? []).map((item) => item.id);
+  const { data: contributionRows } = orderItemIds.length
+    ? await supabase
+        .from('collectivity_contributions')
+        .select('order_item_id,mode,fixed_cents,percent_value,cap_cents,status')
+        .in('order_item_id', orderItemIds)
+        .eq('status', 'APPROVED')
+    : { data: [] as Array<{
+        order_item_id: string;
+        mode: string;
+        fixed_cents: number | null;
+        percent_value: number | null;
+        cap_cents: number | null;
+        status: Database['public']['Enums']['contribution_status'];
+      }> };
   const { data: orderRow } = await supabase
     .from('orders')
     .select('external_aid_cents,external_paid_cents')
     .eq('id', input.orderId)
     .maybeSingle();
   const totalCents = (orderItems ?? []).reduce((sum, item) => sum + (item.total_price_cents ?? 0), 0);
+  const contributionByOrderItemId = new Map((contributionRows ?? []).map((row) => [row.order_item_id, row]));
+  const partnerContributionCents = (orderItems ?? []).reduce((sum, item) => {
+    const contribution = contributionByOrderItemId.get(item.id);
+    if (!contribution) return sum;
+    return (
+      sum +
+      computePartnerContributionSnapshotCents({
+        mode: contribution.mode,
+        totalCents: item.total_price_cents ?? 0,
+        percentValue: contribution.percent_value,
+        fixedCents: contribution.fixed_cents,
+        capCents: contribution.cap_cents
+      })
+    );
+  }, 0);
+  const familyPayableTotalCents = Math.max(0, totalCents - partnerContributionCents);
   const paymentMode = parsePaymentModeFromPayload(existingPayment?.raw_payload);
   const onlinePaidCents = Math.max(0, existingPayment?.amount_cents ?? 0);
   const nextStatus = resolvePaidOrderStatus({
-    totalCents,
+    totalCents: familyPayableTotalCents,
     paymentMode,
     externalAidCents: orderRow?.external_aid_cents ?? 0,
     externalPaidCents: orderRow?.external_paid_cents ?? 0,
@@ -616,9 +651,6 @@ export async function markOrderPaid(input: {
   if (orderError) {
     throw new Error('Impossible de mettre à jour la commande.');
   }
-
-  const orderItemIds = (orderItems ?? []).map((item) => item.id);
-
   if (orderItemIds.length > 0) {
     const { error: holdsError } = await supabase
       .from('session_holds')

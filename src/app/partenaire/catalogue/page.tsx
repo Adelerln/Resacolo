@@ -6,7 +6,12 @@ import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { listPartnerCatalogStays, readPartnerCollectivity } from '@/lib/partner.server';
 import RangeField from '@/components/partner/RangeField';
 import StayTypeRulesCards from '@/components/partner/StayTypeRulesCards';
+import OrganizerRulesCards from '@/components/partner/OrganizerRulesCards';
+import PartnerAppliedCatalogSection, {
+  type AppliedCatalogRow
+} from '@/components/partner/PartnerAppliedCatalogSection';
 import CountryDropdownField from '@/components/partner/CountryDropdownField';
+import { buildCatalogCountryOptions, listSiteStayCountryLabels, syncKnownSiteCountriesWithRules } from '@/lib/partner-catalog-countries';
 import CatalogQfVisibilityEnhancer from '@/components/partner/CatalogQfVisibilityEnhancer';
 import {
   evaluatePartnerCatalogEligibility,
@@ -93,207 +98,6 @@ function formatCurrencyFromCents(value: number) {
   }).format(value / 100);
 }
 
-const ALL_COUNTRIES_FR = [
-  'Afghanistan',
-  'Afrique du Sud',
-  'Albanie',
-  'Algérie',
-  'Allemagne',
-  'Andorre',
-  'Angola',
-  'Antigua-et-Barbuda',
-  'Arabie saoudite',
-  'Argentine',
-  'Arménie',
-  'Australie',
-  'Autriche',
-  'Azerbaïdjan',
-  'Bahamas',
-  'Bahreïn',
-  'Bangladesh',
-  'Barbade',
-  'Belgique',
-  'Belize',
-  'Bénin',
-  'Bhoutan',
-  'Biélorussie',
-  'Birmanie / Myanmar',
-  'Bolivie',
-  'Bosnie-Herzégovine',
-  'Botswana',
-  'Brésil',
-  'Brunei',
-  'Bulgarie',
-  'Burkina Faso',
-  'Burundi',
-  'Cambodge',
-  'Cameroun',
-  'Canada',
-  'Cap-Vert',
-  'Chili',
-  'Chine',
-  'Chypre',
-  'Colombie',
-  'Comores',
-  'Congo',
-  'Corée du Nord',
-  'Corée du Sud',
-  'Costa Rica',
-  'Côte d’Ivoire',
-  'Croatie',
-  'Cuba',
-  'Danemark',
-  'Djibouti',
-  'Dominique',
-  'Égypte',
-  'Émirats arabes unis',
-  'Équateur',
-  'Érythrée',
-  'Espagne',
-  'Estonie',
-  'Eswatini',
-  'États-Unis',
-  'Éthiopie',
-  'Fidji',
-  'Finlande',
-  'France',
-  'Gabon',
-  'Gambie',
-  'Géorgie',
-  'Ghana',
-  'Grèce',
-  'Grenade',
-  'Guatemala',
-  'Guinée',
-  'Guinée-Bissau',
-  'Guinée équatoriale',
-  'Guyana',
-  'Haïti',
-  'Honduras',
-  'Hongrie',
-  'Îles Cook',
-  'Îles Marshall',
-  'Inde',
-  'Indonésie',
-  'Irak',
-  'Iran',
-  'Irlande',
-  'Islande',
-  'Israël',
-  'Italie',
-  'Jamaïque',
-  'Japon',
-  'Jordanie',
-  'Kazakhstan',
-  'Kenya',
-  'Kirghizistan',
-  'Kiribati',
-  'Kosovo',
-  'Koweït',
-  'Laos',
-  'Lesotho',
-  'Lettonie',
-  'Liban',
-  'Liberia',
-  'Libye',
-  'Liechtenstein',
-  'Lituanie',
-  'Luxembourg',
-  'Macédoine du Nord',
-  'Madagascar',
-  'Malaisie',
-  'Malawi',
-  'Maldives',
-  'Mali',
-  'Malte',
-  'Maroc',
-  'Maurice',
-  'Mauritanie',
-  'Mexique',
-  'Micronésie',
-  'Moldavie',
-  'Monaco',
-  'Mongolie',
-  'Monténégro',
-  'Mozambique',
-  'Namibie',
-  'Nauru',
-  'Népal',
-  'Nicaragua',
-  'Niger',
-  'Nigeria',
-  'Niue',
-  'Norvège',
-  'Nouvelle-Zélande',
-  'Oman',
-  'Ouganda',
-  'Ouzbékistan',
-  'Pakistan',
-  'Palaos',
-  'Palestine',
-  'Panama',
-  'Papouasie-Nouvelle-Guinée',
-  'Paraguay',
-  'Pays-Bas',
-  'Pérou',
-  'Philippines',
-  'Pologne',
-  'Portugal',
-  'Qatar',
-  'République centrafricaine',
-  'République démocratique du Congo',
-  'République dominicaine',
-  'République tchèque',
-  'Roumanie',
-  'Royaume-Uni',
-  'Russie',
-  'Rwanda',
-  'Saint-Christophe-et-Niévès',
-  'Sainte-Lucie',
-  'Saint-Marin',
-  'Saint-Siège / Vatican',
-  'Saint-Vincent-et-les-Grenadines',
-  'Salomon',
-  'Salvador',
-  'Samoa',
-  'São Tomé-et-Príncipe',
-  'Sénégal',
-  'Serbie',
-  'Seychelles',
-  'Sierra Leone',
-  'Singapour',
-  'Slovaquie',
-  'Slovénie',
-  'Somalie',
-  'Soudan',
-  'Soudan du Sud',
-  'Sri Lanka',
-  'Suède',
-  'Suisse',
-  'Suriname',
-  'Syrie',
-  'Tadjikistan',
-  'Tanzanie',
-  'Tchad',
-  'Thaïlande',
-  'Timor oriental',
-  'Togo',
-  'Tonga',
-  'Trinité-et-Tobago',
-  'Tunisie',
-  'Turkménistan',
-  'Turquie',
-  'Tuvalu',
-  'Ukraine',
-  'Uruguay',
-  'Vanuatu',
-  'Venezuela',
-  'Viêt Nam',
-  'Yémen',
-  'Zambie',
-  'Zimbabwe'
-].sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }));
-
 function parseRulesFromFormData(formData: FormData): PartnerCatalogRules {
   const base = getDefaultPartnerCatalogRules();
   const rules: PartnerCatalogRules = {
@@ -315,6 +119,8 @@ function parseRulesFromFormData(formData: FormData): PartnerCatalogRules {
         'ANY',
       countriesAllowed: parseArray(formData, 'countries_allowed'),
       countriesExcluded: parseArray(formData, 'countries_excluded'),
+      organizersAllowed: parseArray(formData, 'organizers_allowed'),
+      organizersExcluded: parseArray(formData, 'organizers_excluded'),
       activitiesAllowed: parseArray(formData, 'activities_allowed'),
       activitiesExcluded: parseArray(formData, 'activities_excluded'),
       transportIncludedRequired: checkboxName(formData, 'transport_included_required'),
@@ -419,7 +225,11 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
     if (!nextSession.tenantId) redirect('/partenaire/catalogue?error=Aucune%20collectivite%20liee');
     if (!canAccessPartnerSection(accessRole, 'catalog')) redirect('/partenaire');
 
-    const rules: PartnerCatalogRules = normalizePartnerCatalogRules(parseRulesFromFormData(formData));
+    const siteCountries = await listSiteStayCountryLabels();
+    const rules: PartnerCatalogRules = syncKnownSiteCountriesWithRules(
+      normalizePartnerCatalogRules(parseRulesFromFormData(formData)),
+      siteCountries
+    );
 
     const supabase = getServerSupabaseClient();
     const { error } = await supabase
@@ -439,6 +249,7 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
       }
       redirect(buildCatalogErrorRedirectWithDraftState(formData, error.message));
     }
+    revalidatePath('/partenaire');
     revalidatePath('/partenaire/catalogue');
     redirect('/partenaire/catalogue?saved=1');
   }
@@ -467,10 +278,14 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
       redirect(`/partenaire/catalogue?error=${encodeURIComponent(readError.message)}`);
     }
 
+    const siteCountries = await listSiteStayCountryLabels();
     let validated: PartnerCatalogRules;
     try {
       validated = parseAndValidatePartnerCatalogRules(
-        data?.catalog_rules_draft ?? getDefaultPartnerCatalogRules()
+        syncKnownSiteCountriesWithRules(
+          normalizePartnerCatalogRules(data?.catalog_rules_draft ?? getDefaultPartnerCatalogRules()),
+          siteCountries
+        )
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Configuration invalide';
@@ -496,13 +311,15 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
       }
       redirect(`/partenaire/catalogue?error=${encodeURIComponent(error.message)}`);
     }
+    revalidatePath('/partenaire');
     revalidatePath('/partenaire/catalogue');
     redirect('/partenaire/catalogue?published=1');
   }
 
-  const [collectivity, rawCatalogRows] = await Promise.all([
+  const [collectivity, rawCatalogRows, siteCountries] = await Promise.all([
     readPartnerCollectivity(collectivityId),
-    listPartnerCatalogStays()
+    listPartnerCatalogStays(),
+    listSiteStayCountryLabels()
   ]);
 
   const draftRules = normalizePartnerCatalogRules(
@@ -548,15 +365,15 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
   const stayTypeOptions = Array.from(
     new Set(rawCatalogRows.flatMap((stay) => stay.categories ?? []).filter(Boolean))
   );
-  const countryOptions = Array.from(
-    new Set(
-      rawCatalogRows
-        .flatMap((stay) => [stay.destination_country, ...(stay.destination_countries ?? [])])
-        .filter(Boolean)
-        .map((country) => String(country))
-    )
+  const organizerOptions = Array.from(
+    new Map(
+      rawCatalogRows.map((stay) => [
+        stay.organizer_id,
+        { id: stay.organizer_id, name: stay.organizer_name }
+      ])
+    ).values()
   );
-  const allCountryOptions = ALL_COUNTRIES_FR.length > 0 ? ALL_COUNTRIES_FR : countryOptions;
+  const allCountryOptions = buildCatalogCountryOptions(siteCountries, draftRules);
 
   const excludedReasonCounts = new Map<string, number>();
   const catalogRows = rawCatalogRows.flatMap((stay) =>
@@ -580,6 +397,7 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
         },
         priceCents: sessionItem.estimated_price_cents,
         organizer: {
+          id: stay.organizer_id,
           is_resacolo_member: stay.organizer_is_partner
         }
       });
@@ -617,6 +435,26 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
   const displayedRows = debugMode
     ? catalogRows
     : catalogRows.filter((row) => row.eligibility.status === 'ELIGIBLE');
+  const appliedCatalogRows: AppliedCatalogRow[] = displayedRows.map((row) => ({
+    rowKey: `${row.stay.id}:${row.sessionItem.id}`,
+    title: row.stay.title,
+    organizerName: row.stay.organizer_name,
+    seasonName: row.stay.season_name,
+    eligibilityStatus: row.eligibility.status,
+    eligibilityLabel: row.eligibility.status === 'ELIGIBLE' ? 'Éligible' : 'Inéligible',
+    aidLabel: formatCurrencyFromCents(row.simulation.aidCents),
+    appliedSummary: row.simulation.appliedSummary,
+    sessionRangeLabel: `${new Date(`${row.sessionItem.start_date}T00:00:00Z`).toLocaleDateString('fr-FR')} - ${new Date(`${row.sessionItem.end_date}T00:00:00Z`).toLocaleDateString('fr-FR')}`,
+    priceLabel: formatCurrencyFromCents(row.sessionItem.estimated_price_cents || 0),
+    familyLabel: formatCurrencyFromCents(row.simulation.familyCents),
+    ineligibleReason:
+      row.eligibility.status === 'INELIGIBLE' && row.eligibility.reasons[0]
+        ? row.eligibility.reasons[0].message
+        : null,
+    capLabels:
+      row.simulation.appliedCapLabels.length > 0 ? row.simulation.appliedCapLabels.join(' · ') : null,
+    warning: row.simulation.warnings[0] ?? null
+  }));
   const avgAidCents =
     catalogRows.length > 0
       ? Math.round(catalogRows.reduce((sum, row) => sum + row.simulation.aidCents, 0) / catalogRows.length)
@@ -751,6 +589,12 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
               initialSeasons={draftRules.blockingRules.seasonsAllowed}
             />
 
+            <OrganizerRulesCards
+              organizerOptions={organizerOptions}
+              initialAllowed={draftRules.blockingRules.organizersAllowed}
+              initialExcluded={draftRules.blockingRules.organizersExcluded}
+            />
+
             <div className="grid gap-4 md:grid-cols-2">
               <CountryDropdownField
                 label="Pays autorisés"
@@ -765,6 +609,9 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
                 initialValues={draftRules.blockingRules.countriesExcluded}
               />
             </div>
+            <p className="text-xs text-slate-500">
+              Liste limitée aux pays déjà présents sur Resacolo (séjours actuels ou passés).
+            </p>
 
             <div className="grid gap-3 md:grid-cols-2">
               <label className="inline-flex items-center gap-2 text-sm">
@@ -1017,14 +864,14 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
           </summary>
           <div className="mt-4 space-y-2 text-sm text-slate-700">
             <p>
-              Aide moyenne: <span className="font-semibold">{formatCurrencyFromCents(avgAidCents)}</span>
+              Aide moyenne : <span className="font-semibold">{formatCurrencyFromCents(avgAidCents)}</span>
             </p>
             <p>
-              Reste famille moyen:{' '}
+              Reste famille moyen :{' '}
               <span className="font-semibold">{formatCurrencyFromCents(avgFamilyCents)}</span>
             </p>
             <p>
-              Sessions avec aide à 0: <span className="font-semibold">{zeroAidCount}</span>
+              Sessions avec aide à 0 : <span className="font-semibold">{zeroAidCount}</span>
             </p>
             {topExclusions.length > 0 ? (
               topExclusions.map(([reason, count]) => (
@@ -1050,65 +897,10 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
         </button>
       </div>
 
-      <section className="space-y-3">
-        <h2 className="admin-section-title">Catalogue appliqué</h2>
-        {displayedRows.map((row) => (
-          <details
-            key={`${row.stay.id}:${row.sessionItem.id}`}
-            className="rounded-2xl border border-slate-200 bg-white p-4"
-          >
-            <summary className="flex cursor-pointer list-none flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h3 className="text-base font-semibold text-slate-900">{row.stay.title}</h3>
-                <p className="text-sm text-slate-600">
-                  {row.stay.organizer_name} · {row.stay.season_name}
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2 text-xs font-semibold">
-                <span
-                  className={`inline-flex rounded-full px-2.5 py-1 ${
-                    row.eligibility.status === 'ELIGIBLE'
-                      ? 'bg-emerald-100 text-emerald-900'
-                      : 'bg-rose-100 text-rose-900'
-                  }`}
-                >
-                  {row.eligibility.status === 'ELIGIBLE' ? 'Éligible' : 'Inéligible'}
-                </span>
-                <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-slate-700">
-                  Aide {formatCurrencyFromCents(row.simulation.aidCents)}
-                </span>
-                <span className="inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-amber-900">
-                  {row.simulation.appliedSummary}
-                </span>
-              </div>
-            </summary>
-            <div className="mt-3 text-sm text-slate-700">
-              <p>
-                Session: {new Date(`${row.sessionItem.start_date}T00:00:00Z`).toLocaleDateString('fr-FR')} -{' '}
-                {new Date(`${row.sessionItem.end_date}T00:00:00Z`).toLocaleDateString('fr-FR')}
-              </p>
-              <p>Prix estimé: {formatCurrencyFromCents(row.sessionItem.estimated_price_cents || 0)}</p>
-              <p>Reste famille: {formatCurrencyFromCents(row.simulation.familyCents)}</p>
-              {row.eligibility.status === 'INELIGIBLE' && row.eligibility.reasons[0] ? (
-                <p className="mt-1 text-rose-700">Motif principal: {row.eligibility.reasons[0].message}</p>
-              ) : null}
-              {row.simulation.appliedCapLabels.length > 0 ? (
-                <p className="mt-1 text-amber-700">Contraintes appliquées: {row.simulation.appliedCapLabels.join(' · ')}</p>
-              ) : null}
-              {row.simulation.warnings.length > 0 ? (
-                <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-amber-700">
-                  {row.simulation.warnings[0]}
-                </p>
-              ) : null}
-            </div>
-          </details>
-        ))}
-        {displayedRows.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-slate-300 p-6 text-sm text-slate-500">
-            Aucun séjour/sessions à afficher selon les règles publiées.
-          </div>
-        ) : null}
-      </section>
+      <PartnerAppliedCatalogSection
+        rows={appliedCatalogRows}
+        emptyMessage="Aucun séjour à afficher selon les règles publiées."
+      />
     </div>
   );
 }

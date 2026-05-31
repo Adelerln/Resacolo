@@ -73,6 +73,7 @@ export function applyCsePricingToStay(stay: Stay, rules: PartnerCatalogRules): S
       },
       priceCents: sessionPriceCents,
       organizer: {
+        id: stay.organizerId,
         is_resacolo_member: true
       }
     });

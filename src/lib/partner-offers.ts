@@ -96,6 +96,38 @@ export function computePartnerFinanceSplit(input: {
   };
 }
 
+export function computePartnerFinanceDisplay(input: {
+  mode: string | null | undefined;
+  totalCents: number;
+  percentValue?: number | null;
+  fixedCents?: number | null;
+}) {
+  const mode = normalizePartnerFinanceMode(input.mode);
+  if (mode === 'MANUAL') {
+    return {
+      mode,
+      partnerCents: null,
+      familyCents: null,
+      requiresQuote: true
+    };
+  }
+
+  const split = computePartnerFinanceSplit({
+    mode,
+    totalCents: input.totalCents,
+    percentValue: input.percentValue,
+    fixedCents: input.fixedCents,
+    manualPartnerCents: 0
+  });
+
+  return {
+    mode,
+    partnerCents: split.partnerCents,
+    familyCents: split.clientCents,
+    requiresQuote: false
+  };
+}
+
 export function computePartnerContributionSnapshotCents(input: {
   mode: string | null | undefined;
   totalCents: number;

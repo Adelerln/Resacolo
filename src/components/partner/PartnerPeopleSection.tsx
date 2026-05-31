@@ -43,6 +43,7 @@ type ModalState =
   | { mode: 'add-member' }
   | { mode: 'add-contact' }
   | { mode: 'edit'; member: MemberRow }
+  | { mode: 'edit-contact'; contact: PartnerContactRow }
   | null;
 
 function buildUnifiedRows(contacts: PartnerContactRow[], members: MemberRow[]): UnifiedRow[] {
@@ -98,11 +99,17 @@ function displayAddedAt(row: UnifiedRow) {
   return new Date(row.contact.created_at).toLocaleDateString('fr-FR');
 }
 
+const actionButtonBaseClass =
+  'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border transition';
+const deleteActionButtonClass = `${actionButtonBaseClass} border-red-200 bg-red-50 text-red-600 hover:border-red-300 hover:bg-red-100 hover:text-red-700`;
+const editActionButtonClass = `${actionButtonBaseClass} border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900`;
+
 export default function PartnerPeopleSection({
   contacts,
   members,
   contactsTableAvailable,
   addContactAction,
+  updateContactAction,
   deleteContactAction,
   initialMode,
   initialMemberId
@@ -111,6 +118,7 @@ export default function PartnerPeopleSection({
   members: MemberRow[];
   contactsTableAvailable: boolean;
   addContactAction: (formData: FormData) => void;
+  updateContactAction: (formData: FormData) => void;
   deleteContactAction: (formData: FormData) => void;
   initialMode?: 'add' | 'edit' | null;
   initialMemberId?: string | null;
@@ -227,35 +235,50 @@ export default function PartnerPeopleSection({
                               <input type="hidden" name="redirect_to" value="/partenaire/fiche" />
                               <button
                                 type="submit"
-                                className="inline-flex items-center justify-center rounded-md border border-red-200 p-2 text-red-600 hover:border-red-300 hover:text-red-700"
+                                className={deleteActionButtonClass}
                                 aria-label="Supprimer l'utilisateur"
                               >
-                                <Trash2 className="h-4 w-4" />
+                                <Trash2 className="h-5 w-5" strokeWidth={2} aria-hidden="true" />
                               </button>
                             </form>
                             <button
                               type="button"
                               onClick={() => setModalState({ mode: 'edit', member: row.member })}
-                              className="inline-flex items-center justify-center rounded-md border border-slate-200 p-2 text-slate-600 hover:text-slate-900"
+                              className={editActionButtonClass}
                               aria-label="Modifier l'utilisateur"
                             >
-                              <Pencil className="h-4 w-4" />
+                              <Pencil className="h-5 w-5" strokeWidth={2} aria-hidden="true" />
                             </button>
                           </>
                         ) : contactsTableAvailable ? (
-                          <form
-                            action={deleteContactAction}
-                            onSubmit={(event) => {
-                              if (!window.confirm('Supprimer cet interlocuteur ?')) {
-                                event.preventDefault();
-                              }
-                            }}
-                          >
-                            <input type="hidden" name="contact_id" value={row.contact.id} />
-                            <button className="rounded-lg border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-700 transition hover:border-rose-300 hover:text-rose-800">
-                              Supprimer
+                          <>
+                            <form
+                              action={deleteContactAction}
+                              className="inline"
+                              onSubmit={(event) => {
+                                if (!window.confirm('Supprimer cet interlocuteur ?')) {
+                                  event.preventDefault();
+                                }
+                              }}
+                            >
+                              <input type="hidden" name="contact_id" value={row.contact.id} />
+                              <button
+                                type="submit"
+                                className={deleteActionButtonClass}
+                                aria-label="Supprimer l'interlocuteur"
+                              >
+                                <Trash2 className="h-5 w-5" strokeWidth={2} aria-hidden="true" />
+                              </button>
+                            </form>
+                            <button
+                              type="button"
+                              onClick={() => setModalState({ mode: 'edit-contact', contact: row.contact })}
+                              className={editActionButtonClass}
+                              aria-label="Modifier l'interlocuteur"
+                            >
+                              <Pencil className="h-5 w-5" strokeWidth={2} aria-hidden="true" />
                             </button>
-                          </form>
+                          </>
                         ) : (
                           <span className="text-xs font-medium text-slate-400">Lecture seule</span>
                         )}
@@ -327,7 +350,7 @@ export default function PartnerPeopleSection({
                 <input
                   name="role_label"
                   className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-                  placeholder="Ex: Comptabilité, Trésorier, Secrétaire"
+                  placeholder="Ex. : Comptabilité, Trésorier, Secrétaire"
                 />
               </label>
               <label className="block text-sm font-medium text-slate-700">
@@ -408,7 +431,7 @@ export default function PartnerPeopleSection({
                   <input
                     name="role_label"
                     className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900"
-                    placeholder="Ex: Comptabilité, Trésorier, Secrétaire"
+                    placeholder="Ex. : Comptabilité, Trésorier, Secrétaire"
                   />
                 </label>
               </div>
@@ -444,6 +467,91 @@ export default function PartnerPeopleSection({
                 </button>
                 <button className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white">
                   Ajouter
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
+
+      {modalState?.mode === 'edit-contact' && contactsTableAvailable ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4 py-6">
+          <div className="w-full max-w-xl rounded-2xl bg-white p-6 shadow-xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="admin-section-title">Modifier l&apos;interlocuteur</h2>
+                <p className="admin-page-subtitle mt-1">{modalState.contact.full_name}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalState(null)}
+                className="rounded-md border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-600"
+              >
+                Fermer
+              </button>
+            </div>
+
+            <form action={updateContactAction} className="mt-6 space-y-4">
+              <input type="hidden" name="contact_id" value={modalState.contact.id} />
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="text-sm font-medium text-slate-700">
+                  Nom complet
+                  <input
+                    name="full_name"
+                    required
+                    defaultValue={modalState.contact.full_name}
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900"
+                  />
+                </label>
+                <label className="text-sm font-medium text-slate-700">
+                  Fonction au CSE
+                  <input
+                    name="role_label"
+                    defaultValue={modalState.contact.role_label ?? ''}
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900"
+                    placeholder="Ex. : Comptabilité, Trésorier, Secrétaire"
+                  />
+                </label>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="text-sm font-medium text-slate-700">
+                  Email
+                  <input
+                    name="email"
+                    type="email"
+                    required
+                    defaultValue={modalState.contact.email}
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900"
+                  />
+                </label>
+                <label className="text-sm font-medium text-slate-700">
+                  Téléphone
+                  <input
+                    name="phone"
+                    defaultValue={modalState.contact.phone ?? ''}
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900"
+                  />
+                </label>
+              </div>
+              <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                <input
+                  type="checkbox"
+                  name="is_primary"
+                  defaultChecked={modalState.contact.is_primary}
+                  className="h-4 w-4 rounded border-slate-300"
+                />
+                Définir comme contact principal
+              </label>
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setModalState(null)}
+                  className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600"
+                >
+                  Annuler
+                </button>
+                <button className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white">
+                  Enregistrer
                 </button>
               </div>
             </form>
@@ -507,7 +615,7 @@ export default function PartnerPeopleSection({
                   name="role_label"
                   defaultValue={modalState.member.role_label ?? ''}
                   className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-                  placeholder="Ex: Comptabilité, Trésorier, Secrétaire"
+                  placeholder="Ex. : Comptabilité, Trésorier, Secrétaire"
                 />
               </label>
               <label className="block text-sm font-medium text-slate-700">

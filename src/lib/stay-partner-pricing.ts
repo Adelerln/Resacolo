@@ -1,5 +1,13 @@
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import type { Stay, StaySessionOption } from '@/types/stay';
+import { normalizePartnerFinanceMode, type PartnerFinanceModeValue } from '@/lib/partner-offers';
+
+export type UserPartnerPricingContext = {
+  collectivityId: string;
+  financeMode: PartnerFinanceModeValue;
+  financePercentValue: number | null;
+  financeFixedCents: number | null;
+};
 
 function normalizePartnerDiscountPercent(value: number | null | undefined) {
   if (typeof value !== 'number' || !Number.isFinite(value)) return null;
@@ -48,6 +56,10 @@ export function getSessionDisplayedBasePrice(
 }
 
 export async function userHasCollectivityAffiliation(userId: string) {
+  return Boolean(await readUserPartnerPricingContext(userId));
+}
+
+export async function readUserPartnerPricingContext(userId: string): Promise<UserPartnerPricingContext | null> {
   const supabase = getServerSupabaseClient();
   const { data: client } = await supabase
     .from('clients')
@@ -55,16 +67,34 @@ export async function userHasCollectivityAffiliation(userId: string) {
     .eq('user_id', userId)
     .maybeSingle();
 
-  return Boolean(client?.collectivity_id);
+  if (!client?.collectivity_id) return null;
+
+  const { data: collectivity } = await supabase
+    .from('collectivities')
+    .select('id,finance_mode,finance_percent_value,finance_fixed_cents')
+    .eq('id', client.collectivity_id)
+    .maybeSingle();
+
+  if (!collectivity) return null;
+
+  return {
+    collectivityId: collectivity.id,
+    financeMode: normalizePartnerFinanceMode(collectivity.finance_mode),
+    financePercentValue: collectivity.finance_percent_value ?? null,
+    financeFixedCents: collectivity.finance_fixed_cents ?? null
+  };
 }
 
-export function applyPartnerDiscountPricingToStay(stay: Stay): Stay {
+export function applyPartnerDiscountPricingToStay(stay: Stay, context?: UserPartnerPricingContext | null): Stay {
   const normalizedPercent = normalizePartnerDiscountPercent(stay.partnerDiscountPercent);
   if (normalizedPercent == null) {
     return {
       ...stay,
       partnerDiscountPercent: null,
-      partnerPriceFrom: null
+      partnerPriceFrom: null,
+      partnerFinanceMode: context?.financeMode ?? null,
+      partnerFinancePercentValue: context?.financePercentValue ?? null,
+      partnerFinanceFixedCents: context?.financeFixedCents ?? null
     };
   }
 
@@ -73,7 +103,10 @@ export function applyPartnerDiscountPricingToStay(stay: Stay): Stay {
     return {
       ...stay,
       partnerDiscountPercent: normalizedPercent,
-      partnerPriceFrom: computePartnerDiscountedPrice(stay.priceFrom, normalizedPercent)
+      partnerPriceFrom: computePartnerDiscountedPrice(stay.priceFrom, normalizedPercent),
+      partnerFinanceMode: context?.financeMode ?? null,
+      partnerFinancePercentValue: context?.financePercentValue ?? null,
+      partnerFinanceFixedCents: context?.financeFixedCents ?? null
     };
   }
 
@@ -94,6 +127,9 @@ export function applyPartnerDiscountPricingToStay(stay: Stay): Stay {
   return {
     ...stay,
     partnerDiscountPercent: normalizedPercent,
+    partnerFinanceMode: context?.financeMode ?? null,
+    partnerFinancePercentValue: context?.financePercentValue ?? null,
+    partnerFinanceFixedCents: context?.financeFixedCents ?? null,
     partnerPriceFrom: openPartnerPrices.length
       ? Math.min(...openPartnerPrices)
       : fallbackPartnerPrices.length
@@ -108,6 +144,6 @@ export function applyPartnerDiscountPricingToStay(stay: Stay): Stay {
   };
 }
 
-export function applyPartnerDiscountPricingToStays(stays: Stay[]) {
-  return stays.map((stay) => applyPartnerDiscountPricingToStay(stay));
+export function applyPartnerDiscountPricingToStays(stays: Stay[], context?: UserPartnerPricingContext | null) {
+  return stays.map((stay) => applyPartnerDiscountPricingToStay(stay, context));
 }

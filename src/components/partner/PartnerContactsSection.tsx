@@ -141,7 +141,7 @@ export default function PartnerContactsSection({
                   <input
                     name="role_label"
                     className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900"
-                    placeholder="Ex: RH, CSE, Comptabilité"
+                    placeholder="Ex. : RH, CSE, Comptabilité"
                   />
                 </label>
               </div>

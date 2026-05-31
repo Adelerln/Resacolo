@@ -201,7 +201,7 @@ export function AdminPartnerMembersSection({
                 <input
                   name="role_label"
                   className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-                  placeholder="Ex: Comptabilité, Trésorier, Secrétaire"
+                  placeholder="Ex. : Comptabilité, Trésorier, Secrétaire"
                 />
               </label>
               <label className="block text-sm font-medium text-slate-700">
@@ -308,7 +308,7 @@ export function AdminPartnerMembersSection({
                   name="role_label"
                   defaultValue={modalState.member.role_label ?? ''}
                   className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-                  placeholder="Ex: Comptabilité, Trésorier, Secrétaire"
+                  placeholder="Ex. : Comptabilité, Trésorier, Secrétaire"
                 />
               </label>
               <label className="block text-sm font-medium text-slate-700">

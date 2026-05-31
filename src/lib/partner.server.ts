@@ -25,6 +25,26 @@ function buildClientDisplayName(profile: {
   return [profile.parent1_first_name, profile.parent1_last_name].filter(Boolean).join(' ').trim();
 }
 
+function resolveBeneficiaryFamilyName(
+  profile:
+    | {
+        parent1_first_name?: string | null;
+        parent1_last_name?: string | null;
+      }
+    | undefined,
+  fullName: string | null | undefined
+) {
+  const fromProfile = profile?.parent1_last_name?.trim();
+  if (fromProfile) return fromProfile;
+
+  const clean = (fullName ?? '').trim();
+  if (!clean) return '';
+
+  const parts = clean.split(/\s+/).filter(Boolean);
+  if (parts.length === 1) return parts[0];
+  return parts.slice(1).join(' ');
+}
+
 function formatDate(value: string | null | undefined) {
   if (!value) return '-';
   return new Date(value).toLocaleDateString('fr-FR');
@@ -164,6 +184,7 @@ export async function listPartnerBeneficiaries(collectivityId: string, excludedU
       id: client.user_id,
       userId: client.user_id,
       name: displayName,
+      familyName: resolveBeneficiaryFamilyName(profile, client.full_name),
       email: profile?.parent1_email?.trim() || 'Non renseigné',
       phone: profile?.parent1_phone?.trim() || client?.phone?.trim() || 'Non renseigné',
       city: profile?.city?.trim() || 'Non renseignée',

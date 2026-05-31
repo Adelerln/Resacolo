@@ -1,4 +1,6 @@
 import Link from 'next/link';
+import { PartnerDailyReservationsChart } from '@/components/partner/PartnerDailyReservationsChart';
+import { PartnerPendingCountriesSection } from '@/components/partner/PartnerPendingCountriesSection';
 import { requirePartner } from '@/lib/auth/require';
 import { canAccessPartnerSection, getPartnerAccessRoleFromSession } from '@/lib/partner-access';
 import { buildPartnerDashboardModel } from '@/lib/partner-dashboard';
@@ -48,6 +50,10 @@ export default async function PartnerHome() {
         <h1 className="admin-page-title">Dashboard partenaire</h1>
       </div>
 
+      {canAccessPartnerSection(accessRole, 'catalog') && dashboard.pendingNewCountries.length > 0 ? (
+        <PartnerPendingCountriesSection pendingCountries={dashboard.pendingNewCountries} />
+      ) : null}
+
       {dashboard.emptyState.hasNoBeneficiaries ? (
         <section className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           <p className="font-semibold">Onboarding requis</p>
@@ -88,38 +94,27 @@ export default async function PartnerHome() {
         <article className="rounded-2xl border border-slate-200 bg-white p-5">
           <p className="admin-kpi-label">Part partenaire (30j)</p>
           <p className="mt-2 text-2xl font-semibold text-slate-900">{formatCurrencyFromCents(dashboard.metrics.partnerCents30d)}</p>
-          <p className="mt-1 text-xs text-slate-500">Mode: {dashboard.financeModeLabel}</p>
+          <p className="mt-1 text-xs text-slate-500">Mode : {dashboard.financeModeLabel}</p>
         </article>
       </section>
 
       <section className="grid gap-4 xl:grid-cols-2">
         <article className="rounded-2xl border border-slate-200 bg-white p-5">
           <h2 className="admin-section-title">Évolution des réservations (30j)</h2>
-          <div className="mt-4 flex h-52 items-end gap-1.5 rounded-lg border border-slate-100 bg-slate-50 px-2 py-3">
-            {dashboard.dailyReservationsSeries.map((point) => {
-              const height = Math.max(4, Math.round((point.count / maxDailyCount) * 100));
-              return (
-                <div key={point.dayKey} className="group relative flex-1">
-                  <div
-                    className="w-full rounded-sm bg-emerald-500/85 transition group-hover:bg-emerald-500"
-                    style={{ height: `${height}%` }}
-                    title={`${point.label}: ${point.count}`}
-                    aria-label={`${point.label}: ${formatReservationCount(point.count)}`}
-                  />
-                </div>
-              );
-            })}
-          </div>
-          <p className="mt-2 text-xs text-slate-500">Survoler les barres pour le détail journalier.</p>
+          <PartnerDailyReservationsChart
+            series={dashboard.dailyReservationsSeries}
+            maxCount={maxDailyCount}
+          />
         </article>
 
         <article className="rounded-2xl border border-slate-200 bg-white p-5">
           <h2 className="admin-section-title">Répartition des statuts (30j)</h2>
           <div className="mt-4 space-y-3">
             {dashboard.statusBreakdown.map((item) => {
-              const width = Math.max(2, Math.round((item.count / maxStatusCount) * 100));
+              const width =
+                item.count === 0 ? 0 : Math.max(2, Math.round((item.count / maxStatusCount) * 100));
               return (
-                <div key={item.status} className="space-y-1">
+                <div key={item.key} className="space-y-1">
                   <div className="flex items-center justify-between text-sm">
                     <span className="font-medium text-slate-700">{item.label}</span>
                     <span className="font-semibold text-slate-900">{item.count}</span>
@@ -142,18 +137,16 @@ export default async function PartnerHome() {
           <div className="overflow-hidden">
             <table className="w-full table-fixed text-left text-sm">
               <colgroup>
-                <col className="w-[18%]" />
                 <col className="w-[20%]" />
-                <col className="w-[28%]" />
-                <col className="w-[16%]" />
-                <col className="w-[18%]" />
+                <col className="w-[24%]" />
+                <col className="w-[36%]" />
+                <col className="w-[20%]" />
               </colgroup>
               <thead className="bg-slate-50 text-xs uppercase text-slate-500">
                 <tr>
                   <th className="px-4 py-3">Commande</th>
                   <th className="px-4 py-3">Bénéficiaire</th>
                   <th className="px-4 py-3">Séjour</th>
-                  <th className="px-4 py-3">Statut</th>
                   <th className="px-4 py-3">Total</th>
                 </tr>
               </thead>
@@ -170,9 +163,6 @@ export default async function PartnerHome() {
                     <td className="px-4 py-3 text-slate-700">
                       <p className="break-words">{reservation.stayTitle}</p>
                     </td>
-                    <td className="px-4 py-3 text-slate-700">
-                      <p className="whitespace-nowrap">{reservation.statusLabel}</p>
-                    </td>
                     <td className="px-4 py-3 font-semibold text-slate-900">
                       <p className="whitespace-nowrap">{reservation.totalLabel}</p>
                     </td>
@@ -180,7 +170,7 @@ export default async function PartnerHome() {
                 ))}
                 {dashboard.recentReservations.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-4 py-6 text-slate-500">
+                    <td colSpan={4} className="px-4 py-6 text-slate-500">
                       Aucune réservation enregistrée pour le moment.
                     </td>
                   </tr>
@@ -196,9 +186,7 @@ export default async function PartnerHome() {
             {dashboard.topStays.map((stay) => (
               <div key={stay.stayTitle} className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
                 <p className="font-medium text-slate-900">{stay.stayTitle}</p>
-                <p className="mt-1 text-sm text-slate-600">
-                  {formatReservationCount(stay.reservationsCount)} · {stay.totalLabel}
-                </p>
+                <p className="mt-1 text-sm text-slate-600">{formatReservationCount(stay.reservationsCount)}</p>
               </div>
             ))}
             {dashboard.topStays.length === 0 ? (

@@ -195,10 +195,7 @@ export default async function PartnerReservationsPage() {
                       <p className="font-medium text-slate-900">#{reservation.id.slice(0, 8).toUpperCase()}</p>
                       <p className="mt-1 text-xs text-slate-500">{formatDate(reservation.createdAt)}</p>
                     </td>
-                    <td className="px-4 py-3 text-slate-600">
-                      <p className="font-medium text-slate-900">{reservation.beneficiaryName}</p>
-                      <p className="mt-1 text-xs text-slate-500">{reservation.beneficiaryEmail}</p>
-                    </td>
+                    <td className="px-4 py-3 font-medium text-slate-900">{reservation.beneficiaryName}</td>
                     <td className="px-4 py-3 text-slate-600">
                       <p className="font-medium text-slate-900">{reservation.stayTitle}</p>
                       <p className="mt-1 text-xs text-slate-500">{reservation.stayLocation}</p>

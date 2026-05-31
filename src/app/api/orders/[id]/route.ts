@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
+import { isMissingColumnError } from '@/lib/supabase-schema-errors';
 
 export const runtime = 'nodejs';
 
@@ -7,12 +8,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
   const { id: orderId } = await params;
   const supabase = getServerSupabaseClient();
 
-  const [{ data: order, error: orderError }, { data: payments }, { data: orderItems }] = await Promise.all([
-    supabase
-      .from('orders')
-      .select('id,status,paid_at,partially_paid_at')
-      .eq('id', orderId)
-      .maybeSingle(),
+  const [paymentsResult, orderItemsResult] = await Promise.all([
     supabase
       .from('payments')
       .select('id,status,amount_cents,currency,updated_at')
@@ -25,13 +21,36 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
       .eq('order_id', orderId)
   ]);
 
+  let { data: order, error: orderError } = await supabase
+    .from('orders')
+    .select('id,status,paid_at,partially_paid_at')
+    .eq('id', orderId)
+    .maybeSingle();
+
+  if (orderError && isMissingColumnError(orderError, 'partially_paid_at')) {
+    const legacyOrderResult = await supabase
+      .from('orders')
+      .select('id,status,paid_at')
+      .eq('id', orderId)
+      .maybeSingle();
+
+    order = legacyOrderResult.data
+      ? {
+          ...legacyOrderResult.data,
+          partially_paid_at: null
+        }
+      : null;
+    orderError = legacyOrderResult.error;
+  }
+
   if (orderError || !order) {
     return NextResponse.json({ error: 'Commande introuvable.' }, { status: 404 });
   }
 
-  const payment = payments?.[0] ?? null;
-  const totalCents = (orderItems ?? []).reduce((sum, item) => sum + item.total_price_cents, 0) || payment?.amount_cents || 0;
-  const firstOrderItem = (orderItems ?? [])[0] ?? null;
+  const payment = paymentsResult.data?.[0] ?? null;
+  const totalCents =
+    (orderItemsResult.data ?? []).reduce((sum, item) => sum + item.total_price_cents, 0) || payment?.amount_cents || 0;
+  const firstOrderItem = (orderItemsResult.data ?? [])[0] ?? null;
 
   let organizerContactEmail: string | null = null;
   let organizerName: string | null = null;

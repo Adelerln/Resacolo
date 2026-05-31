@@ -9,6 +9,7 @@ import type {
   FamilyReservation
 } from '@/types/family-profile';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
+import { isMissingAnyColumnError } from '@/lib/supabase-schema-errors';
 import {
   computeRemainingBalanceCents as computeOrderRemainingBalanceCents,
   orderStatusLabel
@@ -788,12 +789,32 @@ export async function resolveCheckoutCollectivityForUser(input: {
 
 async function readReservations(userId: string): Promise<FamilyReservation[]> {
   const supabase = getServerSupabaseClient();
-  const { data: orders, error: ordersError } = await supabase
+  let { data: orders, error: ordersError } = await supabase
     .from('orders')
     .select('id,status,created_at,paid_at,partially_paid_at,collectivity_id,external_aid_cents,external_paid_cents')
     .eq('client_user_id', userId)
     .order('created_at', { ascending: false })
     .neq('status', 'CART');
+
+  if (
+    ordersError &&
+    isMissingAnyColumnError(ordersError, ['partially_paid_at', 'external_aid_cents', 'external_paid_cents'])
+  ) {
+    const legacyOrdersResult = await supabase
+      .from('orders')
+      .select('id,status,created_at,paid_at,collectivity_id')
+      .eq('client_user_id', userId)
+      .order('created_at', { ascending: false })
+      .neq('status', 'CART');
+
+    orders = (legacyOrdersResult.data ?? []).map((order) => ({
+      ...order,
+      partially_paid_at: null,
+      external_aid_cents: 0,
+      external_paid_cents: 0
+    }));
+    ordersError = legacyOrdersResult.error;
+  }
 
   if (ordersError || !orders?.length) {
     return [];

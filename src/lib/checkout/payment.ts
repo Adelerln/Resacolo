@@ -813,6 +813,38 @@ export async function failOrderPayment(input: {
     throw new Error('Impossible de marquer le paiement en échec.');
   }
 
+  const cancelledAt = new Date().toISOString();
+  const { error: orderError } = await supabase
+    .from('orders')
+    .update({
+      status: 'CANCELLED',
+      cancelled_at: cancelledAt,
+      cancellation_reason: 'PAYMENT_FAILED'
+    })
+    .eq('id', input.orderId);
+
+  if (orderError) {
+    throw new Error('Impossible de marquer la commande en échec.');
+  }
+
+  const { data: orderItems } = await supabase
+    .from('order_items')
+    .select('id')
+    .eq('order_id', input.orderId);
+
+  const orderItemIds = (orderItems ?? []).map((item) => item.id);
+  if (orderItemIds.length > 0) {
+    const { error: holdsError } = await supabase
+      .from('session_holds')
+      .update({ status: 'ABANDONED' })
+      .in('order_item_id', orderItemIds)
+      .eq('status', 'ACTIVE');
+
+    if (holdsError) {
+      throw new Error('Impossible de libérer les holds de session.');
+    }
+  }
+
   return {
     orderId: input.orderId,
     status: 'FAILED'

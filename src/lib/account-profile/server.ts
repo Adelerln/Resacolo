@@ -134,10 +134,24 @@ type ReservationOrderRow = {
   created_at: string;
   paid_at: string | null;
   partially_paid_at: string | null;
+  cancellation_reason: string | null;
   collectivity_id: string | null;
   external_aid_cents: number;
   external_paid_cents: number;
 };
+
+function shouldHideFailedCheckoutOrder(input: {
+  status: OrderStatus;
+  cancellationReason: string | null | undefined;
+  latestPaymentStatus?: string | null | undefined;
+  hasSuccessfulPayment?: boolean;
+}) {
+  if (input.status === 'CANCELLED' && input.cancellationReason === 'PAYMENT_FAILED') {
+    return true;
+  }
+
+  return input.latestPaymentStatus === 'FAILED' && !input.hasSuccessfulPayment;
+}
 
 function buildFamilyCseAffiliation(collectivity: CollectivityRow): FamilyCseAffiliation {
   return {
@@ -410,6 +424,32 @@ function parsePaymentModeFromPayload(rawPayload: Json | null | undefined): Famil
   }
 
   return 'FULL';
+}
+
+function parsePartnerFinanceMessageFromPayload(rawPayload: Json | null | undefined) {
+  if (!rawPayload || typeof rawPayload !== 'object' || Array.isArray(rawPayload)) {
+    return {
+      message: null,
+      updatedAt: null
+    };
+  }
+
+  const rawRecord = rawPayload as Record<string, unknown>;
+  const update = rawRecord.partnerFinanceUpdate;
+  if (!update || typeof update !== 'object' || Array.isArray(update)) {
+    return {
+      message: null,
+      updatedAt: null
+    };
+  }
+
+  const messageValue = (update as Record<string, unknown>).message;
+  const updatedAtValue = (update as Record<string, unknown>).updatedAt;
+
+  return {
+    message: typeof messageValue === 'string' && messageValue.trim().length > 0 ? messageValue.trim() : null,
+    updatedAt: typeof updatedAtValue === 'string' && updatedAtValue.trim().length > 0 ? updatedAtValue.trim() : null
+  };
 }
 
 function formatTransportCities(departureCity: string | null | undefined, returnCity: string | null | undefined) {
@@ -959,7 +999,7 @@ async function readReservations(
   async function readOrdersForClientUserIds(clientUserIds: string[]) {
     let { data, error } = await supabase
       .from('orders')
-      .select('id,status,created_at,paid_at,partially_paid_at,collectivity_id,external_aid_cents,external_paid_cents')
+      .select('id,status,created_at,paid_at,partially_paid_at,cancellation_reason,collectivity_id,external_aid_cents,external_paid_cents')
       .in('client_user_id', clientUserIds)
       .order('created_at', { ascending: false })
       .neq('status', 'CART');
@@ -967,7 +1007,7 @@ async function readReservations(
     if (error && isMissingAnyColumnError(error, ['partially_paid_at', 'external_aid_cents', 'external_paid_cents'])) {
       const legacyResult = await supabase
         .from('orders')
-        .select('id,status,created_at,paid_at,collectivity_id')
+        .select('id,status,created_at,paid_at,cancellation_reason,collectivity_id')
         .in('client_user_id', clientUserIds)
         .order('created_at', { ascending: false })
         .neq('status', 'CART');
@@ -976,6 +1016,7 @@ async function readReservations(
         data: (legacyResult.data ?? []).map((order) => ({
           ...order,
           partially_paid_at: null,
+          cancellation_reason: order.cancellation_reason ?? null,
           external_aid_cents: 0,
           external_paid_cents: 0
         })) as ReservationOrderRow[],
@@ -1033,7 +1074,7 @@ async function readReservations(
 
     let { data, error } = await supabase
       .from('orders')
-      .select('id,status,created_at,paid_at,partially_paid_at,collectivity_id,external_aid_cents,external_paid_cents')
+      .select('id,status,created_at,paid_at,partially_paid_at,cancellation_reason,collectivity_id,external_aid_cents,external_paid_cents')
       .in('id', orderIds)
       .order('created_at', { ascending: false })
       .neq('status', 'CART');
@@ -1041,7 +1082,7 @@ async function readReservations(
     if (error && isMissingAnyColumnError(error, ['partially_paid_at', 'external_aid_cents', 'external_paid_cents'])) {
       const legacyResult = await supabase
         .from('orders')
-        .select('id,status,created_at,paid_at,collectivity_id')
+        .select('id,status,created_at,paid_at,cancellation_reason,collectivity_id')
         .in('id', orderIds)
         .order('created_at', { ascending: false })
         .neq('status', 'CART');
@@ -1049,6 +1090,7 @@ async function readReservations(
       data = (legacyResult.data ?? []).map((order) => ({
         ...order,
         partially_paid_at: null,
+        cancellation_reason: order.cancellation_reason ?? null,
         external_aid_cents: 0,
         external_paid_cents: 0
       })) as ReservationOrderRow[];
@@ -1367,6 +1409,7 @@ async function readReservations(
       const totalCents = itemsForOrder.reduce((sum, item) => sum + (item.total_price_cents ?? 0), 0);
       const currency = payment?.currency ?? 'EUR';
       const paymentMode = parsePaymentModeFromPayload(payment?.raw_payload);
+      const partnerFinanceMessage = parsePartnerFinanceMessageFromPayload(payment?.raw_payload);
       const collectivity = order.collectivity_id ? collectivitiesById.get(order.collectivity_id) ?? null : null;
       const financeSplit = computeFrozenPartnerFinanceSplit({
         itemsForOrder,
@@ -1497,8 +1540,21 @@ async function readReservations(
           order.status === 'PARTIALLY_PAID' ||
           order.status === 'CONFIRMED' ||
           onlinePaidCents > 0 ||
-          (order.external_paid_cents ?? 0) > 0
+          (order.external_paid_cents ?? 0) > 0,
+        partnerAdjustmentMessage: partnerFinanceMessage.message,
+        partnerAdjustmentUpdatedAt: partnerFinanceMessage.updatedAt
       } satisfies FamilyReservation;
+    })
+    .filter((reservation) => {
+      const order = orders.find((entry) => entry.id === reservation.orderId);
+      const payment = paymentsByOrder.get(reservation.orderId);
+      const hasSuccessfulPayment = (successfulPaidCentsByOrder.get(reservation.orderId) ?? 0) > 0;
+      return !shouldHideFailedCheckoutOrder({
+        status: order?.status ?? 'CANCELLED',
+        cancellationReason: order?.cancellation_reason ?? null,
+        latestPaymentStatus: payment?.status ?? null,
+        hasSuccessfulPayment
+      });
     })
     .sort((left, right) => {
       if (left.isPast !== right.isPast) {

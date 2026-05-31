@@ -87,6 +87,7 @@ export default function MonCompteClient({
   const [cseSubmitError, setCseSubmitError] = useState<string | null>(null);
   const [cseSubmitSuccess, setCseSubmitSuccess] = useState<string | null>(null);
   const [isSubmittingCse, setIsSubmittingCse] = useState(false);
+  const [partnerMessageReservation, setPartnerMessageReservation] = useState<FamilyReservation | null>(null);
   const { favoriteIdsArray, isLoaded } = useFavorites();
 
   const visibleFavoriteStays = useMemo(() => {
@@ -348,16 +349,27 @@ export default function MonCompteClient({
                               <ShieldCheck className="h-3 w-3 shrink-0" />
                               {reservation.status}
                             </span>
-                            <span
-                              className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-0.5 text-[11px] font-extrabold leading-none sm:text-xs ${
-                                reservation.remainingBalanceCents > 0
-                                  ? 'bg-amber-50 text-amber-700'
-                                  : 'bg-emerald-50 text-emerald-700'
-                              }`}
-                            >
-                              <Wallet className="h-3 w-3 shrink-0" />
-                              Solde à régler : {formatMoneyCentsFr(reservation.remainingBalanceCents, reservation.currency)}
-                            </span>
+                            {reservation.remainingBalanceCents > 0 && reservation.partnerAdjustmentMessage ? (
+                              <button
+                                type="button"
+                                onClick={() => setPartnerMessageReservation(reservation)}
+                                className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-amber-50 px-2.5 py-0.5 text-[11px] font-extrabold leading-none text-amber-700 underline decoration-amber-400 underline-offset-2 transition hover:bg-amber-100 sm:text-xs"
+                              >
+                                <Wallet className="h-3 w-3 shrink-0" />
+                                Solde à régler : {formatMoneyCentsFr(reservation.remainingBalanceCents, reservation.currency)}
+                              </button>
+                            ) : (
+                              <span
+                                className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-0.5 text-[11px] font-extrabold leading-none sm:text-xs ${
+                                  reservation.remainingBalanceCents > 0
+                                    ? 'bg-amber-50 text-amber-700'
+                                    : 'bg-emerald-50 text-emerald-700'
+                                }`}
+                              >
+                                <Wallet className="h-3 w-3 shrink-0" />
+                                Solde à régler : {formatMoneyCentsFr(reservation.remainingBalanceCents, reservation.currency)}
+                              </span>
+                            )}
                           </div>
                           <div className="shrink-0">
                             <FamilyReservationDetailsModal reservation={reservation} />
@@ -541,6 +553,38 @@ export default function MonCompteClient({
             </li>
           </ul>
         </section>
+
+        {partnerMessageReservation ? (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4"
+            onClick={() => setPartnerMessageReservation(null)}
+          >
+            <div
+              className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <h3 className="font-display text-xl font-semibold text-slate-900">Message du partenaire</h3>
+              <p className="mt-2 text-sm text-slate-500">{partnerMessageReservation.title}</p>
+              <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                <p className="whitespace-pre-line">{partnerMessageReservation.partnerAdjustmentMessage}</p>
+                {partnerMessageReservation.partnerAdjustmentUpdatedAt ? (
+                  <p className="mt-2 text-xs text-amber-800/80">
+                    Mis à jour le {new Date(partnerMessageReservation.partnerAdjustmentUpdatedAt).toLocaleString('fr-FR')}
+                  </p>
+                ) : null}
+              </div>
+              <div className="mt-5 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setPartnerMessageReservation(null)}
+                  className="btn btn-secondary btn-sm"
+                >
+                  Fermer
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </section>
     </div>
   );

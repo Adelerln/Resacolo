@@ -141,6 +141,17 @@ export default function FamilyReservationDetailsModal({ reservation }: { reserva
                     </div>
                   ) : null}
                 </div>
+                {reservation.partnerAdjustmentMessage ? (
+                  <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                    <p className="font-semibold">Message du partenaire</p>
+                    <p className="mt-1 whitespace-pre-line">{reservation.partnerAdjustmentMessage}</p>
+                    {reservation.partnerAdjustmentUpdatedAt ? (
+                      <p className="mt-2 text-xs text-amber-800/80">
+                        Mis à jour le {new Date(reservation.partnerAdjustmentUpdatedAt).toLocaleString('fr-FR')}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
 
               <div className="px-5 pb-6 pt-3 sm:px-7 sm:pb-7">

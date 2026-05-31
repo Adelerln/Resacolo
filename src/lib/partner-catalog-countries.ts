@@ -38,7 +38,8 @@ export async function listSiteStayCountryLabels() {
   const supabase = getServerSupabaseClient();
   const { data, error } = await supabase
     .from('stays')
-    .select('destination_country, destination_countries');
+    .select('destination_country, destination_countries')
+    .eq('status', 'PUBLISHED');
 
   if (error) {
     throw new Error(`Impossible de charger les pays des séjours : ${error.message}`);

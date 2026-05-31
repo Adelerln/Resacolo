@@ -41,30 +41,113 @@ function envTruthy(value: string | undefined): boolean {
 
 const PLAYWRIGHT_RENDER_BUDGET_MS = 20_000;
 
+function normalizeForCompare(value: string | null | undefined): string {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function isFranceLike(value: string | null | undefined): boolean {
+  const normalized = normalizeForCompare(value);
+  return normalized === 'france';
+}
+
+function extractCityCountryFromLocationText(locationText: string | null): {
+  city: string | null;
+  country: string | null;
+} {
+  const value = String(locationText ?? '').trim();
+  if (!value) return { city: null, country: null };
+
+  const parts = value
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (parts.length >= 2) {
+    const city = parts[0] ?? null;
+    const country = parts.at(-1) ?? null;
+    const same = normalizeForCompare(city) === normalizeForCompare(country);
+    return {
+      city: same ? null : city,
+      country
+    };
+  }
+
+  const single = parts[0] ?? value;
+  // If region already marks abroad, treat a single token as country.
+  return { city: single, country: null };
+}
+
 function deriveDraftDestinationFromExtracted(extracted: ReturnType<typeof extractStayData>) {
   const accommodation = extracted.accommodationsJson;
   const regionText = extracted.regionText?.trim() || null;
   const locationText = extracted.locationText?.trim() || null;
   const accommodationCity = accommodation?.city?.trim() || null;
   const accommodationCountry = accommodation?.country?.trim() || null;
+  const parsedLocation = extractCityCountryFromLocationText(locationText);
+  const inferredCountry =
+    accommodationCountry ||
+    parsedLocation.country ||
+    (regionText === 'Étranger' ? parsedLocation.city : null);
+  const inferredCity =
+    accommodationCity ||
+    (parsedLocation.country ? parsedLocation.city : null) ||
+    (regionText === 'Étranger' ? null : parsedLocation.city);
+
+  const destinationType =
+    regionText === 'Séjour itinérant'
+      ? ('itinerant' as const)
+      : regionText === 'Étranger' || (inferredCountry && !isFranceLike(inferredCountry))
+        ? ('fixed_abroad' as const)
+        : null;
+
   const resolved = resolveStayDestination({
-    destinationType: regionText === 'Séjour itinérant' ? 'itinerant' : null,
-    destinationRegion: null,
-    destinationCountry: accommodationCountry,
-    destinationCountries: accommodationCountry ? [accommodationCountry] : [],
+    destinationType,
+    destinationRegion: destinationType ? null : regionText,
+    destinationCity: inferredCity,
+    destinationPostalCode: accommodation?.postal_code?.trim() || null,
+    destinationDepartmentCode: accommodation?.department_code?.trim() || null,
+    destinationCountry: inferredCountry,
+    destinationCountries:
+      destinationType === 'itinerant' && inferredCountry
+        ? [inferredCountry]
+        : accommodationCountry
+          ? [accommodationCountry]
+          : [],
     destinationItineraryLabel: regionText === 'Séjour itinérant' ? locationText : null,
     regionText,
     locationText
   });
 
+  const destinationCity =
+    resolved.destinationType === 'fixed_france' || resolved.destinationType === 'fixed_abroad'
+      ? (() => {
+          const candidate =
+            inferredCity ||
+            accommodationCity ||
+            locationText?.split(',')[0]?.trim() ||
+            locationText;
+          if (
+            candidate &&
+            resolved.destinationCountry &&
+            normalizeForCompare(candidate) === normalizeForCompare(resolved.destinationCountry)
+          ) {
+            return null;
+          }
+          return candidate || null;
+        })()
+      : null;
+
   return {
     destination_type: resolved.destinationType,
-    destination_city:
-      resolved.destinationType === 'fixed_france' || resolved.destinationType === 'fixed_abroad'
-        ? accommodationCity || locationText?.split(',')[0]?.trim() || locationText
-        : null,
-    destination_postal_code: accommodation?.postal_code?.trim() || null,
-    destination_department_code: accommodation?.department_code?.trim() || null,
+    destination_city: destinationCity,
+    destination_postal_code: accommodation?.postal_code?.trim() || resolved.destinationPostalCode,
+    destination_department_code:
+      accommodation?.department_code?.trim() || resolved.destinationDepartmentCode,
     destination_region: resolved.destinationRegion,
     destination_country: resolved.destinationCountry,
     destination_itinerary_label: resolved.destinationItineraryLabel,

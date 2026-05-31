@@ -39,6 +39,15 @@ function normalizeDestinationCountry(value: string | null | undefined) {
   return cleaned;
 }
 
+function normalizeForCompare(value: string | null | undefined) {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
 function uniqStrings(values: Array<string | null | undefined>) {
   const seen = new Set<string>();
   const output: string[] = [];
@@ -69,7 +78,7 @@ export function normalizeStayDestinationCountries(value: unknown): string[] {
 
 export function normalizeStayDestination(input: StayDestinationInput) {
   const destinationType = normalizeStayDestinationType(input.destinationType);
-  const destinationCity = cleanText(input.destinationCity);
+  let destinationCity = cleanText(input.destinationCity);
   const destinationPostalCode = normalizePostalCode(input.destinationPostalCode);
   const destinationDepartmentCode = normalizeDepartmentCode(input.destinationDepartmentCode);
   const destinationRegion =
@@ -79,6 +88,15 @@ export function normalizeStayDestination(input: StayDestinationInput) {
   const destinationCountries = normalizeStayDestinationCountries(input.destinationCountries);
   const locationText = cleanText(input.locationText);
   const regionText = mapToCanonicalStayRegion(cleanText(input.regionText) ?? '') || cleanText(input.regionText);
+
+  // Avoid storing the same value in both city and country for abroad stays.
+  if (
+    destinationCity &&
+    destinationCountry &&
+    normalizeForCompare(destinationCity) === normalizeForCompare(destinationCountry)
+  ) {
+    destinationCity = null;
+  }
 
   return {
     destinationType,

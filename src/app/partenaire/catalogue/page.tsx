@@ -610,7 +610,7 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
               />
             </div>
             <p className="text-xs text-slate-500">
-              Liste limitée aux pays déjà présents sur Resacolo (séjours actuels ou passés).
+              Liste limitée aux pays présents sur des séjours publiés actifs.
             </p>
 
             <div className="grid gap-3 md:grid-cols-2">

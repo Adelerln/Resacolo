@@ -2179,6 +2179,7 @@ export type Database = {
           images: Json | null
           location_text: string | null
           organizer_id: string
+          payment_aids: string[]
           program_text: string | null
           raw_payload: Json | null
           region_text: string | null
@@ -2226,6 +2227,7 @@ export type Database = {
           images?: Json | null
           location_text?: string | null
           organizer_id: string
+          payment_aids?: string[]
           program_text?: string | null
           raw_payload?: Json | null
           region_text?: string | null
@@ -2273,6 +2275,7 @@ export type Database = {
           images?: Json | null
           location_text?: string | null
           organizer_id?: string
+          payment_aids?: string[]
           program_text?: string | null
           raw_payload?: Json | null
           region_text?: string | null
@@ -2408,6 +2411,7 @@ export type Database = {
           location_text: string | null
           region_text: string | null
           organizer_id: string
+          payment_aids: string[]
           partner_discount_percent: number | null
           program_text: string | null
           required_documents_text: string | null
@@ -2457,6 +2461,7 @@ export type Database = {
           location_text?: string | null
           region_text?: string | null
           organizer_id: string
+          payment_aids?: string[]
           partner_discount_percent?: number | null
           program_text?: string | null
           required_documents_text?: string | null
@@ -2506,6 +2511,7 @@ export type Database = {
           location_text?: string | null
           region_text?: string | null
           organizer_id?: string
+          payment_aids?: string[]
           partner_discount_percent?: number | null
           program_text?: string | null
           required_documents_text?: string | null

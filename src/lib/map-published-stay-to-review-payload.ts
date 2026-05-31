@@ -1,6 +1,7 @@
 import { mergeDraftExtraOptionsJson } from '@/lib/stay-draft-extra-options-split';
 import { collapseTransportDraftOptionsJson } from '@/lib/stay-draft-transport-display';
 import { normalizeImportedImageUrlList, normalizeImportedVideoUrlList } from '@/lib/stay-draft-url-extract';
+import { normalizePaymentAids } from '@/lib/payment-aids';
 import { sanitizeSeoPrimaryKeyword } from '@/lib/stay-seo';
 import { normalizeStayDraftCategories } from '@/lib/stay-categories';
 import type { Database } from '@/types/supabase';
@@ -312,6 +313,7 @@ export function mapPublishedStayToReviewPayload(input: {
     program_text: stay.program_text ?? '',
     supervision_text: stay.supervision_text ?? '',
     transport_text: stay.transport_text ?? '',
+    payment_aids: normalizePaymentAids(stay.payment_aids ?? []),
     transport_mode: stay.transport_mode ?? '',
     categories,
     ages: Array.isArray(stay.ages) ? stay.ages : [],

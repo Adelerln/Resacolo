@@ -8,6 +8,7 @@ import {
 import { FILTER_LABELS } from '@/lib/constants';
 import { buildStayDestinationLabel, normalizeStayDestination, type StayDestinationInput } from '@/lib/stay-destination';
 import { normalizeStayCategories } from '@/lib/stay-categories';
+import { normalizePaymentAids } from '@/lib/payment-aids';
 import { deriveStayAudiences, formatStayAgeRange } from '@/lib/stay-ages';
 import { isVideoUrlCandidate } from '@/lib/stay-draft-url-extract';
 import { normalizeStayTitle } from '@/lib/stay-title';
@@ -997,6 +998,7 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
         activitiesText: stay.activities_text?.trim() ?? '',
         programText: stay.program_text?.trim() ?? '',
         transportText: stay.transport_text?.trim() ?? '',
+        paymentAids: normalizePaymentAids(stay.payment_aids),
         coverImage,
         galleryImages: galleryImages.length > 0 ? galleryImages : undefined,
         videoUrls: videoUrls.length > 0 ? videoUrls : undefined,

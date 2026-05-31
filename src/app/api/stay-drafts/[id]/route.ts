@@ -14,7 +14,6 @@ import {
   normalizeStayTransportLogisticsMode
 } from '@/lib/stay-draft-content';
 import { writeDraftDestinationFields } from '@/lib/stay-draft-destination';
-import { normalizePaymentAids } from '@/lib/payment-aids';
 import { mapToCanonicalStayRegion } from '@/lib/stay-regions';
 import { sanitizeSeoPrimaryKeyword, sanitizeSeoTags, sanitizeSeoText } from '@/lib/stay-seo';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
@@ -49,7 +48,6 @@ const bodySchema = z.object({
   program_text: textFieldSchema,
   supervision_text: textFieldSchema,
   transport_text: textFieldSchema,
-  payment_aids: z.array(z.enum(['ancv_paper', 'ancv_connect', 'caf_vouchers'])).optional().default([]),
   transport_mode: textFieldSchema,
   categories: z.array(z.string()).optional().default([]),
   ages: z.array(z.number().int().nonnegative()).optional().default([]),
@@ -381,7 +379,6 @@ async function parseBody(req: Request): Promise<{ payload: StayDraftReviewPayloa
     program_text: normalizeString(data.program_text),
     supervision_text: normalizeString(data.supervision_text),
     transport_text: normalizeString(data.transport_text),
-    payment_aids: normalizePaymentAids(data.payment_aids),
     transport_mode: normalizeStayTransportLogisticsMode(data.transport_mode),
     categories,
     ages,
@@ -476,7 +473,6 @@ async function handleUpdate(req: Request, params: { id: string }, mode: 'save' |
     program_text: toNullableString(parsedBody.payload.program_text),
     supervision_text: toNullableString(parsedBody.payload.supervision_text),
     transport_text: toNullableString(parsedBody.payload.transport_text),
-    payment_aids: normalizePaymentAids(parsedBody.payload.payment_aids),
     transport_mode: toNullableString(parsedBody.payload.transport_mode),
     categories: categories.length > 0 ? categories : null,
     ages: ages.length > 0 ? ages : null,

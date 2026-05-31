@@ -28,7 +28,6 @@ import {
 } from '@/lib/stay-media-storage';
 import { mapToCanonicalStayRegion } from '@/lib/stay-regions';
 import { isPartnerTariffExtraOptionLabel } from '@/lib/stay-draft-extra-options-split';
-import { normalizePaymentAids } from '@/lib/payment-aids';
 import { sanitizeSeoPrimaryKeyword } from '@/lib/stay-seo';
 import { tryCanonicalizeStaySourceUrl } from '@/lib/stay-source-url-canonical';
 import { normalizeStayTitle } from '@/lib/stay-title';
@@ -1291,7 +1290,6 @@ async function updateOrInsertStay(
   const normalizedTitle = normalizeStayTitle(draft.title);
   const normalizedRegion = mapToCanonicalStayRegion(draft.region_text);
   const destination = readDraftDestinationFields(draftRawPayload);
-  const paymentAids = normalizePaymentAids(draft.payment_aids ?? []);
   const seasonId = await resolveSeasonIdFromSessions(supabase, sessions);
 
   let previousStatus: string | null | undefined;
@@ -1323,7 +1321,6 @@ async function updateOrInsertStay(
     age_max: ageMax ?? null,
     ages,
     categories: mappedCategories,
-    payment_aids: paymentAids,
     transport_mode: transportMode,
     transport_text: toNullableText(draft.transport_text),
     partner_discount_percent: partnerDiscountPercent,
@@ -1435,7 +1432,6 @@ async function updateOrInsertStay(
     age_max: basePayload.age_max ?? null,
     ages,
     categories: mappedCategories,
-    payment_aids: paymentAids,
     transport_mode: transportMode,
     transport_text: basePayload.transport_text ?? null,
     partner_discount_percent: partnerDiscountPercent,

@@ -4,7 +4,6 @@ import { requireOrganizerApiAccess } from '@/lib/organizer-backoffice-access.ser
 import { normalizeStayDraftCategories } from '@/lib/stay-categories';
 import { expandDraftAges, normalizeStaySummary, normalizeStayTransportLogisticsMode } from '@/lib/stay-draft-content';
 import { writeDraftDestinationFields } from '@/lib/stay-draft-destination';
-import { normalizePaymentAids } from '@/lib/payment-aids';
 import { mapToCanonicalStayRegion } from '@/lib/stay-regions';
 import { sanitizeSeoPrimaryKeyword, sanitizeSeoTags, sanitizeSeoText } from '@/lib/stay-seo';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
@@ -180,10 +179,6 @@ export async function PATCH(
         : Number.isFinite(Number(nextPartnerDiscountRaw))
           ? Number(nextPartnerDiscountRaw)
           : null;
-  const nextPaymentAids = hasOwn(payload, 'payment_aids')
-    ? normalizePaymentAids(payload.payment_aids)
-    : normalizePaymentAids(currentDraft.payment_aids ?? []);
-
   const updatePayload: Record<string, unknown> = {
     title: hasOwn(payload, 'title')
       ? toNullableString(normalizeStayTitle(String(payload.title ?? '')))
@@ -214,7 +209,6 @@ export async function PATCH(
     transport_mode: hasOwn(payload, 'transport_mode')
       ? toNullableString(normalizeStayTransportLogisticsMode(String(payload.transport_mode ?? '')))
       : currentDraft.transport_mode,
-    payment_aids: nextPaymentAids,
     categories: nextCategories.length > 0 ? nextCategories : null,
     ages: nextAges.length > 0 ? nextAges : null,
     age_min: nextAges.length > 0 ? nextAges[0] : null,

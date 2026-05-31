@@ -144,7 +144,12 @@ function MainNavigationContent({
 
   return (
     <header
-      className="font-accent sticky top-0 z-[100] overflow-visible border-b border-slate-200 bg-white/90 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-white/80"
+      className={clsx(
+        'font-accent sticky top-0 z-[100] overflow-visible border-b border-slate-200 shadow-sm',
+        hidePartnerMarketingLinks
+          ? 'bg-white'
+          : 'bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/80'
+      )}
       style={headerStyle}
     >
       <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-6 sm:py-4 lg:px-8 xl:grid xl:grid-cols-[auto_minmax(0,1fr)_auto] xl:gap-4">

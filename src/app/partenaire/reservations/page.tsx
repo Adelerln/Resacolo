@@ -9,7 +9,7 @@ import {
   readPartnerCollectivity
 } from '@/lib/partner.server';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
-import type { Database } from '@/types/supabase';
+import { PartnerContributionAmountEditor } from '@/components/partner/PartnerContributionAmountEditor';
 
 function formatDate(value: string) {
   return new Date(value).toLocaleDateString('fr-FR');
@@ -222,25 +222,11 @@ export default async function PartnerReservationsPage() {
                     </td>
                     <td className="px-4 py-3 font-semibold text-slate-900">{reservation.totalLabel}</td>
                     <td className="px-4 py-3">
-                      <form action={saveManualContribution} className="flex min-w-[220px] flex-col gap-2">
-                        <input type="hidden" name="order_id" value={reservation.id} />
-                        <input
-                          type="number"
-                          name="manual_partner_euros"
-                          min="0"
-                          step="0.01"
-                          defaultValue={
-                            reservation.partnerContributionCents > 0
-                              ? String((reservation.partnerContributionCents / 100).toFixed(2).replace('.', '.'))
-                              : ''
-                          }
-                          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
-                          placeholder="Montant partenaire"
-                        />
-                        <button className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white">
-                          Enregistrer
-                        </button>
-                      </form>
+                      <PartnerContributionAmountEditor
+                        orderId={reservation.id}
+                        partnerContributionCents={reservation.partnerContributionCents}
+                        saveAction={saveManualContribution}
+                      />
                     </td>
                     <td className="px-4 py-3">
                       <div className="font-semibold text-slate-900">

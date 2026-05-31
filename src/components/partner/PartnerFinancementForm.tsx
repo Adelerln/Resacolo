@@ -120,7 +120,6 @@ export function PartnerFinancementForm({
             rows={4}
             defaultValue={initialRulesText ?? ''}
             className={fieldClassName()}
-            placeholder="Ex. : prise en charge 50% pour les revenus < 30k."
           />
         </label>
       </form>

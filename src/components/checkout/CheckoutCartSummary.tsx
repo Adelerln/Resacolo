@@ -1,6 +1,7 @@
 import type { CartItem } from '@/types/cart';
 import { formatEuroFromCents, type CheckoutPricing, type CheckoutPricingItem } from '@/types/checkout';
 import { normalizePartnerFinanceMode } from '@/lib/partner-offers';
+import { formatNoPaymentAsBeneficiaryMessage } from '@/lib/partner-beneficiary-copy';
 
 function formatUnitPrice(value: number | null) {
   if (value == null) return 'Sur demande';
@@ -56,7 +57,10 @@ function getDetailedItemSelectionLines(item: CartItem, priced: CheckoutPricingIt
   return { session, transport, insurance, extra };
 }
 
-function getFinanceSummary(priced: CheckoutPricingItem | undefined) {
+function getFinanceSummary(
+  priced: CheckoutPricingItem | undefined,
+  partnerCollectivityName?: string | null
+) {
   if (!priced?.financeMode) return null;
 
   const mode = normalizePartnerFinanceMode(priced.financeMode);
@@ -65,7 +69,7 @@ function getFinanceSummary(priced: CheckoutPricingItem | undefined) {
   }
 
   if (mode === 'TOTAL') {
-    return 'Prise en charge totale : aucun règlement demandé au moment de la réservation.';
+    return `Prise en charge totale : ${formatNoPaymentAsBeneficiaryMessage(partnerCollectivityName).toLowerCase()}.`;
   }
 
   if ((priced.financePartnerContributionCents ?? 0) > 0 && priced.financeFamilyPayableCents != null) {
@@ -75,6 +79,11 @@ function getFinanceSummary(priced: CheckoutPricingItem | undefined) {
   }
 
   return null;
+}
+
+function getDisplayedLinePrice(priced: CheckoutPricingItem | undefined, fallbackUnitPrice: number | null) {
+  if (!priced) return formatUnitPrice(fallbackUnitPrice);
+  return formatEuroFromCents(priced.totalPriceCents);
 }
 
 export function CheckoutCartSummary({
@@ -114,6 +123,7 @@ export function CheckoutCartSummary({
               const priced = byId.get(item.id);
               const lines = getDetailedItemSelectionLines(item, priced);
               const itemExtra = renderItemExtra?.(item, index);
+              const linePrice = getDisplayedLinePrice(priced, item.unitPrice);
 
               return (
                 <article
@@ -159,6 +169,7 @@ export function CheckoutCartSummary({
                     <p className="text-xs text-slate-700 sm:text-sm">
                       Vendu par : <span className="font-semibold text-brand-600">{item.organizerName}</span>
                     </p>
+                    <p className="pt-1 text-sm font-semibold text-accent-600">Prix partenaire affiché : {linePrice}</p>
                     {getFinanceSummary(priced) ? (
                       <p className="pt-1 text-xs font-semibold text-emerald-700 sm:text-sm">{getFinanceSummary(priced)}</p>
                     ) : null}
@@ -171,7 +182,7 @@ export function CheckoutCartSummary({
 
           <div className="mt-5 border-t border-slate-200 pt-4">
             <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-[0.08em] text-slate-400">
-              <span>Total</span>
+              <span>Total partenaire affiché</span>
               <span className="text-sm text-slate-900 sm:text-base">
                 {pricing ? formatEuroFromCents(pricing.totalCents) : formatUnitPrice(fallbackTotal)}
               </span>
@@ -183,7 +194,9 @@ export function CheckoutCartSummary({
             ) : pricing && pricing.financeFamilyPayableTotalCents != null && pricing.financeFamilyPayableTotalCents !== pricing.totalCents ? (
               <div className="mt-2 flex items-center justify-between text-xs font-semibold text-emerald-700 sm:text-sm">
                 <span>
-                  {pricing.financeFamilyPayableTotalCents === 0 ? 'Aucun règlement demandé' : 'Reste à régler'}
+                  {pricing.financeFamilyPayableTotalCents === 0
+                    ? formatNoPaymentAsBeneficiaryMessage(pricing.partnerCollectivityName)
+                    : 'Reste à régler'}
                 </span>
                 <span>{formatEuroFromCents(pricing.financeFamilyPayableTotalCents)}</span>
               </div>
@@ -206,8 +219,10 @@ export function CheckoutCartSummary({
               <p className="text-sm font-semibold text-slate-900">{item.title}</p>
               <p className="mt-0.5 text-xs text-slate-500">{item.organizerName}</p>
               <p className="mt-2 text-sm font-semibold text-accent-600">{linePrice}</p>
-              {getFinanceSummary(priced) ? (
-                <p className="mt-1 text-xs font-semibold text-emerald-700">{getFinanceSummary(priced)}</p>
+              {getFinanceSummary(priced, pricing?.partnerCollectivityName) ? (
+                <p className="mt-1 text-xs font-semibold text-emerald-700">
+                  {getFinanceSummary(priced, pricing?.partnerCollectivityName)}
+                </p>
               ) : null}
             </li>
           );
@@ -227,7 +242,11 @@ export function CheckoutCartSummary({
           </div>
         ) : pricing && pricing.financeFamilyPayableTotalCents != null && pricing.financeFamilyPayableTotalCents !== pricing.totalCents ? (
           <div className="mt-1 flex items-center justify-between text-xs font-semibold text-emerald-700">
-            <span>{pricing.financeFamilyPayableTotalCents === 0 ? 'Aucun règlement demandé' : 'Reste à régler'}</span>
+            <span>
+              {pricing.financeFamilyPayableTotalCents === 0
+                ? formatNoPaymentAsBeneficiaryMessage(pricing.partnerCollectivityName)
+                : 'Reste à régler'}
+            </span>
             <span>{formatEuroFromCents(pricing.financeFamilyPayableTotalCents)}</span>
           </div>
         ) : null}

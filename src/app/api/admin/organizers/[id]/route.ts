@@ -24,6 +24,9 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
   const logoUrlField = hasLogoUrlField ? String(formData.get('logo_url') ?? '').trim() : null;
   const isFoundingMember = formData.get('is_founding_member') === 'on';
   const isResacoloMember = formData.get('is_resacolo_member') === 'on';
+  const acceptsAncvPaper = formData.get('accepts_ancv_paper') === 'on';
+  const acceptsAncvConnect = formData.get('accepts_ancv_connect') === 'on';
+  const isVacafApproved = formData.get('is_vacaf_approved') === 'on';
   const heroIntroText = String(formData.get('hero_intro_text') ?? '').trim();
   const hasDescriptionField = formData.has('description');
   const description = hasDescriptionField ? String(formData.get('description') ?? '').trim() : null;
@@ -76,6 +79,9 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
     logo_url: hasLogoUrlField ? logoUrlField || null : undefined,
     is_founding_member: isFoundingMember,
     is_resacolo_member: isResacoloMember,
+    accepts_ancv_paper: acceptsAncvPaper,
+    accepts_ancv_connect: acceptsAncvConnect,
+    is_vacaf_approved: isVacafApproved,
     hero_intro_text: heroIntroText || null,
     founded_year: foundedYear,
     age_min: ageMin,

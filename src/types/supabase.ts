@@ -203,6 +203,66 @@ export type Database = {
         }
         Relationships: []
       }
+      checkout_carts: {
+        Row: {
+          client_user_id: string | null
+          contact_snapshot: Json | null
+          converted_order_id: string | null
+          created_at: string
+          id: string
+          items_snapshot: Json
+          last_step: string
+          organizer_id: string | null
+          participants_snapshot: Json | null
+          pricing_snapshot: Json | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          client_user_id?: string | null
+          contact_snapshot?: Json | null
+          converted_order_id?: string | null
+          created_at?: string
+          id: string
+          items_snapshot?: Json
+          last_step?: string
+          organizer_id?: string | null
+          participants_snapshot?: Json | null
+          pricing_snapshot?: Json | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          client_user_id?: string | null
+          contact_snapshot?: Json | null
+          converted_order_id?: string | null
+          created_at?: string
+          id?: string
+          items_snapshot?: Json
+          last_step?: string
+          organizer_id?: string | null
+          participants_snapshot?: Json | null
+          pricing_snapshot?: Json | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "checkout_carts_converted_order_id_fkey"
+            columns: ["converted_order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "checkout_carts_organizer_id_fkey"
+            columns: ["organizer_id"]
+            isOneToOne: false
+            referencedRelation: "organizers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       clients: {
         Row: {
           collectivity_id: string | null
@@ -1020,49 +1080,76 @@ export type Database = {
       }
       orders: {
         Row: {
+          ancv_connect_matricule: string | null
+          ancv_connect_requested_amount_cents: number | null
           booked_at: string | null
           cancellation_reason: string | null
           cancelled_at: string | null
           client_user_id: string
           collectivity_id: string | null
           created_at: string
+          external_aid_cents: number
+          external_paid_cents: number
           id: string
           paid_at: string | null
+          partially_paid_at: string | null
+          request_kind: string | null
+          request_resolved_at: string | null
           requested_at: string | null
           status: Database["public"]["Enums"]["order_status"]
+          transferred_at: string | null
           updated_at: string
           validated_at: string | null
           validated_by_user_id: string | null
+          vacaf_number_snapshot: string | null
         }
         Insert: {
+          ancv_connect_matricule?: string | null
+          ancv_connect_requested_amount_cents?: number | null
           booked_at?: string | null
           cancellation_reason?: string | null
           cancelled_at?: string | null
           client_user_id: string
           collectivity_id?: string | null
           created_at?: string
+          external_aid_cents?: number
+          external_paid_cents?: number
           id?: string
           paid_at?: string | null
+          partially_paid_at?: string | null
+          request_kind?: string | null
+          request_resolved_at?: string | null
           requested_at?: string | null
           status?: Database["public"]["Enums"]["order_status"]
+          transferred_at?: string | null
           updated_at?: string
           validated_at?: string | null
           validated_by_user_id?: string | null
+          vacaf_number_snapshot?: string | null
         }
         Update: {
+          ancv_connect_matricule?: string | null
+          ancv_connect_requested_amount_cents?: number | null
           booked_at?: string | null
           cancellation_reason?: string | null
           cancelled_at?: string | null
           client_user_id?: string
           collectivity_id?: string | null
           created_at?: string
+          external_aid_cents?: number
+          external_paid_cents?: number
           id?: string
           paid_at?: string | null
+          partially_paid_at?: string | null
+          request_kind?: string | null
+          request_resolved_at?: string | null
           requested_at?: string | null
           status?: Database["public"]["Enums"]["order_status"]
+          transferred_at?: string | null
           updated_at?: string
           validated_at?: string | null
           validated_by_user_id?: string | null
+          vacaf_number_snapshot?: string | null
         }
         Relationships: [
           {
@@ -1709,6 +1796,8 @@ export type Database = {
       organizers: {
         Row: {
           activity_keys: string[]
+          accepts_ancv_connect: boolean
+          accepts_ancv_paper: boolean
           contact_email: string | null
           created_at: string
           description: string | null
@@ -1720,6 +1809,7 @@ export type Database = {
           id: string
           is_founding_member: boolean
           is_resacolo_member: boolean
+          is_vacaf_approved: boolean
           logo_path: string | null
           logo_url: string | null
           name: string
@@ -1733,6 +1823,8 @@ export type Database = {
         }
         Insert: {
           activity_keys?: string[]
+          accepts_ancv_connect?: boolean
+          accepts_ancv_paper?: boolean
           contact_email?: string | null
           created_at?: string
           description?: string | null
@@ -1744,6 +1836,7 @@ export type Database = {
           id?: string
           is_founding_member?: boolean
           is_resacolo_member?: boolean
+          is_vacaf_approved?: boolean
           logo_path?: string | null
           logo_url?: string | null
           name: string
@@ -1757,6 +1850,8 @@ export type Database = {
         }
         Update: {
           activity_keys?: string[]
+          accepts_ancv_connect?: boolean
+          accepts_ancv_paper?: boolean
           contact_email?: string | null
           created_at?: string
           description?: string | null
@@ -1768,6 +1863,7 @@ export type Database = {
           id?: string
           is_founding_member?: boolean
           is_resacolo_member?: boolean
+          is_vacaf_approved?: boolean
           logo_path?: string | null
           logo_url?: string | null
           name?: string
@@ -2596,11 +2692,14 @@ export type Database = {
       order_status:
         | "CART"
         | "REQUESTED"
+        | "PENDING_PAYMENT"
+        | "PARTIALLY_PAID"
         | "VALIDATED"
         | "BOOKED"
         | "PAID"
         | "CONFIRMED"
         | "CANCELLED"
+        | "TRANSFERRED"
       session_status: "OPEN" | "FULL" | "COMPLETED" | "ARCHIVED"
       stay_status: "DRAFT" | "PUBLISHED" | "HIDDEN" | "ARCHIVED"
     }
@@ -2735,11 +2834,14 @@ export const Constants = {
       order_status: [
         "CART",
         "REQUESTED",
+        "PENDING_PAYMENT",
+        "PARTIALLY_PAID",
         "VALIDATED",
         "BOOKED",
         "PAID",
         "CONFIRMED",
         "CANCELLED",
+        "TRANSFERRED",
       ],
       session_status: ["OPEN", "FULL", "COMPLETED", "ARCHIVED"],
       stay_status: ["DRAFT", "PUBLISHED", "HIDDEN", "ARCHIVED"],

@@ -111,8 +111,8 @@ export function OrganizerStayPreviewCard({
     ? `${compact ? 'text-base' : 'text-lg'} font-bold text-[#FA8500] transition-colors group-hover:text-white`
     : `${compact ? 'text-base' : 'text-lg'} font-bold text-[#FA8500]`;
   const publicPriceClass = hoverEnabled
-    ? 'text-xs font-medium text-slate-400 line-through transition-colors group-hover:text-white/70'
-    : 'text-xs font-medium text-slate-400 line-through';
+    ? `${compact ? 'text-sm' : 'text-base'} font-semibold text-slate-400 line-through transition-colors group-hover:text-white/70`
+    : `${compact ? 'text-sm' : 'text-base'} font-semibold text-slate-400 line-through`;
   const partnerPriceRowClass = hoverEnabled
     ? 'mt-1 flex items-center justify-center gap-2 transition-colors group-hover:text-white'
     : 'mt-1 flex items-center justify-center gap-2';

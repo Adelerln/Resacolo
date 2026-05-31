@@ -18,6 +18,7 @@ import {
 import { buildDevMockPricing, isDevBypassCheckout } from '@/lib/checkout/dev-bypass';
 import { getMockImageUrl, mockImages } from '@/lib/mockImages';
 import type { CheckoutContact, CheckoutParticipant, CheckoutPricing } from '@/types/checkout';
+import { resolveOrderRequestKind } from '@/lib/order-workflow';
 
 function formatBirthdateFr(iso: string | undefined) {
   if (!iso?.trim()) return '—';
@@ -59,8 +60,15 @@ const PAYMENT_MODES: Array<{ value: CheckoutContact['paymentMode']; label: strin
   { value: 'DEFERRED', label: 'Paiement différé' }
 ];
 
-function requiresOnlinePaymentStep(paymentMode: CheckoutContact['paymentMode']) {
-  return paymentMode !== 'CV_PAPER' && paymentMode !== 'DEFERRED';
+type OrganizerCheckoutSettings = {
+  acceptsAncvPaper: boolean;
+  acceptsAncvConnect: boolean;
+  isVacafApproved: boolean;
+};
+
+function requiresOnlinePaymentStep(paymentMode: CheckoutContact['paymentMode'], isManualRequest: boolean) {
+  if (isManualRequest) return false;
+  return paymentMode === 'FULL' || paymentMode === 'DEPOSIT_200';
 }
 
 function parseAncvConnectAmount(value: string) {
@@ -79,8 +87,26 @@ export default function CheckoutRecapitulatifPage() {
   const [paymentSubmitError, setPaymentSubmitError] = useState<string | null>(null);
   const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
   const [organizerCgvUrl, setOrganizerCgvUrl] = useState('/cgv-organisateur');
-  const paymentRequiresOnlineStep = requiresOnlinePaymentStep(contact.paymentMode);
+  const [organizerCheckoutSettings, setOrganizerCheckoutSettings] = useState<OrganizerCheckoutSettings | null>(null);
   const organizerId = items[0]?.organizerId ?? '';
+  const requestKind = organizerCheckoutSettings
+    ? resolveOrderRequestKind(
+        { paymentMode: contact.paymentMode, vacafNumber: contact.vacafNumber },
+        {
+          accepts_ancv_paper: organizerCheckoutSettings.acceptsAncvPaper,
+          accepts_ancv_connect: organizerCheckoutSettings.acceptsAncvConnect,
+          is_vacaf_approved: organizerCheckoutSettings.isVacafApproved
+        }
+      )
+    : null;
+  const paymentRequiresOnlineStep = requiresOnlinePaymentStep(contact.paymentMode, Boolean(requestKind));
+  const availablePaymentModes = useMemo(() => {
+    return PAYMENT_MODES.filter((mode) => {
+      if (mode.value === 'CV_PAPER') return organizerCheckoutSettings?.acceptsAncvPaper ?? false;
+      if (mode.value === 'CV_CONNECT') return organizerCheckoutSettings?.acceptsAncvConnect ?? false;
+      return true;
+    });
+  }, [organizerCheckoutSettings]);
 
   useEffect(() => {
     if (paymentRequiresOnlineStep) {
@@ -158,17 +184,84 @@ export default function CheckoutRecapitulatifPage() {
     };
   }, [organizerId]);
 
+  useEffect(() => {
+    let cancelled = false;
+    async function loadOrganizerCheckoutSettings() {
+      if (!organizerId) {
+        setOrganizerCheckoutSettings(null);
+        return;
+      }
+      try {
+        const response = await fetch(`/api/organizers/${organizerId}/checkout-settings`, { cache: 'no-store' });
+        if (!response.ok) {
+          if (!cancelled) {
+            setOrganizerCheckoutSettings({
+              acceptsAncvPaper: false,
+              acceptsAncvConnect: false,
+              isVacafApproved: false
+            });
+          }
+          return;
+        }
+        const payload = (await response.json()) as Partial<OrganizerCheckoutSettings>;
+        if (!cancelled) {
+          setOrganizerCheckoutSettings({
+            acceptsAncvPaper: Boolean(payload.acceptsAncvPaper),
+            acceptsAncvConnect: Boolean(payload.acceptsAncvConnect),
+            isVacafApproved: Boolean(payload.isVacafApproved)
+          });
+        }
+      } catch {
+        if (!cancelled) {
+          setOrganizerCheckoutSettings({
+            acceptsAncvPaper: false,
+            acceptsAncvConnect: false,
+            isVacafApproved: false
+          });
+        }
+      }
+    }
+
+    void loadOrganizerCheckoutSettings();
+    return () => {
+      cancelled = true;
+    };
+  }, [organizerId]);
+
+  useEffect(() => {
+    if (!organizerCheckoutSettings) return;
+    if (!availablePaymentModes.some((mode) => mode.value === contact.paymentMode)) {
+      patchContact({
+        paymentMode: 'FULL',
+        ancvConnectMatricule: '',
+        ancvConnectAmount: ''
+      });
+    }
+  }, [availablePaymentModes, contact.paymentMode, organizerCheckoutSettings]);
+
   function patchContact(patch: Partial<CheckoutContact>) {
     setContact({ ...contact, ...patch });
   }
 
   async function handleContinueToPayment() {
     setPaymentSubmitError(null);
+    if (organizerId && !organizerCheckoutSettings) {
+      setPaymentSubmitError("Chargement des modalités de l'organisme en cours, réessayez dans un instant.");
+      return;
+    }
     if (!contact.acceptsTerms) {
       setPaymentSubmitError('Vous devez accepter les conditions générales pour continuer.');
       return;
     }
+    if (contact.vacafNumber.trim() && !organizerCheckoutSettings?.isVacafApproved) {
+      setPaymentSubmitError("Cet organisme n'est pas agréé VACAF National.");
+      return;
+    }
     if (contact.paymentMode === 'CV_CONNECT') {
+      if (!organizerCheckoutSettings?.acceptsAncvConnect) {
+        setPaymentSubmitError("Cet organisme n'accepte pas ANCV Connect.");
+        return;
+      }
       if (!contact.ancvConnectMatricule.trim()) {
         setPaymentSubmitError('Veuillez renseigner votre matricule ANCV Connect.');
         return;
@@ -186,10 +279,16 @@ export default function CheckoutRecapitulatifPage() {
         if (paymentRequiresOnlineStep) {
           router.push('/checkout/paiement');
         } else {
+          const simulatedMode =
+            requestKind === 'VACAF'
+              ? 'dev-bypass-requested-vacaf'
+              : requestKind === 'ANCV_CONNECT'
+                ? 'dev-bypass-requested-ancv-connect'
+                : contact.paymentMode === 'CV_PAPER'
+                  ? 'dev-bypass-cv-paper'
+                  : 'dev-bypass-deferred';
           router.push(
-            `/checkout/confirmation/dev-order?mode=${
-              contact.paymentMode === 'CV_PAPER' ? 'dev-bypass-cv-paper' : 'dev-bypass-deferred'
-            }`
+            `/checkout/confirmation/dev-order?mode=${simulatedMode}`
           );
         }
         return;
@@ -233,7 +332,15 @@ export default function CheckoutRecapitulatifPage() {
       });
 
       router.push(
-        `/checkout/confirmation/${response.orderId}?mode=${contact.paymentMode === 'CV_PAPER' ? 'cv-paper' : 'deferred'}`
+        `/checkout/confirmation/${response.orderId}?mode=${
+          requestKind === 'VACAF'
+            ? 'requested-vacaf'
+            : requestKind === 'ANCV_CONNECT'
+              ? 'requested-ancv-connect'
+              : contact.paymentMode === 'CV_PAPER'
+                ? 'cv-paper'
+                : 'deferred'
+        }`
       );
     } catch (error) {
       setPaymentSubmitError(
@@ -384,30 +491,36 @@ export default function CheckoutRecapitulatifPage() {
               />
             </div>
 
-            <div className="space-y-3">
-              <div>
-                <label htmlFor="recap-vacaf" className={`${COMPACT_LABEL_BOLD_CLASS} block`}>
-                  Matricule VACAF (facultatif)
-                </label>
-                <p
-                  id="recap-vacaf-hint"
-                  className="mt-1.5 text-sm leading-relaxed text-slate-500"
-                >
-                  Si l&apos;organisateur accepte les bons VACAF, ils pourront être pris en compte dans le traitement
-                  final de votre réservation.
-                </p>
+            {organizerCheckoutSettings?.isVacafApproved ? (
+              <div className="space-y-3">
+                <div>
+                  <label htmlFor="recap-vacaf" className={`${COMPACT_LABEL_BOLD_CLASS} block`}>
+                    Matricule VACAF (facultatif)
+                  </label>
+                  <p
+                    id="recap-vacaf-hint"
+                    className="mt-1.5 text-sm leading-relaxed text-slate-500"
+                  >
+                    Si vous saisissez votre numéro allocataire, la commande partira en demande à traiter par
+                    l&apos;organisme pour contrôle AVE/VACAF.
+                  </p>
+                </div>
+                <input
+                  id="recap-vacaf"
+                  type="text"
+                  value={contact.vacafNumber}
+                  onChange={(event) =>
+                    patchContact({ vacafNumber: event.target.value.toUpperCase() })
+                  }
+                  className={INPUT_CLASS}
+                  aria-describedby="recap-vacaf-hint"
+                />
               </div>
-              <input
-                id="recap-vacaf"
-                type="text"
-                value={contact.vacafNumber}
-                onChange={(event) =>
-                  patchContact({ vacafNumber: event.target.value.toUpperCase() })
-                }
-                className={INPUT_CLASS}
-                aria-describedby="recap-vacaf-hint"
-              />
-            </div>
+            ) : (
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                Cet organisme n&apos;est pas agréé VACAF National.
+              </div>
+            )}
           </div>
         </section>
 
@@ -415,7 +528,7 @@ export default function CheckoutRecapitulatifPage() {
           <h2 className="font-display text-xl font-bold text-slate-900 sm:text-2xl">Mode de paiement</h2>
           <div className="mt-5 space-y-5">
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {PAYMENT_MODES.map((mode) => {
+              {availablePaymentModes.map((mode) => {
                 const isActive = contact.paymentMode === mode.value;
                 return (
                   <label
@@ -460,6 +573,21 @@ export default function CheckoutRecapitulatifPage() {
               })}
             </div>
 
+            {organizerCheckoutSettings ? (
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                Moyens acceptés par l&apos;organisme :
+                {' '}
+                {[
+                  organizerCheckoutSettings.acceptsAncvPaper ? 'ANCV papier' : null,
+                  organizerCheckoutSettings.acceptsAncvConnect ? 'ANCV Connect' : null,
+                  organizerCheckoutSettings.isVacafApproved ? 'VACAF National' : null
+                ]
+                  .filter(Boolean)
+                  .join(' · ') || 'aucun mode spécifique'}
+                .
+              </div>
+            ) : null}
+
             {contact.paymentMode === 'CV_CONNECT' ? (
               <div className="grid gap-4 md:grid-cols-2">
                 <label className="block text-sm font-medium text-slate-700">
@@ -485,6 +613,14 @@ export default function CheckoutRecapitulatifPage() {
                     required
                   />
                 </label>
+              </div>
+            ) : null}
+
+            {requestKind ? (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                {requestKind === 'VACAF'
+                  ? "Cette commande ne sera pas payée en ligne : l'organisme devra vérifier vos droits VACAF/AVE et saisir le montant CAF applicable."
+                  : "Cette commande ne sera pas payée en ligne : l'organisme devra vous recontacter et saisir le montant reçu en ANCV Connect."}
               </div>
             ) : null}
 

@@ -1,7 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { ACTIVE_ORDER_STATUSES } from '@/lib/order-workflow';
 import type { Database } from '@/types/supabase';
-
-const ACTIVE_ORDER_STATUSES = new Set(['REQUESTED', 'VALIDATED', 'BOOKED', 'PAID', 'CONFIRMED']);
 
 export async function getReservedSessionCounts(
   supabase: SupabaseClient<Database>,

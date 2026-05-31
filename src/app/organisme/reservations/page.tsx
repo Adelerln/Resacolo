@@ -1,8 +1,16 @@
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
+import { revalidatePath } from 'next/cache';
 import OrganizerPageHeader from '@/components/organisme/OrganizerPageHeader';
 import OrganizerReservationDetailsModal from '@/components/organisme/OrganizerReservationDetailsModal';
 import { canAccessOrganizerSection } from '@/lib/organizer-access';
 import { requireOrganizerPageAccess } from '@/lib/organizer-backoffice-access.server';
+import {
+  orderStatusBadgeClassName,
+  orderStatusLabel,
+  parseAmountEurosToCents,
+  resolveStatusAfterRequestResolution
+} from '@/lib/order-workflow';
 import { withOrganizerQuery } from '@/lib/organizers.server';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import type { Database } from '@/types/supabase';
@@ -43,6 +51,17 @@ const PAYMENT_MODE_LABELS: Record<string, string> = {
   DEFERRED: 'Paiement différé'
 };
 
+function parsePaymentModeFromPayload(rawPayload: unknown) {
+  if (!rawPayload || typeof rawPayload !== 'object' || Array.isArray(rawPayload)) return 'FULL';
+  const contact = (rawPayload as Record<string, unknown>).contact;
+  if (!contact || typeof contact !== 'object' || Array.isArray(contact)) return 'FULL';
+  const paymentMode = (contact as Record<string, unknown>).paymentMode;
+  if (typeof paymentMode === 'string' && paymentMode in PAYMENT_MODE_LABELS) {
+    return paymentMode;
+  }
+  return 'FULL';
+}
+
 function formatDate(value: string | null | undefined) {
   if (!value) return '-';
   return new Date(value).toLocaleDateString('fr-FR');
@@ -68,46 +87,6 @@ function participantSummary(count: number) {
   return count > 1 ? `${count} participants` : `${count} participant`;
 }
 
-function orderStatusLabel(status: OrderStatus | string | null | undefined) {
-  switch (status) {
-    case 'REQUESTED':
-      return 'Demandée';
-    case 'VALIDATED':
-      return 'Validée';
-    case 'BOOKED':
-      return 'Réservée';
-    case 'PAID':
-      return 'Payée';
-    case 'CONFIRMED':
-      return 'Confirmée';
-    case 'CANCELLED':
-      return 'Annulée';
-    case 'CART':
-      return 'Panier';
-    default:
-      return status ?? '-';
-  }
-}
-
-function orderStatusBadgeClassName(status: OrderStatus | string | null | undefined) {
-  switch (status) {
-    case 'REQUESTED':
-      return 'bg-amber-100 text-amber-900';
-    case 'VALIDATED':
-      return 'bg-sky-100 text-sky-900';
-    case 'BOOKED':
-      return 'bg-indigo-100 text-indigo-900';
-    case 'PAID':
-      return 'bg-emerald-100 text-emerald-900';
-    case 'CONFIRMED':
-      return 'bg-emerald-200 text-emerald-950';
-    case 'CANCELLED':
-      return 'bg-rose-100 text-rose-900';
-    default:
-      return 'bg-slate-100 text-slate-700';
-  }
-}
-
 function formatText(value: string | null | undefined, fallback = 'Non renseigné') {
   const trimmed = String(value ?? '').trim();
   return trimmed || fallback;
@@ -130,6 +109,99 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
   const canAccessStays = canAccessOrganizerSection(accessRole, 'stays');
   const supabase = getServerSupabaseClient();
 
+  async function resolveRequest(formData: FormData) {
+    'use server';
+
+    const requestedOrganizerId = String(formData.get('organizer_id') ?? '').trim();
+    const organizerAccess = await requireOrganizerPageAccess({
+      requestedOrganizerId,
+      requiredSection: 'reservations'
+    });
+    const organizerId = organizerAccess.selectedOrganizerId;
+    const orderId = String(formData.get('order_id') ?? '').trim();
+    const requestKind = String(formData.get('request_kind') ?? '').trim();
+    const amountCents = parseAmountEurosToCents(String(formData.get('resolved_amount_euros') ?? ''));
+
+    if (!organizerId || !orderId || (requestKind !== 'VACAF' && requestKind !== 'ANCV_CONNECT')) {
+      redirect(withOrganizerQuery('/organisme/reservations', organizerId));
+    }
+
+    const supabase = getServerSupabaseClient();
+    const { data: orderRow, error: orderError } = await supabase
+      .from('orders')
+      .select('id,status,request_kind,external_aid_cents,external_paid_cents')
+      .eq('id', orderId)
+      .maybeSingle();
+
+    if (orderError || !orderRow || orderRow.request_kind !== requestKind) {
+      redirect(withOrganizerQuery('/organisme/reservations', organizerId));
+    }
+
+    const { data: orderItemsRaw, error: itemsError } = await supabase
+      .from('order_items')
+      .select('id,total_price_cents,session_id')
+      .eq('order_id', orderId);
+
+    if (itemsError || !orderItemsRaw || orderItemsRaw.length === 0) {
+      redirect(withOrganizerQuery('/organisme/reservations', organizerId));
+    }
+    const orderItems = orderItemsRaw;
+
+    const sessionIds = Array.from(new Set(orderItems.map((item) => item.session_id).filter(Boolean)));
+    const { data: sessions } = sessionIds.length
+      ? await supabase.from('sessions').select('id,stay_id').in('id', sessionIds)
+      : { data: [] };
+    const stayIds = Array.from(new Set((sessions ?? []).map((item) => item.stay_id).filter(Boolean)));
+    const { data: stays } = stayIds.length
+      ? await supabase.from('stays').select('id,organizer_id').in('id', stayIds)
+      : { data: [] };
+
+    if ((stays ?? []).some((stay) => stay.organizer_id !== organizerId)) {
+      redirect(withOrganizerQuery('/organisme/reservations', organizerId));
+    }
+
+    const { data: successfulPayments } = await supabase
+      .from('payments')
+      .select('amount_cents,status')
+      .eq('order_id', orderId)
+      .eq('status', 'SUCCEEDED');
+    const onlinePaidCents = (successfulPayments ?? []).reduce((sum, payment) => sum + (payment.amount_cents ?? 0), 0);
+    const totalCents = orderItems.reduce((sum, item) => sum + (item.total_price_cents ?? 0), 0);
+    const nextExternalAidCents = requestKind === 'VACAF' ? amountCents : orderRow.external_aid_cents ?? 0;
+    const nextExternalPaidCents = requestKind === 'ANCV_CONNECT' ? amountCents : orderRow.external_paid_cents ?? 0;
+    const nextStatus = resolveStatusAfterRequestResolution({
+      totalCents,
+      externalAidCents: nextExternalAidCents,
+      externalPaidCents: nextExternalPaidCents,
+      onlinePaidCents
+    });
+    const now = new Date().toISOString();
+
+    const { error: updateError } = await supabase
+      .from('orders')
+      .update({
+        external_aid_cents: nextExternalAidCents,
+        external_paid_cents: nextExternalPaidCents,
+        request_resolved_at: now,
+        status: nextStatus,
+        paid_at: nextStatus === 'PAID' ? now : null,
+        partially_paid_at: nextStatus === 'PARTIALLY_PAID' ? now : null
+      })
+      .eq('id', orderId);
+
+    if (updateError) {
+      redirect(
+        withOrganizerQuery(
+          `/organisme/reservations?error=${encodeURIComponent(updateError.message)}`,
+          organizerId
+        )
+      );
+    }
+
+    revalidatePath(withOrganizerQuery('/organisme/reservations', organizerId));
+    redirect(withOrganizerQuery('/organisme/reservations', organizerId));
+  }
+
   const { data: staysRaw } = await supabase
     .from('stays')
     .select('id,title')
@@ -151,7 +223,7 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
   const { data: orderItemsRaw } = sessionIds.length
     ? await supabase
         .from('order_items')
-        .select('order_id,session_id,child_first_name,child_last_name')
+        .select('order_id,session_id,child_first_name,child_last_name,total_price_cents')
         .in('session_id', sessionIds)
     : { data: [] };
 
@@ -161,7 +233,9 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
   const { data: ordersRaw } = orderIds.length
     ? await supabase
         .from('orders')
-        .select('id,status,created_at,client_user_id,collectivity_id')
+        .select(
+          'id,status,created_at,client_user_id,collectivity_id,request_kind,vacaf_number_snapshot,ancv_connect_matricule,ancv_connect_requested_amount_cents,external_aid_cents,external_paid_cents'
+        )
         .in('id', orderIds)
         .neq('status', 'CART')
         .order('created_at', { ascending: false })
@@ -187,7 +261,7 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
   const { data: paymentsRaw } = orderIds.length
     ? await supabase
         .from('payments')
-        .select('order_id,amount_cents,currency,created_at')
+        .select('order_id,amount_cents,currency,created_at,raw_payload,status')
         .in('order_id', orderIds)
         .order('created_at', { ascending: false })
     : { data: [] };
@@ -231,12 +305,14 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
   const staysById = new Map(stays.map((stay) => [stay.id, stay]));
   const clientsByUserId = new Map((clientsRaw ?? []).map((client) => [client.user_id, client.full_name]));
   const profilesByUserId = new Map(profiles.map((profile) => [profile.user_id, profile]));
-  const paymentsByOrderId = new Map<string, { amount_cents: number; currency: string }>();
+  const paymentsByOrderId = new Map<string, { amount_cents: number; currency: string; raw_payload: unknown; status: string }>();
   for (const payment of paymentsRaw ?? []) {
     if (!paymentsByOrderId.has(payment.order_id)) {
       paymentsByOrderId.set(payment.order_id, {
         amount_cents: payment.amount_cents,
-        currency: payment.currency
+        currency: payment.currency,
+        raw_payload: payment.raw_payload,
+        status: payment.status
       });
     }
   }
@@ -251,9 +327,11 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
     const stay = session?.stay_id ? staysById.get(session.stay_id) : null;
     const profile = order.client_user_id ? profilesByUserId.get(order.client_user_id) : null;
     const payment = paymentsByOrderId.get(order.id);
+    const totalCents = items.reduce((sum, item) => sum + (item.total_price_cents ?? 0), 0);
     const participantNames = items
       .map((item) => [item.child_first_name, item.child_last_name].filter(Boolean).join(' ').trim())
       .filter(Boolean);
+    const paymentMode = parsePaymentModeFromPayload(payment?.raw_payload);
 
     return {
       id: order.id,
@@ -262,18 +340,38 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
       clientName: clientsByUserId.get(order.client_user_id) ?? participantNames[0] ?? 'Client inconnu',
       participantName: participantNames[0] ?? 'Participant inconnu',
       participantCount: items.length,
-      amountLabel: formatEuroFromCents(payment?.amount_cents, payment?.currency ?? 'EUR'),
+      amountLabel: formatEuroFromCents(totalCents, payment?.currency ?? 'EUR'),
       collectivityName: order.collectivity_id
         ? collectivitiesById.get(order.collectivity_id) ?? 'Collectivité inconnue'
         : 'Famille directe',
       status: order.status,
+      requestKind: order.request_kind,
+      requestReference:
+        order.request_kind === 'VACAF'
+          ? formatText(order.vacaf_number_snapshot)
+          : order.request_kind === 'ANCV_CONNECT'
+            ? formatText(order.ancv_connect_matricule)
+            : null,
+      requestedAmountLabel:
+        order.request_kind === 'ANCV_CONNECT' && typeof order.ancv_connect_requested_amount_cents === 'number'
+          ? formatEuroFromCents(order.ancv_connect_requested_amount_cents, payment?.currency ?? 'EUR')
+          : null,
+      externalAidLabel:
+        typeof order.external_aid_cents === 'number' && order.external_aid_cents > 0
+          ? formatEuroFromCents(order.external_aid_cents, payment?.currency ?? 'EUR')
+          : null,
+      externalPaidLabel:
+        typeof order.external_paid_cents === 'number' && order.external_paid_cents > 0
+          ? formatEuroFromCents(order.external_paid_cents, payment?.currency ?? 'EUR')
+          : null,
+      totalCents,
       details: {
         id: order.id,
         clientName: clientsByUserId.get(order.client_user_id) ?? participantNames[0] ?? 'Client inconnu',
         participantName: participantNames[0] ?? 'Participant inconnu',
-        paymentModeLabel: PAYMENT_MODE_LABELS[profile?.payment_mode ?? ''] ?? 'Non renseigné',
-        cafLabel: formatText(profile?.vacaf_number),
-        ancvConnectLabel: profile?.payment_mode === 'CV_CONNECT' ? 'Oui' : 'Non',
+        paymentModeLabel: PAYMENT_MODE_LABELS[paymentMode] ?? 'Non renseigné',
+        cafLabel: formatText(order.vacaf_number_snapshot),
+        ancvConnectLabel: order.request_kind === 'ANCV_CONNECT' ? 'Oui' : 'Non',
         email: formatText(profile?.parent1_email),
         primaryPhone: formatText(profile?.parent1_phone),
         secondaryPhone: formatText(profile?.parent2_phone),
@@ -319,6 +417,7 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
                 <th className="px-4 py-3">Session</th>
                 <th className="px-4 py-3">Enfant</th>
                 <th className="px-4 py-3">Statut</th>
+                <th className="px-4 py-3">Traitement organisme</th>
                 <th className="px-4 py-3">Collectivité</th>
                 <th className="px-4 py-3 text-right">Montant</th>
                 <th className="w-[140px] px-4 py-3 text-right">Détails</th>
@@ -349,6 +448,53 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
                       {orderStatusLabel(reservation.status)}
                     </span>
                   </td>
+                  <td className="px-4 py-3">
+                    {reservation.requestKind === 'VACAF' && reservation.status === 'REQUESTED' ? (
+                      <form action={resolveRequest} className="space-y-2">
+                        <input type="hidden" name="organizer_id" value={selectedOrganizerId} />
+                        <input type="hidden" name="order_id" value={reservation.id} />
+                        <input type="hidden" name="request_kind" value="VACAF" />
+                        <div className="text-xs text-slate-500">N° allocataire : {reservation.requestReference}</div>
+                        <input
+                          name="resolved_amount_euros"
+                          type="text"
+                          inputMode="decimal"
+                          placeholder="Montant CAF (€)"
+                          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                        />
+                        <button className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white">
+                          Enregistrer le montant CAF
+                        </button>
+                      </form>
+                    ) : reservation.requestKind === 'ANCV_CONNECT' && reservation.status === 'REQUESTED' ? (
+                      <form action={resolveRequest} className="space-y-2">
+                        <input type="hidden" name="organizer_id" value={selectedOrganizerId} />
+                        <input type="hidden" name="order_id" value={reservation.id} />
+                        <input type="hidden" name="request_kind" value="ANCV_CONNECT" />
+                        <div className="text-xs text-slate-500">
+                          Matricule : {reservation.requestReference}
+                          {reservation.requestedAmountLabel ? ` · demandé ${reservation.requestedAmountLabel}` : ''}
+                        </div>
+                        <input
+                          name="resolved_amount_euros"
+                          type="text"
+                          inputMode="decimal"
+                          placeholder="Montant reçu (€)"
+                          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                        />
+                        <button className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white">
+                          Enregistrer le montant ANCV
+                        </button>
+                      </form>
+                    ) : reservation.externalAidLabel || reservation.externalPaidLabel ? (
+                      <div className="space-y-1 text-xs text-slate-600">
+                        {reservation.externalAidLabel ? <div>CAF déduite : {reservation.externalAidLabel}</div> : null}
+                        {reservation.externalPaidLabel ? <div>ANCV reçu : {reservation.externalPaidLabel}</div> : null}
+                      </div>
+                    ) : (
+                      <span className="text-xs text-slate-400">—</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-slate-600">{reservation.collectivityName}</td>
                   <td className="px-4 py-3 text-right font-medium text-slate-900">{reservation.amountLabel}</td>
                   <td className="w-[140px] px-4 py-3 text-right">
@@ -358,7 +504,7 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
               ))}
               {reservations.length === 0 && (
                 <tr>
-                  <td className="px-4 py-8 text-slate-500" colSpan={8}>
+                  <td className="px-4 py-8 text-slate-500" colSpan={9}>
                     <p>Aucune réservation liée à cet organisme pour le moment.</p>
                     {canAccessStays ? (
                       <p className="mt-2 text-sm">

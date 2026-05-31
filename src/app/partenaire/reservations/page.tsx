@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { requirePartner } from '@/lib/auth/require';
+import { orderStatusBadgeClassName } from '@/lib/order-workflow';
 import { canAccessPartnerSection, getPartnerAccessRoleFromSession } from '@/lib/partner-access';
 import {
   clampPartnerFinanceCents,
@@ -13,25 +14,6 @@ import {
 } from '@/lib/partner.server';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import type { Database } from '@/types/supabase';
-
-function orderStatusBadgeClassName(status: Database['public']['Enums']['order_status'] | string) {
-  switch (status) {
-    case 'REQUESTED':
-      return 'bg-amber-100 text-amber-900';
-    case 'VALIDATED':
-      return 'bg-sky-100 text-sky-900';
-    case 'BOOKED':
-      return 'bg-indigo-100 text-indigo-900';
-    case 'PAID':
-      return 'bg-emerald-100 text-emerald-900';
-    case 'CONFIRMED':
-      return 'bg-emerald-200 text-emerald-950';
-    case 'CANCELLED':
-      return 'bg-rose-100 text-rose-900';
-    default:
-      return 'bg-slate-100 text-slate-700';
-  }
-}
 
 function formatDate(value: string) {
   return new Date(value).toLocaleDateString('fr-FR');

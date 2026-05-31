@@ -36,8 +36,16 @@ export default function CheckoutConfirmationPage() {
   const orderStatusRef = useRef<string | null>(null);
   const isCvPaperMode = mode === 'cv-paper' || mode === 'dev-bypass-cv-paper';
   const isDeferredMode = mode === 'deferred' || mode === 'dev-bypass-deferred';
-  const isOfflineConfirmationMode = isCvPaperMode || isDeferredMode;
-  const displayedSubtitle = isCvPaperMode
+  const isVacafRequestMode = mode === 'requested-vacaf' || mode === 'dev-bypass-requested-vacaf';
+  const isAncvConnectRequestMode =
+    mode === 'requested-ancv-connect' || mode === 'dev-bypass-requested-ancv-connect';
+  const isManualConfirmationMode =
+    isCvPaperMode || isDeferredMode || isVacafRequestMode || isAncvConnectRequestMode;
+  const displayedSubtitle = isVacafRequestMode
+    ? 'Votre demande a été transmise à l’organisme pour vérification VACAF/AVE.'
+    : isAncvConnectRequestMode
+      ? 'Votre demande a été transmise à l’organisme pour traitement ANCV Connect.'
+      : isCvPaperMode
     ? 'Votre commande est enregistrée. Le règlement en ANCV papier sera finalisé hors ligne.'
     : isDeferredMode
       ? 'Votre commande est enregistrée. Le règlement différé sera finalisé ultérieurement.'
@@ -53,12 +61,16 @@ export default function CheckoutConfirmationPage() {
       const devBypassPaidStorageKey = `resacolo-dev-bypass-paid:${orderId}`;
       const simulatedPaidAt = typeof window !== 'undefined' ? sessionStorage.getItem(devBypassPaidStorageKey) : null;
       const isSimulatedPaymentConfirmed = Boolean(simulatedPaidAt);
-      const simulatedStatus = isOfflineConfirmationMode
+      const simulatedStatus = isVacafRequestMode || isAncvConnectRequestMode
         ? 'REQUESTED (SIMULÉ)'
         : isSimulatedPaymentConfirmed
           ? 'PAID (SIMULÉ)'
           : 'EN ATTENTE (SIMULÉ)';
-      const simulatedPaymentStatus = isCvPaperMode
+      const simulatedPaymentStatus = isVacafRequestMode
+        ? 'DEMANDE VACAF (SIMULÉE)'
+        : isAncvConnectRequestMode
+          ? 'DEMANDE ANCV CONNECT (SIMULÉE)'
+        : isCvPaperMode
         ? 'ANCV PAPIER (SIMULÉ)'
         : isDeferredMode
           ? 'PAIEMENT DIFFÉRÉ (SIMULÉ)'
@@ -78,7 +90,7 @@ export default function CheckoutConfirmationPage() {
       });
       setErrorMessage(null);
       setIsLoading(false);
-      if ((isSimulatedPaymentConfirmed || isOfflineConfirmationMode) && !checkoutResetDoneRef.current) {
+      if ((isSimulatedPaymentConfirmed || isManualConfirmationMode) && !checkoutResetDoneRef.current) {
         clearCart();
         resetCheckout();
         checkoutResetDoneRef.current = true;
@@ -101,7 +113,14 @@ export default function CheckoutConfirmationPage() {
         orderStatusRef.current = response.status;
         setErrorMessage(null);
 
-        if ((response.status === 'PAID' || isOfflineConfirmationMode) && !checkoutResetDoneRef.current) {
+        if (
+          (response.status === 'PAID' ||
+            response.status === 'PARTIALLY_PAID' ||
+            response.status === 'REQUESTED' ||
+            response.status === 'PENDING_PAYMENT' ||
+            isManualConfirmationMode) &&
+          !checkoutResetDoneRef.current
+        ) {
           clearCart();
           resetCheckout();
           checkoutResetDoneRef.current = true;
@@ -120,7 +139,14 @@ export default function CheckoutConfirmationPage() {
 
     interval = setInterval(() => {
       const status = orderStatusRef.current;
-      if (!status || status === 'PAID' || status === 'CANCELLED' || status === 'FAILED') {
+      if (
+        !status ||
+        status === 'PAID' ||
+        status === 'PARTIALLY_PAID' ||
+        status === 'REQUESTED' ||
+        status === 'CANCELLED' ||
+        status === 'FAILED'
+      ) {
         return;
       }
       loadStatus();
@@ -130,7 +156,17 @@ export default function CheckoutConfirmationPage() {
       cancelled = true;
       if (interval) clearInterval(interval);
     };
-  }, [clearCart, isCvPaperMode, isDeferredMode, isOfflineConfirmationMode, mode, orderId, resetCheckout]);
+  }, [
+    clearCart,
+    isAncvConnectRequestMode,
+    isCvPaperMode,
+    isDeferredMode,
+    isManualConfirmationMode,
+    isVacafRequestMode,
+    mode,
+    orderId,
+    resetCheckout
+  ]);
 
   return (
     <CheckoutFrame
@@ -175,6 +211,10 @@ export default function CheckoutConfirmationPage() {
                   ? 'En attente de règlement ANCV papier'
                   : isDeferredMode
                     ? 'Paiement différé'
+                    : isVacafRequestMode
+                      ? 'En attente de vérification VACAF/AVE'
+                      : isAncvConnectRequestMode
+                        ? 'En attente de contact organisme'
                     : order.paymentStatus ?? 'En attente'}
               </span>
             </p>
@@ -184,6 +224,26 @@ export default function CheckoutConfirmationPage() {
           </div>
           {order.paidAt ? (
             <p className="text-sm text-emerald-700">Paiement validé le {new Date(order.paidAt).toLocaleString('fr-FR')}.</p>
+          ) : isVacafRequestMode ? (
+            <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5">
+              <p className="flex items-start gap-2 text-sm font-semibold text-amber-900">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                <span>
+                  Votre demande est bien transmise. L&apos;organisme doit maintenant contrôler vos droits
+                  VACAF/AVE et saisir le montant CAF déduit.
+                </span>
+              </p>
+            </div>
+          ) : isAncvConnectRequestMode ? (
+            <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5">
+              <p className="flex items-start gap-2 text-sm font-semibold text-amber-900">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                <span>
+                  Votre demande est bien transmise. L&apos;organisme vous recontactera pour finaliser le règlement
+                  ANCV Connect et saisir le montant reçu.
+                </span>
+              </p>
+            </div>
           ) : isCvPaperMode ? (
             <p className="text-sm text-amber-700">
               Votre commande est bien enregistrée. Le règlement en ANCV papier sera traité directement avec l&apos;organisateur.

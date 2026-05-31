@@ -4,6 +4,7 @@ import { OrganizerStayPreviewCard } from '@/components/organisateurs/OrganizerSt
 import { StayDetailView } from '@/components/sejours/StayDetailView';
 import { FavoritesProvider } from '@/components/favorites/FavoritesProvider';
 import PublishDraftNowButton from '@/components/organisme/PublishDraftNowButton';
+import OrganizerPageHeader from '@/components/organisme/OrganizerPageHeader';
 import { requireOrganizerPageAccess } from '@/lib/organizer-backoffice-access.server';
 import { withOrganizerQuery } from '@/lib/organizers.server';
 import { resolveStaySeasonPicto } from '@/lib/organizer-profile-options';

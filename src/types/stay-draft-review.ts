@@ -18,7 +18,6 @@ export type StayDraftReviewPayload = {
   program_text: string;
   supervision_text: string;
   transport_text: string;
-  payment_aids: Array<'ancv_paper' | 'ancv_connect' | 'caf_vouchers'>;
   transport_mode: string;
   categories: string[];
   ages: number[];
@@ -80,7 +79,6 @@ export type StayDraftReviewFieldErrorKey =
   | 'program_text'
   | 'supervision_text'
   | 'transport_text'
-  | 'payment_aids'
   | 'transport_mode'
   | 'categories'
   | 'ages'

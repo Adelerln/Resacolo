@@ -31,6 +31,8 @@ export function stayStatusBadgeClassName(status?: string | null) {
 export function stayDraftStatusLabel(status?: string | null) {
   const s = (status ?? '').toLowerCase();
   switch (s) {
+    case 'pending':
+      return 'Import en cours';
     case 'validated':
       return 'Validé (import)';
     case 'draft':

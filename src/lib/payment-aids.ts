@@ -1,8 +1,9 @@
-export const PAYMENT_AID_VALUES = ['ancv_paper', 'ancv_connect', 'caf_vouchers'] as const;
+export const PAYMENT_AID_VALUES = ['ancv_connect', 'ancv_paper', 'caf_vouchers'] as const;
 
 export type PaymentAidValue = (typeof PAYMENT_AID_VALUES)[number];
 
 const PAYMENT_AID_SET = new Set<string>(PAYMENT_AID_VALUES);
+const ORGANIZER_PAYMENT_AIDS_META_PATTERN = /<!--\s*resacolo:payment-aids:([a-z_,\s-]*)\s*-->/i;
 
 export function isPaymentAidValue(value: string): value is PaymentAidValue {
   return PAYMENT_AID_SET.has(value);
@@ -17,9 +18,9 @@ export function normalizePaymentAids(value: unknown): PaymentAidValue[] {
 }
 
 export function paymentAidLabel(value: PaymentAidValue) {
+  if (value === 'ancv_connect') return 'ANCV connect';
   if (value === 'ancv_paper') return 'ANCV';
-  if (value === 'ancv_connect') return 'ANCV Connect';
-  return 'Bons CAF';
+  return 'Bons VACAF';
 }
 
 function normalizeText(value: string) {
@@ -65,3 +66,15 @@ export function detectPaymentAidsFromText(input: {
   return Array.from(aids);
 }
 
+export function extractPaymentAidsFromOrganizerDescriptionMeta(
+  description: string | null | undefined
+): PaymentAidValue[] {
+  const raw = description ?? '';
+  const match = raw.match(ORGANIZER_PAYMENT_AIDS_META_PATTERN);
+  if (!match?.[1]) return [];
+  const values = match[1]
+    .split(',')
+    .map((item) => String(item ?? '').trim().toLowerCase())
+    .filter(Boolean);
+  return normalizePaymentAids(values);
+}

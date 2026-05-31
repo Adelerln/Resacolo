@@ -7,7 +7,6 @@ import { requireOrganizerPageAccess } from '@/lib/organizer-backoffice-access.se
 import { withOrganizerQuery } from '@/lib/organizers.server';
 import { normalizeStayDraftCategories } from '@/lib/stay-categories';
 import { readDraftDestinationFields } from '@/lib/stay-draft-destination';
-import { normalizePaymentAids } from '@/lib/payment-aids';
 import { extractVideoUrls } from '@/lib/stay-draft-import';
 import {
   buildDraftTransportOptionsFromVariants,
@@ -501,7 +500,6 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
     program_text: normalizeString(draft.program_text),
     supervision_text: normalizeString(draft.supervision_text),
     transport_text: normalizeString(draft.transport_text),
-    payment_aids: normalizePaymentAids(draft.payment_aids ?? []),
     transport_mode: normalizeString(draft.transport_mode),
     categories: normalizeStayDraftCategories(draft.categories ?? []).categories,
     ages: draft.ages ?? [],

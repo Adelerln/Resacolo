@@ -8,7 +8,6 @@ import {
 import { FILTER_LABELS } from '@/lib/constants';
 import { buildStayDestinationLabel, normalizeStayDestination, type StayDestinationInput } from '@/lib/stay-destination';
 import { normalizeStayCategories } from '@/lib/stay-categories';
-import { normalizePaymentAids } from '@/lib/payment-aids';
 import { deriveStayAudiences, formatStayAgeRange } from '@/lib/stay-ages';
 import { isVideoUrlCandidate } from '@/lib/stay-draft-url-extract';
 import { normalizeStayTitle } from '@/lib/stay-title';
@@ -18,6 +17,10 @@ import {
   extractGoogleMapsEmbedSrcFromInput,
   readMapIframeHtmlFromAiExtractedData
 } from '@/lib/google-maps-iframe';
+import {
+  extractPaymentAidsFromOrganizerDescriptionMeta,
+  normalizePaymentAids
+} from '@/lib/payment-aids';
 import type {
   Stay,
   StayAccommodation,
@@ -35,7 +38,15 @@ type PeriodKey = keyof typeof FILTER_LABELS.periods;
 type TransportKey = keyof typeof FILTER_LABELS.transport;
 type OrganizerRow = Pick<
   Database['public']['Tables']['organizers']['Row'],
-  'id' | 'name' | 'logo_path' | 'slug' | 'website_url'
+  | 'id'
+  | 'name'
+  | 'logo_path'
+  | 'slug'
+  | 'website_url'
+  | 'description'
+  | 'accepts_ancv_connect'
+  | 'accepts_ancv_paper'
+  | 'is_vacaf_approved'
 >;
 type SeasonRow = Pick<Database['public']['Tables']['seasons']['Row'], 'id' | 'name' | 'start_date'>;
 type StayMediaRow = Pick<Database['public']['Tables']['stay_media']['Row'], 'url' | 'position' | 'media_type'>;
@@ -574,9 +585,34 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
   const stayIds = visibleStays.map((stay) => stay.id);
   const organizerIds = Array.from(new Set(visibleStays.map((stay) => stay.organizer_id)));
   const seasonIds = Array.from(new Set(visibleStays.map((stay) => stay.season_id)));
+  const organizerSelectWithPaymentAids =
+    'id,name,logo_path,slug,website_url,description,accepts_ancv_connect,accepts_ancv_paper,is_vacaf_approved';
+  const organizerSelectLegacy = 'id,name,logo_path,slug,website_url,description';
+
+  const organizersResult = organizerIds.length
+    ? await supabase
+        .from('organizers')
+        .select(organizerSelectWithPaymentAids)
+        .in('id', organizerIds)
+    : { data: [] as OrganizerRow[] | null };
+
+  const organizersRaw = organizersResult.data
+    ? organizersResult.data
+    : organizerIds.length
+      ? (
+          await supabase
+            .from('organizers')
+            .select(organizerSelectLegacy)
+            .in('id', organizerIds)
+        ).data?.map((organizer) => ({
+          ...organizer,
+          accepts_ancv_connect: false,
+          accepts_ancv_paper: false,
+          is_vacaf_approved: false
+        })) ?? []
+      : [];
 
   const [
-    { data: organizersRaw },
     { data: seasonsRaw },
     { data: mediaRaw },
     { data: sessionsRaw },
@@ -585,9 +621,6 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
     { data: insuranceOptionsRaw },
     { data: transportOptionsRaw }
   ] = await Promise.all([
-    organizerIds.length
-      ? supabase.from('organizers').select('id,name,logo_path,slug,website_url').in('id', organizerIds)
-      : Promise.resolve({ data: [] as OrganizerRow[] | null }),
     seasonIds.length
       ? supabase.from('seasons').select('id,name,start_date').in('id', seasonIds)
       : Promise.resolve({ data: [] as SeasonRow[] | null }),
@@ -959,6 +992,20 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
       const seoGeneratedAt = normalizeStaySeoText(stay.seo_generated_at);
       const seoGenerationSource = normalizeStaySeoText(stay.seo_generation_source);
 
+      const paymentAidsFromBooleans = [
+        organizer?.accepts_ancv_connect ? 'ancv_connect' : null,
+        organizer?.accepts_ancv_paper ? 'ancv_paper' : null,
+        organizer?.is_vacaf_approved ? 'caf_vouchers' : null
+      ].filter(
+        (value): value is 'ancv_connect' | 'ancv_paper' | 'caf_vouchers' => value !== null
+      );
+      const paymentAids =
+        paymentAidsFromBooleans.length > 0
+          ? paymentAidsFromBooleans
+          : normalizePaymentAids(
+              extractPaymentAidsFromOrganizerDescriptionMeta(organizer?.description ?? null)
+            );
+
       return {
         id: stay.id,
         title: displayTitle,
@@ -998,7 +1045,7 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
         activitiesText: stay.activities_text?.trim() ?? '',
         programText: stay.program_text?.trim() ?? '',
         transportText: stay.transport_text?.trim() ?? '',
-        paymentAids: normalizePaymentAids(stay.payment_aids),
+        paymentAids,
         coverImage,
         galleryImages: galleryImages.length > 0 ? galleryImages : undefined,
         videoUrls: videoUrls.length > 0 ? videoUrls : undefined,

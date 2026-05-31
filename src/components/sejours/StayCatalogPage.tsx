@@ -302,7 +302,6 @@ function FiltersPanel({
                   </optgroup>
                 ) : null}
               </select>
-              <p className="text-[11px] text-slate-500">Une seule destination sélectionnable à la fois.</p>
             </div>
           ) : (
             <div

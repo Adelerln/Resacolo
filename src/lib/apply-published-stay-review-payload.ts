@@ -19,7 +19,6 @@ import { isMissingRegionTextColumnError, normalizeStayRegion } from '@/lib/stay-
 import { sanitizeSeoPrimaryKeyword, sanitizeSeoTags, sanitizeSeoText } from '@/lib/stay-seo';
 import { normalizeStayTitle } from '@/lib/stay-title';
 import { normalizeImportedVideoUrlList } from '@/lib/stay-draft-url-extract';
-import { normalizePaymentAids } from '@/lib/payment-aids';
 import type { Json } from '@/types/supabase';
 import type { Database } from '@/types/supabase';
 import type { StayDraftReviewPayload } from '@/types/stay-draft-review';
@@ -134,7 +133,6 @@ export async function applyPublishedStayReviewPayload(
       destination.destinationCountries.length > 0 ? destination.destinationCountries : null,
     transport_mode: requestedTransportMode,
     transport_text: payload.transport_text.trim() || null,
-    payment_aids: normalizePaymentAids(payload.payment_aids),
     partner_discount_percent:
       payload.partner_discount_percent != null && Number.isFinite(payload.partner_discount_percent)
         ? payload.partner_discount_percent

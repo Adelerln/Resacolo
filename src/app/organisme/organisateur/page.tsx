@@ -28,6 +28,48 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+const ORGANIZER_PAYMENT_AIDS_META_PATTERN = /<!--\s*resacolo:payment-aids:([a-z_,\s-]*)\s*-->/i;
+
+function extractOrganizerPaymentAidsMeta(value?: string | null) {
+  const raw = value ?? '';
+  const match = raw.match(ORGANIZER_PAYMENT_AIDS_META_PATTERN);
+  const tokens = (match?.[1] ?? '')
+    .split(',')
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean);
+
+  const set = new Set(tokens);
+
+  return {
+    description: raw.replace(ORGANIZER_PAYMENT_AIDS_META_PATTERN, '').trim() || null,
+    acceptsAncvPaper: set.has('ancv_paper'),
+    acceptsAncvConnect: set.has('ancv_connect'),
+    isVacafApproved: set.has('caf_vouchers')
+  };
+}
+
+function embedOrganizerPaymentAidsMeta(
+  description: string | null | undefined,
+  input: {
+    acceptsAncvPaper: boolean;
+    acceptsAncvConnect: boolean;
+    isVacafApproved: boolean;
+  }
+) {
+  const cleanedDescription = (description ?? '').replace(ORGANIZER_PAYMENT_AIDS_META_PATTERN, '').trim();
+  const values: string[] = [];
+  if (input.acceptsAncvConnect) values.push('ancv_connect');
+  if (input.acceptsAncvPaper) values.push('ancv_paper');
+  if (input.isVacafApproved) values.push('caf_vouchers');
+
+  if (values.length === 0) {
+    return cleanedDescription || null;
+  }
+
+  const meta = `<!-- resacolo:payment-aids:${values.join(',')} -->`;
+  return cleanedDescription ? `${cleanedDescription}\n${meta}` : meta;
+}
+
 type PageProps = {
   searchParams?: Promise<{
     organizerId?: string | string[];
@@ -59,6 +101,8 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
     'id,name,contact_email,description,hero_intro_text,founded_year,age_min,age_max,logo_path,education_project_path,slug,season_keys,stay_type_keys,activity_keys,accepts_ancv_paper,accepts_ancv_connect,is_vacaf_approved';
   const organizerSelectFallback =
     'id,name,contact_email,description,hero_intro_text,founded_year,age_min,age_max,logo_path,education_project_path,slug,accepts_ancv_paper,accepts_ancv_connect,is_vacaf_approved';
+  const organizerSelectLegacy =
+    'id,name,contact_email,description,hero_intro_text,founded_year,age_min,age_max,logo_path,education_project_path,slug';
 
   const organizerQueryWithCatalog = await supabase
     .from('organizers')
@@ -72,6 +116,17 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
         .select(organizerSelectFallback)
         .eq('id', organizerId)
         .maybeSingle();
+  const organizerLegacyQuery = organizerQueryWithCatalog.data || organizerFallbackQuery?.data
+    ? null
+    : await supabase
+        .from('organizers')
+        .select(organizerSelectLegacy)
+        .eq('id', organizerId)
+        .maybeSingle();
+
+  const legacyPaymentMeta = organizerLegacyQuery?.data
+    ? extractOrganizerPaymentAidsMeta(organizerLegacyQuery.data.description)
+    : null;
 
   const organizer = organizerQueryWithCatalog.data
     ? organizerQueryWithCatalog.data
@@ -82,6 +137,17 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
           stay_type_keys: [],
           activity_keys: []
         }
+      : organizerLegacyQuery?.data
+        ? {
+            ...organizerLegacyQuery.data,
+            description: legacyPaymentMeta?.description ?? organizerLegacyQuery.data.description,
+            season_keys: [],
+            stay_type_keys: [],
+            activity_keys: [],
+            accepts_ancv_paper: legacyPaymentMeta?.acceptsAncvPaper ?? false,
+            accepts_ancv_connect: legacyPaymentMeta?.acceptsAncvConnect ?? false,
+            is_vacaf_approved: legacyPaymentMeta?.isVacafApproved ?? false
+          }
       : null;
 
   if (!organizer) {
@@ -200,6 +266,20 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
       is_vacaf_approved: isVacafApproved,
       slug
     };
+    const basePayloadLegacy = {
+      name,
+      contact_email: contactEmail,
+      hero_intro_text: heroIntroText || null,
+      description: embedOrganizerPaymentAidsMeta(descriptionWithDurationMeta, {
+        acceptsAncvPaper,
+        acceptsAncvConnect,
+        isVacafApproved
+      }),
+      founded_year: foundedYear,
+      age_min: ageMin,
+      age_max: ageMax,
+      slug
+    };
 
     const updateWithCatalog = await supabase
       .from('organizers')
@@ -217,14 +297,21 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
         .eq('id', currentOrganizerId);
 
       if (fallbackUpdate.error) {
-        redirect(
-          withOrganizerQuery(
-            `/organisme/organisateur?error=${encodeURIComponent(
-              fallbackUpdate.error.message || "Impossible d'enregistrer la fiche organisateur."
-            )}`,
-            currentOrganizerId
-          )
-        );
+        const legacyUpdate = await supabase
+          .from('organizers')
+          .update(basePayloadLegacy)
+          .eq('id', currentOrganizerId);
+
+        if (legacyUpdate.error) {
+          redirect(
+            withOrganizerQuery(
+              `/organisme/organisateur?error=${encodeURIComponent(
+                legacyUpdate.error.message || "Impossible d'enregistrer la fiche organisateur."
+              )}`,
+              currentOrganizerId
+            )
+          );
+        }
       }
     }
 
@@ -389,7 +476,9 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
             <OrganizerRichTextEditor
               name="description"
               label="Texte de présentation"
-              initialValue={organizer.description ?? ''}
+              initialValue={sanitizeOrganizerRichText(
+                extractOrganizerPaymentAidsMeta(organizer.description ?? '').description ?? ''
+              )}
             />
           </div>
           <div className="mt-4 grid gap-4 md:grid-cols-2">

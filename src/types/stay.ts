@@ -163,6 +163,7 @@ export interface Stay {
   partnerFinanceMode?: StayPartnerFinanceMode | null;
   partnerFinancePercentValue?: number | null;
   partnerFinanceFixedCents?: number | null;
+  partnerCollectivityName?: string | null;
   csePriceFrom?: number | null;
   cseAidFrom?: number | null;
   cseLabel?: string | null;

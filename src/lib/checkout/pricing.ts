@@ -50,7 +50,7 @@ type ResolvedInsuranceOption = {
 };
 type CollectivityFinanceRow = Pick<
   Database['public']['Tables']['collectivities']['Row'],
-  'id' | 'finance_mode' | 'finance_percent_value' | 'finance_fixed_cents'
+  'id' | 'name' | 'finance_mode' | 'finance_percent_value' | 'finance_fixed_cents'
 >;
 
 export class CheckoutValidationError extends Error {
@@ -191,7 +191,7 @@ async function readCheckoutPartnerFinanceForCurrentUser() {
 
   const { data: collectivity } = await supabase
     .from('collectivities')
-    .select('id,finance_mode,finance_percent_value,finance_fixed_cents')
+    .select('id,name,finance_mode,finance_percent_value,finance_fixed_cents')
     .eq('id', client.collectivity_id)
     .maybeSingle();
 
@@ -542,6 +542,7 @@ export async function repriceCart(items: CartItem[]): Promise<CheckoutPricing> {
   return {
     items: pricedItems,
     totalCents,
+    partnerCollectivityName: partnerFinance?.name?.trim() || null,
     financeMode: partnerFinance ? normalizePartnerFinanceMode(partnerFinance.finance_mode) : null,
     financePartnerContributionTotalCents,
     financeFamilyPayableTotalCents,

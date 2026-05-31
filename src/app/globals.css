@@ -304,18 +304,35 @@
 
   /* Footer : léger recul pour rapprocher le « R » du texte (PNG avec marge + picto à gauche) */
   --footer-logo-r-align-shift: 1.125rem;
+  /*
+   * Gouttes du footer (top: 0; translateY -42%) — hauteur de dépassement au-dessus du bandeau,
+   * alignée sur les tailles w-28 → xl:w-64 de Footer.tsx (+ marge de sécurité).
+   */
+  --footer-gouttes-clearance: calc(7rem * 0.75 * 0.42 + 0.75rem);
 }
 
 @media (min-width: 640px) {
   :root {
     --footer-logo-r-align-shift: 1.25rem;
+    --footer-gouttes-clearance: calc(9rem * 0.75 * 0.42 + 0.75rem);
   }
 }
 
 @media (min-width: 1024px) {
   :root {
     --footer-logo-r-align-shift: 1.375rem;
+    --footer-gouttes-clearance: calc(13rem * 0.75 * 0.42 + 0.75rem);
   }
+}
+
+@media (min-width: 1280px) {
+  :root {
+    --footer-gouttes-clearance: calc(16rem * 0.75 * 0.42 + 0.75rem);
+  }
+}
+
+.main-footer-gouttes-clearance {
+  padding-bottom: var(--footer-gouttes-clearance);
 }
 
 .footer-logo-resacolo-link {

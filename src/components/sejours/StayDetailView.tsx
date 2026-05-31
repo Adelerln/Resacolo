@@ -15,6 +15,7 @@ import { FILTER_LABELS } from '@/lib/constants';
 import { getMockImageUrl, mockImages } from '@/lib/mockImages';
 import { getSessionDisplayedBasePrice, getStayDisplayedPrice } from '@/lib/stay-partner-pricing';
 import { computePartnerFinanceDisplay, normalizePartnerFinanceMode } from '@/lib/partner-offers';
+import { formatNoPaymentAsBeneficiaryMessage } from '@/lib/partner-beneficiary-copy';
 import {
   canonicalTransportCityKey,
   formatTransportCityLabel
@@ -1511,7 +1512,7 @@ export function StayDetailView({ stay }: { stay: Stay }) {
                     {partnerFinanceDisplay.familyCents != null ? (
                       <p className="font-semibold text-slate-700">
                         {partnerFinanceDisplay.familyCents === 0
-                          ? 'Aucun règlement demandé au moment de la réservation'
+                          ? formatNoPaymentAsBeneficiaryMessage(stay.partnerCollectivityName)
                           : `Reste à régler : ${formatPrice(partnerFinanceDisplay.familyCents / 100)}`}
                       </p>
                     ) : null}

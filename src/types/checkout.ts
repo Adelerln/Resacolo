@@ -75,6 +75,7 @@ export type CheckoutPricingItem = {
 export type CheckoutPricing = {
   items: CheckoutPricingItem[];
   totalCents: number;
+  partnerCollectivityName?: string | null;
   financeMode?: 'TOTAL' | 'NONE' | 'PERCENT' | 'FIXED' | 'MANUAL' | null;
   financePartnerContributionTotalCents?: number | null;
   financeFamilyPayableTotalCents?: number | null;

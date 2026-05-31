@@ -19,6 +19,7 @@ import { buildDevMockPricing, isDevBypassCheckout } from '@/lib/checkout/dev-byp
 import { getMockImageUrl, mockImages } from '@/lib/mockImages';
 import type { CheckoutContact, CheckoutParticipant, CheckoutPricing } from '@/types/checkout';
 import { resolveOrderRequestKind } from '@/lib/order-workflow';
+import { formatNoPaymentAsBeneficiaryMessage } from '@/lib/partner-beneficiary-copy';
 
 function formatBirthdateFr(iso: string | undefined) {
   if (!iso?.trim()) return '—';
@@ -507,17 +508,18 @@ export default function CheckoutRecapitulatifPage() {
             </div>
 
             {organizerCheckoutSettings?.isVacafApproved ? (
-              <div className="space-y-3">
+              <div className="space-y-3 border-t border-slate-100 pt-5">
                 <div>
-                  <label htmlFor="recap-vacaf" className={`${COMPACT_LABEL_BOLD_CLASS} block`}>
-                    Matricule VACAF (facultatif)
+                  <p className={`${COMPACT_LABEL_BOLD_CLASS}`}>Aide CAF (VACAF / AVE)</p>
+                  <label htmlFor="recap-vacaf" className="mt-2 block text-sm font-medium text-slate-700">
+                    Matricule allocataire (facultatif)
                   </label>
                   <p
                     id="recap-vacaf-hint"
                     className="mt-1.5 text-sm leading-relaxed text-slate-500"
                   >
                     Si vous saisissez votre numéro allocataire, la commande partira en demande à traiter par
-                    l&apos;organisme pour contrôle AVE/VACAF.
+                    l&apos;organisme du séjour pour contrôle AVE/VACAF.
                   </p>
                 </div>
                 <input
@@ -531,11 +533,7 @@ export default function CheckoutRecapitulatifPage() {
                   aria-describedby="recap-vacaf-hint"
                 />
               </div>
-            ) : (
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-                Cet organisme n&apos;est pas agréé VACAF National.
-              </div>
-            )}
+            ) : null}
           </div>
         </section>
 
@@ -598,7 +596,7 @@ export default function CheckoutRecapitulatifPage() {
               </div>
             )}
 
-            {organizerCheckoutSettings ? (
+            {organizerCheckoutSettings && !isPartnerTotalCoverage ? (
               <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
                 Moyens acceptés par l&apos;organisme :
                 {' '}
@@ -725,7 +723,11 @@ export default function CheckoutRecapitulatifPage() {
                     <span>- {new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format((pricing.financePartnerContributionTotalCents ?? 0) / 100)}</span>
                   </div>
                   <div className="flex items-center justify-between text-base font-bold text-slate-900">
-                    <span>{(pricing.financeFamilyPayableTotalCents ?? pricing.totalCents) === 0 ? 'Aucun règlement demandé' : 'Reste à régler'}</span>
+                    <span>
+                      {(pricing.financeFamilyPayableTotalCents ?? pricing.totalCents) === 0
+                        ? formatNoPaymentAsBeneficiaryMessage(pricing.partnerCollectivityName)
+                        : 'Reste à régler'}
+                    </span>
                     <span>{new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(((pricing.financeFamilyPayableTotalCents ?? pricing.totalCents)) / 100)}</span>
                   </div>
                 </>

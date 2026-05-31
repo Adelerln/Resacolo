@@ -4,6 +4,7 @@ import { normalizePartnerFinanceMode, type PartnerFinanceModeValue } from '@/lib
 
 export type UserPartnerPricingContext = {
   collectivityId: string;
+  collectivityName: string;
   financeMode: PartnerFinanceModeValue;
   financePercentValue: number | null;
   financeFixedCents: number | null;
@@ -71,7 +72,7 @@ export async function readUserPartnerPricingContext(userId: string): Promise<Use
 
   const { data: collectivity } = await supabase
     .from('collectivities')
-    .select('id,finance_mode,finance_percent_value,finance_fixed_cents')
+    .select('id,name,finance_mode,finance_percent_value,finance_fixed_cents')
     .eq('id', client.collectivity_id)
     .maybeSingle();
 
@@ -79,6 +80,7 @@ export async function readUserPartnerPricingContext(userId: string): Promise<Use
 
   return {
     collectivityId: collectivity.id,
+    collectivityName: collectivity.name?.trim() || 'votre partenaire',
     financeMode: normalizePartnerFinanceMode(collectivity.finance_mode),
     financePercentValue: collectivity.finance_percent_value ?? null,
     financeFixedCents: collectivity.finance_fixed_cents ?? null
@@ -94,7 +96,8 @@ export function applyPartnerDiscountPricingToStay(stay: Stay, context?: UserPart
       partnerPriceFrom: null,
       partnerFinanceMode: context?.financeMode ?? null,
       partnerFinancePercentValue: context?.financePercentValue ?? null,
-      partnerFinanceFixedCents: context?.financeFixedCents ?? null
+      partnerFinanceFixedCents: context?.financeFixedCents ?? null,
+      partnerCollectivityName: context?.collectivityName ?? null
     };
   }
 
@@ -106,7 +109,8 @@ export function applyPartnerDiscountPricingToStay(stay: Stay, context?: UserPart
       partnerPriceFrom: computePartnerDiscountedPrice(stay.priceFrom, normalizedPercent),
       partnerFinanceMode: context?.financeMode ?? null,
       partnerFinancePercentValue: context?.financePercentValue ?? null,
-      partnerFinanceFixedCents: context?.financeFixedCents ?? null
+      partnerFinanceFixedCents: context?.financeFixedCents ?? null,
+      partnerCollectivityName: context?.collectivityName ?? null
     };
   }
 
@@ -130,6 +134,7 @@ export function applyPartnerDiscountPricingToStay(stay: Stay, context?: UserPart
     partnerFinanceMode: context?.financeMode ?? null,
     partnerFinancePercentValue: context?.financePercentValue ?? null,
     partnerFinanceFixedCents: context?.financeFixedCents ?? null,
+    partnerCollectivityName: context?.collectivityName ?? null,
     partnerPriceFrom: openPartnerPrices.length
       ? Math.min(...openPartnerPrices)
       : fallbackPartnerPrices.length

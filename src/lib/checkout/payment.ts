@@ -43,6 +43,18 @@ type CollectivityFinanceRow = Pick<
   'id' | 'finance_mode' | 'finance_percent_value' | 'finance_fixed_cents'
 >;
 
+const ORDER_WORKFLOW_COLUMNS = [
+  'request_kind',
+  'vacaf_number_snapshot',
+  'ancv_connect_matricule',
+  'ancv_connect_requested_amount_cents',
+  'external_aid_cents',
+  'external_paid_cents',
+  'request_resolved_at',
+  'partially_paid_at',
+  'transferred_at'
+] as const;
+
 function toJsonValue(value: unknown): Json {
   if (value == null) return null;
 
@@ -179,6 +191,20 @@ function distributeCentsAcrossOrderItems(
   });
 }
 
+function isInvalidOrderStatusEnumError(error: { message?: string | null; code?: string | null } | null | undefined) {
+  const message = String(error?.message ?? '').toLowerCase();
+  return message.includes('invalid input value for enum order_status');
+}
+
+function resolveLegacyOrderStatus(input: {
+  requestKind: ReturnType<typeof resolveOrderRequestKind>;
+  financeFamilyPayableTotalCents: number | null | undefined;
+}) {
+  if (input.requestKind) return 'REQUESTED' as const;
+  if ((input.financeFamilyPayableTotalCents ?? 0) === 0) return 'PAID' as const;
+  return 'REQUESTED' as const;
+}
+
 async function readCollectivityFinance(collectivityId: string) {
   const supabase = getServerSupabaseClient();
   const { data, error } = await supabase
@@ -299,6 +325,73 @@ async function createOrUpdateClientProfile(
   }
 }
 
+async function insertOrderWithCompatibilityFallback(input: {
+  clientUserId: string;
+  collectivityId: string | null;
+  initialStatus: Database['public']['Enums']['order_status'];
+  requestedAt: string;
+  paidAt: string | null;
+  requestKind: ReturnType<typeof resolveOrderRequestKind>;
+  contact: CheckoutContact;
+  financeFamilyPayableTotalCents: number | null | undefined;
+}) {
+  const supabase = getServerSupabaseClient();
+  const fullInsertPayload = {
+    client_user_id: input.clientUserId,
+    collectivity_id: input.collectivityId,
+    status: input.initialStatus,
+    requested_at: input.initialStatus === 'REQUESTED' ? input.requestedAt : null,
+    paid_at: input.paidAt,
+    vacaf_number_snapshot: input.contact.vacafNumber.trim() || null,
+    ancv_connect_matricule: input.contact.ancvConnectMatricule.trim() || null,
+    ancv_connect_requested_amount_cents:
+      input.requestKind === 'ANCV_CONNECT' ? parseAmountEurosToCents(input.contact.ancvConnectAmount) : null,
+    request_kind: input.requestKind
+  };
+
+  const { data: order, error } = await supabase.from('orders').insert(fullInsertPayload).select('id').single();
+
+  if (!error && order) {
+    return order;
+  }
+
+  const shouldRetryLegacyInsert =
+    isMissingAnyColumnError(error, [...ORDER_WORKFLOW_COLUMNS]) || isInvalidOrderStatusEnumError(error);
+
+  if (!shouldRetryLegacyInsert) {
+    if (error) {
+      console.error('checkout: insertion orders échouée', error);
+    }
+    throw new Error('Impossible de créer la commande.');
+  }
+
+  const legacyStatus = resolveLegacyOrderStatus({
+    requestKind: input.requestKind,
+    financeFamilyPayableTotalCents: input.financeFamilyPayableTotalCents
+  });
+
+  const { data: legacyOrder, error: legacyError } = await supabase
+    .from('orders')
+    .insert({
+      client_user_id: input.clientUserId,
+      collectivity_id: input.collectivityId,
+      status: legacyStatus,
+      requested_at: legacyStatus === 'REQUESTED' ? input.requestedAt : null,
+      paid_at: legacyStatus === 'PAID' ? input.paidAt ?? input.requestedAt : null
+    })
+    .select('id')
+    .single();
+
+  if (legacyError || !legacyOrder) {
+    if (legacyError) {
+      console.error('checkout: insertion legacy orders échouée', legacyError);
+    }
+    throw new Error('Impossible de créer la commande.');
+  }
+
+  return legacyOrder;
+}
+
 export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput): Promise<PrepareCheckoutPaymentResult> {
   const supabase = getServerSupabaseClient();
   const participantByItem = validateParticipants(input.items, input.participants);
@@ -312,7 +405,15 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
   }
   const organizerSettings = await readOrganizerCheckoutSettings(organizerId);
   const requestKind = resolveOrderRequestKind(input.contact, organizerSettings);
-  const initialStatus = resolveInitialOrderStatus(input.contact, organizerSettings);
+  const isPartnerTotalCoverage =
+    !requestKind &&
+    normalizePartnerFinanceMode(pricing.financeMode) === 'TOTAL' &&
+    (pricing.financeFamilyPayableTotalCents ?? 0) === 0;
+  const requestedAt = new Date().toISOString();
+  const paidAt = isPartnerTotalCoverage ? requestedAt : null;
+  const initialStatus = isPartnerTotalCoverage
+    ? ('PAID' as Database['public']['Enums']['order_status'])
+    : resolveInitialOrderStatus(input.contact, organizerSettings);
   const immediatePaymentAmountCents = computeImmediatePaymentAmountCents(
     pricing.financeFamilyPayableTotalCents ?? 0,
     input.contact.paymentMode
@@ -379,27 +480,16 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
 
   await createOrUpdateClientProfile(input.clientUserId, input.contact, collectivity?.collectivityId ?? null);
 
-  const requestedAt = new Date().toISOString();
-
-  const { data: order, error: orderError } = await supabase
-    .from('orders')
-    .insert({
-      client_user_id: input.clientUserId,
-      collectivity_id: collectivity?.collectivityId ?? null,
-      status: initialStatus,
-      requested_at: initialStatus === 'REQUESTED' ? requestedAt : null,
-      vacaf_number_snapshot: input.contact.vacafNumber.trim() || null,
-      ancv_connect_matricule: input.contact.ancvConnectMatricule.trim() || null,
-      ancv_connect_requested_amount_cents:
-        requestKind === 'ANCV_CONNECT' ? parseAmountEurosToCents(input.contact.ancvConnectAmount) : null,
-      request_kind: requestKind
-    })
-    .select('id')
-    .single();
-
-  if (orderError || !order) {
-    throw new Error('Impossible de créer la commande.');
-  }
+  const order = await insertOrderWithCompatibilityFallback({
+    clientUserId: input.clientUserId,
+    collectivityId: collectivity?.collectivityId ?? null,
+    initialStatus,
+    requestedAt,
+    paidAt,
+    requestKind,
+    contact: input.contact,
+    financeFamilyPayableTotalCents: pricing.financeFamilyPayableTotalCents
+  });
 
   const orderItemIds: string[] = [];
   const orderItemsForCollectivitySnapshot: Array<{ id: string; totalCents: number }> = [];
@@ -482,7 +572,7 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
       order_id: order.id,
       amount_cents: immediatePaymentAmountCents,
       currency: pricing.currency,
-      status: 'PENDING',
+      status: isPartnerTotalCoverage ? 'SUCCEEDED' : 'PENDING',
       monetico_reference: reference,
       raw_payload: {
         checkoutId: input.checkoutId,
@@ -529,6 +619,21 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
 
   if (paymentUpdateError) {
     throw new Error('Impossible de synchroniser le paiement Monetico.');
+  }
+
+  if (isPartnerTotalCoverage && orderItemIds.length > 0) {
+    const { error: holdsError } = await supabase
+      .from('session_holds')
+      .update({ status: 'CONVERTED' })
+      .in('order_item_id', orderItemIds)
+      .eq('status', 'ACTIVE');
+
+    if (holdsError) {
+      throw new Error('Impossible de convertir les holds de session.');
+    }
+
+    const { recordCommissionFeesOnOrderPaid } = await import('@/lib/resacolo-fee-ledger.server');
+    await recordCommissionFeesOnOrderPaid(supabase, order.id, paidAt ?? requestedAt);
   }
 
   await markCheckoutCartConverted(input.checkoutId, order.id);

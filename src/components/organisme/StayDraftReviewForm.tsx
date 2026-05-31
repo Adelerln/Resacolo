@@ -1314,6 +1314,7 @@ export default function StayDraftReviewForm({
             },
             body: JSON.stringify({
               organizerId,
+              action: mode === 'validate' ? 'validate' : undefined,
               ...result.payload
             })
           });
@@ -1394,7 +1395,10 @@ export default function StayDraftReviewForm({
           return;
         }
 
-        router.push(`/organisme/sejours?organizerId=${encodeURIComponent(targetOrganizerId)}`);
+        const previewUrl = new URL('/organisme/sejours/published-preview', window.location.origin);
+        previewUrl.searchParams.set('organizerId', targetOrganizerId);
+        previewUrl.searchParams.set('draftId', draftId);
+        router.push(previewUrl.pathname + previewUrl.search);
         return;
       }
 
@@ -2980,6 +2984,27 @@ export default function StayDraftReviewForm({
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
+                onClick={() => submit('save')}
+                disabled={isSubmitting || isGeneratingSeo}
+                className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 disabled:opacity-60"
+              >
+                {isPublishedVariant ? 'Enregistrer' : 'Enregistrer le brouillon'}
+              </button>
+              {!isPublishedVariant && effectiveStep === 'seo' ? (
+                <button
+                  type="button"
+                  onClick={() => submit('validate')}
+                  disabled={!publishAllowed || isSubmitting || isGeneratingSeo}
+                  className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Valider le visuel
+                </button>
+              ) : null}
+            </div>
+
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <button
+                type="button"
                 onClick={goDraftPrev}
                 disabled={accommodationGateClosed || effectiveStepIndex === 0}
                 className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
@@ -3004,27 +3029,6 @@ export default function StayDraftReviewForm({
               <span className="text-xs font-medium text-slate-500">
                 Étape {Math.max(1, effectiveStepIndex + 1)} / {visibleReviewSteps.length}
               </span>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => submit('save')}
-                disabled={isSubmitting || isGeneratingSeo}
-                className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 disabled:opacity-60"
-              >
-                {isPublishedVariant ? 'Enregistrer' : 'Enregistrer le brouillon'}
-              </button>
-              {!isPublishedVariant ? (
-                <button
-                  type="button"
-                  onClick={() => submit('validate')}
-                  disabled={!publishAllowed || isSubmitting || isGeneratingSeo}
-                  className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  Valider et publier
-                </button>
-              ) : null}
             </div>
           </div>
         </div>

@@ -44,6 +44,22 @@ const nextConfig = {
         protocol: 'https',
         hostname: 'cesl.fr'
       },
+      {
+        protocol: 'http',
+        hostname: 'www.zigotours.com'
+      },
+      {
+        protocol: 'https',
+        hostname: 'www.zigotours.com'
+      },
+      {
+        protocol: 'http',
+        hostname: 'zigotours.com'
+      },
+      {
+        protocol: 'https',
+        hostname: 'zigotours.com'
+      },
       ...(supabaseHostname
         ? [
             {

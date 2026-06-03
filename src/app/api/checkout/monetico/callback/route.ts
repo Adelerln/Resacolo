@@ -6,7 +6,7 @@ import {
 } from '@/lib/checkout/monetico';
 import {
   failOrderPayment,
-  findPaymentByMoneticoReference,
+  findPaymentsByMoneticoReference,
   markOrderPaid
 } from '@/lib/checkout/payment';
 
@@ -39,31 +39,39 @@ async function handleCallback(payload: Record<string, string>) {
     return new NextResponse('MISSING REFERENCE', { status: 400 });
   }
 
-  const paymentRow = await findPaymentByMoneticoReference(reference);
-  if (!paymentRow?.id || !paymentRow.order_id) {
+  const paymentRows = await findPaymentsByMoneticoReference(reference);
+  if (paymentRows.length === 0) {
     return new NextResponse('PAYMENT NOT FOUND', { status: 404 });
   }
 
   const isSuccess = isMoneticoSuccessCode(payload['code-retour']);
   if (isSuccess) {
-    if (paymentRow.status !== 'SUCCEEDED') {
-      await markOrderPaid({
-        orderId: paymentRow.order_id,
-        paymentId: paymentRow.id,
-        providerPayload: payload,
-        paymentStatus: 'SUCCEEDED'
-      });
-    }
+    await Promise.all(
+      paymentRows
+        .filter((paymentRow) => paymentRow.id && paymentRow.order_id && paymentRow.status !== 'SUCCEEDED')
+        .map((paymentRow) =>
+          markOrderPaid({
+            orderId: paymentRow.order_id,
+            paymentId: paymentRow.id,
+            providerPayload: payload,
+            paymentStatus: 'SUCCEEDED'
+          })
+        )
+    );
     return new NextResponse('OK', { status: 200 });
   }
 
-  if (paymentRow.status !== 'FAILED') {
-    await failOrderPayment({
-      orderId: paymentRow.order_id,
-      paymentId: paymentRow.id,
-      providerPayload: payload
-    });
-  }
+  await Promise.all(
+    paymentRows
+      .filter((paymentRow) => paymentRow.id && paymentRow.order_id && paymentRow.status !== 'FAILED')
+      .map((paymentRow) =>
+        failOrderPayment({
+          orderId: paymentRow.order_id,
+          paymentId: paymentRow.id,
+          providerPayload: payload
+        })
+      )
+  );
   return new NextResponse('OK', { status: 200 });
 }
 

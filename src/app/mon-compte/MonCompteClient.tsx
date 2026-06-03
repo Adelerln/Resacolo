@@ -16,8 +16,8 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import FamilyReservationDetailsModal from '@/components/account/FamilyReservationDetailsModal';
 import { formatMoneyCentsFr } from '@/lib/format-money-fr';
+import { orderStatusBadgeClassName } from '@/lib/order-workflow';
 import { useFavorites } from '@/components/favorites/FavoritesProvider';
 import {
   attachFamilyCseAffiliation,
@@ -37,9 +37,10 @@ type MonCompteClientProps = {
 };
 
 const ACCOUNT_PANEL_VISIBLE_ITEMS = 3;
-const ACCOUNT_PANEL_ITEM_MIN_HEIGHT = 'min-h-[120px]';
-/** 3 cartes d'environ 120px + 2 espacements de 12px. */
-const ACCOUNT_PANEL_LIST_MAX_HEIGHT = '24rem';
+/** Hauteur fixe partagée entre carte réservation et carte favori (colonne image 96px). */
+const ACCOUNT_PANEL_ITEM_HEIGHT = 'h-[9rem]';
+/** 3 cartes de 9rem + 2 espacements de 12px (space-y-3). */
+const ACCOUNT_PANEL_LIST_MAX_HEIGHT = 'calc(9rem * 3 + 0.75rem * 2)';
 
 /** Hauteur réservée identique sous les deux panneaux pour aligner le début des listes de cartes. */
 const ACCOUNT_PANEL_HEADER_CLASS =
@@ -268,6 +269,14 @@ export default function MonCompteClient({
                 <h2 className="min-w-0 max-w-[85%] font-display text-lg font-semibold leading-snug text-slate-900 sm:max-w-none">
                   Réservations à venir et passées
                 </h2>
+                {reservationList.length > 0 ? (
+                  <Link
+                    href="/mon-compte/reservations"
+                    className="text-sm font-semibold text-brand-600 hover:text-brand-700"
+                  >
+                    Voir toutes
+                  </Link>
+                ) : null}
                 <CalendarDays className="h-8 w-8 shrink-0 text-accent-500" aria-hidden />
               </div>
 
@@ -281,58 +290,83 @@ export default function MonCompteClient({
                   style={reservationsScrollable ? { maxHeight: ACCOUNT_PANEL_LIST_MAX_HEIGHT } : undefined}
                 >
                   {reservationList.map((reservation) => (
-                    <li
-                      key={reservation.orderId}
-                      className={`flex h-auto ${ACCOUNT_PANEL_ITEM_MIN_HEIGHT} flex-col rounded-xl border p-3 text-sm ${
-                        reservation.isPast
-                          ? 'border-slate-300 bg-slate-100/90 text-slate-500'
-                          : 'border-slate-300 bg-slate-50/60 text-slate-700'
-                      }`}
-                    >
-                      <div className="flex min-h-0 flex-1 flex-col gap-3 sm:flex-row sm:items-stretch sm:justify-between sm:gap-3">
-                        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-                          <p
-                            className={`line-clamp-2 font-display text-base font-semibold leading-snug ${
-                              reservation.isPast ? 'text-slate-500' : 'text-slate-900'
-                            }`}
-                          >
-                            {reservation.title}
-                          </p>
-                          <p className={`mt-1 flex items-center gap-2 text-xs ${reservation.isPast ? 'text-slate-400' : 'text-slate-500'}`}>
-                            <CalendarDays className="h-4 w-4 shrink-0" />
-                            <span className="min-w-0">{reservation.dates}</span>
-                          </p>
-                          <p className={`mt-0.5 truncate text-xs ${reservation.isPast ? 'text-slate-400' : 'text-slate-500'}`}>
-                            {reservation.child}
-                          </p>
-                          <div className="mt-auto flex min-w-0 flex-nowrap items-center gap-2 overflow-x-auto pt-1.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                    <li key={reservation.orderId}>
+                      <Link
+                        href={`/mon-compte/reservations?open=${reservation.orderId}`}
+                        className={`grid ${ACCOUNT_PANEL_ITEM_HEIGHT} grid-cols-[96px_minmax(0,1fr)] overflow-hidden rounded-xl border text-sm transition hover:border-slate-400 hover:shadow-sm ${
+                          reservation.isPast
+                            ? 'border-slate-300 bg-slate-100/90 text-slate-500'
+                            : 'border-slate-300 bg-slate-50/60 text-slate-700'
+                        }`}
+                      >
+                      {reservation.coverImage ? (
+                        <div className="h-full overflow-hidden bg-slate-100">
+                          <img
+                            src={reservation.coverImage}
+                            alt={reservation.title}
+                            className={`h-full w-full object-cover ${reservation.isPast ? 'opacity-85' : ''}`}
+                            loading="lazy"
+                          />
+                        </div>
+                      ) : (
+                        <div
+                          className={`flex h-full items-center justify-center ${
+                            reservation.isPast
+                              ? 'bg-slate-200/80'
+                              : 'bg-gradient-to-br from-brand-100 via-blue-100 to-cyan-100'
+                          }`}
+                        >
+                          <CalendarDays
+                            className={`h-10 w-10 shrink-0 ${reservation.isPast ? 'text-slate-400' : 'text-brand-600'}`}
+                            aria-hidden
+                          />
+                        </div>
+                      )}
+                      <div className="flex h-full min-w-0 flex-col overflow-hidden p-3">
+                        <p
+                          className={`line-clamp-1 font-display text-base font-semibold leading-snug ${
+                            reservation.isPast ? 'text-slate-500' : 'text-slate-900'
+                          }`}
+                        >
+                          {reservation.title}
+                        </p>
+                        <p
+                          className={`mt-0.5 flex items-center gap-1.5 text-xs ${
+                            reservation.isPast ? 'text-slate-400' : 'text-slate-500'
+                          }`}
+                        >
+                          <CalendarDays className="h-3.5 w-3.5 shrink-0" />
+                          <span className="min-w-0 truncate">{reservation.dates}</span>
+                        </p>
+                        <p
+                          className={`truncate text-xs ${
+                            reservation.isPast ? 'text-slate-400' : 'text-slate-500'
+                          }`}
+                        >
+                          {reservation.child}
+                        </p>
+                        <div className="mt-auto min-h-0 pt-1">
+                          <div className="flex flex-col items-start gap-0.5">
                             <span
-                              className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                              className={`inline-flex w-fit max-w-full items-center gap-1 whitespace-nowrap rounded-full px-2 py-0 text-[11px] font-semibold leading-4 ${
                                 reservation.isPast
                                   ? 'bg-slate-200 text-slate-600'
-                                  : 'bg-emerald-50 text-emerald-700'
+                                  : orderStatusBadgeClassName(reservation.orderStatus)
                               }`}
                             >
                               <ShieldCheck className="h-3 w-3 shrink-0" />
                               {reservation.status}
                             </span>
-                            <span
-                              className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-0.5 text-[11px] font-extrabold leading-none sm:text-xs ${
-                                reservation.remainingBalanceCents > 0
-                                  ? 'bg-amber-50 text-amber-700'
-                                  : 'bg-emerald-50 text-emerald-700'
-                              }`}
-                            >
-                              <Wallet className="h-3 w-3 shrink-0" />
-                              Solde à régler : {formatMoneyCentsFr(reservation.remainingBalanceCents, reservation.currency)}
-                            </span>
+                            {reservation.remainingBalanceCents > 0 ? (
+                              <span className="inline-flex w-fit max-w-full items-center gap-1 whitespace-nowrap rounded-full bg-amber-50 px-2 py-0 text-[11px] font-semibold leading-4 text-amber-700">
+                                <Wallet className="h-3 w-3 shrink-0" />
+                                Solde à régler : {formatMoneyCentsFr(reservation.remainingBalanceCents, reservation.currency)}
+                              </span>
+                            ) : null}
                           </div>
                         </div>
-
-                        <div className="flex shrink-0 justify-end self-start pt-0.5 sm:mt-auto sm:self-end sm:pt-1">
-                          <FamilyReservationDetailsModal reservation={reservation} />
-                        </div>
                       </div>
+                      </Link>
                     </li>
                   ))}
                 </ul>
@@ -369,10 +403,10 @@ export default function MonCompteClient({
                       <Link
                         key={stay.id}
                         href={`/sejours/${stay.canonicalSlug}`}
-                        className={`grid h-auto ${ACCOUNT_PANEL_ITEM_MIN_HEIGHT} grid-cols-[96px_minmax(0,1fr)] overflow-hidden rounded-xl border border-slate-300 bg-gradient-to-r from-white via-white to-blue-50/40 text-sm text-slate-700 transition hover:border-slate-400 hover:shadow-sm`}
+                        className={`grid ${ACCOUNT_PANEL_ITEM_HEIGHT} grid-cols-[96px_minmax(0,1fr)] overflow-hidden rounded-xl border border-slate-300 bg-gradient-to-r from-white via-white to-blue-50/40 text-sm text-slate-700 transition hover:border-slate-400 hover:shadow-sm`}
                       >
                         {stayImage ? (
-                          <div className={`h-full ${ACCOUNT_PANEL_ITEM_MIN_HEIGHT} overflow-hidden bg-slate-100`}>
+                          <div className="h-full overflow-hidden bg-slate-100">
                             <img
                               src={stayImage}
                               alt={stay.title}
@@ -381,7 +415,7 @@ export default function MonCompteClient({
                             />
                           </div>
                         ) : (
-                          <div className={`flex h-full ${ACCOUNT_PANEL_ITEM_MIN_HEIGHT} items-center justify-center bg-gradient-to-r from-brand-100 via-blue-100 to-cyan-100`}>
+                          <div className="flex h-full items-center justify-center bg-gradient-to-r from-brand-100 via-blue-100 to-cyan-100">
                             <span className="px-3 text-center font-display text-sm font-semibold text-brand-700">
                               {stay.title}
                             </span>
@@ -510,6 +544,7 @@ export default function MonCompteClient({
             </li>
           </ul>
         </section>
+
       </section>
     </div>
   );

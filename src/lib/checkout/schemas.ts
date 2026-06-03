@@ -1,4 +1,9 @@
 import { z } from 'zod';
+import {
+  normalizeAncvConnectMatriculeInput,
+  validateAncvConnectMatricule
+} from '@/lib/ancv-connect-matricule';
+import { VACAF_NUMBER_MESSAGE, VACAF_NUMBER_OPTIONAL_REGEX } from '@/lib/vacaf-number';
 
 const nullableIdSchema = z.string().trim().min(1).nullable();
 
@@ -51,6 +56,59 @@ export const cartItemSchema = z.object({
 
 export const cartItemsSchema = z.array(cartItemSchema).min(1, 'Votre panier est vide.');
 
+const checkoutPaymentModeSchema = z
+  .union([z.enum(['FULL', 'DEPOSIT_200', 'CV_CONNECT', 'CV_PAPER', 'DEFERRED']), z.null(), z.undefined()])
+  .transform((v) => v ?? 'FULL');
+
+const organizerSelectionSchema = z.object({
+  paymentMode: checkoutPaymentModeSchema,
+  vacafNumber: trimmedStringFromJson.pipe(
+    z.string().regex(VACAF_NUMBER_OPTIONAL_REGEX, VACAF_NUMBER_MESSAGE)
+  ),
+  ancvConnectMatricule: trimmedStringFromJson,
+  ancvConnectAmount: trimmedStringFromJson
+});
+
+function validateAncvConnectFields(
+  data: {
+    paymentMode: string;
+    ancvConnectMatricule: string;
+    ancvConnectAmount: string;
+  },
+  ctx: z.RefinementCtx,
+  prefixPath: Array<string | number> = []
+) {
+  if (data.paymentMode !== 'CV_CONNECT') return;
+
+  if (!data.ancvConnectMatricule.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: [...prefixPath, 'ancvConnectMatricule'],
+      message: 'Matricule ANCV Connect requis.'
+    });
+    return;
+  }
+
+  const matriculeError = validateAncvConnectMatricule(data.ancvConnectMatricule);
+  if (matriculeError) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: [...prefixPath, 'ancvConnectMatricule'],
+      message: matriculeError
+    });
+  }
+
+  const normalized = data.ancvConnectAmount.replace(',', '.').trim();
+  const amount = Number(normalized);
+  if (!normalized || !Number.isFinite(amount) || amount <= 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: [...prefixPath, 'ancvConnectAmount'],
+      message: 'Montant ANCV Connect invalide.'
+    });
+  }
+}
+
 export const checkoutContactSchema = z.object({
   billingFirstName: trimmedStringFromJson.pipe(z.string().min(2, 'Prénom requis.')),
   billingLastName: trimmedStringFromJson.pipe(z.string().min(2, 'Nom requis.')),
@@ -71,17 +129,12 @@ export const checkoutContactSchema = z.object({
   billingCountry: trimmedStringFromJson.transform((s) => s || 'France'),
   cseOrganization: trimmedStringFromJson,
   vacafNumber: trimmedStringFromJson.pipe(
-    z.string().regex(/^$|^\d{7}[A-Za-z]?$/, 'Le numéro allocataire doit contenir 7 chiffres, ou 7 chiffres et 1 lettre.')
+    z.string().regex(VACAF_NUMBER_OPTIONAL_REGEX, VACAF_NUMBER_MESSAGE)
   ),
   ancvConnectMatricule: trimmedStringFromJson,
   ancvConnectAmount: trimmedStringFromJson,
-  paymentMode: z
-    .union([
-      z.enum(['FULL', 'DEPOSIT_200', 'CV_CONNECT', 'CV_PAPER', 'DEFERRED']),
-      z.null(),
-      z.undefined()
-    ])
-    .transform((v) => v ?? 'FULL'),
+  paymentMode: checkoutPaymentModeSchema,
+  organizerSelections: z.record(z.string().trim().min(1), organizerSelectionSchema).optional().default({}),
   acceptsTerms: z.literal(true, {
     errorMap: () => ({ message: 'Vous devez accepter les CGV.' })
   }),
@@ -115,24 +168,10 @@ export const checkoutContactSchema = z.object({
     });
   }
 }).superRefine((data, ctx) => {
-  if (data.paymentMode !== 'CV_CONNECT') return;
+  validateAncvConnectFields(data, ctx);
 
-  if (!data.ancvConnectMatricule.trim()) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['ancvConnectMatricule'],
-      message: 'Matricule ANCV Connect requis.'
-    });
-  }
-
-  const normalized = data.ancvConnectAmount.replace(',', '.').trim();
-  const amount = Number(normalized);
-  if (!normalized || !Number.isFinite(amount) || amount <= 0) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['ancvConnectAmount'],
-      message: 'Montant ANCV Connect invalide.'
-    });
+  for (const [organizerId, selection] of Object.entries(data.organizerSelections ?? {})) {
+    validateAncvConnectFields(selection, ctx, ['organizerSelections', organizerId]);
   }
 });
 
@@ -169,7 +208,16 @@ export const checkoutPaymentIntentBodySchema = z.object({
   participants: checkoutParticipantsSchema
 });
 
-export const checkoutManualConfirmBodySchema = z.object({
+const checkoutManualConfirmSingleSchema = z.object({
   orderId: z.string().trim().min(1),
   paymentId: z.string().trim().min(1)
 });
+
+const checkoutManualConfirmBatchSchema = z.object({
+  payments: z.array(checkoutManualConfirmSingleSchema).min(1)
+});
+
+export const checkoutManualConfirmBodySchema = z.union([
+  checkoutManualConfirmSingleSchema,
+  checkoutManualConfirmBatchSchema
+]);

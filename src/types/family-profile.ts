@@ -51,6 +51,7 @@ export type FamilyReservation = {
   orderId: string;
   orderStatus: string;
   title: string;
+  coverImage: string | null;
   dates: string;
   child: string;
   children: string[];
@@ -71,6 +72,8 @@ export type FamilyReservation = {
   organizerContactEmail: string | null;
   organizerName: string | null;
   hasSuccessfulPayment: boolean;
+  partnerAdjustmentMessage: string | null;
+  partnerAdjustmentUpdatedAt: string | null;
 };
 
 export type FamilyCseAffiliation = {

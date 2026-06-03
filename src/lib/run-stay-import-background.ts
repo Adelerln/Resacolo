@@ -27,6 +27,7 @@ import {
 } from '@/lib/stay-draft-playwright';
 import { normalizeStayAges } from '@/lib/stay-ages';
 import { writeDraftDestinationFields } from '@/lib/stay-draft-destination';
+import { resolveStayDestination } from '@/lib/stay-destination-resolver';
 import { tryCanonicalizeStaySourceUrl } from '@/lib/stay-source-url-canonical';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { normalizeStayTitle } from '@/lib/stay-title';
@@ -40,54 +41,117 @@ function envTruthy(value: string | undefined): boolean {
 
 const PLAYWRIGHT_RENDER_BUDGET_MS = 20_000;
 
+function normalizeForCompare(value: string | null | undefined): string {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function isFranceLike(value: string | null | undefined): boolean {
+  const normalized = normalizeForCompare(value);
+  return normalized === 'france';
+}
+
+function extractCityCountryFromLocationText(locationText: string | null): {
+  city: string | null;
+  country: string | null;
+} {
+  const value = String(locationText ?? '').trim();
+  if (!value) return { city: null, country: null };
+
+  const parts = value
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (parts.length >= 2) {
+    const city = parts[0] ?? null;
+    const country = parts.at(-1) ?? null;
+    const same = normalizeForCompare(city) === normalizeForCompare(country);
+    return {
+      city: same ? null : city,
+      country
+    };
+  }
+
+  const single = parts[0] ?? value;
+  // If region already marks abroad, treat a single token as country.
+  return { city: single, country: null };
+}
+
 function deriveDraftDestinationFromExtracted(extracted: ReturnType<typeof extractStayData>) {
   const accommodation = extracted.accommodationsJson;
   const regionText = extracted.regionText?.trim() || null;
   const locationText = extracted.locationText?.trim() || null;
   const accommodationCity = accommodation?.city?.trim() || null;
   const accommodationCountry = accommodation?.country?.trim() || null;
+  const parsedLocation = extractCityCountryFromLocationText(locationText);
+  const inferredCountry =
+    accommodationCountry ||
+    parsedLocation.country ||
+    (regionText === 'Étranger' ? parsedLocation.city : null);
+  const inferredCity =
+    accommodationCity ||
+    (parsedLocation.country ? parsedLocation.city : null) ||
+    (regionText === 'Étranger' ? null : parsedLocation.city);
 
-  if (regionText === 'Séjour itinérant') {
-    return {
-      destination_type: 'itinerant' as const,
-      destination_city: null,
-      destination_postal_code: null,
-      destination_department_code: null,
-      destination_region: null,
-      destination_country: accommodationCountry,
-      destination_itinerary_label: locationText,
-      destination_countries:
-        accommodationCountry ? [accommodationCountry] : []
-    };
-  }
+  const destinationType =
+    regionText === 'Séjour itinérant'
+      ? ('itinerant' as const)
+      : regionText === 'Étranger' || (inferredCountry && !isFranceLike(inferredCountry))
+        ? ('fixed_abroad' as const)
+        : null;
 
-  if (regionText === 'Étranger' || (accommodationCountry && accommodationCountry.toLowerCase() !== 'france')) {
-    const city = accommodationCity || locationText?.split(',')[0]?.trim() || null;
-    const country =
-      accommodationCountry ||
-      locationText?.split(',').map((part) => part.trim()).filter(Boolean).at(-1) ||
-      null;
-    return {
-      destination_type: 'fixed_abroad' as const,
-      destination_city: city,
-      destination_postal_code: null,
-      destination_department_code: null,
-      destination_region: null,
-      destination_country: country,
-      destination_itinerary_label: null,
-      destination_countries: []
-    };
-  }
+  const resolved = resolveStayDestination({
+    destinationType,
+    destinationRegion: destinationType ? null : regionText,
+    destinationCity: inferredCity,
+    destinationPostalCode: accommodation?.postal_code?.trim() || null,
+    destinationDepartmentCode: accommodation?.department_code?.trim() || null,
+    destinationCountry: inferredCountry,
+    destinationCountries:
+      destinationType === 'itinerant' && inferredCountry
+        ? [inferredCountry]
+        : accommodationCountry
+          ? [accommodationCountry]
+          : [],
+    destinationItineraryLabel: regionText === 'Séjour itinérant' ? locationText : null,
+    regionText,
+    locationText
+  });
+
+  const destinationCity =
+    resolved.destinationType === 'fixed_france' || resolved.destinationType === 'fixed_abroad'
+      ? (() => {
+          const candidate =
+            inferredCity ||
+            accommodationCity ||
+            locationText?.split(',')[0]?.trim() ||
+            locationText;
+          if (
+            candidate &&
+            resolved.destinationCountry &&
+            normalizeForCompare(candidate) === normalizeForCompare(resolved.destinationCountry)
+          ) {
+            return null;
+          }
+          return candidate || null;
+        })()
+      : null;
 
   return {
-    destination_type: 'fixed_france' as const,
-    destination_city: accommodationCity || locationText,
-    destination_postal_code: accommodation?.postal_code?.trim() || null,
-    destination_department_code: accommodation?.department_code?.trim() || null,
-    destination_region: regionText,
-    destination_country: 'France',
-    destination_itinerary_label: null,
-    destination_countries: []
+    destination_type: resolved.destinationType,
+    destination_city: destinationCity,
+    destination_postal_code: accommodation?.postal_code?.trim() || resolved.destinationPostalCode,
+    destination_department_code:
+      accommodation?.department_code?.trim() || resolved.destinationDepartmentCode,
+    destination_region: resolved.destinationRegion,
+    destination_country: resolved.destinationCountry,
+    destination_itinerary_label: resolved.destinationItineraryLabel,
+    destination_countries: resolved.destinationCountries
   };
 }
 const COLOS_CANDIDATE_LIMIT = 8;
@@ -1591,6 +1655,47 @@ export async function runStayImportInBackground(params: {
         })
       });
     } else {
+      // Some fallback branches may succeed after dropping complex JSON fields.
+      // Re-apply critical import payloads explicitly so sessions/transports are never silently lost.
+      if (draftColumns.has('sessions_json') || draftColumns.has('transport_options_json')) {
+        const criticalUpdateError = await updateDraftCriticalJsonFields(draftId, {
+          sessions_json:
+            draftColumns.has('sessions_json') && extractedForDraft.sessionsJson
+              ? (extractedForDraft.sessionsJson as Array<Record<string, unknown>>)
+              : null,
+          transport_options_json:
+            draftColumns.has('transport_options_json')
+              ? ((includePricing
+                  ? ceslStructuredBooking?.transportOptions ??
+                    (paginatedDepartureTableData?.transportOptions.length
+                      ? paginatedDepartureTableData.transportOptions
+                      : null) ??
+                    zigotoursTransportOptionsOverride ??
+                    (dynamicSnapshot?.tableTransportOptionsFromPlaywright.length
+                      ? dynamicSnapshot.tableTransportOptionsFromPlaywright
+                      : null) ??
+                    colosTransportOptionsOverride ??
+                    buildDraftTransportOptionsFromVariants(transportVariants)
+                  : []) as Array<Record<string, unknown>>)
+              : null
+        });
+
+        if (criticalUpdateError) {
+          console.error('[import-stay] generic critical JSON update failed', {
+            draftId,
+            error: criticalUpdateError.message
+          });
+          await mergeRawPayloadPatch(draftId, {
+            generic_structured_repair_failed_at: new Date().toISOString(),
+            generic_structured_repair_error: criticalUpdateError.message
+          });
+        } else {
+          await mergeRawPayloadPatch(draftId, {
+            generic_structured_repair_applied_at: new Date().toISOString()
+          });
+        }
+      }
+
       if (ceslStructuredBooking) {
         const expectedSessions = ceslStructuredBooking.sessions as Array<Record<string, unknown>>;
         const expectedTransportOptions =

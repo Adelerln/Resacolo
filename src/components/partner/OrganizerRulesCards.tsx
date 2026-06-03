@@ -11,6 +11,7 @@ type OrganizerRulesCardsProps = {
   organizerOptions: OrganizerRuleOption[];
   initialAllowed: string[];
   initialExcluded: string[];
+  onValuesChange?: () => void;
 };
 
 function normalizeId(value: string) {
@@ -73,7 +74,8 @@ function ToggleButton({
 export default function OrganizerRulesCards({
   organizerOptions,
   initialAllowed,
-  initialExcluded
+  initialExcluded,
+  onValuesChange
 }: OrganizerRulesCardsProps) {
   const organizers = useMemo(() => normalizeAndSortOrganizers(organizerOptions), [organizerOptions]);
 
@@ -94,12 +96,14 @@ export default function OrganizerRulesCards({
     const key = normalizeId(id);
     setAllowedIds((current) => toggleIdValue(current, id));
     setExcludedIds((current) => current.filter((item) => normalizeId(item) !== key));
+    onValuesChange?.();
   };
 
   const toggleExcluded = (id: string) => {
     const key = normalizeId(id);
     setExcludedIds((current) => toggleIdValue(current, id));
     setAllowedIds((current) => current.filter((item) => normalizeId(item) !== key));
+    onValuesChange?.();
   };
 
   if (organizers.length === 0) {

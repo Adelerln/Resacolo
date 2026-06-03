@@ -1,5 +1,14 @@
 import type { CartItem } from '@/types/cart';
 
+export type CheckoutPaymentMode = 'FULL' | 'DEPOSIT_200' | 'CV_CONNECT' | 'CV_PAPER' | 'DEFERRED';
+
+export type CheckoutOrganizerSelection = {
+  paymentMode: CheckoutPaymentMode;
+  vacafNumber: string;
+  ancvConnectMatricule: string;
+  ancvConnectAmount: string;
+};
+
 export type CheckoutContact = {
   billingFirstName: string;
   billingLastName: string;
@@ -20,7 +29,8 @@ export type CheckoutContact = {
   vacafNumber: string;
   ancvConnectMatricule: string;
   ancvConnectAmount: string;
-  paymentMode: 'FULL' | 'DEPOSIT_200' | 'CV_CONNECT' | 'CV_PAPER' | 'DEFERRED';
+  paymentMode: CheckoutPaymentMode;
+  organizerSelections?: Record<string, CheckoutOrganizerSelection>;
   acceptsTerms: boolean;
   acceptsPrivacy: boolean;
 };
@@ -108,9 +118,92 @@ export const EMPTY_CONTACT: CheckoutContact = {
   ancvConnectMatricule: '',
   ancvConnectAmount: '',
   paymentMode: 'FULL',
+  organizerSelections: {},
   acceptsTerms: false,
   acceptsPrivacy: true
 };
+
+export function createDefaultOrganizerSelection(
+  overrides: Partial<CheckoutOrganizerSelection> = {}
+): CheckoutOrganizerSelection {
+  return {
+    paymentMode: 'FULL',
+    vacafNumber: '',
+    ancvConnectMatricule: '',
+    ancvConnectAmount: '',
+    ...overrides
+  };
+}
+
+export function normalizeOrganizerSelections(
+  selections: CheckoutContact['organizerSelections']
+): Record<string, CheckoutOrganizerSelection> {
+  if (!selections || typeof selections !== 'object') return {};
+  return Object.fromEntries(
+    Object.entries(selections).map(([organizerId, selection]) => [
+      organizerId,
+      createDefaultOrganizerSelection(selection ?? {})
+    ])
+  );
+}
+
+export function normalizeCheckoutContact(contact: Partial<CheckoutContact> | null | undefined): CheckoutContact {
+  return {
+    ...EMPTY_CONTACT,
+    ...(contact ?? {}),
+    organizerSelections: normalizeOrganizerSelections(contact?.organizerSelections)
+  };
+}
+
+export function getOrganizerSelection(
+  contact: Pick<
+    CheckoutContact,
+    'paymentMode' | 'vacafNumber' | 'ancvConnectMatricule' | 'ancvConnectAmount' | 'organizerSelections'
+  >,
+  organizerId: string
+): CheckoutOrganizerSelection {
+  const storedSelection = normalizeOrganizerSelections(contact.organizerSelections)[organizerId];
+  if (storedSelection) {
+    return storedSelection;
+  }
+
+  return createDefaultOrganizerSelection({
+    paymentMode: contact.paymentMode,
+    vacafNumber: contact.vacafNumber,
+    ancvConnectMatricule: contact.ancvConnectMatricule,
+    ancvConnectAmount: contact.ancvConnectAmount
+  });
+}
+
+export function patchOrganizerSelection(
+  contact: CheckoutContact,
+  organizerId: string,
+  patch: Partial<CheckoutOrganizerSelection>
+): CheckoutContact {
+  const nextSelection = {
+    ...getOrganizerSelection(contact, organizerId),
+    ...patch
+  };
+
+  return {
+    ...contact,
+    organizerSelections: {
+      ...normalizeOrganizerSelections(contact.organizerSelections),
+      [organizerId]: nextSelection
+    }
+  };
+}
+
+export function hasAnyOnlineOrganizerSelection(
+  contact: Pick<CheckoutContact, 'paymentMode' | 'vacafNumber' | 'ancvConnectMatricule' | 'ancvConnectAmount' | 'organizerSelections'>
+) {
+  const selections = Object.values(normalizeOrganizerSelections(contact.organizerSelections));
+  if (selections.length === 0) {
+    return contact.paymentMode === 'FULL' || contact.paymentMode === 'DEPOSIT_200';
+  }
+
+  return selections.some((selection) => selection.paymentMode === 'FULL' || selection.paymentMode === 'DEPOSIT_200');
+}
 
 export function getDefaultParticipant(cartItemId: string): CheckoutParticipant {
   return {

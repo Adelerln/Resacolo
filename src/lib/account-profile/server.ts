@@ -1,4 +1,6 @@
+import { cookies } from 'next/headers';
 import type { Json, Database } from '@/types/supabase';
+import { CHECKOUT_CLIENT_COOKIE_NAME } from '@/lib/checkout/clientIdentity';
 import type {
   FamilyCheckoutSyncInput,
   FamilyCseAffiliation,
@@ -10,9 +12,11 @@ import type {
 } from '@/types/family-profile';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { isMissingAnyColumnError } from '@/lib/supabase-schema-errors';
+import { normalizeVacafNumberInput } from '@/lib/vacaf-number';
 import {
   computeRemainingBalanceCents as computeOrderRemainingBalanceCents,
-  orderStatusLabel
+  reconcileOrderStatusWithBalance,
+  resolveOrderStatusLabel
 } from '@/lib/order-workflow';
 import {
   computePartnerContributionSnapshotCents,
@@ -24,6 +28,7 @@ type ClientProfileRow = Database['public']['Tables']['client_profiles']['Row'];
 type ClientProfileInsert = Database['public']['Tables']['client_profiles']['Insert'];
 type CollectivityRow = Database['public']['Tables']['collectivities']['Row'];
 type CollectivityContributionRow = Database['public']['Tables']['collectivity_contributions']['Row'];
+type OrderStatus = Database['public']['Enums']['order_status'];
 
 const DEFAULT_COUNTRY = 'France';
 const CLIENT_PROFILES_MISSING_ERROR =
@@ -71,6 +76,83 @@ function normalizeUpper(value: string | null | undefined) {
 
 function normalizeCollectivityCode(value: string | null | undefined) {
   return normalizeText(value).toUpperCase();
+}
+
+const CHECKOUT_EMAIL_PAYMENT_SCAN_LIMIT = 250;
+
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function normalizeContactEmail(value: string | null | undefined) {
+  const normalized = normalizeText(value).toLowerCase();
+  return normalized || null;
+}
+
+function extractCheckoutContactEmailFromRawPayload(rawPayload: Json | null | undefined): string | null {
+  if (!rawPayload || typeof rawPayload !== 'object' || Array.isArray(rawPayload)) {
+    return null;
+  }
+
+  const contact = (rawPayload as Record<string, unknown>).contact;
+  if (!contact || typeof contact !== 'object' || Array.isArray(contact)) {
+    return null;
+  }
+
+  const email = (contact as Record<string, unknown>).email;
+  return typeof email === 'string' ? normalizeContactEmail(email) : null;
+}
+
+async function resolveFamilyReservationOwnerUserIds(primaryUserId: string) {
+  const ids = new Set<string>([primaryUserId]);
+
+  try {
+    const store = await cookies();
+    const guestId = store.get(CHECKOUT_CLIENT_COOKIE_NAME)?.value?.trim();
+    if (guestId && isUuid(guestId)) {
+      ids.add(guestId);
+    }
+  } catch {
+    // Ignore cookie read failures in non-request contexts.
+  }
+
+  return Array.from(ids);
+}
+
+function mergeReservationOrdersById(orders: ReservationOrderRow[]) {
+  const byId = new Map<string, ReservationOrderRow>();
+  for (const order of orders) {
+    byId.set(order.id, order);
+  }
+
+  return Array.from(byId.values()).sort(
+    (left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime()
+  );
+}
+
+type ReservationOrderRow = {
+  id: string;
+  status: OrderStatus;
+  created_at: string;
+  paid_at: string | null;
+  partially_paid_at: string | null;
+  cancellation_reason: string | null;
+  collectivity_id: string | null;
+  external_aid_cents: number;
+  external_paid_cents: number;
+};
+
+function shouldHideFailedCheckoutOrder(input: {
+  status: OrderStatus;
+  cancellationReason: string | null | undefined;
+  latestPaymentStatus?: string | null | undefined;
+  hasSuccessfulPayment?: boolean;
+}) {
+  if (input.status === 'CANCELLED' && input.cancellationReason === 'PAYMENT_FAILED') {
+    return true;
+  }
+
+  return input.latestPaymentStatus === 'FAILED' && !input.hasSuccessfulPayment;
 }
 
 function buildFamilyCseAffiliation(collectivity: CollectivityRow): FamilyCseAffiliation {
@@ -273,7 +355,7 @@ function toDbPayload(profile: FamilyProfile): ClientProfileInsert {
       ? normalizeText(profile.billingCountry) || DEFAULT_COUNTRY
       : DEFAULT_COUNTRY,
     cse_organization: normalizeText(profile.cseOrganization),
-    vacaf_number: normalizeUpper(profile.vacafNumber),
+    vacaf_number: normalizeVacafNumberInput(profile.vacafNumber),
     payment_mode: normalizePaymentMode(profile.paymentMode),
     parent1_status: normalizeParentStatus(profile.parent1Status),
     parent1_status_other: normalizeText(profile.parent1StatusOther),
@@ -346,13 +428,131 @@ function parsePaymentModeFromPayload(rawPayload: Json | null | undefined): Famil
   return 'FULL';
 }
 
+function parsePartnerFinanceMessageFromPayload(rawPayload: Json | null | undefined) {
+  if (!rawPayload || typeof rawPayload !== 'object' || Array.isArray(rawPayload)) {
+    return {
+      message: null,
+      updatedAt: null
+    };
+  }
+
+  const rawRecord = rawPayload as Record<string, unknown>;
+  const update = rawRecord.partnerFinanceUpdate;
+  if (!update || typeof update !== 'object' || Array.isArray(update)) {
+    return {
+      message: null,
+      updatedAt: null
+    };
+  }
+
+  const messageValue = (update as Record<string, unknown>).message;
+  const updatedAtValue = (update as Record<string, unknown>).updatedAt;
+
+  return {
+    message: typeof messageValue === 'string' && messageValue.trim().length > 0 ? messageValue.trim() : null,
+    updatedAt: typeof updatedAtValue === 'string' && updatedAtValue.trim().length > 0 ? updatedAtValue.trim() : null
+  };
+}
+
 function formatTransportCities(departureCity: string | null | undefined, returnCity: string | null | undefined) {
   const departure = normalizeText(departureCity);
   const returning = normalizeText(returnCity);
   if (departure && returning) {
     return departure === returning ? departure : `${departure} / ${returning}`;
   }
-  return departure || returning || 'Transport sélectionné';
+  return departure || returning || null;
+}
+
+function formatFamilyTransportRouteLabel(
+  departureCity: string | null | undefined,
+  returnCity: string | null | undefined,
+  amountCents: number
+) {
+  const route = formatTransportCities(departureCity, returnCity);
+  if (!route) return null;
+  return `${route} · ${formatEuroFromCents(amountCents)}`;
+}
+
+type TransportOptionSnapshot = {
+  id: string;
+  session_id: string | null;
+  departure_city: string | null;
+  return_city: string | null;
+  amount_cents: number;
+};
+
+function parseOrderItemTransportSnapshotsFromPayload(rawPayload: Json | null | undefined) {
+  const snapshots = new Map<string, string>();
+  if (!rawPayload || typeof rawPayload !== 'object' || Array.isArray(rawPayload)) {
+    return snapshots;
+  }
+
+  const rows = (rawPayload as Record<string, unknown>).orderItemSnapshots;
+  if (!Array.isArray(rows)) {
+    return snapshots;
+  }
+
+  for (const row of rows) {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) continue;
+    const record = row as Record<string, unknown>;
+    const orderItemId = typeof record.orderItemId === 'string' ? record.orderItemId : null;
+    const transportDisplayLine =
+      typeof record.transportDisplayLine === 'string' ? record.transportDisplayLine.trim() : '';
+    if (orderItemId && transportDisplayLine) {
+      snapshots.set(orderItemId, transportDisplayLine);
+    }
+  }
+
+  return snapshots;
+}
+
+function resolveTransportLineFromSessionOptions(input: {
+  transportCents: number;
+  options: TransportOptionSnapshot[];
+}) {
+  if (input.transportCents <= 0 || input.options.length === 0) {
+    return null;
+  }
+
+  const singleMatch = input.options.find((option) => option.amount_cents === input.transportCents);
+  if (singleMatch) {
+    return formatFamilyTransportRouteLabel(
+      singleMatch.departure_city,
+      singleMatch.return_city,
+      singleMatch.amount_cents
+    );
+  }
+
+  for (const departureOption of input.options) {
+    for (const returnOption of input.options) {
+      const outboundCents = computeDifferentiatedTransportAmount(
+        departureOption.amount_cents,
+        departureOption.departure_city,
+        departureOption.return_city,
+        'outbound'
+      );
+      const returnCents = computeDifferentiatedTransportAmount(
+        returnOption.amount_cents,
+        returnOption.departure_city,
+        returnOption.return_city,
+        'return'
+      );
+      if (outboundCents + returnCents !== input.transportCents) {
+        continue;
+      }
+
+      const parts = [
+        buildTransportLegLine('Aller', departureOption.departure_city, outboundCents),
+        buildTransportLegLine('Retour', returnOption.return_city, returnCents)
+      ].filter((value): value is string => Boolean(value));
+
+      if (parts.length > 0) {
+        return parts.join(' / ');
+      }
+    }
+  }
+
+  return null;
 }
 
 function computeDifferentiatedTransportAmount(
@@ -552,11 +752,59 @@ async function readClientCollectivityId(userId: string) {
 
 async function readCollectivityById(collectivityId: string) {
   const supabase = getServerSupabaseClient();
+  const collectivitySelect =
+    'id,name,code,offer_mode,finance_mode,finance_percent_value,finance_fixed_cents,brand_primary_color,logo_url,logo_scale,logo_offset_x,logo_offset_y,hero_enabled,hero_title,hero_body,hero_cta_label,hero_cta_url';
   const { data, error } = await supabase
     .from('collectivities')
-    .select('*')
+    .select(collectivitySelect)
     .eq('id', collectivityId)
     .maybeSingle();
+
+  if (
+    error &&
+    isMissingAnyColumnError(error, [
+      'finance_mode',
+      'finance_percent_value',
+      'finance_fixed_cents',
+      'brand_primary_color',
+      'logo_scale',
+      'logo_offset_x',
+      'logo_offset_y',
+      'hero_enabled',
+      'hero_title',
+      'hero_body',
+      'hero_cta_label',
+      'hero_cta_url'
+    ])
+  ) {
+    const { data: legacyData, error: legacyError } = await supabase
+      .from('collectivities')
+      .select('id,name,code,offer_mode,logo_url')
+      .eq('id', collectivityId)
+      .maybeSingle();
+
+    if (legacyError) {
+      throw new Error(`Impossible de charger la collectivité liée : ${legacyError.message}`);
+    }
+
+    return legacyData
+      ? ({
+          ...legacyData,
+          finance_mode: 'TOTAL',
+          finance_percent_value: null,
+          finance_fixed_cents: null,
+          brand_primary_color: null,
+          logo_scale: 1,
+          logo_offset_x: 0,
+          logo_offset_y: 0,
+          hero_enabled: false,
+          hero_title: null,
+          hero_body: null,
+          hero_cta_label: null,
+          hero_cta_url: null
+        } as CollectivityRow)
+      : null;
+  }
 
   if (error) {
     throw new Error(`Impossible de charger la collectivité liée : ${error.message}`);
@@ -570,11 +818,59 @@ async function readCollectivityByCode(code: string) {
   if (!normalizedCode) return null;
 
   const supabase = getServerSupabaseClient();
+  const collectivitySelect =
+    'id,name,code,offer_mode,finance_mode,finance_percent_value,finance_fixed_cents,brand_primary_color,logo_url,logo_scale,logo_offset_x,logo_offset_y,hero_enabled,hero_title,hero_body,hero_cta_label,hero_cta_url';
   const { data, error } = await supabase
     .from('collectivities')
-    .select('*')
+    .select(collectivitySelect)
     .eq('code', normalizedCode)
     .maybeSingle();
+
+  if (
+    error &&
+    isMissingAnyColumnError(error, [
+      'finance_mode',
+      'finance_percent_value',
+      'finance_fixed_cents',
+      'brand_primary_color',
+      'logo_scale',
+      'logo_offset_x',
+      'logo_offset_y',
+      'hero_enabled',
+      'hero_title',
+      'hero_body',
+      'hero_cta_label',
+      'hero_cta_url'
+    ])
+  ) {
+    const { data: legacyData, error: legacyError } = await supabase
+      .from('collectivities')
+      .select('id,name,code,offer_mode,logo_url')
+      .eq('code', normalizedCode)
+      .maybeSingle();
+
+    if (legacyError) {
+      throw new Error(`Impossible de vérifier le code CSE : ${legacyError.message}`);
+    }
+
+    return legacyData
+      ? ({
+          ...legacyData,
+          finance_mode: 'TOTAL',
+          finance_percent_value: null,
+          finance_fixed_cents: null,
+          brand_primary_color: null,
+          logo_scale: 1,
+          logo_offset_x: 0,
+          logo_offset_y: 0,
+          hero_enabled: false,
+          hero_title: null,
+          hero_body: null,
+          hero_cta_label: null,
+          hero_cta_url: null
+        } as CollectivityRow)
+      : null;
+  }
 
   if (error) {
     throw new Error(`Impossible de vérifier le code CSE : ${error.message}`);
@@ -787,36 +1083,191 @@ export async function resolveCheckoutCollectivityForUser(input: {
   });
 }
 
-async function readReservations(userId: string): Promise<FamilyReservation[]> {
+async function readReservations(
+  userId: string,
+  options?: { contactEmails?: string[] }
+): Promise<FamilyReservation[]> {
   const supabase = getServerSupabaseClient();
-  let { data: orders, error: ordersError } = await supabase
-    .from('orders')
-    .select('id,status,created_at,paid_at,partially_paid_at,collectivity_id,external_aid_cents,external_paid_cents')
-    .eq('client_user_id', userId)
-    .order('created_at', { ascending: false })
-    .neq('status', 'CART');
+  const ownerUserIds = await resolveFamilyReservationOwnerUserIds(userId);
 
-  if (
-    ordersError &&
-    isMissingAnyColumnError(ordersError, ['partially_paid_at', 'external_aid_cents', 'external_paid_cents'])
-  ) {
-    const legacyOrdersResult = await supabase
+  async function readOrdersForClientUserIds(clientUserIds: string[]) {
+    let { data, error } = await supabase
       .from('orders')
-      .select('id,status,created_at,paid_at,collectivity_id')
-      .eq('client_user_id', userId)
+      .select('id,status,created_at,paid_at,partially_paid_at,cancellation_reason,collectivity_id,external_aid_cents,external_paid_cents')
+      .in('client_user_id', clientUserIds)
       .order('created_at', { ascending: false })
       .neq('status', 'CART');
 
-    orders = (legacyOrdersResult.data ?? []).map((order) => ({
-      ...order,
-      partially_paid_at: null,
-      external_aid_cents: 0,
-      external_paid_cents: 0
-    }));
-    ordersError = legacyOrdersResult.error;
+    if (error && isMissingAnyColumnError(error, ['partially_paid_at', 'external_aid_cents', 'external_paid_cents'])) {
+      const legacyResult = await supabase
+        .from('orders')
+        .select('id,status,created_at,paid_at,cancellation_reason,collectivity_id')
+        .in('client_user_id', clientUserIds)
+        .order('created_at', { ascending: false })
+        .neq('status', 'CART');
+
+      return {
+        data: (legacyResult.data ?? []).map((order) => ({
+          ...order,
+          partially_paid_at: null,
+          cancellation_reason: order.cancellation_reason ?? null,
+          external_aid_cents: 0,
+          external_paid_cents: 0
+        })) as ReservationOrderRow[],
+        error: legacyResult.error
+      };
+    }
+
+    return {
+      data: (data ?? []) as ReservationOrderRow[],
+      error
+    };
   }
 
-  if (ordersError || !orders?.length) {
+  async function lookupOrderIdsByCheckoutEmail(normalizedEmail: string) {
+    const { data: paymentRows, error: paymentLookupError } = await supabase
+      .from('payments')
+      .select('order_id')
+      .filter('raw_payload->contact->>email', 'eq', normalizedEmail)
+      .order('updated_at', { ascending: false });
+
+    if (!paymentLookupError && paymentRows?.length) {
+      return Array.from(new Set(paymentRows.map((row) => row.order_id).filter(Boolean)));
+    }
+
+    const { data: recentPayments, error: scanError } = await supabase
+      .from('payments')
+      .select('order_id, raw_payload')
+      .order('updated_at', { ascending: false })
+      .limit(CHECKOUT_EMAIL_PAYMENT_SCAN_LIMIT);
+
+    if (scanError || !recentPayments?.length) {
+      return [] as string[];
+    }
+
+    return Array.from(
+      new Set(
+        recentPayments
+          .filter((row) => extractCheckoutContactEmailFromRawPayload(row.raw_payload) === normalizedEmail)
+          .map((row) => row.order_id)
+          .filter(Boolean)
+      )
+    );
+  }
+
+  async function readOrdersByCheckoutEmail(email: string) {
+    const normalizedEmail = normalizeContactEmail(email);
+    if (!normalizedEmail) {
+      return [] as ReservationOrderRow[];
+    }
+
+    const orderIds = await lookupOrderIdsByCheckoutEmail(normalizedEmail);
+    if (orderIds.length === 0) {
+      return [] as ReservationOrderRow[];
+    }
+
+    let { data, error } = await supabase
+      .from('orders')
+      .select('id,status,created_at,paid_at,partially_paid_at,cancellation_reason,collectivity_id,external_aid_cents,external_paid_cents')
+      .in('id', orderIds)
+      .order('created_at', { ascending: false })
+      .neq('status', 'CART');
+
+    if (error && isMissingAnyColumnError(error, ['partially_paid_at', 'external_aid_cents', 'external_paid_cents'])) {
+      const legacyResult = await supabase
+        .from('orders')
+        .select('id,status,created_at,paid_at,cancellation_reason,collectivity_id')
+        .in('id', orderIds)
+        .order('created_at', { ascending: false })
+        .neq('status', 'CART');
+
+      data = (legacyResult.data ?? []).map((order) => ({
+        ...order,
+        partially_paid_at: null,
+        cancellation_reason: order.cancellation_reason ?? null,
+        external_aid_cents: 0,
+        external_paid_cents: 0
+      })) as ReservationOrderRow[];
+      error = legacyResult.error;
+    }
+
+    if (error || !data?.length) {
+      return [] as ReservationOrderRow[];
+    }
+
+    const { error: repairError } = await supabase
+      .from('orders')
+      .update({ client_user_id: userId })
+      .in(
+        'id',
+        data.map((order) => order.id)
+      );
+
+    if (repairError) {
+      console.warn('[account-profile] unable to repair orphan orders for family account', {
+        userId,
+        email: normalizedEmail,
+        error: repairError.message
+      });
+    }
+
+    return data as ReservationOrderRow[];
+  }
+
+  const contactEmails = new Set<string>();
+  for (const email of options?.contactEmails ?? []) {
+    const normalized = normalizeContactEmail(email);
+    if (normalized) {
+      contactEmails.add(normalized);
+    }
+  }
+
+  const { data: authUser } = await supabase.auth.admin.getUserById(userId);
+  const authEmail = normalizeContactEmail(authUser.user?.email);
+  if (authEmail) {
+    contactEmails.add(authEmail);
+  }
+
+  const { data: directOrders, error: directOrdersError } = await readOrdersForClientUserIds(ownerUserIds);
+  let orders = directOrders ?? [];
+
+  if (!directOrdersError) {
+    for (const email of contactEmails) {
+      const linkedOrders = await readOrdersByCheckoutEmail(email);
+      orders = mergeReservationOrdersById([...orders, ...linkedOrders]);
+    }
+  } else {
+    console.warn('[account-profile] direct reservation lookup failed, trying checkout email fallback', {
+      userId,
+      ownerUserIds,
+      error: directOrdersError.message
+    });
+    orders = [];
+    for (const email of contactEmails) {
+      const linkedOrders = await readOrdersByCheckoutEmail(email);
+      orders = mergeReservationOrdersById([...orders, ...linkedOrders]);
+    }
+  }
+
+  if (ownerUserIds.length > 1 && orders.length > 0) {
+    const { error: guestRepairError } = await supabase
+      .from('orders')
+      .update({ client_user_id: userId })
+      .in(
+        'id',
+        orders.map((order) => order.id)
+      );
+
+    if (guestRepairError) {
+      console.warn('[account-profile] unable to attach guest checkout orders to family account', {
+        userId,
+        ownerUserIds,
+        error: guestRepairError.message
+      });
+    }
+  }
+
+  if (!orders.length) {
     return [];
   }
 
@@ -871,6 +1322,30 @@ async function readReservations(userId: string): Promise<FamilyReservation[]> {
     ? await supabase.from('stays').select('id,title,organizer_id').in('id', Array.from(stayIds))
     : { data: [] as Array<{ id: string; title: string; organizer_id: string | null }> };
   const staysById = new Map((stays ?? []).map((stay) => [stay.id, stay]));
+  const { data: stayMediaRows } = stayIds.size
+    ? await supabase
+        .from('stay_media')
+        .select('stay_id,url,media_type,position')
+        .in('stay_id', Array.from(stayIds))
+        .order('position', { ascending: true })
+    : { data: [] as Array<{ stay_id: string; url: string; media_type: string | null; position: number }> };
+  const coverImageByStayId = new Map<string, string>();
+  const firstImageByStayId = new Map<string, string>();
+  for (const media of stayMediaRows ?? []) {
+    const url = normalizeText(media.url);
+    if (!media.stay_id || !url) continue;
+    if (media.media_type === 'cover' && !coverImageByStayId.has(media.stay_id)) {
+      coverImageByStayId.set(media.stay_id, url);
+    }
+    if (!firstImageByStayId.has(media.stay_id)) {
+      firstImageByStayId.set(media.stay_id, url);
+    }
+  }
+  for (const [stayId, url] of firstImageByStayId) {
+    if (!coverImageByStayId.has(stayId)) {
+      coverImageByStayId.set(stayId, url);
+    }
+  }
   const organizerIds = Array.from(
     new Set((stays ?? []).map((stay) => stay.organizer_id).filter((value): value is string => Boolean(value)))
   );
@@ -891,18 +1366,20 @@ async function readReservations(userId: string): Promise<FamilyReservation[]> {
       .select('order_id,amount_cents,currency,status,updated_at,raw_payload')
       .in('order_id', orderIds)
       .order('updated_at', { ascending: false }),
-    transportOptionIds.size
+    transportOptionIds.size || sessionIds.size
       ? supabase
           .from('transport_options')
-          .select('id,departure_city,return_city,amount_cents')
-          .in('id', Array.from(transportOptionIds))
+          .select('id,session_id,departure_city,return_city,amount_cents')
+          .or(
+            [
+              transportOptionIds.size ? `id.in.(${Array.from(transportOptionIds).join(',')})` : null,
+              sessionIds.size ? `session_id.in.(${Array.from(sessionIds).join(',')})` : null
+            ]
+              .filter(Boolean)
+              .join(',')
+          )
       : Promise.resolve({
-          data: [] as Array<{
-            id: string;
-            departure_city: string | null;
-            return_city: string | null;
-            amount_cents: number;
-          }>
+          data: [] as TransportOptionSnapshot[]
         }),
     insuranceOptionIds.size
       ? supabase
@@ -984,6 +1461,22 @@ async function readReservations(userId: string): Promise<FamilyReservation[]> {
   }
 
   const transportById = new Map((transportOptions ?? []).map((option) => [option.id, option]));
+  const transportOptionsBySessionId = new Map<string, TransportOptionSnapshot[]>();
+  for (const option of transportOptions ?? []) {
+    if (!option.session_id) continue;
+    const existing = transportOptionsBySessionId.get(option.session_id) ?? [];
+    existing.push(option);
+    transportOptionsBySessionId.set(option.session_id, existing);
+  }
+  const transportSnapshotsByOrderItemId = new Map<string, string>();
+  for (const payment of payments ?? []) {
+    const snapshots = parseOrderItemTransportSnapshotsFromPayload(payment.raw_payload);
+    for (const [orderItemId, line] of snapshots) {
+      if (!transportSnapshotsByOrderItemId.has(orderItemId)) {
+        transportSnapshotsByOrderItemId.set(orderItemId, line);
+      }
+    }
+  }
   const insuranceById = new Map((insuranceOptions ?? []).map((option) => [option.id, option]));
   const extrasByOrderItemId = new Map<
     string,
@@ -1028,6 +1521,7 @@ async function readReservations(userId: string): Promise<FamilyReservation[]> {
       const totalCents = itemsForOrder.reduce((sum, item) => sum + (item.total_price_cents ?? 0), 0);
       const currency = payment?.currency ?? 'EUR';
       const paymentMode = parsePaymentModeFromPayload(payment?.raw_payload);
+      const partnerFinanceMessage = parsePartnerFinanceMessageFromPayload(payment?.raw_payload);
       const collectivity = order.collectivity_id ? collectivitiesById.get(order.collectivity_id) ?? null : null;
       const financeSplit = computeFrozenPartnerFinanceSplit({
         itemsForOrder,
@@ -1041,6 +1535,12 @@ async function readReservations(userId: string): Promise<FamilyReservation[]> {
         externalAidCents: order.external_aid_cents ?? 0,
         externalPaidCents: order.external_paid_cents ?? 0,
         onlinePaidCents
+      });
+      const effectiveOrderStatus = reconcileOrderStatusWithBalance({
+        status: order.status,
+        remainingBalanceCents,
+        onlinePaidCents,
+        externalPaidCents: order.external_paid_cents ?? 0
       });
 
       const extraEntries = itemsForOrder.flatMap((item) => extrasByOrderItemId.get(item.id) ?? []);
@@ -1073,39 +1573,77 @@ async function readReservations(userId: string): Promise<FamilyReservation[]> {
       const outboundTransportLines = new Set<string>();
       const returnTransportLines = new Set<string>();
       for (const item of itemsForOrder) {
-        if (!item.transport_option_id) continue;
-        const transport = transportById.get(item.transport_option_id);
-        if (!transport) {
-          transportSummaryLines.add('Transport sélectionné');
+        const snapshotLine = transportSnapshotsByOrderItemId.get(item.id);
+        if (snapshotLine) {
+          transportSummaryLines.add(snapshotLine);
           continue;
         }
 
-        const departureCity = normalizeText(transport.departure_city);
-        const returnCity = normalizeText(transport.return_city);
-        const isDifferentiated = Boolean(departureCity && returnCity && departureCity !== returnCity);
+        const extraTotalForItem = (extrasByOrderItemId.get(item.id) ?? []).reduce(
+          (sum, extra) => sum + extra.amount_cents_snapshot,
+          0
+        );
+        const insuranceForItem = item.insurance_option_id
+          ? insuranceById.get(item.insurance_option_id)
+          : null;
+        const insuranceCents = insuranceForItem?.amount_cents ?? 0;
+        const knownTransportFromOption = item.transport_option_id
+          ? transportById.get(item.transport_option_id)?.amount_cents ?? 0
+          : 0;
+        const inferredTransportCents = Math.max(
+          0,
+          item.options_price_cents - extraTotalForItem - insuranceCents
+        );
+        const transportCents = knownTransportFromOption > 0 ? knownTransportFromOption : inferredTransportCents;
 
-        transportSummaryLines.add(
-          `${formatTransportCities(transport.departure_city, transport.return_city)} · ${formatEuroFromCents(
+        if (!item.transport_option_id && transportCents <= 0) {
+          continue;
+        }
+
+        const transport = item.transport_option_id ? transportById.get(item.transport_option_id) : null;
+        if (transport) {
+          const departureCity = normalizeText(transport.departure_city);
+          const returnCity = normalizeText(transport.return_city);
+          const isDifferentiated = Boolean(departureCity && returnCity && departureCity !== returnCity);
+
+          const routeLine = formatFamilyTransportRouteLabel(
+            transport.departure_city,
+            transport.return_city,
             transport.amount_cents
-          )}`
-        );
+          );
+          if (routeLine) {
+            transportSummaryLines.add(routeLine);
+          }
 
-        if (!isDifferentiated) {
+          if (!isDifferentiated) {
+            continue;
+          }
+
+          const outboundLine = buildTransportLegLine(
+            'Aller',
+            departureCity,
+            computeDifferentiatedTransportAmount(transport.amount_cents, departureCity, returnCity, 'outbound')
+          );
+          const returnLine = buildTransportLegLine(
+            'Retour',
+            returnCity,
+            computeDifferentiatedTransportAmount(transport.amount_cents, departureCity, returnCity, 'return')
+          );
+          if (outboundLine) outboundTransportLines.add(outboundLine);
+          if (returnLine) returnTransportLines.add(returnLine);
           continue;
         }
 
-        const outboundLine = buildTransportLegLine(
-          'Aller',
-          departureCity,
-          computeDifferentiatedTransportAmount(transport.amount_cents, departureCity, returnCity, 'outbound')
-        );
-        const returnLine = buildTransportLegLine(
-          'Retour',
-          returnCity,
-          computeDifferentiatedTransportAmount(transport.amount_cents, departureCity, returnCity, 'return')
-        );
-        if (outboundLine) outboundTransportLines.add(outboundLine);
-        if (returnLine) returnTransportLines.add(returnLine);
+        const sessionTransportOptions = item.session_id
+          ? transportOptionsBySessionId.get(item.session_id) ?? []
+          : [];
+        const resolvedLine = resolveTransportLineFromSessionOptions({
+          transportCents,
+          options: sessionTransportOptions
+        });
+        if (resolvedLine) {
+          transportSummaryLines.add(resolvedLine);
+        }
       }
 
       const extraTotalCents = extraEntries.reduce((sum, extra) => sum + extra.amount_cents_snapshot, 0);
@@ -1127,12 +1665,18 @@ async function readReservations(userId: string): Promise<FamilyReservation[]> {
 
       return {
         orderId: order.id,
-        orderStatus: order.status,
+        orderStatus: effectiveOrderStatus,
         title: stay?.title ?? 'Séjour réservé',
+        coverImage: session?.stay_id ? coverImageByStayId.get(session.stay_id) ?? null : null,
         dates: formatDateRange(session?.start_date, session?.end_date),
         child,
         children,
-        status: orderStatusLabel(order.status),
+        status: resolveOrderStatusLabel({
+          status: order.status,
+          remainingBalanceCents,
+          onlinePaidCents,
+          externalPaidCents: order.external_paid_cents ?? 0
+        }),
         sessionStartDate: session?.start_date ?? null,
         sessionEndDate: session?.end_date ?? null,
         isPast: session?.end_date ? new Date(`${session.end_date}T23:59:59`).getTime() < Date.now() : false,
@@ -1144,7 +1688,12 @@ async function readReservations(userId: string): Promise<FamilyReservation[]> {
         transportLine:
           Array.from(transportSummaryLines).join(' / ') ||
           (estimatedTransportResidualCents > 0
-            ? `Transport sélectionné · ${formatEuroFromCents(estimatedTransportResidualCents)}`
+            ? resolveTransportLineFromSessionOptions({
+                transportCents: estimatedTransportResidualCents,
+                options: itemsForOrder.flatMap(
+                  (item) => (item.session_id ? transportOptionsBySessionId.get(item.session_id) ?? [] : [])
+                )
+              })
             : null),
         transportOutboundLine: Array.from(outboundTransportLines).join(' / ') || null,
         transportReturnLine: Array.from(returnTransportLines).join(' / ') || null,
@@ -1153,12 +1702,24 @@ async function readReservations(userId: string): Promise<FamilyReservation[]> {
         organizerContactEmail: organizer?.contact_email ?? null,
         organizerName: organizer?.name ?? null,
         hasSuccessfulPayment:
-          order.status === 'PAID' ||
-          order.status === 'PARTIALLY_PAID' ||
-          order.status === 'CONFIRMED' ||
+          effectiveOrderStatus === 'PAID' ||
+          effectiveOrderStatus === 'PARTIALLY_PAID' ||
           onlinePaidCents > 0 ||
-          (order.external_paid_cents ?? 0) > 0
+          (order.external_paid_cents ?? 0) > 0,
+        partnerAdjustmentMessage: partnerFinanceMessage.message,
+        partnerAdjustmentUpdatedAt: partnerFinanceMessage.updatedAt
       } satisfies FamilyReservation;
+    })
+    .filter((reservation) => {
+      const order = orders.find((entry) => entry.id === reservation.orderId);
+      const payment = paymentsByOrder.get(reservation.orderId);
+      const hasSuccessfulPayment = (successfulPaidCentsByOrder.get(reservation.orderId) ?? 0) > 0;
+      return !shouldHideFailedCheckoutOrder({
+        status: order?.status ?? 'CANCELLED',
+        cancellationReason: order?.cancellation_reason ?? null,
+        latestPaymentStatus: payment?.status ?? null,
+        hasSuccessfulPayment
+      });
     })
     .sort((left, right) => {
       if (left.isPast !== right.isPast) {
@@ -1240,15 +1801,38 @@ export async function getFamilyProfileSnapshot(input: {
   sessionName?: string | null;
   sessionEmail?: string | null;
 }): Promise<FamilyProfileSnapshot> {
-  const profile =
-    (await getFamilyProfile(input.userId)) ??
-    createDefaultProfile({
-      userId: input.userId,
-      sessionName: input.sessionName,
-      sessionEmail: input.sessionEmail
-    });
+  let profile: FamilyProfile;
+  try {
+    profile =
+      (await getFamilyProfile(input.userId)) ??
+      createDefaultProfile({
+        userId: input.userId,
+        sessionName: input.sessionName,
+        sessionEmail: input.sessionEmail
+      });
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      (error.message === CLIENT_PROFILES_MISSING_ERROR || isMissingClientProfilesTableError(error))
+    ) {
+      profile = createDefaultProfile({
+        userId: input.userId,
+        sessionName: input.sessionName,
+        sessionEmail: input.sessionEmail
+      });
+    } else {
+      throw error;
+    }
+  }
+  const contactEmails = Array.from(
+    new Set(
+      [normalizeContactEmail(input.sessionEmail), normalizeContactEmail(profile.email)].filter(
+        (email): email is string => Boolean(email)
+      )
+    )
+  );
   const [reservations, cseAffiliation] = await Promise.all([
-    readReservations(input.userId),
+    readReservations(input.userId, { contactEmails }),
     readFamilyCseAffiliation(input.userId)
   ]);
   return { profile, reservations, cseAffiliation };
@@ -1355,7 +1939,7 @@ export async function upsertFamilyProfileFromCheckout(input: {
     billingCity: normalizeText(input.contact.billingCity),
     billingCountry: normalizeText(input.contact.billingCountry) || DEFAULT_COUNTRY,
     cseOrganization: currentAffiliation?.code ?? normalizeCollectivityCode(input.contact.cseOrganization),
-    vacafNumber: normalizeUpper(input.contact.vacafNumber),
+    vacafNumber: normalizeVacafNumberInput(input.contact.vacafNumber),
     paymentMode: input.contact.paymentMode,
     parent1Status: existing.parent1Status,
     parent1StatusOther: existing.parent1StatusOther,

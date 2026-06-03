@@ -7,6 +7,7 @@ type CountryDropdownFieldProps = {
   name: string;
   options: string[];
   initialValues: string[];
+  onValuesChange?: () => void;
 };
 
 function normalizeValue(value: string) {
@@ -32,7 +33,8 @@ export default function CountryDropdownField({
   label,
   name,
   options,
-  initialValues
+  initialValues,
+  onValuesChange
 }: CountryDropdownFieldProps) {
   const normalizedOptions = useMemo(
     () =>
@@ -67,11 +69,13 @@ export default function CountryDropdownField({
       if (current.some((item) => normalizeValue(item) === key)) return current;
       return [...current, value];
     });
+    onValuesChange?.();
   };
 
   const removeCountry = (country: string) => {
     const key = normalizeValue(country);
     setSelectedCountries((current) => current.filter((item) => normalizeValue(item) !== key));
+    onValuesChange?.();
   };
 
   return (

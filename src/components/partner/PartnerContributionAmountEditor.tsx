@@ -13,16 +13,19 @@ function formatCurrencyFromCents(value: number) {
 
 type PartnerContributionAmountEditorProps = {
   orderId: string;
+  beneficiaryName: string;
   partnerContributionCents: number;
   saveAction: (formData: FormData) => void | Promise<void>;
 };
 
 export function PartnerContributionAmountEditor({
   orderId,
+  beneficiaryName,
   partnerContributionCents,
   saveAction
 }: PartnerContributionAmountEditorProps) {
   const [isEditing, setIsEditing] = useState(false);
+  const [partnerMessage, setPartnerMessage] = useState('');
   const displayLabel = formatCurrencyFromCents(partnerContributionCents);
   const defaultEuros =
     partnerContributionCents > 0
@@ -33,6 +36,7 @@ export function PartnerContributionAmountEditor({
     return (
       <form action={saveAction} className="flex min-w-[200px] flex-col gap-2">
         <input type="hidden" name="order_id" value={orderId} />
+        <input type="hidden" name="partner_message" value={partnerMessage} />
         <input
           type="number"
           name="manual_partner_euros"
@@ -45,14 +49,43 @@ export function PartnerContributionAmountEditor({
         />
         <div className="flex flex-wrap gap-2">
           <button
-            type="submit"
+            type="button"
+            onClick={(event) => {
+              const form = event.currentTarget.form;
+              if (!form) return;
+
+              const wantsMessage = window.confirm(
+                `Voulez-vous ajouter un message visible par ${beneficiaryName || 'le client'} dans son compte ?`
+              );
+
+              if (!wantsMessage) {
+                setPartnerMessage('');
+                form.requestSubmit();
+                return;
+              }
+
+              const nextMessage = window.prompt(
+                'Message visible dans le compte client :',
+                partnerMessage || 'Bonjour, votre reste à régler a été mis à jour suite à la révision de la prise en charge partenaire.'
+              );
+
+              if (nextMessage === null) {
+                return;
+              }
+
+              setPartnerMessage(nextMessage.trim());
+              window.requestAnimationFrame(() => form.requestSubmit());
+            }}
             className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
           >
             Enregistrer
           </button>
           <button
             type="button"
-            onClick={() => setIsEditing(false)}
+            onClick={() => {
+              setPartnerMessage('');
+              setIsEditing(false);
+            }}
             className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
           >
             Annuler

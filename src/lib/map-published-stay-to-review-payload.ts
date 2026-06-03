@@ -54,6 +54,15 @@ function cleanText(value: string | null | undefined) {
   return normalized || '';
 }
 
+function normalizeForCompare(value: string | null | undefined) {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
 function hasStructuredDestination(
   payload: Pick<
     StayDraftReviewPayload,
@@ -89,34 +98,50 @@ function buildDestinationFallbackFromAccommodation(
   const departmentCode = cleanText(linkedAccommodation.departmentCode);
   const regionText = cleanText(linkedAccommodation.regionText);
   const country = cleanText(linkedAccommodation.country);
+  const distinctCity = city && normalizeForCompare(city) === normalizeForCompare(country) ? '' : city;
   const isFrance = !country || country.toLowerCase() === 'france';
 
-  if (city && isFrance) {
+  if (distinctCity && isFrance) {
     return {
       destination_type: 'fixed_france' as const,
-      destination_city: city,
+      destination_city: distinctCity,
       destination_postal_code: postalCode,
       destination_department_code: departmentCode,
       destination_region: regionText,
       destination_country: country,
       destination_itinerary_label: '',
       destination_countries: [] as string[],
-      location_text: city,
+      location_text: distinctCity,
       region_text: regionText
     };
   }
 
-  if (city && country) {
+  if (distinctCity && country) {
     return {
       destination_type: 'fixed_abroad' as const,
-      destination_city: city,
+      destination_city: distinctCity,
       destination_postal_code: '',
       destination_department_code: '',
       destination_region: '',
       destination_country: country,
       destination_itinerary_label: '',
       destination_countries: [] as string[],
-      location_text: [city, country].filter(Boolean).join(', '),
+      location_text: [distinctCity, country].filter(Boolean).join(', '),
+      region_text: 'Étranger'
+    };
+  }
+
+  if (!distinctCity && country) {
+    return {
+      destination_type: 'fixed_abroad' as const,
+      destination_city: '',
+      destination_postal_code: '',
+      destination_department_code: '',
+      destination_region: '',
+      destination_country: country,
+      destination_itinerary_label: '',
+      destination_countries: [] as string[],
+      location_text: country,
       region_text: 'Étranger'
     };
   }

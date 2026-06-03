@@ -13,18 +13,32 @@ export async function POST(req: Request) {
     }
 
     const body = checkoutManualConfirmBodySchema.parse(await req.json());
+    const payments = 'payments' in body ? body.payments : [body];
 
-    const result = await markOrderPaid({
-      orderId: body.orderId,
-      paymentId: body.paymentId,
-      providerPayload: {
-        provider: 'MONETICO_MOCK',
-        confirmedAt: new Date().toISOString()
-      },
-      paymentStatus: 'SUCCEEDED'
+    if (payments.length === 0 || payments.some((payment) => !payment.orderId || !payment.paymentId)) {
+      return NextResponse.json({ error: 'Paiement de confirmation invalide.' }, { status: 400 });
+    }
+
+    const results = await Promise.all(
+      payments.map((payment) =>
+        markOrderPaid({
+          orderId: payment.orderId,
+          paymentId: payment.paymentId,
+          providerPayload: {
+            provider: 'MONETICO_MOCK',
+            confirmedAt: new Date().toISOString()
+          },
+          paymentStatus: 'SUCCEEDED'
+        })
+      )
+    );
+
+    return NextResponse.json({
+      isBatch: payments.length > 1,
+      orderId: results[0]?.orderId ?? null,
+      status: results[0]?.status ?? null,
+      results
     });
-
-    return NextResponse.json(result);
   } catch (error) {
     return NextResponse.json({ error: getApiErrorMessage(error) }, { status: 400 });
   }

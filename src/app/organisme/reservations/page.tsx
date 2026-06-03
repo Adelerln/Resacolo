@@ -11,6 +11,7 @@ import {
   parseAmountEurosToCents,
   resolveStatusAfterRequestResolution
 } from '@/lib/order-workflow';
+import { computePartnerContributionSnapshotCents } from '@/lib/partner-offers';
 import { withOrganizerQuery } from '@/lib/organizers.server';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import type { Database } from '@/types/supabase';
@@ -167,10 +168,34 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
       .eq('status', 'SUCCEEDED');
     const onlinePaidCents = (successfulPayments ?? []).reduce((sum, payment) => sum + (payment.amount_cents ?? 0), 0);
     const totalCents = orderItems.reduce((sum, item) => sum + (item.total_price_cents ?? 0), 0);
+    const orderItemIds = orderItems.map((item) => item.id);
+    const { data: contributionRows } = orderItemIds.length
+      ? await supabase
+          .from('collectivity_contributions')
+          .select('order_item_id,mode,fixed_cents,percent_value,cap_cents')
+          .in('order_item_id', orderItemIds)
+          .eq('status', 'APPROVED')
+      : { data: [] };
+    const contributionByOrderItemId = new Map((contributionRows ?? []).map((row) => [row.order_item_id, row]));
+    const partnerContributionCents = orderItems.reduce((sum, item) => {
+      const contribution = contributionByOrderItemId.get(item.id);
+      if (!contribution) return sum;
+      return (
+        sum +
+        computePartnerContributionSnapshotCents({
+          mode: contribution.mode,
+          totalCents: item.total_price_cents ?? 0,
+          percentValue: contribution.percent_value,
+          fixedCents: contribution.fixed_cents,
+          capCents: contribution.cap_cents
+        })
+      );
+    }, 0);
+    const familyPayableTotalCents = Math.max(0, totalCents - partnerContributionCents);
     const nextExternalAidCents = requestKind === 'VACAF' ? amountCents : orderRow.external_aid_cents ?? 0;
     const nextExternalPaidCents = requestKind === 'ANCV_CONNECT' ? amountCents : orderRow.external_paid_cents ?? 0;
     const nextStatus = resolveStatusAfterRequestResolution({
-      totalCents,
+      totalCents: familyPayableTotalCents,
       externalAidCents: nextExternalAidCents,
       externalPaidCents: nextExternalPaidCents,
       onlinePaidCents
@@ -234,7 +259,7 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
     ? await supabase
         .from('orders')
         .select(
-          'id,status,created_at,client_user_id,collectivity_id,request_kind,vacaf_number_snapshot,ancv_connect_matricule,ancv_connect_requested_amount_cents,external_aid_cents,external_paid_cents'
+          'id,status,created_at,cancellation_reason,client_user_id,collectivity_id,request_kind,vacaf_number_snapshot,ancv_connect_matricule,ancv_connect_requested_amount_cents,external_aid_cents,external_paid_cents'
         )
         .in('id', orderIds)
         .neq('status', 'CART')
@@ -320,7 +345,15 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
     (collectivitiesRaw ?? []).map((collectivity) => [collectivity.id, collectivity.name])
   );
 
-  const reservations = orders.map((order) => {
+  const reservations = orders
+    .filter((order) => {
+      const payment = paymentsByOrderId.get(order.id);
+      if (order.status === 'CANCELLED' && order.cancellation_reason === 'PAYMENT_FAILED') {
+        return false;
+      }
+      return payment?.status !== 'FAILED';
+    })
+    .map((order) => {
     const items = itemsByOrderId.get(order.id) ?? [];
     const firstItem = items[0];
     const session = firstItem?.session_id ? sessionsById.get(firstItem.session_id) : null;
@@ -333,73 +366,73 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
       .filter(Boolean);
     const paymentMode = parsePaymentModeFromPayload(payment?.raw_payload);
 
-    return {
-      id: order.id,
-      stayTitle: stay?.title ?? 'Séjour inconnu',
-      sessionLabel: formatDateRange(session?.start_date, session?.end_date),
-      clientName: clientsByUserId.get(order.client_user_id) ?? participantNames[0] ?? 'Client inconnu',
-      participantName: participantNames[0] ?? 'Participant inconnu',
-      participantCount: items.length,
-      amountLabel: formatEuroFromCents(totalCents, payment?.currency ?? 'EUR'),
-      collectivityName: order.collectivity_id
-        ? collectivitiesById.get(order.collectivity_id) ?? 'Collectivité inconnue'
-        : 'Famille directe',
-      status: order.status,
-      requestKind: order.request_kind,
-      requestReference:
-        order.request_kind === 'VACAF'
-          ? formatText(order.vacaf_number_snapshot)
-          : order.request_kind === 'ANCV_CONNECT'
-            ? formatText(order.ancv_connect_matricule)
-            : null,
-      requestedAmountLabel:
-        order.request_kind === 'ANCV_CONNECT' && typeof order.ancv_connect_requested_amount_cents === 'number'
-          ? formatEuroFromCents(order.ancv_connect_requested_amount_cents, payment?.currency ?? 'EUR')
-          : null,
-      externalAidLabel:
-        typeof order.external_aid_cents === 'number' && order.external_aid_cents > 0
-          ? formatEuroFromCents(order.external_aid_cents, payment?.currency ?? 'EUR')
-          : null,
-      externalPaidLabel:
-        typeof order.external_paid_cents === 'number' && order.external_paid_cents > 0
-          ? formatEuroFromCents(order.external_paid_cents, payment?.currency ?? 'EUR')
-          : null,
-      totalCents,
-      details: {
+      return {
         id: order.id,
+        stayTitle: stay?.title ?? 'Séjour inconnu',
+        sessionLabel: formatDateRange(session?.start_date, session?.end_date),
         clientName: clientsByUserId.get(order.client_user_id) ?? participantNames[0] ?? 'Client inconnu',
         participantName: participantNames[0] ?? 'Participant inconnu',
-        paymentModeLabel: PAYMENT_MODE_LABELS[paymentMode] ?? 'Non renseigné',
-        cafLabel: formatText(order.vacaf_number_snapshot),
-        ancvConnectLabel: order.request_kind === 'ANCV_CONNECT' ? 'Oui' : 'Non',
-        email: formatText(profile?.parent1_email),
-        primaryPhone: formatText(profile?.parent1_phone),
-        secondaryPhone: formatText(profile?.parent2_phone),
-        postalAddress: formatAddress([
-          profile?.address_line1,
-          profile?.address_line2,
-          profile?.postal_code,
-          profile?.city,
-          profile?.country
-        ]),
-        billingAddress: profile?.has_separate_billing_address
-          ? formatAddress([
-              profile?.billing_address_line1,
-              profile?.billing_address_line2,
-              profile?.billing_postal_code,
-              profile?.billing_city,
-              profile?.billing_country
-            ])
-          : formatAddress([
-              profile?.address_line1,
-              profile?.address_line2,
-              profile?.postal_code,
-              profile?.city,
-              profile?.country
-            ])
-      }
-    };
-  });
+        participantCount: items.length,
+        amountLabel: formatEuroFromCents(totalCents, payment?.currency ?? 'EUR'),
+        collectivityName: order.collectivity_id
+          ? collectivitiesById.get(order.collectivity_id) ?? 'Collectivité inconnue'
+          : 'Famille directe',
+        status: order.status,
+        requestKind: order.request_kind,
+        requestReference:
+          order.request_kind === 'VACAF'
+            ? formatText(order.vacaf_number_snapshot)
+            : order.request_kind === 'ANCV_CONNECT'
+              ? formatText(order.ancv_connect_matricule)
+              : null,
+        requestedAmountLabel:
+          order.request_kind === 'ANCV_CONNECT' && typeof order.ancv_connect_requested_amount_cents === 'number'
+            ? formatEuroFromCents(order.ancv_connect_requested_amount_cents, payment?.currency ?? 'EUR')
+            : null,
+        externalAidLabel:
+          typeof order.external_aid_cents === 'number' && order.external_aid_cents > 0
+            ? formatEuroFromCents(order.external_aid_cents, payment?.currency ?? 'EUR')
+            : null,
+        externalPaidLabel:
+          typeof order.external_paid_cents === 'number' && order.external_paid_cents > 0
+            ? formatEuroFromCents(order.external_paid_cents, payment?.currency ?? 'EUR')
+            : null,
+        totalCents,
+        details: {
+          id: order.id,
+          clientName: clientsByUserId.get(order.client_user_id) ?? participantNames[0] ?? 'Client inconnu',
+          participantName: participantNames[0] ?? 'Participant inconnu',
+          paymentModeLabel: PAYMENT_MODE_LABELS[paymentMode] ?? 'Non renseigné',
+          cafLabel: formatText(order.vacaf_number_snapshot),
+          ancvConnectLabel: order.request_kind === 'ANCV_CONNECT' ? 'Oui' : 'Non',
+          email: formatText(profile?.parent1_email),
+          primaryPhone: formatText(profile?.parent1_phone),
+          secondaryPhone: formatText(profile?.parent2_phone),
+          postalAddress: formatAddress([
+            profile?.address_line1,
+            profile?.address_line2,
+            profile?.postal_code,
+            profile?.city,
+            profile?.country
+          ]),
+          billingAddress: profile?.has_separate_billing_address
+            ? formatAddress([
+                profile?.billing_address_line1,
+                profile?.billing_address_line2,
+                profile?.billing_postal_code,
+                profile?.billing_city,
+                profile?.billing_country
+              ])
+            : formatAddress([
+                profile?.address_line1,
+                profile?.address_line2,
+                profile?.postal_code,
+                profile?.city,
+                profile?.country
+              ])
+        }
+      };
+    });
 
   return (
     <div className="space-y-6">

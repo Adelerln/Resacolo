@@ -10,6 +10,8 @@ import {
 } from '@/lib/partner.server';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { PartnerContributionAmountEditor } from '@/components/partner/PartnerContributionAmountEditor';
+import { PartnerReservationDetailsModal } from '@/components/partner/PartnerReservationDetailsModal';
+import type { Json } from '@/types/supabase';
 
 function formatDate(value: string) {
   return new Date(value).toLocaleDateString('fr-FR');
@@ -28,6 +30,28 @@ function parseEurosToCents(value: FormDataEntryValue | null) {
   const parsed = Number.parseFloat(String(value ?? '').replace(',', '.'));
   if (!Number.isFinite(parsed)) return 0;
   return Math.max(0, Math.round(parsed * 100));
+}
+
+function mergePaymentPayloadWithPartnerMessage(
+  rawPayload: unknown,
+  input: {
+    partnerMessage: string | null;
+    updatedAt: string;
+    partnerContributionCents: number;
+  }
+) : Json {
+  const basePayload =
+    rawPayload && typeof rawPayload === 'object' && !Array.isArray(rawPayload)
+      ? ({ ...(rawPayload as Record<string, Json | undefined>) } as Record<string, Json | undefined>)
+      : {};
+
+  basePayload.partnerFinanceUpdate = {
+    message: input.partnerMessage,
+    updatedAt: input.updatedAt,
+    partnerContributionCents: input.partnerContributionCents
+  };
+
+  return basePayload as Json;
 }
 
 function distributeCentsAcrossItems(totalTargetCents: number, itemTotals: Array<{ id: string; totalCents: number }>) {
@@ -114,6 +138,7 @@ export default async function PartnerReservationsPage() {
 
     const totalCents = orderItems.reduce((sum, item) => sum + (item.total_price_cents ?? 0), 0);
     const manualPartnerCents = clampPartnerFinanceCents(parseEurosToCents(formData.get('manual_partner_euros')), totalCents);
+    const partnerMessage = String(formData.get('partner_message') ?? '').trim() || null;
     const allocations =
       manualPartnerCents > 0
         ? distributeCentsAcrossItems(
@@ -149,6 +174,32 @@ export default async function PartnerReservationsPage() {
       redirect(`/partenaire/reservations?error=${encodeURIComponent(upsertError.message)}`);
     }
 
+    const { data: paymentRow } = await supabase
+      .from('payments')
+      .select('id,raw_payload')
+      .eq('order_id', orderId)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (paymentRow?.id) {
+      const { error: paymentUpdateError } = await supabase
+        .from('payments')
+        .update({
+          raw_payload: mergePaymentPayloadWithPartnerMessage(paymentRow.raw_payload, {
+            partnerMessage,
+            updatedAt: now,
+            partnerContributionCents: manualPartnerCents
+          })
+        })
+        .eq('id', paymentRow.id);
+
+      if (paymentUpdateError) {
+        redirect(`/partenaire/reservations?error=${encodeURIComponent(paymentUpdateError.message)}`);
+      }
+    }
+
+    revalidatePath('/mon-compte');
     revalidatePath('/partenaire/reservations');
     redirect('/partenaire/reservations');
   }
@@ -192,10 +243,44 @@ export default async function PartnerReservationsPage() {
                 return (
                   <tr key={reservation.id} className="border-t border-slate-100 align-top">
                     <td className="whitespace-nowrap px-4 py-3 text-slate-600">
-                      <p className="font-medium text-slate-900">#{reservation.id.slice(0, 8).toUpperCase()}</p>
+                      <PartnerReservationDetailsModal
+                        reservation={{
+                          id: reservation.id,
+                          createdAt: reservation.createdAt,
+                          statusLabel: reservation.statusLabel,
+                          beneficiaryName: reservation.beneficiaryName,
+                          stayTitle: reservation.stayTitle,
+                          stayLocation: reservation.stayLocation,
+                          sessionLabel: reservation.sessionLabel,
+                          childrenLabel: reservation.childrenLabel,
+                          totalLabel: reservation.totalLabel,
+                          partnerContributionLabel: formatCurrencyFromCents(reservation.partnerContributionCents),
+                          clientContributionLabel: formatCurrencyFromCents(reservation.clientContributionCents),
+                          requestKind: reservation.requestKind,
+                          paymentMode: reservation.paymentMode,
+                          paymentModeLabel: reservation.paymentModeLabel,
+                          vacafNumberSnapshot: reservation.vacafNumberSnapshot,
+                          ancvConnectMatricule: reservation.ancvConnectMatricule,
+                          ancvConnectRequestedAmountLabel:
+                            typeof reservation.ancvConnectRequestedAmountCents === 'number'
+                              ? formatCurrencyFromCents(reservation.ancvConnectRequestedAmountCents)
+                              : null,
+                          externalAidLabel:
+                            reservation.externalAidCents > 0
+                              ? formatCurrencyFromCents(reservation.externalAidCents)
+                              : null,
+                          externalPaidLabel:
+                            reservation.externalPaidCents > 0
+                              ? formatCurrencyFromCents(reservation.externalPaidCents)
+                              : null,
+                          pendingActions: reservation.pendingActions
+                        }}
+                      />
                       <p className="mt-1 text-xs text-slate-500">{formatDate(reservation.createdAt)}</p>
                     </td>
-                    <td className="px-4 py-3 font-medium text-slate-900">{reservation.beneficiaryName}</td>
+                    <td className="px-4 py-3 text-slate-600">
+                      <p className="font-medium text-slate-900">{reservation.beneficiaryName}</p>
+                    </td>
                     <td className="px-4 py-3 text-slate-600">
                       <p className="font-medium text-slate-900">{reservation.stayTitle}</p>
                       <p className="mt-1 text-xs text-slate-500">{reservation.stayLocation}</p>
@@ -205,22 +290,18 @@ export default async function PartnerReservationsPage() {
                       <div className="flex flex-col items-start gap-2">
                         <span
                           className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${orderStatusBadgeClassName(
-                            reservation.status
+                            reservation.badgeStatus ?? reservation.status
                           )}`}
                         >
                           {reservation.statusLabel}
                         </span>
-                        {reservation.isTaggedToCollectivity ? (
-                          <span className="inline-flex rounded-full bg-orange-50 px-2.5 py-1 text-xs font-semibold text-orange-800">
-                            Code partenaire appliqué
-                          </span>
-                        ) : null}
                       </div>
                     </td>
                     <td className="px-4 py-3 font-semibold text-slate-900">{reservation.totalLabel}</td>
                     <td className="px-4 py-3">
                       <PartnerContributionAmountEditor
                         orderId={reservation.id}
+                        beneficiaryName={reservation.beneficiaryName}
                         partnerContributionCents={reservation.partnerContributionCents}
                         saveAction={saveManualContribution}
                       />

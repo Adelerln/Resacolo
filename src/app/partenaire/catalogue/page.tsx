@@ -4,22 +4,21 @@ import { requirePartner } from '@/lib/auth/require';
 import { canAccessPartnerSection, getPartnerAccessRoleFromSession } from '@/lib/partner-access';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { listPartnerCatalogStays, readPartnerCollectivity } from '@/lib/partner.server';
-import RangeField from '@/components/partner/RangeField';
-import StayTypeRulesCards from '@/components/partner/StayTypeRulesCards';
-import OrganizerRulesCards from '@/components/partner/OrganizerRulesCards';
+import PartnerCatalogRulesConfigurator from '@/components/partner/PartnerCatalogRulesConfigurator';
 import PartnerAppliedCatalogSection, {
   type AppliedCatalogRow
 } from '@/components/partner/PartnerAppliedCatalogSection';
-import CountryDropdownField from '@/components/partner/CountryDropdownField';
 import { buildCatalogCountryOptions, listSiteStayCountryLabels, syncKnownSiteCountriesWithRules } from '@/lib/partner-catalog-countries';
-import CatalogQfVisibilityEnhancer from '@/components/partner/CatalogQfVisibilityEnhancer';
 import {
   evaluatePartnerCatalogEligibility,
+  countEligiblePartnerCatalogSessions,
   getDefaultPartnerCatalogRules,
   normalizePartnerCatalogRules,
   parseAndValidatePartnerCatalogRules,
-  simulatePartnerAid
+  simulatePartnerAid,
+  type PartnerCatalogStaySnapshot
 } from '@/lib/partner-catalog-rules';
+import { parsePartnerCatalogRulesFromFormData } from '@/lib/partner-catalog-form';
 import {
   buildFeatureActivationMessage,
   isMissingAnyColumnError,
@@ -40,39 +39,6 @@ type PageProps = {
 
 function fieldClassName() {
   return 'mt-1 w-full rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-900 transition-colors';
-}
-
-function checkboxName(formData: FormData, key: string) {
-  return formData.get(key) === 'on';
-}
-
-function parseOptionalInt(formData: FormData, key: string) {
-  const parsed = Number.parseInt(String(formData.get(key) ?? '').trim(), 10);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function parseOptionalFloat(formData: FormData, key: string) {
-  const parsed = Number.parseFloat(String(formData.get(key) ?? '').trim().replace(',', '.'));
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function parseOptionalCents(formData: FormData, key: string) {
-  const euros = parseOptionalFloat(formData, key);
-  if (euros == null) return null;
-  return Math.max(0, Math.round(euros * 100));
-}
-
-function parseArray(formData: FormData, key: string) {
-  const all = formData.getAll(key).map((entry) => String(entry ?? '').trim()).filter(Boolean);
-  const seen = new Set<string>();
-  const result: string[] = [];
-  for (const value of all) {
-    const normalized = value.toLowerCase();
-    if (seen.has(normalized)) continue;
-    seen.add(normalized);
-    result.push(value);
-  }
-  return result;
 }
 
 function sanitizeRedirectQueryValue(value: string | undefined) {
@@ -98,90 +64,28 @@ function formatCurrencyFromCents(value: number) {
   }).format(value / 100);
 }
 
-function parseRulesFromFormData(formData: FormData): PartnerCatalogRules {
-  const base = getDefaultPartnerCatalogRules();
-  const rules: PartnerCatalogRules = {
-    ...base,
-    version: Number.parseInt(String(formData.get('version') ?? '1'), 10) || 1,
-    blockingRules: {
-      ...base.blockingRules,
-      ageMin: parseOptionalInt(formData, 'age_min'),
-      ageMax: parseOptionalInt(formData, 'age_max'),
-      priceMinCents: parseOptionalCents(formData, 'price_min_eur'),
-      priceMaxCents: parseOptionalCents(formData, 'price_max_eur'),
-      durationMinDays: parseOptionalInt(formData, 'duration_min_days'),
-      durationMaxDays: parseOptionalInt(formData, 'duration_max_days'),
-      seasonsAllowed: parseArray(formData, 'seasons_allowed'),
-      stayTypesAllowed: parseArray(formData, 'stay_types_allowed'),
-      stayTypesExcluded: parseArray(formData, 'stay_types_excluded'),
-      destinationMode:
-        (String(formData.get('destination_mode') ?? 'ANY') as PartnerCatalogRules['blockingRules']['destinationMode']) ??
-        'ANY',
-      countriesAllowed: parseArray(formData, 'countries_allowed'),
-      countriesExcluded: parseArray(formData, 'countries_excluded'),
-      organizersAllowed: parseArray(formData, 'organizers_allowed'),
-      organizersExcluded: parseArray(formData, 'organizers_excluded'),
-      activitiesAllowed: parseArray(formData, 'activities_allowed'),
-      activitiesExcluded: parseArray(formData, 'activities_excluded'),
-      transportIncludedRequired: checkboxName(formData, 'transport_included_required'),
-      accommodationRequired: checkboxName(formData, 'accommodation_required'),
-      partnerOrganizersOnly: checkboxName(formData, 'partner_organizers_only'),
-      acmDeclaredRequired: checkboxName(formData, 'acm_declared_required'),
-      invoiceRequired: checkboxName(formData, 'invoice_required'),
-      childNameOnInvoiceRequired: checkboxName(formData, 'child_name_on_invoice_required'),
-      educationalProjectRequired: checkboxName(formData, 'educational_project_required'),
-      supervisionInfoRequired: checkboxName(formData, 'supervision_info_required')
-    },
-    financialRules: {
-      ...base.financialRules,
-      aidMode:
-        (String(formData.get('aid_mode') ?? 'PERCENT') as PartnerCatalogRules['financialRules']['aidMode']) ??
-        'PERCENT',
-      percentValue: parseOptionalFloat(formData, 'aid_percent'),
-      fixedCents: parseOptionalCents(formData, 'aid_fixed_eur'),
-      capPerStayCents: parseOptionalCents(formData, 'cap_per_stay_eur'),
-      capPerChildYearCents: parseOptionalCents(formData, 'cap_per_child_year_eur'),
-      capPerFamilyYearCents: parseOptionalCents(formData, 'cap_per_family_year_eur'),
-      capPerDayCents: parseOptionalCents(formData, 'cap_per_day_eur'),
-      maxStaysPerChildYear: parseOptionalInt(formData, 'max_stays_per_child_year'),
-      maxSubsidizedDaysYear: parseOptionalInt(formData, 'max_subsidized_days_year'),
-      minFamilyRemainderPercent: parseOptionalFloat(formData, 'min_family_remainder_percent'),
-      minFamilyRemainderCents: parseOptionalCents(formData, 'min_family_remainder_eur'),
-      qfMin: parseOptionalFloat(formData, 'qf_min'),
-      qfMax: parseOptionalFloat(formData, 'qf_max')
-    },
-    qfScale: []
-  };
-
-  const rowCount = Number.parseInt(String(formData.get('qf_row_count') ?? '8'), 10);
-  for (let index = 0; index < Math.max(0, rowCount); index += 1) {
-    const minQf = parseOptionalFloat(formData, `qf_min_${index}`);
-    const maxQf = parseOptionalFloat(formData, `qf_max_${index}`);
-    const aidMode = String(formData.get(`qf_mode_${index}`) ?? '').trim();
-    const percentValue = parseOptionalFloat(formData, `qf_percent_${index}`);
-    const fixedCents = parseOptionalCents(formData, `qf_fixed_eur_${index}`);
-    if (minQf == null || !aidMode) continue;
-    rules.qfScale.push({
-      id: `row-${index}`,
-      minQf,
-      maxQf,
-      aidMode: aidMode === 'FIXED' ? 'FIXED' : 'PERCENT',
-      percentValue,
-      fixedCents
-    });
-  }
-
-  if (rules.financialRules.aidMode === 'PERCENT') {
-    rules.financialRules.fixedCents = null;
-  } else if (rules.financialRules.aidMode === 'FIXED') {
-    rules.financialRules.percentValue = null;
-    rules.qfScale = [];
-  } else {
-    rules.financialRules.percentValue = null;
-    rules.financialRules.fixedCents = null;
-  }
-
-  return rules;
+function buildCatalogSnapshot(
+  rawCatalogRows: Awaited<ReturnType<typeof listPartnerCatalogStays>>
+): PartnerCatalogStaySnapshot[] {
+  return rawCatalogRows.map((stay) => ({
+    age_min: stay.age_min,
+    age_max: stay.age_max,
+    categories: stay.categories ?? [],
+    destination_country: stay.destination_country,
+    destination_countries: stay.destination_countries,
+    transport_mode: stay.transport_mode,
+    required_documents_text: stay.required_documents_text,
+    education_project_path: stay.education_project_path,
+    supervision_text: stay.supervision_text,
+    season_name: stay.season_name,
+    organizer_id: stay.organizer_id,
+    organizer_is_partner: stay.organizer_is_partner,
+    sessions: stay.sessions.map((session) => ({
+      start_date: session.start_date,
+      end_date: session.end_date,
+      estimated_price_cents: session.estimated_price_cents
+    }))
+  }));
 }
 
 function durationDays(startDate: string, endDate: string) {
@@ -227,7 +131,7 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
 
     const siteCountries = await listSiteStayCountryLabels();
     const rules: PartnerCatalogRules = syncKnownSiteCountriesWithRules(
-      normalizePartnerCatalogRules(parseRulesFromFormData(formData)),
+      normalizePartnerCatalogRules(parsePartnerCatalogRulesFromFormData(formData)),
       siteCountries
     );
 
@@ -374,6 +278,7 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
     ).values()
   );
   const allCountryOptions = buildCatalogCountryOptions(siteCountries, draftRules);
+  const catalogSnapshot = buildCatalogSnapshot(rawCatalogRows);
 
   const excludedReasonCounts = new Map<string, number>();
   const catalogRows = rawCatalogRows.flatMap((stay) =>
@@ -464,6 +369,9 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
       ? Math.round(catalogRows.reduce((sum, row) => sum + row.simulation.familyCents, 0) / catalogRows.length)
       : 0;
   const zeroAidCount = catalogRows.filter((row) => row.simulation.aidCents === 0).length;
+  const baseStayCount = rawCatalogRows.length;
+  const baseSessionCount = rawCatalogRows.reduce((sum, stay) => sum + stay.sessions.length, 0);
+  const eligibleSessionCount = countEligiblePartnerCatalogSessions(draftRules, catalogSnapshot);
 
   return (
     <div className="space-y-6">
@@ -515,376 +423,28 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
       ) : null}
 
       <form id="partner-catalog-form" action={saveDraft} className="space-y-4">
-        <CatalogQfVisibilityEnhancer />
         <input type="hidden" name="version" value={String(draftRules.version)} />
         <input type="hidden" name="qf_row_count" value={String(Math.max(qfRows.length, 8))} />
 
-        <details open className="rounded-2xl border border-slate-200 bg-white p-5">
-          <summary className="flex cursor-pointer list-none items-center justify-between text-2xl font-semibold text-slate-900">
-            <span>Éligibilité du séjour</span>
-            <span aria-hidden="true" className="text-base text-slate-500">
-              ▾
-            </span>
-          </summary>
-          <div className="mt-4 space-y-4">
-            <div className="grid gap-4 md:grid-cols-2">
-              <RangeField
-                label="Âge enfant"
-                minName="age_min"
-                maxName="age_max"
-                minLimit={4}
-                maxLimit={17}
-                defaultMin={draftRules.blockingRules.ageMin}
-                defaultMax={draftRules.blockingRules.ageMax}
-                unit=" ans"
-              />
-              <RangeField
-                label="Prix séjour"
-                minName="price_min_eur"
-                maxName="price_max_eur"
-                minLimit={0}
-                maxLimit={3000}
-                step={50}
-                defaultMin={
-                  draftRules.blockingRules.priceMinCents != null
-                    ? Math.round(draftRules.blockingRules.priceMinCents / 100)
-                    : null
-                }
-                defaultMax={
-                  draftRules.blockingRules.priceMaxCents != null
-                    ? Math.round(draftRules.blockingRules.priceMaxCents / 100)
-                    : null
-                }
-                unit=" €"
-              />
-              <RangeField
-                label="Durée séjour"
-                minName="duration_min_days"
-                maxName="duration_max_days"
-                minLimit={1}
-                maxLimit={30}
-                defaultMin={draftRules.blockingRules.durationMinDays}
-                defaultMax={draftRules.blockingRules.durationMaxDays}
-                unit=" j"
-              />
-              <label className="text-sm font-medium text-slate-700">
-                Mode destination
-                <select
-                  name="destination_mode"
-                  defaultValue={draftRules.blockingRules.destinationMode}
-                  className={fieldClassName()}
-                >
-                  <option value="ANY">Tous pays</option>
-                  <option value="FRANCE_ONLY">France uniquement</option>
-                  <option value="EUROPE_ONLY">Europe uniquement</option>
-                </select>
-              </label>
-            </div>
-
-            <StayTypeRulesCards
-              stayTypeOptions={stayTypeOptions}
-              seasonOptions={seasonOptions}
-              initialAllowed={draftRules.blockingRules.stayTypesAllowed}
-              initialExcluded={draftRules.blockingRules.stayTypesExcluded}
-              initialSeasons={draftRules.blockingRules.seasonsAllowed}
-            />
-
-            <OrganizerRulesCards
-              organizerOptions={organizerOptions}
-              initialAllowed={draftRules.blockingRules.organizersAllowed}
-              initialExcluded={draftRules.blockingRules.organizersExcluded}
-            />
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <CountryDropdownField
-                label="Pays autorisés"
-                name="countries_allowed"
-                options={allCountryOptions}
-                initialValues={draftRules.blockingRules.countriesAllowed}
-              />
-              <CountryDropdownField
-                label="Pays exclus"
-                name="countries_excluded"
-                options={allCountryOptions}
-                initialValues={draftRules.blockingRules.countriesExcluded}
-              />
-            </div>
-            <p className="text-xs text-slate-500">
-              Liste limitée aux pays déjà présents sur Resacolo (séjours actuels ou passés).
-            </p>
-
-            <div className="grid gap-3 md:grid-cols-2">
-              <label className="inline-flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  name="transport_included_required"
-                  defaultChecked={draftRules.blockingRules.transportIncludedRequired}
-                />
-                Transport inclus obligatoire
-              </label>
-            </div>
-          </div>
-        </details>
-
-        <details open className="rounded-2xl border border-slate-200 bg-white p-5">
-          <summary className="cursor-pointer list-none text-2xl font-semibold text-slate-900">
-            Règles financières
-          </summary>
-          <div className="mt-4 space-y-4">
-            <div className="grid gap-4 md:grid-cols-3">
-              <label className="text-sm font-medium text-slate-700">
-                Type d’aide
-                <select
-                  name="aid_mode"
-                  defaultValue={draftRules.financialRules.aidMode}
-                  className={fieldClassName()}
-                >
-                  <option value="PERCENT">Pourcentage</option>
-                  <option value="FIXED">Forfait</option>
-                  <option value="QF_SCALE">Barème QF</option>
-                </select>
-              </label>
-            </div>
-            <div className="grid gap-4 md:grid-cols-2">
-              <label
-                id="partner-finance-base-percent"
-                className={`text-sm font-medium text-slate-700 ${
-                  draftRules.financialRules.aidMode === 'PERCENT' ? '' : 'hidden'
-                }`}
-              >
-                Taux d’aide (%)
-                <input
-                  name="aid_percent"
-                  defaultValue={draftRules.financialRules.percentValue ?? ''}
-                  className={fieldClassName()}
-                />
-              </label>
-              <label
-                id="partner-finance-base-fixed"
-                className={`text-sm font-medium text-slate-700 ${
-                  draftRules.financialRules.aidMode === 'FIXED' ? '' : 'hidden'
-                }`}
-              >
-                Forfait d’aide (€)
-                <input
-                  name="aid_fixed_eur"
-                  defaultValue={
-                    draftRules.financialRules.fixedCents != null
-                      ? (draftRules.financialRules.fixedCents / 100).toString()
-                      : ''
-                  }
-                  className={fieldClassName()}
-                />
-              </label>
-            </div>
-            <div className="grid gap-4 md:grid-cols-3">
-            <label className="text-sm font-medium text-slate-700">
-              Plafond / séjour (€)
-              <input
-                name="cap_per_stay_eur"
-                defaultValue={
-                  draftRules.financialRules.capPerStayCents != null
-                    ? (draftRules.financialRules.capPerStayCents / 100).toString()
-                    : ''
-                }
-                className={fieldClassName()}
-              />
-            </label>
-            <label className="text-sm font-medium text-slate-700">
-              Plafond / enfant / an (€)
-              <input
-                name="cap_per_child_year_eur"
-                defaultValue={
-                  draftRules.financialRules.capPerChildYearCents != null
-                    ? (draftRules.financialRules.capPerChildYearCents / 100).toString()
-                    : ''
-                }
-                className={fieldClassName()}
-              />
-            </label>
-            <label className="text-sm font-medium text-slate-700">
-              Plafond / famille / an (€)
-              <input
-                name="cap_per_family_year_eur"
-                defaultValue={
-                  draftRules.financialRules.capPerFamilyYearCents != null
-                    ? (draftRules.financialRules.capPerFamilyYearCents / 100).toString()
-                    : ''
-                }
-                className={fieldClassName()}
-              />
-            </label>
-            <label className="text-sm font-medium text-slate-700">
-              Plafond / jour (€)
-              <input
-                name="cap_per_day_eur"
-                defaultValue={
-                  draftRules.financialRules.capPerDayCents != null
-                    ? (draftRules.financialRules.capPerDayCents / 100).toString()
-                    : ''
-                }
-                className={fieldClassName()}
-              />
-            </label>
-            <label className="text-sm font-medium text-slate-700">
-              Nb max séjours / enfant / an
-              <input
-                name="max_stays_per_child_year"
-                defaultValue={draftRules.financialRules.maxStaysPerChildYear ?? ''}
-                className={fieldClassName()}
-              />
-            </label>
-            <label className="text-sm font-medium text-slate-700">
-              Nb max jours aidés / an
-              <input
-                name="max_subsidized_days_year"
-                defaultValue={draftRules.financialRules.maxSubsidizedDaysYear ?? ''}
-                className={fieldClassName()}
-              />
-            </label>
-            <label className="text-sm font-medium text-slate-700">
-              Reste à charge min (%)
-              <input
-                name="min_family_remainder_percent"
-                defaultValue={draftRules.financialRules.minFamilyRemainderPercent ?? ''}
-                className={fieldClassName()}
-              />
-            </label>
-            <label className="text-sm font-medium text-slate-700">
-              Reste à charge min (€)
-              <input
-                name="min_family_remainder_eur"
-                defaultValue={
-                  draftRules.financialRules.minFamilyRemainderCents != null
-                    ? (draftRules.financialRules.minFamilyRemainderCents / 100).toString()
-                    : ''
-                }
-                className={fieldClassName()}
-              />
-            </label>
-            <label className="text-sm font-medium text-slate-700">
-              QF min
-              <input
-                name="qf_min"
-                defaultValue={draftRules.financialRules.qfMin ?? ''}
-                className={fieldClassName()}
-              />
-            </label>
-            <label className="text-sm font-medium text-slate-700">
-              QF max
-              <input
-                name="qf_max"
-                defaultValue={draftRules.financialRules.qfMax ?? ''}
-                className={fieldClassName()}
-              />
-            </label>
-            </div>
-          </div>
-        </details>
-
-        <details
-          id="partner-finance-qf-block"
-          className={`rounded-2xl border p-5 transition ${
-            draftRules.financialRules.aidMode === 'QF_SCALE'
-              ? 'border-amber-300 bg-amber-50/60 ring-1 ring-amber-200 shadow-sm'
-              : 'hidden border-slate-200 bg-white'
-          }`}
-          open={draftRules.financialRules.aidMode === 'QF_SCALE'}
-        >
-          <summary className="cursor-pointer list-none text-2xl font-semibold text-amber-900">
-            Barème QF
-          </summary>
-          <div className="mt-4 overflow-x-auto">
-            <table className="min-w-[860px] w-full text-left text-sm">
-              <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-                <tr>
-                  <th className="px-3 py-2">QF min</th>
-                  <th className="px-3 py-2">QF max</th>
-                  <th className="px-3 py-2">Mode</th>
-                  <th className="px-3 py-2">Taux %</th>
-                  <th className="px-3 py-2">Forfait €</th>
-                </tr>
-              </thead>
-              <tbody>
-                {Array.from({ length: Math.max(qfRows.length, 8) }).map((_, index) => {
-                  const row = qfRows[index];
-                  return (
-                    <tr key={`qf-row-${index}`} className="border-t border-slate-100">
-                      <td className="px-3 py-2">
-                        <input
-                          name={`qf_min_${index}`}
-                          defaultValue={row?.minQf ?? ''}
-                          className="w-full rounded border border-slate-200 px-2 py-1.5"
-                        />
-                      </td>
-                      <td className="px-3 py-2">
-                        <input
-                          name={`qf_max_${index}`}
-                          defaultValue={row?.maxQf ?? ''}
-                          className="w-full rounded border border-slate-200 px-2 py-1.5"
-                        />
-                      </td>
-                      <td className="px-3 py-2">
-                        <select
-                          name={`qf_mode_${index}`}
-                          defaultValue={row?.aidMode ?? 'PERCENT'}
-                          className="w-full rounded border border-slate-200 px-2 py-1.5"
-                        >
-                          <option value="PERCENT">Pourcentage</option>
-                          <option value="FIXED">Forfait</option>
-                        </select>
-                      </td>
-                      <td className="px-3 py-2">
-                        <input
-                          name={`qf_percent_${index}`}
-                          defaultValue={row?.percentValue ?? ''}
-                          className="w-full rounded border border-slate-200 px-2 py-1.5"
-                        />
-                      </td>
-                      <td className="px-3 py-2">
-                        <input
-                          name={`qf_fixed_eur_${index}`}
-                          defaultValue={
-                            row?.fixedCents != null ? (row.fixedCents / 100).toString() : ''
-                          }
-                          className="w-full rounded border border-slate-200 px-2 py-1.5"
-                        />
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </details>
-
-        <details open className="rounded-2xl border border-slate-200 bg-white p-5">
-          <summary className="cursor-pointer list-none text-2xl font-semibold text-slate-900">
-            Aperçu impact catalogue
-          </summary>
-          <div className="mt-4 space-y-2 text-sm text-slate-700">
-            <p>
-              Aide moyenne : <span className="font-semibold">{formatCurrencyFromCents(avgAidCents)}</span>
-            </p>
-            <p>
-              Reste famille moyen :{' '}
-              <span className="font-semibold">{formatCurrencyFromCents(avgFamilyCents)}</span>
-            </p>
-            <p>
-              Sessions avec aide à 0 : <span className="font-semibold">{zeroAidCount}</span>
-            </p>
-            {topExclusions.length > 0 ? (
-              topExclusions.map(([reason, count]) => (
-                <p key={reason}>
-                  <span className="font-semibold">{count}</span> · {reason}
-                </p>
-              ))
-            ) : (
-              <p className="text-slate-500">Aucun motif d’exclusion détecté.</p>
-            )}
-          </div>
-        </details>
-
+        <PartnerCatalogRulesConfigurator
+          draftRules={draftRules}
+          stayTypeOptions={stayTypeOptions}
+          seasonOptions={seasonOptions}
+          organizerOptions={organizerOptions}
+          countryOptions={allCountryOptions}
+          qfRows={qfRows}
+          baseStayCount={baseStayCount}
+          baseSessionCount={baseSessionCount}
+          eligibleSessionCount={eligibleSessionCount}
+          catalogSnapshot={catalogSnapshot}
+          impactSummary={{
+            avgAidLabel: formatCurrencyFromCents(avgAidCents),
+            avgFamilyLabel: formatCurrencyFromCents(avgFamilyCents),
+            zeroAidCount,
+            topExclusions: topExclusions.map(([reason, count]) => ({ reason, count }))
+          }}
+          fieldClassName={fieldClassName()}
+        />
       </form>
 
       <div className="pointer-events-none fixed bottom-4 right-4 z-40">

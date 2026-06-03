@@ -1,8 +1,16 @@
+import { getSession } from '@/lib/auth/session';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { resolveCheckoutCollectivityForUser } from '@/lib/account-profile/server';
 import { markCheckoutCartConverted } from '@/lib/checkout/cart-tracking';
 import type { CartItem } from '@/types/cart';
-import type { CheckoutContact, CheckoutParticipant, CheckoutPricing } from '@/types/checkout';
+import {
+  getOrganizerSelection,
+  type CheckoutContact,
+  type CheckoutOrganizerSelection,
+  type CheckoutParticipant,
+  type CheckoutPricing,
+  type CheckoutPricingItem
+} from '@/types/checkout';
 import type { Json, Database } from '@/types/supabase';
 import { CheckoutValidationError, repriceCart } from '@/lib/checkout/pricing';
 import { buildMoneticoLivePayload, getMoneticoMode, type MoneticoPayload } from '@/lib/checkout/monetico';
@@ -18,8 +26,17 @@ import {
   clampPartnerFinanceCents,
   clampPartnerFinancePercent,
   computePartnerContributionSnapshotCents,
+  isPartnerFullCoverageCheckout,
   normalizePartnerFinanceMode
 } from '@/lib/partner-offers';
+import { isBalancePaymentPayload } from '@/lib/order-balance-payment';
+import { normalizeVacafNumberInput, validateVacafNumber } from '@/lib/vacaf-number';
+import {
+  normalizeAncvConnectMatriculeInput,
+  resolveAncvConnectOrderPayableTotalCents,
+  validateAncvConnectAmountAgainstOrderTotal,
+  validateAncvConnectMatricule
+} from '@/lib/ancv-connect-matricule';
 import { isMissingAnyColumnError } from '@/lib/supabase-schema-errors';
 
 type PrepareCheckoutPaymentInput = {
@@ -31,10 +48,24 @@ type PrepareCheckoutPaymentInput = {
 };
 
 type PrepareCheckoutPaymentResult = {
+  isBatch: boolean;
   orderId: string;
   paymentId: string;
+  orderIds: string[];
+  payments: Array<{ orderId: string; paymentId: string; organizerId: string; organizerName: string }>;
+  confirmationPath: string;
   pricing: CheckoutPricing;
   monetico: MoneticoPayload;
+};
+
+type PrepareCheckoutPaymentGroupResult = {
+  organizerId: string;
+  organizerName: string;
+  orderId: string;
+  paymentId: string;
+  immediatePaymentAmountCents: number;
+  isPartnerTotalCoverage: boolean;
+  requestKind: ReturnType<typeof resolveOrderRequestKind>;
 };
 
 const HOLD_MINUTES = 30;
@@ -130,6 +161,10 @@ function createMoneticoReference(checkoutId: string, orderId: string) {
   return `${left}-${right}`.slice(0, 24);
 }
 
+function createMoneticoBatchReference(checkoutId: string) {
+  return `BATCH-${checkoutId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 18).toUpperCase()}`.slice(0, 24);
+}
+
 function createMoneticoPayload(input: {
   checkoutId: string;
   orderId: string;
@@ -162,6 +197,48 @@ function createMoneticoPayload(input: {
     testMode: true,
     formMethod: 'POST',
     formFields: {}
+  };
+}
+
+function buildEffectiveContactForOrganizer(
+  contact: CheckoutContact,
+  organizerId: string
+): CheckoutContact {
+  const selection = getOrganizerSelection(contact, organizerId);
+  return {
+    ...contact,
+    paymentMode: selection.paymentMode,
+    vacafNumber: selection.vacafNumber,
+    ancvConnectMatricule: selection.ancvConnectMatricule,
+    ancvConnectAmount: selection.ancvConnectAmount
+  };
+}
+
+function buildPricingForOrganizerGroup(items: CheckoutPricingItem[], currency: CheckoutPricing['currency']): CheckoutPricing {
+  const totalCents = items.reduce((sum, item) => sum + item.totalPriceCents, 0);
+  const financePartnerContributionTotalCents = items.reduce(
+    (sum, item) => sum + Math.max(0, item.financePartnerContributionCents ?? 0),
+    0
+  );
+  const financeRequiresQuote = items.some((item) => item.financeRequiresQuote);
+  const financeFamilyPayableTotalCents = financeRequiresQuote
+    ? null
+    : items.reduce((sum, item) => sum + Math.max(0, item.financeFamilyPayableCents ?? item.totalPriceCents), 0);
+  const familyTotalCentsAfterAid = items.reduce((sum, item) => sum + (item.familyCentsAfterAid ?? item.totalPriceCents), 0);
+  const cseTotalAidCents = items.reduce((sum, item) => sum + (item.cseAidCents ?? 0), 0);
+
+  return {
+    items,
+    totalCents,
+    financeMode: items[0]?.financeMode ?? null,
+    financePartnerContributionTotalCents,
+    financeFamilyPayableTotalCents,
+    financePercentValue: items[0]?.financePercentValue ?? null,
+    financeFixedCents: items[0]?.financeFixedCents ?? null,
+    financeRequiresQuote,
+    familyTotalCentsAfterAid,
+    cseTotalAidCents,
+    currency
   };
 }
 
@@ -202,7 +279,7 @@ function resolveLegacyOrderStatus(input: {
 }) {
   if (input.requestKind) return 'REQUESTED' as const;
   if ((input.financeFamilyPayableTotalCents ?? 0) === 0) return 'PAID' as const;
-  return 'REQUESTED' as const;
+  return 'PENDING_PAYMENT' as const;
 }
 
 async function readCollectivityFinance(collectivityId: string) {
@@ -342,8 +419,8 @@ async function insertOrderWithCompatibilityFallback(input: {
     status: input.initialStatus,
     requested_at: input.initialStatus === 'REQUESTED' ? input.requestedAt : null,
     paid_at: input.paidAt,
-    vacaf_number_snapshot: input.contact.vacafNumber.trim() || null,
-    ancv_connect_matricule: input.contact.ancvConnectMatricule.trim() || null,
+    vacaf_number_snapshot: normalizeVacafNumberInput(input.contact.vacafNumber) || null,
+    ancv_connect_matricule: normalizeAncvConnectMatriculeInput(input.contact.ancvConnectMatricule) || null,
     ancv_connect_requested_amount_cents:
       input.requestKind === 'ANCV_CONNECT' ? parseAmountEurosToCents(input.contact.ancvConnectAmount) : null,
     request_kind: input.requestKind
@@ -394,70 +471,56 @@ async function insertOrderWithCompatibilityFallback(input: {
 
 export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput): Promise<PrepareCheckoutPaymentResult> {
   const supabase = getServerSupabaseClient();
+  const session = await getSession();
+  const clientUserId = session?.isClient && session.userId ? session.userId : input.clientUserId;
   const participantByItem = validateParticipants(input.items, input.participants);
   const pricing = await repriceCart(input.items);
-  const organizerId = pricing.items[0]?.organizerId ?? input.items[0]?.organizerId ?? '';
-  if (!organizerId) {
+  const organizerIds = Array.from(
+    new Set(pricing.items.map((item) => item.organizerId).filter(Boolean))
+  );
+  if (organizerIds.length === 0) {
     throw new Error("Impossible d'identifier l'organisme de la réservation.");
   }
-  if (pricing.items.some((item) => item.organizerId !== organizerId)) {
-    throw new Error("Le panier ne peut contenir que des séjours d'un même organisme.");
-  }
-  const organizerSettings = await readOrganizerCheckoutSettings(organizerId);
-  const requestKind = resolveOrderRequestKind(input.contact, organizerSettings);
-  const isPartnerTotalCoverage =
-    !requestKind &&
-    normalizePartnerFinanceMode(pricing.financeMode) === 'TOTAL' &&
-    (pricing.financeFamilyPayableTotalCents ?? 0) === 0;
-  const requestedAt = new Date().toISOString();
-  const paidAt = isPartnerTotalCoverage ? requestedAt : null;
-  const initialStatus = isPartnerTotalCoverage
-    ? ('PAID' as Database['public']['Enums']['order_status'])
-    : resolveInitialOrderStatus(input.contact, organizerSettings);
-  const immediatePaymentAmountCents = computeImmediatePaymentAmountCents(
-    pricing.financeFamilyPayableTotalCents ?? 0,
-    input.contact.paymentMode
+  const organizerSettingsEntries = await Promise.all(
+    organizerIds.map(async (organizerId) => [organizerId, await readOrganizerCheckoutSettings(organizerId)] as const)
   );
-
-  if (input.contact.paymentMode === 'CV_CONNECT' && !organizerSettings.accepts_ancv_connect) {
-    throw new Error("Cet organisme n'accepte pas ANCV Connect.");
-  }
-  if (input.contact.paymentMode === 'CV_PAPER' && !organizerSettings.accepts_ancv_paper) {
-    throw new Error("Cet organisme n'accepte pas les chèques-vacances papier.");
-  }
-  if (input.contact.vacafNumber.trim() && !organizerSettings.is_vacaf_approved) {
-    throw new Error("Cet organisme n'est pas agréé VACAF National.");
-  }
+  const organizerSettingsById = new Map(organizerSettingsEntries);
   const collectivity = await resolveCheckoutCollectivityForUser({
-    userId: input.clientUserId,
+    userId: clientUserId,
     requestedCode: input.contact.cseOrganization
   });
 
-  const { data: existingPaymentRow } = await supabase
+  const { data: existingPaymentRows } = await supabase
     .from('payments')
     .select(
       'id,order_id,status,amount_cents,monetico_transaction_id,monetico_reference,raw_payload,orders!inner(id,client_user_id,status)'
     )
-    .eq('orders.client_user_id', input.clientUserId)
+    .eq('orders.client_user_id', clientUserId)
     .neq('status', 'FAILED')
     .neq('orders.status', 'CANCELLED')
     .filter('raw_payload->>checkoutId', 'eq', input.checkoutId)
-    .limit(1)
-    .maybeSingle();
+    .order('updated_at', { ascending: true });
 
-  if (existingPaymentRow?.id && existingPaymentRow.order_id) {
-    const reference = existingPaymentRow.monetico_reference || createMoneticoReference(input.checkoutId, existingPaymentRow.order_id);
+  const existingRows = (existingPaymentRows ?? []).filter((row) => row.id && row.order_id);
+  if (existingRows.length > 0) {
+    const onlineRows = existingRows.filter((row) => (row.amount_cents ?? 0) > 0);
+    const primaryRow = existingRows[0];
+    const primaryOnlineRow = onlineRows[0] ?? primaryRow;
+    const reference =
+      existingRows.find((row) => row.monetico_reference)?.monetico_reference ||
+      (existingRows.length > 1
+        ? createMoneticoBatchReference(input.checkoutId)
+        : createMoneticoReference(input.checkoutId, primaryRow.order_id));
     const transactionId =
-      existingPaymentRow.monetico_transaction_id ||
-      createMoneticoMockTransactionId(input.checkoutId, existingPaymentRow.id);
-
+      existingRows.find((row) => row.monetico_transaction_id)?.monetico_transaction_id ||
+      createMoneticoMockTransactionId(input.checkoutId, primaryOnlineRow.id);
     const moneticoPayload = createMoneticoPayload({
       checkoutId: input.checkoutId,
-      orderId: existingPaymentRow.order_id,
-      paymentId: existingPaymentRow.id,
+      orderId: primaryOnlineRow.order_id,
+      paymentId: primaryOnlineRow.id,
       reference,
       transactionId,
-      amountCents: existingPaymentRow.amount_cents ?? immediatePaymentAmountCents,
+      amountCents: onlineRows.reduce((sum, row) => sum + Math.max(0, row.amount_cents ?? 0), 0),
       currency: pricing.currency,
       customerEmail: input.contact.email
     });
@@ -468,196 +531,321 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
         monetico_transaction_id: transactionId,
         monetico_reference: reference
       })
-      .eq('id', existingPaymentRow.id);
+      .in('id', existingRows.map((row) => row.id));
 
     return {
-      orderId: existingPaymentRow.order_id,
-      paymentId: existingPaymentRow.id,
+      isBatch: existingRows.length > 1,
+      orderId: primaryRow.order_id,
+      paymentId: primaryRow.id,
+      orderIds: existingRows.map((row) => row.order_id),
+      payments: existingRows.map((row) => {
+        const rawPayload = asJsonRecord(row.raw_payload);
+        return {
+          orderId: row.order_id,
+          paymentId: row.id,
+          organizerId: String(rawPayload.organizerId ?? pricing.items[0]?.organizerId ?? ''),
+          organizerName: String(rawPayload.organizerName ?? 'Organisme')
+        };
+      }),
+      confirmationPath:
+        existingRows.length > 1
+          ? `/checkout/confirmation?checkoutId=${encodeURIComponent(input.checkoutId)}`
+          : `/checkout/confirmation/${primaryRow.order_id}`,
       pricing,
       monetico: moneticoPayload
     };
   }
 
-  await createOrUpdateClientProfile(input.clientUserId, input.contact, collectivity?.collectivityId ?? null);
-
-  const order = await insertOrderWithCompatibilityFallback({
-    clientUserId: input.clientUserId,
-    collectivityId: collectivity?.collectivityId ?? null,
-    initialStatus,
-    requestedAt,
-    paidAt,
-    requestKind,
-    contact: input.contact,
-    financeFamilyPayableTotalCents: pricing.financeFamilyPayableTotalCents
-  });
-
-  const orderItemIds: string[] = [];
-  const orderItemsForCollectivitySnapshot: Array<{ id: string; totalCents: number }> = [];
-
+  await createOrUpdateClientProfile(clientUserId, input.contact, collectivity?.collectivityId ?? null);
+  const pricedItemsByOrganizer = new Map<string, CheckoutPricingItem[]>();
   for (const pricedItem of pricing.items) {
-    const participant = participantByItem.get(pricedItem.cartItemId);
-    if (!participant) {
-      throw new CheckoutValidationError('Participant manquant pour un article du panier.');
+    const existing = pricedItemsByOrganizer.get(pricedItem.organizerId) ?? [];
+    existing.push(pricedItem);
+    pricedItemsByOrganizer.set(pricedItem.organizerId, existing);
+  }
+
+  const requestedAt = new Date().toISOString();
+  const groupResults: Array<PrepareCheckoutPaymentGroupResult & { paymentRawPayload: Record<string, Json | undefined> }> =
+    [];
+
+  for (const organizerId of organizerIds) {
+    const organizerSettings = organizerSettingsById.get(organizerId);
+    const organizerItems = pricedItemsByOrganizer.get(organizerId) ?? [];
+    if (!organizerSettings || organizerItems.length === 0) continue;
+
+    const effectiveContact = buildEffectiveContactForOrganizer(input.contact, organizerId);
+    const requestKind = resolveOrderRequestKind(effectiveContact, organizerSettings);
+    const organizerPricing = buildPricingForOrganizerGroup(organizerItems, pricing.currency);
+    const isPartnerTotalCoverage = !requestKind && isPartnerFullCoverageCheckout(organizerPricing);
+    const paidAt = isPartnerTotalCoverage ? requestedAt : null;
+    const initialStatus = isPartnerTotalCoverage
+      ? ('PAID' as Database['public']['Enums']['order_status'])
+      : resolveInitialOrderStatus(effectiveContact, organizerSettings);
+    const immediatePaymentAmountCents = computeImmediatePaymentAmountCents(
+      organizerPricing.financeFamilyPayableTotalCents ?? 0,
+      effectiveContact.paymentMode
+    );
+
+    if (effectiveContact.paymentMode === 'CV_CONNECT' && !organizerSettings.accepts_ancv_connect) {
+      throw new Error(`L'organisme « ${organizerSettings.name} » n'accepte pas ANCV Connect.`);
     }
-
-    const { data: orderItem, error: orderItemError } = await supabase
-      .from('order_items')
-      .insert({
-        order_id: order.id,
-        organizer_id: pricedItem.organizerId,
-        session_id: pricedItem.sessionId,
-        child_first_name: participant.childFirstName,
-        child_last_name: participant.childLastName,
-        child_birthdate: participant.childBirthdate,
-        insurance_option_id: pricedItem.insuranceOptionId,
-        transport_option_id: pricedItem.transportOptionId,
-        base_price_cents: pricedItem.basePriceCents,
-        options_price_cents: pricedItem.optionsPriceCents,
-        total_price_cents: pricedItem.totalPriceCents
-      })
-      .select('id,session_id')
-      .single();
-
-    if (orderItemError || !orderItem) {
-      if (orderItemError) {
-        console.error('checkout: insertion order_items échouée', orderItemError);
+    if (effectiveContact.paymentMode === 'CV_PAPER' && !organizerSettings.accepts_ancv_paper) {
+      throw new Error(`L'organisme « ${organizerSettings.name} » n'accepte pas les chèques-vacances papier.`);
+    }
+    if (effectiveContact.vacafNumber.trim() && !organizerSettings.is_vacaf_approved) {
+      throw new Error(`L'organisme « ${organizerSettings.name} » n'est pas agréé VACAF National.`);
+    }
+    if (effectiveContact.vacafNumber.trim()) {
+      const vacafError = validateVacafNumber(effectiveContact.vacafNumber);
+      if (vacafError) {
+        throw new CheckoutValidationError(vacafError);
       }
-      throw new Error('Impossible de créer les lignes de commande.');
+    }
+    if (effectiveContact.paymentMode === 'CV_CONNECT') {
+      const ancvMatriculeError = validateAncvConnectMatricule(effectiveContact.ancvConnectMatricule);
+      if (ancvMatriculeError) {
+        throw new CheckoutValidationError(ancvMatriculeError);
+      }
+      const orderPayableTotalCents = resolveAncvConnectOrderPayableTotalCents(
+        organizerPricing.financeFamilyPayableTotalCents ?? null,
+        organizerPricing.totalCents
+      );
+      const ancvAmountError = validateAncvConnectAmountAgainstOrderTotal(
+        effectiveContact.ancvConnectAmount,
+        orderPayableTotalCents
+      );
+      if (ancvAmountError) {
+        throw new CheckoutValidationError(ancvAmountError);
+      }
     }
 
-    orderItemIds.push(orderItem.id);
-    orderItemsForCollectivitySnapshot.push({
-      id: orderItem.id,
-      totalCents: pricedItem.totalPriceCents
+    const order = await insertOrderWithCompatibilityFallback({
+      clientUserId,
+      collectivityId: collectivity?.collectivityId ?? null,
+      initialStatus,
+      requestedAt,
+      paidAt,
+      requestKind,
+      contact: effectiveContact,
+      financeFamilyPayableTotalCents: organizerPricing.financeFamilyPayableTotalCents
     });
 
-    if (pricedItem.extraOptionId && pricedItem.extraOptionLabel) {
-      const { error: extraInsertError } = await supabase.from('order_item_extra_options').insert({
+    const orderItemIds: string[] = [];
+    const orderItemsForCollectivitySnapshot: Array<{ id: string; totalCents: number }> = [];
+    const orderItemSnapshots: Array<{ orderItemId: string; transportDisplayLine: string | null }> = [];
+    const organizerParticipants: CheckoutParticipant[] = [];
+
+    for (const pricedItem of organizerItems) {
+      const participant = participantByItem.get(pricedItem.cartItemId);
+      if (!participant) {
+        throw new CheckoutValidationError('Participant manquant pour un article du panier.');
+      }
+
+      const { data: orderItem, error: orderItemError } = await supabase
+        .from('order_items')
+        .insert({
+          order_id: order.id,
+          organizer_id: pricedItem.organizerId,
+          session_id: pricedItem.sessionId,
+          child_first_name: participant.childFirstName,
+          child_last_name: participant.childLastName,
+          child_birthdate: participant.childBirthdate,
+          insurance_option_id: pricedItem.insuranceOptionId,
+          transport_option_id: pricedItem.transportOptionId,
+          base_price_cents: pricedItem.basePriceCents,
+          options_price_cents: pricedItem.optionsPriceCents,
+          total_price_cents: pricedItem.totalPriceCents
+        })
+        .select('id,session_id')
+        .single();
+
+      if (orderItemError || !orderItem) {
+        if (orderItemError) {
+          console.error('checkout: insertion order_items échouée', orderItemError);
+        }
+        throw new Error('Impossible de créer les lignes de commande.');
+      }
+
+      orderItemIds.push(orderItem.id);
+      orderItemsForCollectivitySnapshot.push({
+        id: orderItem.id,
+        totalCents: pricedItem.totalPriceCents
+      });
+      orderItemSnapshots.push({
+        orderItemId: orderItem.id,
+        transportDisplayLine: pricedItem.transportDisplayLine ?? pricedItem.transportLabel ?? null
+      });
+      organizerParticipants.push(participant);
+
+      if (pricedItem.extraOptionId && pricedItem.extraOptionLabel) {
+        const { error: extraInsertError } = await supabase.from('order_item_extra_options').insert({
+          order_item_id: orderItem.id,
+          stay_extra_option_id: pricedItem.extraOptionId,
+          label_snapshot: pricedItem.extraOptionLabel,
+          amount_cents_snapshot: pricedItem.extraOptionPriceCents
+        });
+
+        if (extraInsertError) {
+          throw new Error('Impossible de sauvegarder les options supplémentaires.');
+        }
+      }
+
+      const expiresAt = new Date(Date.now() + HOLD_MINUTES * 60 * 1000).toISOString();
+      const { error: holdError } = await supabase.from('session_holds').insert({
         order_item_id: orderItem.id,
-        stay_extra_option_id: pricedItem.extraOptionId,
-        label_snapshot: pricedItem.extraOptionLabel,
-        amount_cents_snapshot: pricedItem.extraOptionPriceCents
+        session_id: orderItem.session_id,
+        expires_at: expiresAt,
+        status: 'ACTIVE'
       });
 
-      if (extraInsertError) {
-        throw new Error('Impossible de sauvegarder les options supplémentaires.');
+      if (holdError) {
+        throw new Error('Impossible de réserver temporairement la session.');
       }
     }
 
-    const expiresAt = new Date(Date.now() + HOLD_MINUTES * 60 * 1000).toISOString();
-    const { error: holdError } = await supabase.from('session_holds').insert({
-      order_item_id: orderItem.id,
-      session_id: orderItem.session_id,
-      expires_at: expiresAt,
-      status: 'ACTIVE'
-    });
-
-    if (holdError) {
-      throw new Error('Impossible de réserver temporairement la session.');
+    if (collectivity?.collectivityId) {
+      await snapshotCollectivityContributions({
+        collectivityId: collectivity.collectivityId,
+        approvedAt: requestedAt,
+        orderItems: orderItemsForCollectivitySnapshot
+      });
     }
-  }
 
-  if (collectivity?.collectivityId) {
-    await snapshotCollectivityContributions({
-      collectivityId: collectivity.collectivityId,
-      approvedAt: requestedAt,
-      orderItems: orderItemsForCollectivitySnapshot
-    });
-  }
+    const paymentRawPayload = {
+      checkoutId: input.checkoutId,
+      organizerId,
+      organizerName: organizerSettings.name,
+      contact: effectiveContact,
+      participants: organizerParticipants,
+      orderItemIds,
+      orderItemSnapshots
+    };
+    const { data: payment, error: paymentInsertError } = await supabase
+      .from('payments')
+      .insert({
+        order_id: order.id,
+        amount_cents: immediatePaymentAmountCents,
+        currency: pricing.currency,
+        status: isPartnerTotalCoverage ? 'SUCCEEDED' : 'PENDING',
+        raw_payload: paymentRawPayload
+      })
+      .select('id')
+      .single();
 
-  const reference = createMoneticoReference(input.checkoutId, order.id);
-  const { data: payment, error: paymentInsertError } = await supabase
-    .from('payments')
-    .insert({
-      order_id: order.id,
-      amount_cents: immediatePaymentAmountCents,
-      currency: pricing.currency,
-      status: isPartnerTotalCoverage ? 'SUCCEEDED' : 'PENDING',
-      monetico_reference: reference,
-      raw_payload: {
-        checkoutId: input.checkoutId,
-        contact: input.contact,
-        participants: input.participants,
-        orderItemIds
+    if (paymentInsertError || !payment) {
+      if (paymentInsertError) {
+        console.error('checkout: insertion payments échouée', paymentInsertError);
       }
-    })
-    .select('id')
-    .single();
-
-  if (paymentInsertError || !payment) {
-    if (paymentInsertError) {
-      console.error('checkout: insertion payments échouée', paymentInsertError);
+      throw new Error('Impossible de créer le paiement.');
     }
-    throw new Error('Impossible de créer le paiement.');
+
+    if (isPartnerTotalCoverage && orderItemIds.length > 0) {
+      const { error: holdsError } = await supabase
+        .from('session_holds')
+        .update({ status: 'CONVERTED' })
+        .in('order_item_id', orderItemIds)
+        .eq('status', 'ACTIVE');
+
+      if (holdsError) {
+        throw new Error('Impossible de convertir les holds de session.');
+      }
+
+      const { recordCommissionFeesOnOrderPaid } = await import('@/lib/resacolo-fee-ledger.server');
+      await recordCommissionFeesOnOrderPaid(supabase, order.id, paidAt ?? requestedAt);
+    }
+
+    groupResults.push({
+      organizerId,
+      organizerName: organizerSettings.name,
+      orderId: order.id,
+      paymentId: payment.id,
+      immediatePaymentAmountCents,
+      isPartnerTotalCoverage,
+      requestKind,
+      paymentRawPayload
+    });
   }
 
-  const transactionId = createMoneticoMockTransactionId(input.checkoutId, payment.id);
+  const primaryGroup = groupResults[0];
+  if (!primaryGroup) {
+    throw new Error('Impossible de créer la commande.');
+  }
+
+  const onlineGroups = groupResults.filter((group) => group.immediatePaymentAmountCents > 0);
+  const primaryOnlineGroup = onlineGroups[0] ?? primaryGroup;
+  const reference =
+    groupResults.length > 1
+      ? createMoneticoBatchReference(input.checkoutId)
+      : createMoneticoReference(input.checkoutId, primaryGroup.orderId);
+  const transactionId = createMoneticoMockTransactionId(input.checkoutId, primaryOnlineGroup.paymentId);
   const moneticoPayload = createMoneticoPayload({
     checkoutId: input.checkoutId,
-    orderId: order.id,
-    paymentId: payment.id,
+    orderId: primaryOnlineGroup.orderId,
+    paymentId: primaryOnlineGroup.paymentId,
     reference,
     transactionId,
-    amountCents: immediatePaymentAmountCents,
+    amountCents: onlineGroups.reduce((sum, group) => sum + group.immediatePaymentAmountCents, 0),
     currency: pricing.currency,
     customerEmail: input.contact.email
   });
+  const allOrderIds = groupResults.map((group) => group.orderId);
+  const allPaymentIds = groupResults.map((group) => group.paymentId);
 
-  const { error: paymentUpdateError } = await supabase
-    .from('payments')
-    .update({
-      monetico_transaction_id: transactionId,
-      raw_payload: {
-        checkoutId: input.checkoutId,
-        contact: input.contact,
-        participants: input.participants,
-        orderItemIds,
-        monetico: moneticoPayload
-      }
-    })
-    .eq('id', payment.id);
+  for (const group of groupResults) {
+    const shouldAttachMonetico = group.immediatePaymentAmountCents > 0;
+    const { error: paymentUpdateError } = await supabase
+      .from('payments')
+      .update({
+        monetico_reference: shouldAttachMonetico ? reference : null,
+        monetico_transaction_id: shouldAttachMonetico ? transactionId : null,
+        raw_payload: {
+          ...group.paymentRawPayload,
+          batchOrderIds: allOrderIds,
+          batchPaymentIds: allPaymentIds,
+          isBatch: groupResults.length > 1,
+          monetico: shouldAttachMonetico ? moneticoPayload : null
+        }
+      })
+      .eq('id', group.paymentId);
 
-  if (paymentUpdateError) {
-    throw new Error('Impossible de synchroniser le paiement Monetico.');
-  }
-
-  if (isPartnerTotalCoverage && orderItemIds.length > 0) {
-    const { error: holdsError } = await supabase
-      .from('session_holds')
-      .update({ status: 'CONVERTED' })
-      .in('order_item_id', orderItemIds)
-      .eq('status', 'ACTIVE');
-
-    if (holdsError) {
-      throw new Error('Impossible de convertir les holds de session.');
+    if (paymentUpdateError) {
+      throw new Error('Impossible de synchroniser le paiement Monetico.');
     }
-
-    const { recordCommissionFeesOnOrderPaid } = await import('@/lib/resacolo-fee-ledger.server');
-    await recordCommissionFeesOnOrderPaid(supabase, order.id, paidAt ?? requestedAt);
   }
 
-  await markCheckoutCartConverted(input.checkoutId, order.id);
+  await markCheckoutCartConverted(input.checkoutId, primaryGroup.orderId);
 
   return {
-    orderId: order.id,
-    paymentId: payment.id,
+    isBatch: groupResults.length > 1,
+    orderId: primaryGroup.orderId,
+    paymentId: primaryGroup.paymentId,
+    orderIds: allOrderIds,
+    payments: groupResults.map((group) => ({
+      orderId: group.orderId,
+      paymentId: group.paymentId,
+      organizerId: group.organizerId,
+      organizerName: group.organizerName
+    })),
+    confirmationPath:
+      groupResults.length > 1
+        ? `/checkout/confirmation?checkoutId=${encodeURIComponent(input.checkoutId)}`
+        : `/checkout/confirmation/${primaryGroup.orderId}`,
     pricing,
     monetico: moneticoPayload
   };
 }
 
-export async function findPaymentByMoneticoReference(reference: string) {
+export async function findPaymentsByMoneticoReference(reference: string) {
   const supabase = getServerSupabaseClient();
   const { data, error } = await supabase
     .from('payments')
     .select('id,status,order_id,monetico_reference')
     .eq('monetico_reference', reference)
-    .limit(1)
-    .maybeSingle();
+    .order('created_at', { ascending: true });
   if (error) {
     throw new Error(`Impossible de retrouver le paiement Monetico: ${error.message}`);
   }
-  return data;
+  return data ?? [];
 }
 
 export async function markOrderPaid(input: {
@@ -699,6 +887,19 @@ export async function markOrderPaid(input: {
     .select('id,total_price_cents')
     .eq('order_id', input.orderId);
   const orderItemIds = (orderItems ?? []).map((item) => item.id);
+  const { data: allPayments } = await supabase
+    .from('payments')
+    .select('id,status,amount_cents')
+    .eq('order_id', input.orderId);
+  const onlinePaidCents = (allPayments ?? []).reduce((sum, payment) => {
+    if (payment.id === input.paymentId) {
+      return sum + Math.max(0, existingPayment?.amount_cents ?? 0);
+    }
+    if (payment.status === 'SUCCEEDED') {
+      return sum + Math.max(0, payment.amount_cents ?? 0);
+    }
+    return sum;
+  }, 0);
   const { data: contributionRows } = orderItemIds.length
     ? await supabase
         .from('collectivity_contributions')
@@ -736,7 +937,6 @@ export async function markOrderPaid(input: {
   }, 0);
   const familyPayableTotalCents = Math.max(0, totalCents - partnerContributionCents);
   const paymentMode = parsePaymentModeFromPayload(existingPayment?.raw_payload);
-  const onlinePaidCents = Math.max(0, existingPayment?.amount_cents ?? 0);
   const nextStatus = resolvePaidOrderStatus({
     totalCents: familyPayableTotalCents,
     paymentMode,
@@ -810,6 +1010,45 @@ export async function failOrderPayment(input: {
 
   if (error) {
     throw new Error('Impossible de marquer le paiement en échec.');
+  }
+
+  if (isBalancePaymentPayload(existingPayment?.raw_payload)) {
+    return {
+      orderId: input.orderId,
+      status: 'FAILED'
+    };
+  }
+
+  const cancelledAt = new Date().toISOString();
+  const { error: orderError } = await supabase
+    .from('orders')
+    .update({
+      status: 'CANCELLED',
+      cancelled_at: cancelledAt,
+      cancellation_reason: 'PAYMENT_FAILED'
+    })
+    .eq('id', input.orderId);
+
+  if (orderError) {
+    throw new Error('Impossible de marquer la commande en échec.');
+  }
+
+  const { data: orderItems } = await supabase
+    .from('order_items')
+    .select('id')
+    .eq('order_id', input.orderId);
+
+  const orderItemIds = (orderItems ?? []).map((item) => item.id);
+  if (orderItemIds.length > 0) {
+    const { error: holdsError } = await supabase
+      .from('session_holds')
+      .update({ status: 'ABANDONED' })
+      .in('order_item_id', orderItemIds)
+      .eq('status', 'ACTIVE');
+
+    if (holdsError) {
+      throw new Error('Impossible de libérer les holds de session.');
+    }
   }
 
   return {

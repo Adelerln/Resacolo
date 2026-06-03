@@ -11,6 +11,7 @@ import {
   upsertFamilyProfileFromCheckout,
   patchFamilyProfilePreferences
 } from '@/lib/account-profile/server';
+import { VACAF_NUMBER_MESSAGE, VACAF_NUMBER_OPTIONAL_REGEX } from '@/lib/vacaf-number';
 
 export const runtime = 'nodejs';
 
@@ -84,7 +85,7 @@ const checkoutProfileContactSchema = z
     vacafNumber: z
       .string()
       .trim()
-      .regex(/^$|^\d{7}[A-Za-z]?$/, 'Le numéro allocataire doit contenir 7 chiffres, ou 7 chiffres et 1 lettre.')
+      .regex(VACAF_NUMBER_OPTIONAL_REGEX, VACAF_NUMBER_MESSAGE)
       .optional()
       .default(''),
     ancvConnectMatricule: z.string().trim().optional().default(''),
@@ -93,6 +94,23 @@ const checkoutProfileContactSchema = z
       .enum(['FULL', 'DEPOSIT_200', 'CV_CONNECT', 'CV_PAPER', 'DEFERRED'])
       .optional()
       .default('FULL'),
+    organizerSelections: z
+      .record(
+        z.string().trim().min(1),
+        z.object({
+          paymentMode: z.enum(['FULL', 'DEPOSIT_200', 'CV_CONNECT', 'CV_PAPER', 'DEFERRED']).optional().default('FULL'),
+          vacafNumber: z
+            .string()
+            .trim()
+            .regex(VACAF_NUMBER_OPTIONAL_REGEX, VACAF_NUMBER_MESSAGE)
+            .optional()
+            .default(''),
+          ancvConnectMatricule: z.string().trim().optional().default(''),
+          ancvConnectAmount: z.string().trim().optional().default('')
+        })
+      )
+      .optional()
+      .default({}),
     acceptsTerms: z.boolean().optional().default(false),
     acceptsPrivacy: z.boolean().optional().default(true)
   })

@@ -533,6 +533,11 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
             </label>
             <label className="block text-sm font-medium text-slate-700">
               CGV organisateur (PDF)
+              <p className="mt-1 text-xs font-normal leading-relaxed text-slate-500">
+                Téléversez ici les conditions générales de vente propres à votre organisme. Ce document sera
+                téléchargeable par les familles au moment du récapitulatif de commande. Il deviendra obligatoire
+                avant la mise en ligne finale sur la plateforme, mais il n&apos;est pas bloquant à ce stade.
+              </p>
               <input
                 name="cgv_file"
                 type="file"

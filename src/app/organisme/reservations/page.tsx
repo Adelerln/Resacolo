@@ -11,6 +11,7 @@ import {
   parseAmountEurosToCents,
   resolveStatusAfterRequestResolution
 } from '@/lib/order-workflow';
+import { computePartnerContributionSnapshotCents } from '@/lib/partner-offers';
 import { withOrganizerQuery } from '@/lib/organizers.server';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import type { Database } from '@/types/supabase';
@@ -167,10 +168,34 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
       .eq('status', 'SUCCEEDED');
     const onlinePaidCents = (successfulPayments ?? []).reduce((sum, payment) => sum + (payment.amount_cents ?? 0), 0);
     const totalCents = orderItems.reduce((sum, item) => sum + (item.total_price_cents ?? 0), 0);
+    const orderItemIds = orderItems.map((item) => item.id);
+    const { data: contributionRows } = orderItemIds.length
+      ? await supabase
+          .from('collectivity_contributions')
+          .select('order_item_id,mode,fixed_cents,percent_value,cap_cents')
+          .in('order_item_id', orderItemIds)
+          .eq('status', 'APPROVED')
+      : { data: [] };
+    const contributionByOrderItemId = new Map((contributionRows ?? []).map((row) => [row.order_item_id, row]));
+    const partnerContributionCents = orderItems.reduce((sum, item) => {
+      const contribution = contributionByOrderItemId.get(item.id);
+      if (!contribution) return sum;
+      return (
+        sum +
+        computePartnerContributionSnapshotCents({
+          mode: contribution.mode,
+          totalCents: item.total_price_cents ?? 0,
+          percentValue: contribution.percent_value,
+          fixedCents: contribution.fixed_cents,
+          capCents: contribution.cap_cents
+        })
+      );
+    }, 0);
+    const familyPayableTotalCents = Math.max(0, totalCents - partnerContributionCents);
     const nextExternalAidCents = requestKind === 'VACAF' ? amountCents : orderRow.external_aid_cents ?? 0;
     const nextExternalPaidCents = requestKind === 'ANCV_CONNECT' ? amountCents : orderRow.external_paid_cents ?? 0;
     const nextStatus = resolveStatusAfterRequestResolution({
-      totalCents,
+      totalCents: familyPayableTotalCents,
       externalAidCents: nextExternalAidCents,
       externalPaidCents: nextExternalPaidCents,
       onlinePaidCents

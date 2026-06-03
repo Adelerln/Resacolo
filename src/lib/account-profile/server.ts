@@ -12,9 +12,11 @@ import type {
 } from '@/types/family-profile';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { isMissingAnyColumnError } from '@/lib/supabase-schema-errors';
+import { normalizeVacafNumberInput } from '@/lib/vacaf-number';
 import {
   computeRemainingBalanceCents as computeOrderRemainingBalanceCents,
-  orderStatusLabel
+  reconcileOrderStatusWithBalance,
+  resolveOrderStatusLabel
 } from '@/lib/order-workflow';
 import {
   computePartnerContributionSnapshotCents,
@@ -353,7 +355,7 @@ function toDbPayload(profile: FamilyProfile): ClientProfileInsert {
       ? normalizeText(profile.billingCountry) || DEFAULT_COUNTRY
       : DEFAULT_COUNTRY,
     cse_organization: normalizeText(profile.cseOrganization),
-    vacaf_number: normalizeUpper(profile.vacafNumber),
+    vacaf_number: normalizeVacafNumberInput(profile.vacafNumber),
     payment_mode: normalizePaymentMode(profile.paymentMode),
     parent1_status: normalizeParentStatus(profile.parent1Status),
     parent1_status_other: normalizeText(profile.parent1StatusOther),
@@ -458,7 +460,99 @@ function formatTransportCities(departureCity: string | null | undefined, returnC
   if (departure && returning) {
     return departure === returning ? departure : `${departure} / ${returning}`;
   }
-  return departure || returning || 'Transport sélectionné';
+  return departure || returning || null;
+}
+
+function formatFamilyTransportRouteLabel(
+  departureCity: string | null | undefined,
+  returnCity: string | null | undefined,
+  amountCents: number
+) {
+  const route = formatTransportCities(departureCity, returnCity);
+  if (!route) return null;
+  return `${route} · ${formatEuroFromCents(amountCents)}`;
+}
+
+type TransportOptionSnapshot = {
+  id: string;
+  session_id: string | null;
+  departure_city: string | null;
+  return_city: string | null;
+  amount_cents: number;
+};
+
+function parseOrderItemTransportSnapshotsFromPayload(rawPayload: Json | null | undefined) {
+  const snapshots = new Map<string, string>();
+  if (!rawPayload || typeof rawPayload !== 'object' || Array.isArray(rawPayload)) {
+    return snapshots;
+  }
+
+  const rows = (rawPayload as Record<string, unknown>).orderItemSnapshots;
+  if (!Array.isArray(rows)) {
+    return snapshots;
+  }
+
+  for (const row of rows) {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) continue;
+    const record = row as Record<string, unknown>;
+    const orderItemId = typeof record.orderItemId === 'string' ? record.orderItemId : null;
+    const transportDisplayLine =
+      typeof record.transportDisplayLine === 'string' ? record.transportDisplayLine.trim() : '';
+    if (orderItemId && transportDisplayLine) {
+      snapshots.set(orderItemId, transportDisplayLine);
+    }
+  }
+
+  return snapshots;
+}
+
+function resolveTransportLineFromSessionOptions(input: {
+  transportCents: number;
+  options: TransportOptionSnapshot[];
+}) {
+  if (input.transportCents <= 0 || input.options.length === 0) {
+    return null;
+  }
+
+  const singleMatch = input.options.find((option) => option.amount_cents === input.transportCents);
+  if (singleMatch) {
+    return formatFamilyTransportRouteLabel(
+      singleMatch.departure_city,
+      singleMatch.return_city,
+      singleMatch.amount_cents
+    );
+  }
+
+  for (const departureOption of input.options) {
+    for (const returnOption of input.options) {
+      const outboundCents = computeDifferentiatedTransportAmount(
+        departureOption.amount_cents,
+        departureOption.departure_city,
+        departureOption.return_city,
+        'outbound'
+      );
+      const returnCents = computeDifferentiatedTransportAmount(
+        returnOption.amount_cents,
+        returnOption.departure_city,
+        returnOption.return_city,
+        'return'
+      );
+      if (outboundCents + returnCents !== input.transportCents) {
+        continue;
+      }
+
+      const parts = [
+        buildTransportLegLine('Aller', departureOption.departure_city, outboundCents),
+        buildTransportLegLine('Retour', returnOption.return_city, returnCents)
+      ].filter((value): value is string => Boolean(value));
+
+      if (parts.length > 0) {
+        return parts.join(' / ');
+      }
+    }
+  }
+
+  return null;
 }
 
 function computeDifferentiatedTransportAmount(
@@ -1272,18 +1366,20 @@ async function readReservations(
       .select('order_id,amount_cents,currency,status,updated_at,raw_payload')
       .in('order_id', orderIds)
       .order('updated_at', { ascending: false }),
-    transportOptionIds.size
+    transportOptionIds.size || sessionIds.size
       ? supabase
           .from('transport_options')
-          .select('id,departure_city,return_city,amount_cents')
-          .in('id', Array.from(transportOptionIds))
+          .select('id,session_id,departure_city,return_city,amount_cents')
+          .or(
+            [
+              transportOptionIds.size ? `id.in.(${Array.from(transportOptionIds).join(',')})` : null,
+              sessionIds.size ? `session_id.in.(${Array.from(sessionIds).join(',')})` : null
+            ]
+              .filter(Boolean)
+              .join(',')
+          )
       : Promise.resolve({
-          data: [] as Array<{
-            id: string;
-            departure_city: string | null;
-            return_city: string | null;
-            amount_cents: number;
-          }>
+          data: [] as TransportOptionSnapshot[]
         }),
     insuranceOptionIds.size
       ? supabase
@@ -1365,6 +1461,22 @@ async function readReservations(
   }
 
   const transportById = new Map((transportOptions ?? []).map((option) => [option.id, option]));
+  const transportOptionsBySessionId = new Map<string, TransportOptionSnapshot[]>();
+  for (const option of transportOptions ?? []) {
+    if (!option.session_id) continue;
+    const existing = transportOptionsBySessionId.get(option.session_id) ?? [];
+    existing.push(option);
+    transportOptionsBySessionId.set(option.session_id, existing);
+  }
+  const transportSnapshotsByOrderItemId = new Map<string, string>();
+  for (const payment of payments ?? []) {
+    const snapshots = parseOrderItemTransportSnapshotsFromPayload(payment.raw_payload);
+    for (const [orderItemId, line] of snapshots) {
+      if (!transportSnapshotsByOrderItemId.has(orderItemId)) {
+        transportSnapshotsByOrderItemId.set(orderItemId, line);
+      }
+    }
+  }
   const insuranceById = new Map((insuranceOptions ?? []).map((option) => [option.id, option]));
   const extrasByOrderItemId = new Map<
     string,
@@ -1424,6 +1536,12 @@ async function readReservations(
         externalPaidCents: order.external_paid_cents ?? 0,
         onlinePaidCents
       });
+      const effectiveOrderStatus = reconcileOrderStatusWithBalance({
+        status: order.status,
+        remainingBalanceCents,
+        onlinePaidCents,
+        externalPaidCents: order.external_paid_cents ?? 0
+      });
 
       const extraEntries = itemsForOrder.flatMap((item) => extrasByOrderItemId.get(item.id) ?? []);
       const extraLines = Array.from(
@@ -1455,39 +1573,77 @@ async function readReservations(
       const outboundTransportLines = new Set<string>();
       const returnTransportLines = new Set<string>();
       for (const item of itemsForOrder) {
-        if (!item.transport_option_id) continue;
-        const transport = transportById.get(item.transport_option_id);
-        if (!transport) {
-          transportSummaryLines.add('Transport sélectionné');
+        const snapshotLine = transportSnapshotsByOrderItemId.get(item.id);
+        if (snapshotLine) {
+          transportSummaryLines.add(snapshotLine);
           continue;
         }
 
-        const departureCity = normalizeText(transport.departure_city);
-        const returnCity = normalizeText(transport.return_city);
-        const isDifferentiated = Boolean(departureCity && returnCity && departureCity !== returnCity);
+        const extraTotalForItem = (extrasByOrderItemId.get(item.id) ?? []).reduce(
+          (sum, extra) => sum + extra.amount_cents_snapshot,
+          0
+        );
+        const insuranceForItem = item.insurance_option_id
+          ? insuranceById.get(item.insurance_option_id)
+          : null;
+        const insuranceCents = insuranceForItem?.amount_cents ?? 0;
+        const knownTransportFromOption = item.transport_option_id
+          ? transportById.get(item.transport_option_id)?.amount_cents ?? 0
+          : 0;
+        const inferredTransportCents = Math.max(
+          0,
+          item.options_price_cents - extraTotalForItem - insuranceCents
+        );
+        const transportCents = knownTransportFromOption > 0 ? knownTransportFromOption : inferredTransportCents;
 
-        transportSummaryLines.add(
-          `${formatTransportCities(transport.departure_city, transport.return_city)} · ${formatEuroFromCents(
+        if (!item.transport_option_id && transportCents <= 0) {
+          continue;
+        }
+
+        const transport = item.transport_option_id ? transportById.get(item.transport_option_id) : null;
+        if (transport) {
+          const departureCity = normalizeText(transport.departure_city);
+          const returnCity = normalizeText(transport.return_city);
+          const isDifferentiated = Boolean(departureCity && returnCity && departureCity !== returnCity);
+
+          const routeLine = formatFamilyTransportRouteLabel(
+            transport.departure_city,
+            transport.return_city,
             transport.amount_cents
-          )}`
-        );
+          );
+          if (routeLine) {
+            transportSummaryLines.add(routeLine);
+          }
 
-        if (!isDifferentiated) {
+          if (!isDifferentiated) {
+            continue;
+          }
+
+          const outboundLine = buildTransportLegLine(
+            'Aller',
+            departureCity,
+            computeDifferentiatedTransportAmount(transport.amount_cents, departureCity, returnCity, 'outbound')
+          );
+          const returnLine = buildTransportLegLine(
+            'Retour',
+            returnCity,
+            computeDifferentiatedTransportAmount(transport.amount_cents, departureCity, returnCity, 'return')
+          );
+          if (outboundLine) outboundTransportLines.add(outboundLine);
+          if (returnLine) returnTransportLines.add(returnLine);
           continue;
         }
 
-        const outboundLine = buildTransportLegLine(
-          'Aller',
-          departureCity,
-          computeDifferentiatedTransportAmount(transport.amount_cents, departureCity, returnCity, 'outbound')
-        );
-        const returnLine = buildTransportLegLine(
-          'Retour',
-          returnCity,
-          computeDifferentiatedTransportAmount(transport.amount_cents, departureCity, returnCity, 'return')
-        );
-        if (outboundLine) outboundTransportLines.add(outboundLine);
-        if (returnLine) returnTransportLines.add(returnLine);
+        const sessionTransportOptions = item.session_id
+          ? transportOptionsBySessionId.get(item.session_id) ?? []
+          : [];
+        const resolvedLine = resolveTransportLineFromSessionOptions({
+          transportCents,
+          options: sessionTransportOptions
+        });
+        if (resolvedLine) {
+          transportSummaryLines.add(resolvedLine);
+        }
       }
 
       const extraTotalCents = extraEntries.reduce((sum, extra) => sum + extra.amount_cents_snapshot, 0);
@@ -1509,13 +1665,18 @@ async function readReservations(
 
       return {
         orderId: order.id,
-        orderStatus: order.status,
+        orderStatus: effectiveOrderStatus,
         title: stay?.title ?? 'Séjour réservé',
         coverImage: session?.stay_id ? coverImageByStayId.get(session.stay_id) ?? null : null,
         dates: formatDateRange(session?.start_date, session?.end_date),
         child,
         children,
-        status: orderStatusLabel(order.status),
+        status: resolveOrderStatusLabel({
+          status: order.status,
+          remainingBalanceCents,
+          onlinePaidCents,
+          externalPaidCents: order.external_paid_cents ?? 0
+        }),
         sessionStartDate: session?.start_date ?? null,
         sessionEndDate: session?.end_date ?? null,
         isPast: session?.end_date ? new Date(`${session.end_date}T23:59:59`).getTime() < Date.now() : false,
@@ -1527,7 +1688,12 @@ async function readReservations(
         transportLine:
           Array.from(transportSummaryLines).join(' / ') ||
           (estimatedTransportResidualCents > 0
-            ? `Transport sélectionné · ${formatEuroFromCents(estimatedTransportResidualCents)}`
+            ? resolveTransportLineFromSessionOptions({
+                transportCents: estimatedTransportResidualCents,
+                options: itemsForOrder.flatMap(
+                  (item) => (item.session_id ? transportOptionsBySessionId.get(item.session_id) ?? [] : [])
+                )
+              })
             : null),
         transportOutboundLine: Array.from(outboundTransportLines).join(' / ') || null,
         transportReturnLine: Array.from(returnTransportLines).join(' / ') || null,
@@ -1536,9 +1702,8 @@ async function readReservations(
         organizerContactEmail: organizer?.contact_email ?? null,
         organizerName: organizer?.name ?? null,
         hasSuccessfulPayment:
-          order.status === 'PAID' ||
-          order.status === 'PARTIALLY_PAID' ||
-          order.status === 'CONFIRMED' ||
+          effectiveOrderStatus === 'PAID' ||
+          effectiveOrderStatus === 'PARTIALLY_PAID' ||
           onlinePaidCents > 0 ||
           (order.external_paid_cents ?? 0) > 0,
         partnerAdjustmentMessage: partnerFinanceMessage.message,
@@ -1774,7 +1939,7 @@ export async function upsertFamilyProfileFromCheckout(input: {
     billingCity: normalizeText(input.contact.billingCity),
     billingCountry: normalizeText(input.contact.billingCountry) || DEFAULT_COUNTRY,
     cseOrganization: currentAffiliation?.code ?? normalizeCollectivityCode(input.contact.cseOrganization),
-    vacafNumber: normalizeUpper(input.contact.vacafNumber),
+    vacafNumber: normalizeVacafNumberInput(input.contact.vacafNumber),
     paymentMode: input.contact.paymentMode,
     parent1Status: existing.parent1Status,
     parent1StatusOther: existing.parent1StatusOther,

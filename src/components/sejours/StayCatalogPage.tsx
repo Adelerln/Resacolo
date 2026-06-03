@@ -274,7 +274,7 @@ function FiltersPanel({
             )}
           </span>
         </AccordionTrigger>
-        <AccordionContent className={group.key === 'departureCities' ? 'pb-0' : 'pb-1.5'}>
+        <AccordionContent className={group.key === 'departureCities' ? 'pb-0' : 'pb-1'}>
           {group.options.length === 0 ? (
             <p className="text-[11px] text-slate-500">Aucune option disponible.</p>
           ) : group.key === 'destinations' && groupedDestinationOptions ? (
@@ -312,25 +312,21 @@ function FiltersPanel({
                 group.key === 'departureCities' ? 'max-h-56 overflow-y-auto pr-1.5 -mb-1' : undefined
               }
             >
-              <ul className={group.key === 'departureCities' ? 'space-y-0.5' : 'space-y-1.5'}>
+              <ul className="space-y-0">
               {group.options.map((option) => (
                 <li key={option.value}>
                   <label
-                    className={`flex items-start gap-2 rounded-lg text-slate-700 transition hover:bg-slate-50 ${
-                      group.key === 'departureCities'
-                        ? 'px-1.5 py-0.5 text-[12px] leading-4.5'
-                        : 'px-2 py-1 text-[13px] leading-5'
-                    }`}
+                    className="flex items-start gap-1.5 rounded-md px-1.5 py-0 text-[12px] leading-4 text-slate-700 transition hover:bg-slate-50"
                   >
                     <input
                       type="checkbox"
-                      className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-slate-300 text-brand-600"
+                      className="mt-0 h-3.5 w-3.5 shrink-0 rounded border-slate-300 text-brand-600"
                       checked={selectedValues.includes(option.value)}
                       onChange={() => onToggle(group.key, option.value)}
                     />
                     <span className="flex min-w-0 flex-1 items-start justify-between gap-2">
                       <span className="min-w-0 break-words whitespace-normal">{option.label}</span>
-                      <span className="mt-0.5 shrink-0 rounded-full bg-slate-100 px-1.5 py-0 text-[11px] font-medium text-slate-600">
+                      <span className="mt-0 shrink-0 rounded-full bg-slate-100 px-1.5 py-0 text-[11px] font-medium leading-4 text-slate-600">
                         {option.count}
                       </span>
                     </span>

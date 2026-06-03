@@ -1,6 +1,25 @@
 import type { CartItem } from '@/types/cart';
 import type { CheckoutContact, CheckoutParticipant, CheckoutPricing } from '@/types/checkout';
 
+export type CheckoutPaymentIntentResponse = {
+  isBatch: boolean;
+  orderId: string;
+  paymentId: string;
+  orderIds: string[];
+  payments: Array<{ orderId: string; paymentId: string; organizerId: string; organizerName: string }>;
+  confirmationPath: string;
+  pricing: CheckoutPricing;
+  monetico: {
+    mode: 'mock' | 'live';
+    reference: string;
+    transactionId: string;
+    paymentUrl: string;
+    testMode: boolean;
+    formMethod: 'POST';
+    formFields: Record<string, string>;
+  };
+};
+
 function readApiFailureMessage(status: number, data: Record<string, unknown>): string {
   const fromError = data.error;
   if (typeof fromError === 'string' && fromError.trim()) return fromError.trim();
@@ -128,20 +147,7 @@ export async function createPaymentIntent(input: {
   contact: CheckoutContact;
   participants: CheckoutParticipant[];
 }) {
-  return fetchJson<{
-    orderId: string;
-    paymentId: string;
-    pricing: CheckoutPricing;
-    monetico: {
-      mode: 'mock' | 'live';
-      reference: string;
-      transactionId: string;
-      paymentUrl: string;
-      testMode: boolean;
-      formMethod: 'POST';
-      formFields: Record<string, string>;
-    };
-  }>(`/api/checkout/session/${input.checkoutId}/payment-intent`, {
+  return fetchJson<CheckoutPaymentIntentResponse>(`/api/checkout/session/${input.checkoutId}/payment-intent`, {
     method: 'POST',
     body: JSON.stringify({
       items: input.items,
@@ -153,12 +159,16 @@ export async function createPaymentIntent(input: {
 
 export async function confirmPaymentManually(input: {
   checkoutId: string;
-  orderId: string;
-  paymentId: string;
+  payments: Array<{ orderId: string; paymentId: string }>;
 }) {
-  return fetchJson<{ orderId: string; status: string }>(`/api/checkout/session/${input.checkoutId}/confirm`, {
+  return fetchJson<{
+    isBatch: boolean;
+    orderId: string | null;
+    status: string | null;
+    results: Array<{ orderId: string; status: string; paidAt: string | null }>;
+  }>(`/api/checkout/session/${input.checkoutId}/confirm`, {
     method: 'POST',
-    body: JSON.stringify({ orderId: input.orderId, paymentId: input.paymentId })
+    body: JSON.stringify({ payments: input.payments })
   });
 }
 
@@ -168,11 +178,34 @@ export async function getOrderStatus(orderId: string) {
     status: string;
     paidAt: string | null;
     paymentStatus: string | null;
+    requestKind: string | null;
+    paymentModeLabel: string | null;
+    remainingBalanceCents: number;
     totalCents: number;
     currency: string;
     organizerContactEmail: string | null;
     organizerName: string | null;
   }>(`/api/orders/${orderId}`, {
+    method: 'GET',
+    cache: 'no-store'
+  });
+}
+
+export async function getOrdersByCheckoutId(checkoutId: string) {
+  return fetchJson<{
+    orders: Array<{
+      orderId: string;
+      status: string;
+      paidAt: string | null;
+      paymentStatus: string | null;
+      requestKind: string | null;
+      paymentModeLabel: string | null;
+      remainingBalanceCents: number;
+      totalCents: number;
+      currency: string;
+      organizerName: string | null;
+    }>;
+  }>(`/api/orders/by-checkout/${checkoutId}`, {
     method: 'GET',
     cache: 'no-store'
   });

@@ -27,16 +27,16 @@ const PARTNER_STATUS_GROUPS: Array<{
   label: string;
   statuses: Database['public']['Enums']['order_status'][];
 }> = [
-  { key: 'requested', label: 'Demande à traiter', statuses: ['REQUESTED'] },
+  { key: 'requested', label: 'Traitement organisme', statuses: ['REQUESTED'] },
   {
     key: 'pending',
-    label: 'En attente de paiement',
+    label: 'En attente de paiement famille',
     statuses: ['PENDING_PAYMENT', 'VALIDATED', 'BOOKED']
   },
-  { key: 'partial', label: 'Partiellement payée', statuses: ['PARTIALLY_PAID'] },
-  { key: 'paid', label: 'Payée', statuses: ['PAID', 'CONFIRMED'] },
-  { key: 'cancelled', label: 'Annulée', statuses: ['CANCELLED'] },
-  { key: 'transferred', label: 'Transférée', statuses: ['TRANSFERRED'] }
+  { key: 'partial', label: 'Paiement partiel reçu', statuses: ['PARTIALLY_PAID'] },
+  { key: 'paid', label: 'Réservation payée', statuses: ['PAID', 'CONFIRMED'] },
+  { key: 'cancelled', label: 'Réservation annulée', statuses: ['CANCELLED'] },
+  { key: 'transferred', label: 'Réservation transférée', statuses: ['TRANSFERRED'] }
 ];
 
 function startOfLocalDay(date: Date) {
@@ -134,7 +134,7 @@ export async function buildPartnerDashboardModel(input: {
 
   const [collectivity, beneficiaries, reservations, siteCountries] = await Promise.all([
     readPartnerCollectivity(input.collectivityId),
-    listPartnerBeneficiaries(input.collectivityId, input.userId),
+    listPartnerBeneficiaries(input.collectivityId, input.userId).then((result) => result.beneficiaries),
     listPartnerReservations(input.collectivityId, input.userId),
     listSiteStayCountryLabels()
   ]);

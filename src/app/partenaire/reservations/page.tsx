@@ -10,6 +10,7 @@ import {
 } from '@/lib/partner.server';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { PartnerContributionAmountEditor } from '@/components/partner/PartnerContributionAmountEditor';
+import { PartnerReservationDetailsModal } from '@/components/partner/PartnerReservationDetailsModal';
 import type { Json } from '@/types/supabase';
 
 function formatDate(value: string) {
@@ -242,12 +243,43 @@ export default async function PartnerReservationsPage() {
                 return (
                   <tr key={reservation.id} className="border-t border-slate-100 align-top">
                     <td className="whitespace-nowrap px-4 py-3 text-slate-600">
-                      <p className="font-medium text-slate-900">#{reservation.id.slice(0, 8).toUpperCase()}</p>
+                      <PartnerReservationDetailsModal
+                        reservation={{
+                          id: reservation.id,
+                          createdAt: reservation.createdAt,
+                          statusLabel: reservation.statusLabel,
+                          beneficiaryName: reservation.beneficiaryName,
+                          stayTitle: reservation.stayTitle,
+                          stayLocation: reservation.stayLocation,
+                          sessionLabel: reservation.sessionLabel,
+                          childrenLabel: reservation.childrenLabel,
+                          totalLabel: reservation.totalLabel,
+                          partnerContributionLabel: formatCurrencyFromCents(reservation.partnerContributionCents),
+                          clientContributionLabel: formatCurrencyFromCents(reservation.clientContributionCents),
+                          requestKind: reservation.requestKind,
+                          paymentMode: reservation.paymentMode,
+                          paymentModeLabel: reservation.paymentModeLabel,
+                          vacafNumberSnapshot: reservation.vacafNumberSnapshot,
+                          ancvConnectMatricule: reservation.ancvConnectMatricule,
+                          ancvConnectRequestedAmountLabel:
+                            typeof reservation.ancvConnectRequestedAmountCents === 'number'
+                              ? formatCurrencyFromCents(reservation.ancvConnectRequestedAmountCents)
+                              : null,
+                          externalAidLabel:
+                            reservation.externalAidCents > 0
+                              ? formatCurrencyFromCents(reservation.externalAidCents)
+                              : null,
+                          externalPaidLabel:
+                            reservation.externalPaidCents > 0
+                              ? formatCurrencyFromCents(reservation.externalPaidCents)
+                              : null,
+                          pendingActions: reservation.pendingActions
+                        }}
+                      />
                       <p className="mt-1 text-xs text-slate-500">{formatDate(reservation.createdAt)}</p>
                     </td>
                     <td className="px-4 py-3 text-slate-600">
                       <p className="font-medium text-slate-900">{reservation.beneficiaryName}</p>
-                      <p className="mt-1 text-xs text-slate-500">{reservation.beneficiaryEmail}</p>
                     </td>
                     <td className="px-4 py-3 text-slate-600">
                       <p className="font-medium text-slate-900">{reservation.stayTitle}</p>
@@ -258,16 +290,11 @@ export default async function PartnerReservationsPage() {
                       <div className="flex flex-col items-start gap-2">
                         <span
                           className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${orderStatusBadgeClassName(
-                            reservation.status
+                            reservation.badgeStatus ?? reservation.status
                           )}`}
                         >
                           {reservation.statusLabel}
                         </span>
-                        {reservation.isTaggedToCollectivity ? (
-                          <span className="inline-flex rounded-full bg-orange-50 px-2.5 py-1 text-xs font-semibold text-orange-800">
-                            Code partenaire appliqué
-                          </span>
-                        ) : null}
                       </div>
                     </td>
                     <td className="px-4 py-3 font-semibold text-slate-900">{reservation.totalLabel}</td>

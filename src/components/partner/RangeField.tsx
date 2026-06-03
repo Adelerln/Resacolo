@@ -12,6 +12,7 @@ type RangeFieldProps = {
   unit?: string;
   defaultMin: number | null;
   defaultMax: number | null;
+  onValuesChange?: () => void;
 };
 
 function clamp(value: number, min: number, max: number) {
@@ -27,7 +28,8 @@ export default function RangeField({
   step = 1,
   unit = '',
   defaultMin,
-  defaultMax
+  defaultMax,
+  onValuesChange
 }: RangeFieldProps) {
   const initialMin = clamp(defaultMin ?? minLimit, minLimit, maxLimit);
   const initialMax = clamp(defaultMax ?? maxLimit, minLimit, maxLimit);
@@ -66,9 +68,10 @@ export default function RangeField({
           max={maxLimit}
           step={step}
           value={minValue}
-          onChange={(event) =>
-            setMinValue(clamp(Math.min(Number(event.target.value), maxValue), minLimit, maxLimit))
-          }
+          onChange={(event) => {
+            setMinValue(clamp(Math.min(Number(event.target.value), maxValue), minLimit, maxLimit));
+            onValuesChange?.();
+          }}
           className="pointer-events-auto absolute left-0 right-0 top-0 h-8 w-full appearance-none bg-transparent [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-orange-400"
           aria-label={`${label} minimum`}
         />
@@ -78,9 +81,10 @@ export default function RangeField({
           max={maxLimit}
           step={step}
           value={maxValue}
-          onChange={(event) =>
-            setMaxValue(clamp(Math.max(Number(event.target.value), minValue), minLimit, maxLimit))
-          }
+          onChange={(event) => {
+            setMaxValue(clamp(Math.max(Number(event.target.value), minValue), minLimit, maxLimit));
+            onValuesChange?.();
+          }}
           className="pointer-events-auto absolute left-0 right-0 top-0 h-8 w-full appearance-none bg-transparent [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-orange-400"
           aria-label={`${label} maximum`}
         />
@@ -95,9 +99,10 @@ export default function RangeField({
             min={minLimit}
             max={maxValue}
             step={step}
-            onChange={(event) =>
-              setMinValue(clamp(Math.min(Number(event.target.value), maxValue), minLimit, maxLimit))
-            }
+            onChange={(event) => {
+              setMinValue(clamp(Math.min(Number(event.target.value), maxValue), minLimit, maxLimit));
+              onValuesChange?.();
+            }}
             className="mt-1 w-full rounded border border-slate-200 bg-white px-2 py-1.5 text-sm"
           />
         </label>
@@ -109,9 +114,10 @@ export default function RangeField({
             min={minValue}
             max={maxLimit}
             step={step}
-            onChange={(event) =>
-              setMaxValue(clamp(Math.max(Number(event.target.value), minValue), minLimit, maxLimit))
-            }
+            onChange={(event) => {
+              setMaxValue(clamp(Math.max(Number(event.target.value), minValue), minLimit, maxLimit));
+              onValuesChange?.();
+            }}
             className="mt-1 w-full rounded border border-slate-200 bg-white px-2 py-1.5 text-sm"
           />
         </label>

@@ -61,7 +61,6 @@ export default function PartnerAppliedCatalogSection({
     safePageIndex * STAYS_PER_PAGE,
     safePageIndex * STAYS_PER_PAGE + STAYS_PER_PAGE
   );
-  const pageRows = pageGroups.flatMap((group) => group.rows);
   const rangeStart = totalStays === 0 ? 0 : safePageIndex * STAYS_PER_PAGE + 1;
   const rangeEnd = Math.min((safePageIndex + 1) * STAYS_PER_PAGE, totalStays);
 
@@ -122,54 +121,82 @@ export default function PartnerAppliedCatalogSection({
         ) : null}
       </div>
 
-      {pageRows.map((row) => (
-        <details
-          key={row.rowKey}
-          className="rounded-2xl border border-slate-200 bg-white p-4"
-        >
-          <summary className="flex cursor-pointer list-none flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h3 className="text-base font-semibold text-slate-900">{row.title}</h3>
-              <p className="text-sm text-slate-600">
-                {row.organizerName} · {row.seasonName}
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2 text-xs font-semibold">
-              <span
-                className={`inline-flex rounded-full px-2.5 py-1 ${
-                  row.eligibilityStatus === 'ELIGIBLE'
-                    ? 'bg-emerald-100 text-emerald-900'
-                    : 'bg-rose-100 text-rose-900'
-                }`}
-              >
-                {row.eligibilityLabel}
-              </span>
-              <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-slate-700">
-                Aide {row.aidLabel}
-              </span>
-              <span className="inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-amber-900">
-                {row.appliedSummary}
-              </span>
-            </div>
-          </summary>
-          <div className="mt-3 text-sm text-slate-700">
-            <p>Session : {row.sessionRangeLabel}</p>
-            <p>Prix estimé : {row.priceLabel}</p>
-            <p>Reste famille : {row.familyLabel}</p>
-            {row.ineligibleReason ? (
-              <p className="mt-1 text-rose-700">Motif principal : {row.ineligibleReason}</p>
-            ) : null}
-            {row.capLabels ? (
-              <p className="mt-1 text-amber-700">Contraintes appliquées : {row.capLabels}</p>
-            ) : null}
-            {row.warning ? (
-              <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-amber-700">
-                {row.warning}
-              </p>
-            ) : null}
-          </div>
-        </details>
-      ))}
+      {pageGroups.map((group) => {
+        const firstRow = group.rows[0];
+        if (!firstRow) return null;
+
+        const sessionCount = group.rows.length;
+        const uniqueAidLabels = new Set(group.rows.map((row) => row.aidLabel));
+        const uniqueAppliedSummaries = new Set(group.rows.map((row) => row.appliedSummary));
+        const aidSummaryLabel =
+          uniqueAidLabels.size === 1 ? firstRow.aidLabel : `${uniqueAidLabels.size} montants`;
+        const appliedSummaryLabel =
+          uniqueAppliedSummaries.size === 1
+            ? firstRow.appliedSummary
+            : `${uniqueAppliedSummaries.size} barèmes`;
+
+        return (
+          <details
+            key={group.stayKey}
+            className="rounded-2xl border border-slate-200 bg-white p-4"
+          >
+            <summary className="flex cursor-pointer list-none flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 className="text-base font-semibold text-slate-900">{firstRow.title}</h3>
+                <p className="text-sm text-slate-600">
+                  {firstRow.organizerName} · {firstRow.seasonName}
+                </p>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  {sessionCount} session{sessionCount > 1 ? 's' : ''} éligible
+                  {sessionCount > 1 ? 's' : ''}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2 text-xs font-semibold">
+                <span
+                  className={`inline-flex rounded-full px-2.5 py-1 ${
+                    firstRow.eligibilityStatus === 'ELIGIBLE'
+                      ? 'bg-emerald-100 text-emerald-900'
+                      : 'bg-rose-100 text-rose-900'
+                  }`}
+                >
+                  {firstRow.eligibilityLabel}
+                </span>
+                <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-slate-700">
+                  Aide {aidSummaryLabel}
+                </span>
+                <span className="inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-amber-900">
+                  {appliedSummaryLabel}
+                </span>
+              </div>
+            </summary>
+            <ul className="mt-3 space-y-3 border-t border-slate-100 pt-3 text-sm text-slate-700">
+              {group.rows.map((row) => (
+                <li
+                  key={row.rowKey}
+                  className="rounded-xl border border-slate-100 bg-slate-50/60 px-3 py-2.5"
+                >
+                  <p className="font-medium text-slate-900">Session : {row.sessionRangeLabel}</p>
+                  <p>Prix estimé : {row.priceLabel}</p>
+                  <p>Aide : {row.aidLabel}</p>
+                  <p>Reste famille : {row.familyLabel}</p>
+                  <p className="text-xs text-amber-800">{row.appliedSummary}</p>
+                  {row.ineligibleReason ? (
+                    <p className="mt-1 text-rose-700">Motif principal : {row.ineligibleReason}</p>
+                  ) : null}
+                  {row.capLabels ? (
+                    <p className="mt-1 text-amber-700">Contraintes appliquées : {row.capLabels}</p>
+                  ) : null}
+                  {row.warning ? (
+                    <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-amber-700">
+                      {row.warning}
+                    </p>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </details>
+        );
+      })}
     </section>
   );
 }

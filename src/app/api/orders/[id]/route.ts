@@ -4,6 +4,8 @@ import { CHECKOUT_CLIENT_COOKIE_NAME } from '@/lib/checkout/clientIdentity';
 import { getSession } from '@/lib/auth/session';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { isMissingAnyColumnError } from '@/lib/supabase-schema-errors';
+import { computeOrderClientBalance } from '@/lib/order-balance-payment';
+import { inferOrderRequestKind, reconcileOrderStatusWithBalance, resolveFamilyPaymentModeLabel } from '@/lib/order-workflow';
 
 export const runtime = 'nodejs';
 
@@ -31,7 +33,7 @@ async function readOrderRow(orderId: string, ownerUserId: string | null) {
 
   let query = supabase
     .from('orders')
-    .select('id,status,paid_at,partially_paid_at,client_user_id')
+    .select('id,status,paid_at,partially_paid_at,client_user_id,request_kind')
     .eq('id', orderId);
 
   if (ownerUserId) {
@@ -40,7 +42,7 @@ async function readOrderRow(orderId: string, ownerUserId: string | null) {
 
   let { data: order, error: orderError } = await query.maybeSingle();
 
-  if (orderError && isMissingAnyColumnError(orderError, ['partially_paid_at'])) {
+  if (orderError && isMissingAnyColumnError(orderError, ['partially_paid_at', 'request_kind'])) {
     let legacyQuery = supabase
       .from('orders')
       .select('id,status,paid_at,client_user_id')
@@ -50,7 +52,7 @@ async function readOrderRow(orderId: string, ownerUserId: string | null) {
     }
     const legacyResult = await legacyQuery.maybeSingle();
     order = legacyResult.data
-      ? { ...legacyResult.data, partially_paid_at: null }
+      ? { ...legacyResult.data, partially_paid_at: null, request_kind: null }
       : null;
     orderError = legacyResult.error;
   }
@@ -80,14 +82,34 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
   const [{ data: payments }, { data: orderItems }] = await Promise.all([
     supabase
       .from('payments')
-      .select('id,status,amount_cents,currency,updated_at')
+      .select('id,status,amount_cents,currency,updated_at,raw_payload')
       .eq('order_id', orderId)
-      .order('updated_at', { ascending: false })
-      .limit(1),
+      .order('updated_at', { ascending: false }),
     supabase.from('order_items').select('total_price_cents,session_id').eq('order_id', orderId)
   ]);
 
   const payment = payments?.[0] ?? null;
+  const paymentRawPayload =
+    payment?.raw_payload && typeof payment.raw_payload === 'object' && !Array.isArray(payment.raw_payload)
+      ? (payment.raw_payload as Record<string, unknown>)
+      : null;
+  const onlinePaidCents = (payments ?? [])
+    .filter((entry) => entry.status === 'SUCCEEDED')
+    .reduce((sum, entry) => sum + (entry.amount_cents ?? 0), 0);
+  let remainingBalanceCents = 0;
+  let effectiveStatus = order.status;
+  try {
+    const balance = await computeOrderClientBalance(orderId);
+    remainingBalanceCents = balance.remainingBalanceCents;
+    effectiveStatus = reconcileOrderStatusWithBalance({
+      status: order.status,
+      remainingBalanceCents,
+      onlinePaidCents,
+      externalPaidCents: balance.order.external_paid_cents ?? 0
+    });
+  } catch {
+    // Fallback: keep raw DB status when balance cannot be computed.
+  }
   const totalCents = (orderItems ?? []).reduce((sum, item) => sum + item.total_price_cents, 0) || payment?.amount_cents || 0;
   const firstOrderItem = (orderItems ?? [])[0] ?? null;
 
@@ -121,9 +143,15 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
 
   return NextResponse.json({
     orderId: order.id,
-    status: order.status,
+    status: effectiveStatus,
+    remainingBalanceCents,
     paidAt: order.paid_at ?? order.partially_paid_at,
     paymentStatus: payment?.status ?? null,
+    requestKind: inferOrderRequestKind({
+      requestKind: order.request_kind ?? null,
+      paymentRawPayload: paymentRawPayload
+    }),
+    paymentModeLabel: resolveFamilyPaymentModeLabel(paymentRawPayload),
     totalCents,
     currency: payment?.currency ?? 'EUR',
     organizerContactEmail,

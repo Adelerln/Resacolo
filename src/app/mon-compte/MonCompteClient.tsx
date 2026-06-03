@@ -16,8 +16,8 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import FamilyReservationDetailsModal from '@/components/account/FamilyReservationDetailsModal';
 import { formatMoneyCentsFr } from '@/lib/format-money-fr';
+import { orderStatusBadgeClassName } from '@/lib/order-workflow';
 import { useFavorites } from '@/components/favorites/FavoritesProvider';
 import {
   attachFamilyCseAffiliation,
@@ -87,7 +87,6 @@ export default function MonCompteClient({
   const [cseSubmitError, setCseSubmitError] = useState<string | null>(null);
   const [cseSubmitSuccess, setCseSubmitSuccess] = useState<string | null>(null);
   const [isSubmittingCse, setIsSubmittingCse] = useState(false);
-  const [partnerMessageReservation, setPartnerMessageReservation] = useState<FamilyReservation | null>(null);
   const { favoriteIdsArray, isLoaded } = useFavorites();
 
   const visibleFavoriteStays = useMemo(() => {
@@ -270,6 +269,14 @@ export default function MonCompteClient({
                 <h2 className="min-w-0 max-w-[85%] font-display text-lg font-semibold leading-snug text-slate-900 sm:max-w-none">
                   Réservations à venir et passées
                 </h2>
+                {reservationList.length > 0 ? (
+                  <Link
+                    href="/mon-compte/reservations"
+                    className="text-sm font-semibold text-brand-600 hover:text-brand-700"
+                  >
+                    Voir toutes
+                  </Link>
+                ) : null}
                 <CalendarDays className="h-8 w-8 shrink-0 text-accent-500" aria-hidden />
               </div>
 
@@ -283,14 +290,15 @@ export default function MonCompteClient({
                   style={reservationsScrollable ? { maxHeight: ACCOUNT_PANEL_LIST_MAX_HEIGHT } : undefined}
                 >
                   {reservationList.map((reservation) => (
-                    <li
-                      key={reservation.orderId}
-                      className={`grid ${ACCOUNT_PANEL_ITEM_HEIGHT} grid-cols-[96px_minmax(0,1fr)] overflow-hidden rounded-xl border text-sm ${
-                        reservation.isPast
-                          ? 'border-slate-300 bg-slate-100/90 text-slate-500'
-                          : 'border-slate-300 bg-slate-50/60 text-slate-700'
-                      }`}
-                    >
+                    <li key={reservation.orderId}>
+                      <Link
+                        href={`/mon-compte/reservations?open=${reservation.orderId}`}
+                        className={`grid ${ACCOUNT_PANEL_ITEM_HEIGHT} grid-cols-[96px_minmax(0,1fr)] overflow-hidden rounded-xl border text-sm transition hover:border-slate-400 hover:shadow-sm ${
+                          reservation.isPast
+                            ? 'border-slate-300 bg-slate-100/90 text-slate-500'
+                            : 'border-slate-300 bg-slate-50/60 text-slate-700'
+                        }`}
+                      >
                       {reservation.coverImage ? (
                         <div className="h-full overflow-hidden bg-slate-100">
                           <img
@@ -314,68 +322,51 @@ export default function MonCompteClient({
                           />
                         </div>
                       )}
-                      <div className="flex h-full min-w-0 flex-col p-3">
+                      <div className="flex h-full min-w-0 flex-col overflow-hidden p-3">
                         <p
-                          className={`line-clamp-2 font-display text-base font-semibold leading-snug ${
+                          className={`line-clamp-1 font-display text-base font-semibold leading-snug ${
                             reservation.isPast ? 'text-slate-500' : 'text-slate-900'
                           }`}
                         >
                           {reservation.title}
                         </p>
                         <p
-                          className={`mt-1 flex items-center gap-2 text-xs ${
+                          className={`mt-0.5 flex items-center gap-1.5 text-xs ${
                             reservation.isPast ? 'text-slate-400' : 'text-slate-500'
                           }`}
                         >
-                          <CalendarDays className="h-4 w-4 shrink-0" />
+                          <CalendarDays className="h-3.5 w-3.5 shrink-0" />
                           <span className="min-w-0 truncate">{reservation.dates}</span>
                         </p>
                         <p
-                          className={`mt-0.5 truncate text-xs ${
+                          className={`truncate text-xs ${
                             reservation.isPast ? 'text-slate-400' : 'text-slate-500'
                           }`}
                         >
                           {reservation.child}
                         </p>
-                        <div className="mt-auto flex min-h-0 items-end justify-between gap-2 pt-1.5">
-                          <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-2 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                        <div className="mt-auto min-h-0 pt-1">
+                          <div className="flex flex-col items-start gap-0.5">
                             <span
-                              className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                              className={`inline-flex w-fit max-w-full items-center gap-1 whitespace-nowrap rounded-full px-2 py-0 text-[11px] font-semibold leading-4 ${
                                 reservation.isPast
                                   ? 'bg-slate-200 text-slate-600'
-                                  : 'bg-emerald-50 text-emerald-700'
+                                  : orderStatusBadgeClassName(reservation.orderStatus)
                               }`}
                             >
                               <ShieldCheck className="h-3 w-3 shrink-0" />
                               {reservation.status}
                             </span>
-                            {reservation.remainingBalanceCents > 0 && reservation.partnerAdjustmentMessage ? (
-                              <button
-                                type="button"
-                                onClick={() => setPartnerMessageReservation(reservation)}
-                                className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-amber-50 px-2.5 py-0.5 text-[11px] font-extrabold leading-none text-amber-700 underline decoration-amber-400 underline-offset-2 transition hover:bg-amber-100 sm:text-xs"
-                              >
-                                <Wallet className="h-3 w-3 shrink-0" />
-                                Solde à régler : {formatMoneyCentsFr(reservation.remainingBalanceCents, reservation.currency)}
-                              </button>
-                            ) : (
-                              <span
-                                className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-0.5 text-[11px] font-extrabold leading-none sm:text-xs ${
-                                  reservation.remainingBalanceCents > 0
-                                    ? 'bg-amber-50 text-amber-700'
-                                    : 'bg-emerald-50 text-emerald-700'
-                                }`}
-                              >
+                            {reservation.remainingBalanceCents > 0 ? (
+                              <span className="inline-flex w-fit max-w-full items-center gap-1 whitespace-nowrap rounded-full bg-amber-50 px-2 py-0 text-[11px] font-semibold leading-4 text-amber-700">
                                 <Wallet className="h-3 w-3 shrink-0" />
                                 Solde à régler : {formatMoneyCentsFr(reservation.remainingBalanceCents, reservation.currency)}
                               </span>
-                            )}
-                          </div>
-                          <div className="shrink-0">
-                            <FamilyReservationDetailsModal reservation={reservation} />
+                            ) : null}
                           </div>
                         </div>
                       </div>
+                      </Link>
                     </li>
                   ))}
                 </ul>
@@ -554,37 +545,6 @@ export default function MonCompteClient({
           </ul>
         </section>
 
-        {partnerMessageReservation ? (
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4"
-            onClick={() => setPartnerMessageReservation(null)}
-          >
-            <div
-              className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl"
-              onClick={(event) => event.stopPropagation()}
-            >
-              <h3 className="font-display text-xl font-semibold text-slate-900">Message du partenaire</h3>
-              <p className="mt-2 text-sm text-slate-500">{partnerMessageReservation.title}</p>
-              <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                <p className="whitespace-pre-line">{partnerMessageReservation.partnerAdjustmentMessage}</p>
-                {partnerMessageReservation.partnerAdjustmentUpdatedAt ? (
-                  <p className="mt-2 text-xs text-amber-800/80">
-                    Mis à jour le {new Date(partnerMessageReservation.partnerAdjustmentUpdatedAt).toLocaleString('fr-FR')}
-                  </p>
-                ) : null}
-              </div>
-              <div className="mt-5 flex justify-end">
-                <button
-                  type="button"
-                  onClick={() => setPartnerMessageReservation(null)}
-                  className="btn btn-secondary btn-sm"
-                >
-                  Fermer
-                </button>
-              </div>
-            </div>
-          </div>
-        ) : null}
       </section>
     </div>
   );

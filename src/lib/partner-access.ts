@@ -9,6 +9,7 @@ export type PartnerWorkspaceSection =
   | 'beneficiaries'
   | 'catalog'
   | 'financing'
+  | 'organizer-amounts'
   | 'white-label'
   | 'reservations';
 
@@ -30,6 +31,7 @@ const PARTNER_ACCESS_SECTIONS: Record<PartnerAccessRole, PartnerWorkspaceSection
     'beneficiaries',
     'catalog',
     'financing',
+    'organizer-amounts',
     'white-label',
     'reservations'
   ],
@@ -46,6 +48,7 @@ const PARTNER_NAV_LINKS: Array<{
   { href: '/partenaire/beneficiaires', label: 'Bénéficiaires', section: 'beneficiaries' },
   { href: '/partenaire/catalogue', label: 'Catalogue', section: 'catalog' },
   { href: '/partenaire/financement', label: 'Financement', section: 'financing' },
+  { href: '/partenaire/montants-organisateurs', label: 'Commandes Organisateurs', section: 'organizer-amounts' },
   { href: '/partenaire/marque-blanche', label: 'Marque blanche', section: 'white-label' },
   { href: '/partenaire/reservations', label: 'Réservations', section: 'reservations' }
 ];
@@ -85,6 +88,7 @@ export function getPartnerSectionFromPath(pathname: string): PartnerWorkspaceSec
   if (pathname.startsWith('/partenaire/beneficiaires')) return 'beneficiaries';
   if (pathname.startsWith('/partenaire/catalogue')) return 'catalog';
   if (pathname.startsWith('/partenaire/financement')) return 'financing';
+  if (pathname.startsWith('/partenaire/montants-organisateurs')) return 'organizer-amounts';
   if (pathname.startsWith('/partenaire/marque-blanche')) return 'white-label';
   if (pathname.startsWith('/partenaire/reservations')) return 'reservations';
   return 'dashboard';

@@ -15,6 +15,7 @@ import {
   EMPTY_CONTACT,
   ensureParticipantsForCart,
   getDefaultParticipant,
+  normalizeCheckoutContact,
   type CheckoutContact,
   type CheckoutParticipant,
   type CheckoutState
@@ -55,10 +56,7 @@ function loadCheckoutState(): CheckoutState | null {
 
     return {
       checkoutId: typeof parsed.checkoutId === 'string' ? parsed.checkoutId : createCheckoutId(),
-      contact: {
-        ...EMPTY_CONTACT,
-        ...(parsed.contact ?? {})
-      },
+      contact: normalizeCheckoutContact(parsed.contact ?? {}),
       participants:
         parsed.participants && typeof parsed.participants === 'object' ? parsed.participants : {}
     };
@@ -134,10 +132,7 @@ export function CheckoutProvider({ children }: { children: ReactNode }) {
   const setContact = useCallback((next: CheckoutContact) => {
     setState((prev) => ({
       ...prev,
-      contact: {
-        ...EMPTY_CONTACT,
-        ...next
-      }
+      contact: normalizeCheckoutContact(next)
     }));
   }, []);
 

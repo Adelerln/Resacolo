@@ -136,3 +136,20 @@ export async function detachFamilyCseAffiliation() {
     })
   });
 }
+
+export async function createOrderBalancePaymentIntent(orderId: string) {
+  return fetchJson<{
+    orderId: string;
+    paymentId: string;
+    amountCents: number;
+    currency: string;
+    monetico: {
+      mode: 'mock' | 'live';
+      paymentUrl: string;
+      formMethod: 'POST';
+      formFields: Record<string, string>;
+    };
+  }>(`/api/orders/${orderId}/balance-payment-intent`, {
+    method: 'POST'
+  });
+}

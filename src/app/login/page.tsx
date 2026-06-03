@@ -5,17 +5,10 @@ import { PasswordInput } from '@/components/auth/PasswordInput';
 
 type LoginMode = 'family' | 'pro';
 
-type LoginErrorDebug = {
-  errorDetail?: string;
-  errorStatus?: string;
-  errorCodeSupabase?: string;
-  supabaseHost?: string;
-};
-
 function mapLoginErrorMessageProduction(code: string | undefined) {
   switch (code) {
     case 'invalid-credentials':
-      return 'Identifiants invalides.';
+      return 'Adresse e-mail ou mot de passe incorrect.';
     case 'email-not-confirmed':
       return 'Compte non validé. Vérifiez votre boîte mail et cliquez sur le lien de confirmation.';
     case 'rate-limited':
@@ -25,47 +18,18 @@ function mapLoginErrorMessageProduction(code: string | undefined) {
     case 'wrong-login-space-pro':
       return 'Ce compte n’appartient pas à l’espace Organisateur / Partenaire. Sélectionnez l’espace Famille.';
     case 'invalid-input':
-      return 'Formulaire invalide.';
+      return 'Veuillez vérifier les informations saisies.';
     case 'supabase':
-      return 'Erreur Supabase pendant la connexion.';
+      return 'Connexion momentanément indisponible. Réessayez dans quelques instants.';
     case 'server':
-      return 'Erreur serveur pendant la connexion.';
+      return 'Une erreur est survenue lors de la connexion. Réessayez dans quelques instants.';
     default:
       return null;
   }
 }
 
-function mapLoginErrorMessage(code: string | undefined, debug?: LoginErrorDebug) {
-  const isDev = process.env.NODE_ENV === 'development';
-  if (!isDev || !code) {
-    return mapLoginErrorMessageProduction(code);
-  }
-
-  const debugLines: string[] = [];
-  if (debug?.supabaseHost) debugLines.push(`Projet Supabase (local) : ${debug.supabaseHost}`);
-  if (debug?.errorCodeSupabase) debugLines.push(`Code Supabase : ${debug.errorCodeSupabase}`);
-  if (debug?.errorStatus) debugLines.push(`Statut HTTP : ${debug.errorStatus}`);
-  if (debug?.errorDetail) debugLines.push(`Message : ${debug.errorDetail}`);
-
-  if (code === 'rate-limited') {
-    return [
-      'Supabase limite temporairement les connexions (trop de requêtes).',
-      'Attendez 5 à 15 minutes sans réessayer, puis reconnectez-vous.',
-      ...debugLines
-    ].join('\n');
-  }
-  if (code === 'invalid-credentials') {
-    return [
-      'Connexion refusée par Supabase (email ou mot de passe incorrect pour ce projet).',
-      ...debugLines
-    ].join('\n');
-  }
-
-  const base = mapLoginErrorMessageProduction(code);
-  if (base && debugLines.length > 0) {
-    return [base, ...debugLines].join('\n');
-  }
-  return base;
+function mapLoginErrorMessage(code: string | undefined) {
+  return mapLoginErrorMessageProduction(code);
 }
 
 function sanitizeRelativePath(value: string | undefined, fallback: string) {
@@ -141,12 +105,7 @@ export default async function LoginPage({
     redirectTo,
     effectiveMode === 'family' ? '/mon-compte' : '/admin'
   );
-  const loginError = mapLoginErrorMessage(error, {
-    errorDetail,
-    errorStatus,
-    errorCodeSupabase,
-    supabaseHost
-  });
+  const loginError = mapLoginErrorMessage(error);
 
   if (!shouldBypassSessionRedirect) {
     const session = await getCurrentUser();

@@ -8,6 +8,9 @@ type StayTypeRulesCardsProps = {
   initialAllowed: string[];
   initialExcluded: string[];
   initialSeasons: string[];
+  showStayTypes?: boolean;
+  showSeasons?: boolean;
+  onValuesChange?: () => void;
 };
 
 function normalizeValue(value: string) {
@@ -87,7 +90,10 @@ export default function StayTypeRulesCards({
   seasonOptions,
   initialAllowed,
   initialExcluded,
-  initialSeasons
+  initialSeasons,
+  showStayTypes = true,
+  showSeasons = true,
+  onValuesChange
 }: StayTypeRulesCardsProps) {
   const stayTypes = useMemo(() => normalizeAndSort(stayTypeOptions), [stayTypeOptions]);
   const seasons = useMemo(() => normalizeAndSort(seasonOptions), [seasonOptions]);
@@ -112,84 +118,114 @@ export default function StayTypeRulesCards({
     const key = normalizeValue(option);
     setAllowedTypes((current) => toggleSetValue(current, option));
     setExcludedTypes((current) => current.filter((item) => normalizeValue(item) !== key));
+    onValuesChange?.();
   };
 
   const toggleExcludedType = (option: string) => {
     const key = normalizeValue(option);
     setExcludedTypes((current) => toggleSetValue(current, option));
     setAllowedTypes((current) => current.filter((item) => normalizeValue(item) !== key));
+    onValuesChange?.();
   };
 
   const toggleSeason = (option: string) => {
     setAllowedSeasons((current) => toggleSetValue(current, option));
+    onValuesChange?.();
   };
 
   return (
-    <div className="grid gap-4 lg:grid-cols-3">
-      <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 lg:col-span-2">
-        <h3 className="text-sm font-semibold text-emerald-900">Autorisations</h3>
-        <div className="mt-3 space-y-3">
-          <div className="space-y-2">
-            <p className="text-sm font-medium text-slate-700">Types autorisés</p>
-            <div className="flex flex-wrap gap-2">
-              {stayTypes.map((option) => {
-                const isSelected = allowedTypes.some((item) => normalizeValue(item) === normalizeValue(option));
-                return (
-                  <ToggleButton
-                    key={`allowed-${option}`}
-                    option={option}
-                    isSelected={isSelected}
-                    onClick={() => toggleAllowedType(option)}
-                    selectedClass="border-emerald-400 bg-emerald-200 text-emerald-950"
-                    unselectedClass="border-emerald-300 bg-emerald-50 text-emerald-900"
-                  />
-                );
-              })}
+    <div className={`grid gap-4 ${showStayTypes && showSeasons ? 'lg:grid-cols-3' : ''}`}>
+      {showStayTypes ? (
+        <>
+          <div className={`rounded-xl border border-emerald-200 bg-emerald-50 p-4 ${showSeasons ? 'lg:col-span-2' : ''}`}>
+            <h3 className="text-sm font-semibold text-emerald-900">Autorisations</h3>
+            <div className="mt-3 space-y-3">
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-slate-700">Types autorisés</p>
+                <div className="flex flex-wrap gap-2">
+                  {stayTypes.map((option) => {
+                    const isSelected = allowedTypes.some((item) => normalizeValue(item) === normalizeValue(option));
+                    return (
+                      <ToggleButton
+                        key={`allowed-${option}`}
+                        option={option}
+                        isSelected={isSelected}
+                        onClick={() => toggleAllowedType(option)}
+                        selectedClass="border-emerald-400 bg-emerald-200 text-emerald-950"
+                        unselectedClass="border-emerald-300 bg-emerald-50 text-emerald-900"
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+
+              {showSeasons ? (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-slate-700">Saisons autorisées</p>
+                  <div className="flex flex-wrap gap-2">
+                    {seasons.map((option) => {
+                      const isSelected = allowedSeasons.some((item) => normalizeValue(item) === normalizeValue(option));
+                      return (
+                        <ToggleButton
+                          key={`season-${option}`}
+                          option={option}
+                          isSelected={isSelected}
+                          onClick={() => toggleSeason(option)}
+                          selectedClass="border-emerald-400 bg-emerald-200 text-emerald-950"
+                          unselectedClass="border-emerald-300 bg-emerald-50 text-emerald-900"
+                        />
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
             </div>
           </div>
 
-          <div className="space-y-2">
-            <p className="text-sm font-medium text-slate-700">Saisons autorisées</p>
-            <div className="flex flex-wrap gap-2">
-              {seasons.map((option) => {
-                const isSelected = allowedSeasons.some((item) => normalizeValue(item) === normalizeValue(option));
-                return (
-                  <ToggleButton
-                    key={`season-${option}`}
-                    option={option}
-                    isSelected={isSelected}
-                    onClick={() => toggleSeason(option)}
-                    selectedClass="border-emerald-400 bg-emerald-200 text-emerald-950"
-                    unselectedClass="border-emerald-300 bg-emerald-50 text-emerald-900"
-                  />
-                );
-              })}
+          <div className="rounded-xl border border-rose-200 bg-rose-50 p-4">
+            <h3 className="text-sm font-semibold text-rose-900">Exclusions</h3>
+            <div className="mt-3 space-y-2">
+              <p className="text-sm font-medium text-slate-700">Types exclus</p>
+              <div className="flex flex-wrap gap-2">
+                {excludedVisibleOptions.map((option) => {
+                  const isSelected = excludedTypes.some((item) => normalizeValue(item) === normalizeValue(option));
+                  return (
+                    <ToggleButton
+                      key={`excluded-${option}`}
+                      option={option}
+                      isSelected={isSelected}
+                      onClick={() => toggleExcludedType(option)}
+                      selectedClass="border-rose-400 bg-rose-200 text-rose-950"
+                      unselectedClass="border-rose-300 bg-rose-50 text-rose-900"
+                    />
+                  );
+                })}
+              </div>
             </div>
           </div>
-        </div>
-      </div>
+        </>
+      ) : null}
 
-      <div className="rounded-xl border border-rose-200 bg-rose-50 p-4">
-        <h3 className="text-sm font-semibold text-rose-900">Exclusions</h3>
-        <div className="mt-3 space-y-2">
-          <p className="text-sm font-medium text-slate-700">Types exclus</p>
-          <div className="flex flex-wrap gap-2">
-            {excludedVisibleOptions.map((option) => {
-              const isSelected = excludedTypes.some((item) => normalizeValue(item) === normalizeValue(option));
+      {!showStayTypes && showSeasons ? (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+          <h3 className="text-sm font-semibold text-emerald-900">Saisons autorisées</h3>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {seasons.map((option) => {
+              const isSelected = allowedSeasons.some((item) => normalizeValue(item) === normalizeValue(option));
               return (
                 <ToggleButton
-                  key={`excluded-${option}`}
+                  key={`season-only-${option}`}
                   option={option}
                   isSelected={isSelected}
-                  onClick={() => toggleExcludedType(option)}
-                  selectedClass="border-rose-400 bg-rose-200 text-rose-950"
-                  unselectedClass="border-rose-300 bg-rose-50 text-rose-900"
+                  onClick={() => toggleSeason(option)}
+                  selectedClass="border-emerald-400 bg-emerald-200 text-emerald-950"
+                  unselectedClass="border-emerald-300 bg-emerald-50 text-emerald-900"
                 />
               );
             })}
           </div>
         </div>
-      </div>
+      ) : null}
 
       {allowedTypes.map((value) => (
         <input key={`hidden-allowed-${value}`} type="hidden" name="stay_types_allowed" value={value} />

@@ -407,8 +407,13 @@ export function simulatePartnerAid(input: {
     }
     aidCents = nextAid;
   }
-  if (financial.capPerChildYearCents != null || financial.capPerFamilyYearCents != null || financial.maxStaysPerChildYear != null || financial.maxSubsidizedDaysYear != null) {
-    warnings.push("Les plafonds/quotas annuels sont configurés mais ne sont pas totalement simulables dans l'aperçu catalogue.");
+  if (
+    financial.capPerFamilyYearCents != null ||
+    financial.maxSubsidizedDaysYear != null
+  ) {
+    warnings.push(
+      "Les plafonds ou quotas annuels par famille ne sont pas totalement simulables dans l'aperçu catalogue."
+    );
   }
 
   aidCents = Math.max(0, Math.min(aidCents, totalCents));
@@ -450,4 +455,76 @@ export function simulatePartnerAid(input: {
     appliedSummary,
     warnings
   };
+}
+
+export type PartnerCatalogStaySnapshot = {
+  age_min: number | null;
+  age_max: number | null;
+  categories: string[];
+  destination_country: string | null;
+  destination_countries: string[] | null;
+  transport_mode: string;
+  required_documents_text: string | null;
+  education_project_path: string | null;
+  supervision_text: string | null;
+  season_name: string;
+  organizer_id: string;
+  organizer_is_partner: boolean;
+  sessions: Array<{
+    start_date: string;
+    end_date: string;
+    estimated_price_cents: number;
+  }>;
+};
+
+function normalizeSeasonName(value: string) {
+  return value.trim().toLowerCase();
+}
+
+export function countEligiblePartnerCatalogSessions(
+  rules: PartnerCatalogRules,
+  catalog: PartnerCatalogStaySnapshot[]
+): number {
+  let count = 0;
+  const allowedSeasons = rules.blockingRules.seasonsAllowed;
+
+  for (const stay of catalog) {
+    if (allowedSeasons.length > 0) {
+      const seasonKey = normalizeSeasonName(stay.season_name);
+      const isAllowed = allowedSeasons.some((season) => normalizeSeasonName(season) === seasonKey);
+      if (!isAllowed) continue;
+    }
+
+    for (const session of stay.sessions) {
+      const eligibility = evaluatePartnerCatalogEligibility({
+        rules,
+        stay: {
+          age_min: stay.age_min,
+          age_max: stay.age_max,
+          categories: stay.categories,
+          destination_country: stay.destination_country,
+          destination_countries: stay.destination_countries,
+          transport_mode: stay.transport_mode,
+          required_documents_text: stay.required_documents_text,
+          education_project_path: stay.education_project_path,
+          supervision_text: stay.supervision_text
+        },
+        session: {
+          start_date: session.start_date,
+          end_date: session.end_date
+        },
+        priceCents: session.estimated_price_cents,
+        organizer: {
+          id: stay.organizer_id,
+          is_resacolo_member: stay.organizer_is_partner
+        }
+      });
+
+      if (eligibility.status === 'ELIGIBLE') {
+        count += 1;
+      }
+    }
+  }
+
+  return count;
 }

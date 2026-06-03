@@ -17,11 +17,29 @@ import {
 } from '@/lib/checkout/client';
 import { buildDevMockPricing, isDevBypassCheckout } from '@/lib/checkout/dev-bypass';
 import { getMockImageUrl, mockImages } from '@/lib/mockImages';
-import type { CheckoutContact, CheckoutParticipant, CheckoutPricing } from '@/types/checkout';
+import {
+  getOrganizerSelection,
+  normalizeCheckoutContact,
+  patchOrganizerSelection,
+  type CheckoutContact,
+  type CheckoutParticipant,
+  type CheckoutPricing
+} from '@/types/checkout';
 import { resolveOrderRequestKind } from '@/lib/order-workflow';
 import { isPartnerFullCoverageCheckout } from '@/lib/partner-offers';
 import { formatNoPaymentAsBeneficiaryMessage } from '@/lib/partner-beneficiary-copy';
 import { fetchFamilyProfileSnapshot } from '@/lib/account-profile/client';
+import {
+  normalizeVacafNumberInput,
+  validateVacafNumber
+} from '@/lib/vacaf-number';
+import {
+  ANCV_CONNECT_MATRICULE_HINT,
+  normalizeAncvConnectMatriculeInput,
+  resolveAncvConnectOrderPayableTotalCents,
+  validateAncvConnectAmountAgainstOrderTotal,
+  validateAncvConnectMatricule
+} from '@/lib/ancv-connect-matricule';
 
 function formatBirthdateFr(iso: string | undefined) {
   if (!iso?.trim()) return '—';
@@ -62,6 +80,7 @@ const PAYMENT_MODES: Array<{ value: CheckoutContact['paymentMode']; label: strin
   { value: 'CV_PAPER', label: 'Paiement en ANCV papier' },
   { value: 'DEFERRED', label: 'Paiement différé' }
 ];
+const QUOTE_PAYMENT_MODES = new Set<CheckoutContact['paymentMode']>(['CV_CONNECT', 'CV_PAPER', 'DEFERRED']);
 
 type OrganizerCheckoutSettings = {
   acceptsAncvPaper: boolean;
@@ -80,6 +99,21 @@ function parseAncvConnectAmount(value: string) {
   return Number.isFinite(amount) ? amount : NaN;
 }
 
+function buildGroupPricingSummary(pricingItems: CheckoutPricing['items']) {
+  const financeRequiresQuote = pricingItems.some((item) => item.financeRequiresQuote);
+  return {
+    totalCents: pricingItems.reduce((sum, item) => sum + item.totalPriceCents, 0),
+    financeRequiresQuote,
+    financePartnerContributionTotalCents: pricingItems.reduce(
+      (sum, item) => sum + Math.max(0, item.financePartnerContributionCents ?? 0),
+      0
+    ),
+    financeFamilyPayableTotalCents: financeRequiresQuote
+      ? null
+      : pricingItems.reduce((sum, item) => sum + Math.max(0, item.financeFamilyPayableCents ?? item.totalPriceCents), 0)
+  };
+}
+
 export default function CheckoutRecapitulatifPage() {
   const router = useRouter();
   const { items } = useCart();
@@ -89,36 +123,73 @@ export default function CheckoutRecapitulatifPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [paymentSubmitError, setPaymentSubmitError] = useState<string | null>(null);
   const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
-  const [organizerCgvUrl, setOrganizerCgvUrl] = useState('/cgv-organisateur');
-  const [organizerCheckoutSettings, setOrganizerCheckoutSettings] = useState<OrganizerCheckoutSettings | null>(null);
+  const [organizerCgvUrls, setOrganizerCgvUrls] = useState<Record<string, string>>({});
+  const [organizerCheckoutSettingsById, setOrganizerCheckoutSettingsById] = useState<Record<string, OrganizerCheckoutSettings>>({});
   const [hasCseAffiliation, setHasCseAffiliation] = useState<boolean | null>(null);
-  const organizerId = items[0]?.organizerId ?? '';
-  const showComplementaryBenefitsCard = hasCseAffiliation === false;
-  const requestKind = organizerCheckoutSettings
-    ? resolveOrderRequestKind(
-        { paymentMode: contact.paymentMode, vacafNumber: contact.vacafNumber },
-        {
-          accepts_ancv_paper: organizerCheckoutSettings.acceptsAncvPaper,
-          accepts_ancv_connect: organizerCheckoutSettings.acceptsAncvConnect,
-          is_vacaf_approved: organizerCheckoutSettings.isVacafApproved
-        }
-      )
-    : null;
+  const [wantsVacafAidByOrganizer, setWantsVacafAidByOrganizer] = useState<Record<string, boolean>>({});
+  const organizerIds = useMemo(() => Array.from(new Set(items.map((item) => item.organizerId).filter(Boolean))), [items]);
+  const primaryOrganizerId = organizerIds[0] ?? '';
   const financeMode = pricing?.financeMode ?? null;
   const financeRequiresQuote = Boolean(pricing?.financeRequiresQuote);
   const financeFamilyPayableTotalCents = pricing?.financeFamilyPayableTotalCents ?? null;
   const isPartnerTotalCoverage = pricing ? isPartnerFullCoverageCheckout(pricing) : false;
-  const paymentRequiresOnlineStep =
-    !financeRequiresQuote &&
-    !isPartnerTotalCoverage &&
-    requiresOnlinePaymentStep(contact.paymentMode, Boolean(requestKind));
-  const availablePaymentModes = useMemo(() => {
-    return PAYMENT_MODES.filter((mode) => {
-      if (mode.value === 'CV_PAPER') return organizerCheckoutSettings?.acceptsAncvPaper ?? false;
-      if (mode.value === 'CV_CONNECT') return organizerCheckoutSettings?.acceptsAncvConnect ?? false;
-      return true;
+  const showCseAffiliationField = !isPartnerTotalCoverage && hasCseAffiliation === false;
+  const showComplementaryBenefitsCard = showCseAffiliationField;
+  const organizerGroups = useMemo(() => {
+    return organizerIds.map((organizerId) => {
+      const organizerItems = items.filter((item) => item.organizerId === organizerId);
+      const pricingItems = pricing?.items.filter((item) => item.organizerId === organizerId) ?? [];
+      const groupPricing = buildGroupPricingSummary(pricingItems);
+      const settings = organizerCheckoutSettingsById[organizerId];
+      const selection = getOrganizerSelection(contact, organizerId);
+      const requestKind = settings
+        ? resolveOrderRequestKind(
+            { paymentMode: selection.paymentMode, vacafNumber: selection.vacafNumber },
+            {
+              accepts_ancv_paper: settings.acceptsAncvPaper,
+              accepts_ancv_connect: settings.acceptsAncvConnect,
+              is_vacaf_approved: settings.isVacafApproved
+            }
+          )
+        : null;
+      const groupIsPartnerTotalCoverage = !requestKind && isPartnerFullCoverageCheckout(groupPricing);
+      const availablePaymentModes = PAYMENT_MODES.filter((mode) => {
+        if (mode.value === 'CV_PAPER') return settings?.acceptsAncvPaper ?? false;
+        if (mode.value === 'CV_CONNECT') return settings?.acceptsAncvConnect ?? false;
+        return true;
+      });
+      const displayedPaymentModes = groupPricing.financeRequiresQuote
+        ? availablePaymentModes.filter((mode) => QUOTE_PAYMENT_MODES.has(mode.value))
+        : availablePaymentModes;
+
+      return {
+        organizerId,
+        organizerName: organizerItems[0]?.organizerName ?? `Organisme ${organizerId}`,
+        selection,
+        settings,
+        requestKind,
+        pricing: groupPricing,
+        isPartnerTotalCoverage: groupIsPartnerTotalCoverage,
+        availablePaymentModes,
+        displayedPaymentModes,
+        hasAidSelectionOptions:
+          !groupIsPartnerTotalCoverage &&
+          Boolean(settings?.acceptsAncvPaper || settings?.acceptsAncvConnect || settings?.isVacafApproved)
+      };
     });
-  }, [organizerCheckoutSettings]);
+  }, [contact, items, organizerCheckoutSettingsById, organizerIds, pricing]);
+  const primaryGroup = organizerGroups[0] ?? null;
+  const displayedPaymentModes = primaryGroup?.displayedPaymentModes ?? [];
+  const organizerCheckoutSettings = primaryGroup?.settings ?? null;
+  const requestKind = primaryGroup?.requestKind ?? null;
+  const wantsVacafAid = primaryOrganizerId ? Boolean(wantsVacafAidByOrganizer[primaryOrganizerId]) : false;
+  const organizerCgvUrl = organizerCgvUrls[primaryOrganizerId] ?? '/cgv-organisateur';
+  const paymentRequiresOnlineStep = organizerGroups.some(
+    (group) =>
+      !group.pricing.financeRequiresQuote &&
+      !group.isPartnerTotalCoverage &&
+      requiresOnlinePaymentStep(group.selection.paymentMode, Boolean(group.requestKind))
+  );
 
   useEffect(() => {
     if (paymentRequiresOnlineStep) {
@@ -150,6 +221,16 @@ export default function CheckoutRecapitulatifPage() {
       cancelled = true;
     };
   }, [hydrated]);
+
+  useEffect(() => {
+    const next = Object.fromEntries(
+      organizerIds.map((organizerId) => {
+        const selection = getOrganizerSelection(contact, organizerId);
+        return [organizerId, Boolean(selection.vacafNumber.trim())];
+      })
+    );
+    setWantsVacafAidByOrganizer(next);
+  }, [contact, organizerIds]);
 
   const isContactComplete = Boolean(
     contact.email &&
@@ -197,116 +278,151 @@ export default function CheckoutRecapitulatifPage() {
 
   useEffect(() => {
     let cancelled = false;
-    async function loadOrganizerCgvUrl() {
-      if (!organizerId) {
-        setOrganizerCgvUrl('/cgv-organisateur');
+
+    async function loadOrganizerContext() {
+      if (organizerIds.length === 0) {
+        setOrganizerCgvUrls({});
+        setOrganizerCheckoutSettingsById({});
         return;
       }
-      try {
-        const response = await fetch(`/api/organizers/${organizerId}/cgv-url`, { cache: 'no-store' });
-        if (!response.ok) {
-          if (!cancelled) setOrganizerCgvUrl('/cgv-organisateur');
-          return;
-        }
-        const data = (await response.json()) as { url?: unknown };
-        const url = typeof data.url === 'string' && data.url.trim() ? data.url.trim() : '/cgv-organisateur';
-        if (!cancelled) setOrganizerCgvUrl(url);
-      } catch {
-        if (!cancelled) setOrganizerCgvUrl('/cgv-organisateur');
-      }
+
+      const [cgvEntries, settingsEntries] = await Promise.all([
+        Promise.all(
+          organizerIds.map(async (organizerId) => {
+            try {
+              const response = await fetch(`/api/organizers/${organizerId}/cgv-url`, { cache: 'no-store' });
+              if (!response.ok) return [organizerId, '/cgv-organisateur'] as const;
+              const data = (await response.json()) as { url?: unknown };
+              const url = typeof data.url === 'string' && data.url.trim() ? data.url.trim() : '/cgv-organisateur';
+              return [organizerId, url] as const;
+            } catch {
+              return [organizerId, '/cgv-organisateur'] as const;
+            }
+          })
+        ),
+        Promise.all(
+          organizerIds.map(async (organizerId) => {
+            try {
+              const response = await fetch(`/api/organizers/${organizerId}/checkout-settings`, { cache: 'no-store' });
+              if (!response.ok) {
+                return [
+                  organizerId,
+                  {
+                    acceptsAncvPaper: false,
+                    acceptsAncvConnect: false,
+                    isVacafApproved: false
+                  }
+                ] as const;
+              }
+              const payload = (await response.json()) as Partial<OrganizerCheckoutSettings>;
+              return [
+                organizerId,
+                {
+                  acceptsAncvPaper: Boolean(payload.acceptsAncvPaper),
+                  acceptsAncvConnect: Boolean(payload.acceptsAncvConnect),
+                  isVacafApproved: Boolean(payload.isVacafApproved)
+                }
+              ] as const;
+            } catch {
+              return [
+                organizerId,
+                {
+                  acceptsAncvPaper: false,
+                  acceptsAncvConnect: false,
+                  isVacafApproved: false
+                }
+              ] as const;
+            }
+          })
+        )
+      ]);
+
+      if (cancelled) return;
+      setOrganizerCgvUrls(Object.fromEntries(cgvEntries));
+      setOrganizerCheckoutSettingsById(Object.fromEntries(settingsEntries));
     }
-    void loadOrganizerCgvUrl();
+
+    void loadOrganizerContext();
     return () => {
       cancelled = true;
     };
-  }, [organizerId]);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function loadOrganizerCheckoutSettings() {
-      if (!organizerId) {
-        setOrganizerCheckoutSettings(null);
-        return;
-      }
-      try {
-        const response = await fetch(`/api/organizers/${organizerId}/checkout-settings`, { cache: 'no-store' });
-        if (!response.ok) {
-          if (!cancelled) {
-            setOrganizerCheckoutSettings({
-              acceptsAncvPaper: false,
-              acceptsAncvConnect: false,
-              isVacafApproved: false
-            });
-          }
-          return;
-        }
-        const payload = (await response.json()) as Partial<OrganizerCheckoutSettings>;
-        if (!cancelled) {
-          setOrganizerCheckoutSettings({
-            acceptsAncvPaper: Boolean(payload.acceptsAncvPaper),
-            acceptsAncvConnect: Boolean(payload.acceptsAncvConnect),
-            isVacafApproved: Boolean(payload.isVacafApproved)
-          });
-        }
-      } catch {
-        if (!cancelled) {
-          setOrganizerCheckoutSettings({
-            acceptsAncvPaper: false,
-            acceptsAncvConnect: false,
-            isVacafApproved: false
-          });
-        }
-      }
-    }
-
-    void loadOrganizerCheckoutSettings();
-    return () => {
-      cancelled = true;
-    };
-  }, [organizerId]);
-
-  useEffect(() => {
-    if (!organizerCheckoutSettings) return;
-    if (!availablePaymentModes.some((mode) => mode.value === contact.paymentMode)) {
-      patchContact({
-        paymentMode: 'FULL',
-        ancvConnectMatricule: '',
-        ancvConnectAmount: ''
-      });
-    }
-  }, [availablePaymentModes, contact.paymentMode, organizerCheckoutSettings]);
+  }, [organizerIds]);
 
   function patchContact(patch: Partial<CheckoutContact>) {
-    setContact({ ...contact, ...patch });
+    setContact(normalizeCheckoutContact({ ...contact, ...patch }));
+  }
+
+  function patchOrganizerPaymentSelection(
+    organizerId: string,
+    patch: Partial<ReturnType<typeof getOrganizerSelection>>
+  ) {
+    setContact(patchOrganizerSelection(contact, organizerId, patch));
+  }
+
+  function setWantsVacafAidForOrganizer(organizerId: string, next: boolean) {
+    setWantsVacafAidByOrganizer((prev) => ({
+      ...prev,
+      [organizerId]: next
+    }));
   }
 
   async function handleContinueToPayment() {
     setPaymentSubmitError(null);
-    if (organizerId && !organizerCheckoutSettings) {
-      setPaymentSubmitError("Chargement des modalités de l'organisme en cours, réessayez dans un instant.");
+    if (organizerGroups.some((group) => !group.settings)) {
+      setPaymentSubmitError("Chargement des modalités des organismes en cours, réessayez dans un instant.");
       return;
     }
     if (!contact.acceptsTerms) {
       setPaymentSubmitError('Vous devez accepter les conditions générales pour continuer.');
       return;
     }
-    if (contact.vacafNumber.trim() && !organizerCheckoutSettings?.isVacafApproved) {
-      setPaymentSubmitError("Cet organisme n'est pas agréé VACAF National.");
-      return;
-    }
-    if (contact.paymentMode === 'CV_CONNECT') {
-      if (!organizerCheckoutSettings?.acceptsAncvConnect) {
-        setPaymentSubmitError("Cet organisme n'accepte pas ANCV Connect.");
+
+    for (const group of organizerGroups) {
+      const settings = group.settings;
+      if (!settings) continue;
+
+      if (group.selection.vacafNumber.trim() && !settings.isVacafApproved) {
+        setPaymentSubmitError(`L'organisme « ${group.organizerName} » n'est pas agréé VACAF National.`);
         return;
       }
-      if (!contact.ancvConnectMatricule.trim()) {
-        setPaymentSubmitError('Veuillez renseigner votre matricule ANCV Connect.');
-        return;
+      if (group.selection.vacafNumber.trim()) {
+        const vacafError = validateVacafNumber(group.selection.vacafNumber);
+        if (vacafError) {
+          setPaymentSubmitError(`${group.organizerName} : ${vacafError}`);
+          return;
+        }
       }
-      const ancvAmount = parseAncvConnectAmount(contact.ancvConnectAmount);
-      if (!Number.isFinite(ancvAmount) || ancvAmount <= 0) {
-        setPaymentSubmitError('Veuillez renseigner un montant ANCV Connect valide.');
-        return;
+      if (group.selection.paymentMode === 'CV_CONNECT') {
+        if (!settings.acceptsAncvConnect) {
+          setPaymentSubmitError(`L'organisme « ${group.organizerName} » n'accepte pas ANCV Connect.`);
+          return;
+        }
+        if (!group.selection.ancvConnectMatricule.trim()) {
+          setPaymentSubmitError(`Veuillez renseigner votre matricule ANCV Connect pour « ${group.organizerName} ».`);
+          return;
+        }
+        const ancvMatriculeError = validateAncvConnectMatricule(group.selection.ancvConnectMatricule);
+        if (ancvMatriculeError) {
+          setPaymentSubmitError(`${group.organizerName} : ${ancvMatriculeError}`);
+          return;
+        }
+        const ancvAmount = parseAncvConnectAmount(group.selection.ancvConnectAmount);
+        if (!Number.isFinite(ancvAmount) || ancvAmount <= 0) {
+          setPaymentSubmitError(`Veuillez renseigner un montant ANCV Connect valide pour « ${group.organizerName} ».`);
+          return;
+        }
+        const orderPayableTotalCents = resolveAncvConnectOrderPayableTotalCents(
+          group.pricing.financeFamilyPayableTotalCents,
+          group.pricing.totalCents
+        );
+        const ancvAmountError = validateAncvConnectAmountAgainstOrderTotal(
+          group.selection.ancvConnectAmount,
+          orderPayableTotalCents
+        );
+        if (ancvAmountError) {
+          setPaymentSubmitError(`${group.organizerName} : ${ancvAmountError}`);
+          return;
+        }
       }
     }
 
@@ -316,31 +432,37 @@ export default function CheckoutRecapitulatifPage() {
         if (paymentRequiresOnlineStep) {
           router.push('/checkout/paiement');
         } else {
-          const simulatedMode =
-            requestKind === 'VACAF'
-              ? 'dev-bypass-requested-vacaf'
-              : requestKind === 'ANCV_CONNECT'
-                ? 'dev-bypass-requested-ancv-connect'
-                : financeRequiresQuote
-                  ? 'dev-bypass-partner-manual-quote'
-                  : isPartnerTotalCoverage
-                    ? 'dev-bypass-partner-total'
-                : contact.paymentMode === 'CV_PAPER'
-                  ? 'dev-bypass-cv-paper'
-                  : 'dev-bypass-deferred';
-          router.push(
-            `/checkout/confirmation/dev-order?mode=${simulatedMode}`
-          );
+          router.push('/checkout/confirmation/dev-order?mode=dev-bypass');
         }
         return;
       }
 
       const session = await createCheckoutSession(items);
-      const normalizedContact: CheckoutContact = {
+      const primarySelection = primaryOrganizerId ? getOrganizerSelection(contact, primaryOrganizerId) : null;
+      const normalizedSelections = Object.fromEntries(
+        organizerIds.map((organizerId) => {
+          const selection = getOrganizerSelection(contact, organizerId);
+          return [
+            organizerId,
+            {
+              ...selection,
+              vacafNumber: normalizeVacafNumberInput(selection.vacafNumber ?? ''),
+              ancvConnectMatricule: normalizeAncvConnectMatriculeInput(selection.ancvConnectMatricule ?? '')
+            }
+          ];
+        })
+      );
+      const normalizedContact: CheckoutContact = normalizeCheckoutContact({
         ...contact,
         email: contact.email.trim().toLowerCase(),
-        vacafNumber: (contact.vacafNumber ?? '').toUpperCase()
-      };
+        paymentMode: primarySelection?.paymentMode ?? contact.paymentMode,
+        vacafNumber: normalizeVacafNumberInput(primarySelection?.vacafNumber ?? contact.vacafNumber ?? ''),
+        ancvConnectMatricule: normalizeAncvConnectMatriculeInput(
+          primarySelection?.ancvConnectMatricule ?? contact.ancvConnectMatricule ?? ''
+        ),
+        ancvConnectAmount: primarySelection?.ancvConnectAmount ?? contact.ancvConnectAmount,
+        organizerSelections: normalizedSelections
+      });
 
       await validateCheckoutContact(session.checkoutId, normalizedContact);
 
@@ -372,21 +494,7 @@ export default function CheckoutRecapitulatifPage() {
         participants: participantPayload
       });
 
-      router.push(
-        `/checkout/confirmation/${response.orderId}?mode=${
-          requestKind === 'VACAF'
-            ? 'requested-vacaf'
-            : requestKind === 'ANCV_CONNECT'
-              ? 'requested-ancv-connect'
-              : financeRequiresQuote
-                ? 'partner-manual-quote'
-                : isPartnerTotalCoverage
-                  ? 'partner-total'
-              : contact.paymentMode === 'CV_PAPER'
-                ? 'cv-paper'
-                : 'deferred'
-        }`
-      );
+      router.push(response.confirmationPath);
     } catch (error) {
       setPaymentSubmitError(
         error instanceof Error ? error.message : 'Impossible de valider la commande.'
@@ -515,55 +623,30 @@ export default function CheckoutRecapitulatifPage() {
           <section className={SECTION_CARD_CLASS}>
             <h2 className="font-display text-xl font-bold text-slate-900 sm:text-2xl">Avantages complémentaires</h2>
             <div className="mt-5 space-y-5">
-              <div className="space-y-3">
-                <div>
-                  <label htmlFor="recap-cse-affiliation" className={`${COMPACT_LABEL_BOLD_CLASS} block`}>
-                    Code d&apos;affiliation à un CSE (facultatif)
-                  </label>
-                  <p
-                    id="recap-cse-affiliation-hint"
-                    className="mt-1.5 text-sm leading-relaxed text-slate-500"
-                  >
-                    Saisir votre code CSE, votre affiliation sera vérifiée.
-                  </p>
-                </div>
-                <input
-                  id="recap-cse-affiliation"
-                  type="text"
-                  value={contact.cseOrganization}
-                  onChange={(event) => patchContact({ cseOrganization: event.target.value })}
-                  className={INPUT_CLASS}
-                  aria-describedby="recap-cse-affiliation-hint"
-                />
-              </div>
-
-              {organizerCheckoutSettings?.isVacafApproved ? (
-                <div className="space-y-3 border-t border-slate-100 pt-5">
+              {showCseAffiliationField ? (
+                <div className="space-y-3">
                   <div>
-                    <p className={`${COMPACT_LABEL_BOLD_CLASS}`}>Aide CAF (VACAF / AVE)</p>
-                    <label htmlFor="recap-vacaf" className="mt-2 block text-sm font-medium text-slate-700">
-                      Matricule allocataire (facultatif)
+                    <label htmlFor="recap-cse-affiliation" className={`${COMPACT_LABEL_BOLD_CLASS} block`}>
+                      Code d&apos;affiliation à un CSE (facultatif)
                     </label>
                     <p
-                      id="recap-vacaf-hint"
+                      id="recap-cse-affiliation-hint"
                       className="mt-1.5 text-sm leading-relaxed text-slate-500"
                     >
-                      Si vous saisissez votre numéro allocataire, la commande partira en demande à traiter par
-                      l&apos;organisme du séjour pour contrôle AVE/VACAF.
+                      Saisir votre code CSE, votre affiliation sera vérifiée.
                     </p>
                   </div>
                   <input
-                    id="recap-vacaf"
+                    id="recap-cse-affiliation"
                     type="text"
-                    value={contact.vacafNumber}
-                    onChange={(event) =>
-                      patchContact({ vacafNumber: event.target.value.toUpperCase() })
-                    }
+                    value={contact.cseOrganization}
+                    onChange={(event) => patchContact({ cseOrganization: event.target.value })}
                     className={INPUT_CLASS}
-                    aria-describedby="recap-vacaf-hint"
+                    aria-describedby="recap-cse-affiliation-hint"
                   />
                 </div>
               ) : null}
+
             </div>
           </section>
         ) : null}
@@ -571,129 +654,371 @@ export default function CheckoutRecapitulatifPage() {
         <section className={SECTION_CARD_CLASS}>
           <h2 className="font-display text-xl font-bold text-slate-900 sm:text-2xl">Mode de paiement</h2>
           <div className="mt-5 space-y-5">
-            {financeRequiresQuote ? (
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                Aucun paiement n&apos;est demandé à ce stade. Vous êtes en train d&apos;envoyer une demande de devis à votre partenaire.
+            {organizerGroups.length > 1 ? (
+              <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+                Votre panier contient des séjours provenant d&apos;organisateurs différents. ResaColo créera automatiquement une commande distincte par organisateur lors de la validation.
               </div>
-            ) : isPartnerTotalCoverage ? (
-              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-                Aucun paiement n&apos;est demandé lors de cette réservation : votre partenaire prendra en charge la totalité auprès de ResaColo.
-              </div>
-            ) : (
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                {availablePaymentModes.map((mode) => {
-                  const isActive = contact.paymentMode === mode.value;
-                  return (
-                    <label
-                      key={mode.value}
-                      className={`flex cursor-pointer items-start gap-3 rounded-[18px] border px-4 py-4 text-sm font-semibold transition ${
-                        isActive
-                          ? 'border-accent-400 bg-accent-50 text-accent-700'
-                          : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
-                      }`}
-                    >
-                      <span
-                        className={`mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded border-2 transition ${
-                          isActive
-                            ? 'border-accent-500 bg-accent-500 text-white'
-                            : 'border-slate-300 bg-white'
-                        }`}
-                        aria-hidden
-                      >
-                        {isActive ? <Check className="h-3 w-3 stroke-[3]" /> : null}
-                      </span>
-                      <input
-                        type="radio"
-                        name="recap-payment-mode"
-                        value={mode.value}
-                        checked={isActive}
-                        onChange={() =>
-                          patchContact(
-                            mode.value === 'CV_CONNECT'
-                              ? { paymentMode: mode.value }
-                              : {
-                                  paymentMode: mode.value,
-                                  ancvConnectMatricule: '',
-                                  ancvConnectAmount: ''
+            ) : null}
+            <div className="space-y-4">
+              {organizerGroups.map((group) => {
+                const wantsVacafAid = Boolean(wantsVacafAidByOrganizer[group.organizerId]);
+                const groupCgvUrl = organizerCgvUrls[group.organizerId] ?? '/cgv-organisateur';
+                const groupFamilyPayableCents =
+                  group.pricing.financeFamilyPayableTotalCents ?? group.pricing.totalCents;
+                const currencyFormatter = new Intl.NumberFormat('fr-FR', {
+                  style: 'currency',
+                  currency: 'EUR'
+                });
+
+                return (
+                  <div
+                    key={group.organizerId}
+                    className="rounded-[24px] border border-slate-200 bg-slate-50/70 px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.04)] sm:px-5"
+                  >
+                    <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          {organizerGroups.length > 1 ? 'Commande organisateur' : 'Organisateur'}
+                        </p>
+                        <h3 className="mt-1 font-display text-lg font-bold text-slate-900">{group.organizerName}</h3>
+                      </div>
+                      <div className="rounded-2xl border border-white/80 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm sm:min-w-[260px]">
+                        <div className="flex items-center justify-between gap-4">
+                          <span>Total estimé</span>
+                          <span className="font-semibold text-slate-900">
+                            {currencyFormatter.format(group.pricing.totalCents / 100)}
+                          </span>
+                        </div>
+                        {typeof group.pricing.financeFamilyPayableTotalCents === 'number' ? (
+                          <div className="mt-2 flex items-center justify-between gap-4 text-slate-600">
+                            <span>À régler par la famille</span>
+                            <span className="font-semibold text-slate-900">
+                              {currencyFormatter.format(groupFamilyPayableCents / 100)}
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="mt-2 flex items-center justify-between gap-4 text-slate-600">
+                            <span>Suite du parcours</span>
+                            <span className="font-semibold text-slate-900">Demande de devis</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="mt-4 space-y-4">
+                      {group.pricing.financeRequiresQuote ? (
+                        <div className="space-y-4">
+                          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                            Aucun paiement n&apos;est demandé à ce stade pour {group.organizerName}. Vous êtes en train d&apos;envoyer une demande de devis à votre partenaire.
+                            Vous pouvez toutefois préciser ici si vous comptez mobiliser VACAF, ANCV papier ou ANCV Connect.
+                          </div>
+                          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                            {group.displayedPaymentModes.map((mode) => {
+                              const isActive = group.selection.paymentMode === mode.value;
+                              return (
+                                <label
+                                  key={mode.value}
+                                  className={`flex cursor-pointer items-start gap-3 rounded-[18px] border px-4 py-4 text-sm font-semibold transition ${
+                                    isActive
+                                      ? 'border-accent-400 bg-accent-50 text-accent-700'
+                                      : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                                  }`}
+                                >
+                                  <span
+                                    className={`mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded border-2 transition ${
+                                      isActive
+                                        ? 'border-accent-500 bg-accent-500 text-white'
+                                        : 'border-slate-300 bg-white'
+                                    }`}
+                                    aria-hidden
+                                  >
+                                    {isActive ? <Check className="h-3 w-3 stroke-[3]" /> : null}
+                                  </span>
+                                  <input
+                                    type="radio"
+                                    name={`recap-payment-mode-${group.organizerId}`}
+                                    value={mode.value}
+                                    checked={isActive}
+                                    onChange={() =>
+                                      patchOrganizerPaymentSelection(
+                                        group.organizerId,
+                                        mode.value === 'CV_CONNECT'
+                                          ? { paymentMode: mode.value }
+                                          : {
+                                              paymentMode: mode.value,
+                                              ancvConnectMatricule: '',
+                                              ancvConnectAmount: ''
+                                            }
+                                      )
+                                    }
+                                    className="sr-only"
+                                  />
+                                  <span className="min-w-0 flex-1 leading-snug">{mode.label}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ) : group.isPartnerTotalCoverage ? (
+                        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+                          Aucun paiement n&apos;est demandé lors de cette réservation auprès de {group.organizerName} : votre partenaire prendra en charge la totalité auprès de ResaColo.
+                        </div>
+                      ) : (
+                        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                          {group.displayedPaymentModes.map((mode) => {
+                            const isActive = group.selection.paymentMode === mode.value;
+                            return (
+                              <label
+                                key={mode.value}
+                                className={`flex cursor-pointer items-start gap-3 rounded-[18px] border px-4 py-4 text-sm font-semibold transition ${
+                                  isActive
+                                    ? 'border-accent-400 bg-accent-50 text-accent-700'
+                                    : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                                }`}
+                              >
+                                <span
+                                  className={`mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded border-2 transition ${
+                                    isActive
+                                      ? 'border-accent-500 bg-accent-500 text-white'
+                                      : 'border-slate-300 bg-white'
+                                  }`}
+                                  aria-hidden
+                                >
+                                  {isActive ? <Check className="h-3 w-3 stroke-[3]" /> : null}
+                                </span>
+                                <input
+                                  type="radio"
+                                  name={`recap-payment-mode-${group.organizerId}`}
+                                  value={mode.value}
+                                  checked={isActive}
+                                  onChange={() =>
+                                    patchOrganizerPaymentSelection(
+                                      group.organizerId,
+                                      mode.value === 'CV_CONNECT'
+                                        ? { paymentMode: mode.value }
+                                        : {
+                                            paymentMode: mode.value,
+                                            ancvConnectMatricule: '',
+                                            ancvConnectAmount: ''
+                                          }
+                                    )
+                                  }
+                                  className="sr-only"
+                                />
+                                <span className="min-w-0 flex-1 leading-snug">{mode.label}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {group.hasAidSelectionOptions ? (
+                        <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm text-slate-700">
+                          <p className="font-semibold text-slate-900">Aides ou règlements complémentaires</p>
+                          <p className="mt-1.5 leading-relaxed text-slate-600">
+                            Ces options seront transmises uniquement à {group.organizerName}. Le solde éventuel sera à régler par carte bancaire le cas échéant.
+                          </p>
+                          <div className="mt-4 grid gap-3 md:grid-cols-3">
+                            {group.settings?.acceptsAncvPaper ? (
+                              <label className="flex items-start gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                                <input
+                                  type="checkbox"
+                                  checked={group.selection.paymentMode === 'CV_PAPER'}
+                                  onChange={(event) =>
+                                    patchOrganizerPaymentSelection(
+                                      group.organizerId,
+                                      event.target.checked
+                                        ? {
+                                            paymentMode: 'CV_PAPER',
+                                            ancvConnectMatricule: '',
+                                            ancvConnectAmount: ''
+                                          }
+                                        : {
+                                            paymentMode: group.pricing.financeRequiresQuote ? 'DEFERRED' : 'FULL'
+                                          }
+                                    )
+                                  }
+                                  className="mt-0.5 h-4 w-4 rounded border-slate-300"
+                                />
+                                <span className="font-medium text-slate-700">ANCV papier</span>
+                              </label>
+                            ) : null}
+                            {group.settings?.acceptsAncvConnect ? (
+                              <label className="flex items-start gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                                <input
+                                  type="checkbox"
+                                  checked={group.selection.paymentMode === 'CV_CONNECT'}
+                                  onChange={(event) =>
+                                    patchOrganizerPaymentSelection(
+                                      group.organizerId,
+                                      event.target.checked
+                                        ? { paymentMode: 'CV_CONNECT' }
+                                        : {
+                                            paymentMode: group.pricing.financeRequiresQuote ? 'DEFERRED' : 'FULL',
+                                            ancvConnectMatricule: '',
+                                            ancvConnectAmount: ''
+                                          }
+                                    )
+                                  }
+                                  className="mt-0.5 h-4 w-4 rounded border-slate-300"
+                                />
+                                <span className="font-medium text-slate-700">ANCV Connect</span>
+                              </label>
+                            ) : null}
+                            {group.settings?.isVacafApproved ? (
+                              <label className="flex items-start gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                                <input
+                                  type="checkbox"
+                                  checked={wantsVacafAid}
+                                  onChange={(event) => {
+                                    setWantsVacafAidForOrganizer(group.organizerId, event.target.checked);
+                                    if (!event.target.checked) {
+                                      patchOrganizerPaymentSelection(group.organizerId, { vacafNumber: '' });
+                                    }
+                                  }}
+                                  className="mt-0.5 h-4 w-4 rounded border-slate-300"
+                                />
+                                <span className="font-medium text-slate-700">VACAF / AVE</span>
+                              </label>
+                            ) : null}
+                          </div>
+
+                          {group.settings?.isVacafApproved && wantsVacafAid ? (
+                            <div className="mt-4">
+                              <label
+                                htmlFor={`recap-vacaf-${group.organizerId}`}
+                                className="block text-sm font-medium text-slate-700"
+                              >
+                                Matricule allocataire
+                              </label>
+                              <p
+                                id={`recap-vacaf-hint-${group.organizerId}`}
+                                className="mt-1.5 text-sm leading-relaxed text-slate-500"
+                              >
+                                Format attendu : 7 chiffres, éventuellement une lettre à la fin (ex. 1234567 ou 1234567A).
+                              </p>
+                              <input
+                                id={`recap-vacaf-${group.organizerId}`}
+                                type="text"
+                                inputMode="numeric"
+                                autoComplete="off"
+                                maxLength={8}
+                                value={group.selection.vacafNumber}
+                                onChange={(event) =>
+                                  patchOrganizerPaymentSelection(group.organizerId, {
+                                    vacafNumber: normalizeVacafNumberInput(event.target.value)
+                                  })
                                 }
-                          )
-                        }
-                        className="sr-only"
-                      />
-                      <span className="min-w-0 flex-1 leading-snug">{mode.label}</span>
-                    </label>
-                  );
-                })}
-              </div>
-            )}
+                                className={INPUT_CLASS}
+                                placeholder="1234567A"
+                                aria-describedby={`recap-vacaf-hint-${group.organizerId}`}
+                              />
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
 
-            {organizerCheckoutSettings && !isPartnerTotalCoverage ? (
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-                Moyens acceptés par l&apos;organisme :
-                {' '}
-                {[
-                  organizerCheckoutSettings.acceptsAncvPaper ? 'ANCV papier' : null,
-                  organizerCheckoutSettings.acceptsAncvConnect ? 'ANCV Connect' : null,
-                  organizerCheckoutSettings.isVacafApproved ? 'VACAF National' : null
-                ]
-                  .filter(Boolean)
-                  .join(' · ') || 'aucun mode spécifique'}
-                .
-              </div>
-            ) : null}
+                      {group.selection.paymentMode === 'CV_CONNECT' && !group.isPartnerTotalCoverage ? (
+                        <div className="grid gap-4 md:grid-cols-2">
+                          <div>
+                            <label
+                              htmlFor={`recap-ancv-matricule-${group.organizerId}`}
+                              className="block text-sm font-medium text-slate-700"
+                            >
+                              Matricule ANCV Connect *
+                            </label>
+                            <p
+                              id={`recap-ancv-matricule-hint-${group.organizerId}`}
+                              className="mt-1.5 text-sm leading-relaxed text-slate-500"
+                            >
+                              {ANCV_CONNECT_MATRICULE_HINT}
+                            </p>
+                            <input
+                              id={`recap-ancv-matricule-${group.organizerId}`}
+                              type="text"
+                              inputMode="numeric"
+                              autoComplete="off"
+                              maxLength={11}
+                              value={group.selection.ancvConnectMatricule}
+                              onChange={(event) =>
+                                patchOrganizerPaymentSelection(group.organizerId, {
+                                  ancvConnectMatricule: normalizeAncvConnectMatriculeInput(event.target.value)
+                                })
+                              }
+                              className={INPUT_CLASS}
+                              placeholder="10003377487"
+                              aria-describedby={`recap-ancv-matricule-hint-${group.organizerId}`}
+                              required
+                            />
+                          </div>
+                          <div>
+                            <label
+                              htmlFor={`recap-ancv-amount-${group.organizerId}`}
+                              className="block text-sm font-medium text-slate-700"
+                            >
+                              Montant souhaité en règlement (€) *
+                            </label>
+                            <p className="mt-1.5 text-sm leading-relaxed invisible" aria-hidden="true">
+                              {ANCV_CONNECT_MATRICULE_HINT}
+                            </p>
+                            <input
+                              id={`recap-ancv-amount-${group.organizerId}`}
+                              type="text"
+                              inputMode="decimal"
+                              value={group.selection.ancvConnectAmount}
+                              onChange={(event) =>
+                                patchOrganizerPaymentSelection(group.organizerId, {
+                                  ancvConnectAmount: event.target.value
+                                })
+                              }
+                              className={INPUT_CLASS}
+                              placeholder="Ex. : 150"
+                              required
+                            />
+                          </div>
+                        </div>
+                      ) : null}
 
-            {contact.paymentMode === 'CV_CONNECT' && !financeRequiresQuote && !isPartnerTotalCoverage ? (
-              <div className="grid gap-4 md:grid-cols-2">
-                <label className="block text-sm font-medium text-slate-700">
-                  Matricule ANCV Connect *
-                  <input
-                    type="text"
-                    value={contact.ancvConnectMatricule}
-                    onChange={(event) => patchContact({ ancvConnectMatricule: event.target.value })}
-                    className={INPUT_CLASS}
-                    placeholder="Ex. : 123456789"
-                    required
-                  />
-                </label>
-                <label className="block text-sm font-medium text-slate-700">
-                  Montant souhaité en règlement (€) *
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={contact.ancvConnectAmount}
-                    onChange={(event) => patchContact({ ancvConnectAmount: event.target.value })}
-                    className={INPUT_CLASS}
-                    placeholder="Ex. : 150"
-                    required
-                  />
-                </label>
-              </div>
-            ) : null}
+                      {group.requestKind ? (
+                        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                          {group.requestKind === 'VACAF'
+                            ? `Cette commande ne sera pas payée en ligne auprès de ${group.organizerName} : l'organisme devra vérifier vos droits VACAF/AVE et saisir le montant CAF applicable.`
+                            : `Cette commande ne sera pas payée en ligne auprès de ${group.organizerName} : l'organisme devra vous recontacter et saisir le montant reçu en ANCV Connect.`}
+                        </div>
+                      ) : null}
 
-            {requestKind ? (
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                {requestKind === 'VACAF'
-                  ? "Cette commande ne sera pas payée en ligne : l'organisme devra vérifier vos droits VACAF/AVE et saisir le montant CAF applicable."
-                  : "Cette commande ne sera pas payée en ligne : l'organisme devra vous recontacter et saisir le montant reçu en ANCV Connect."}
-              </div>
-            ) : null}
-            {financeMode === 'PERCENT' && typeof pricing?.financePercentValue === 'number' ? (
-              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-                Votre partenaire prend en charge {pricing.financePercentValue.toLocaleString('fr-FR', {
-                  minimumFractionDigits: 0,
-                  maximumFractionDigits: 2
-                })} % du tarif partenaire affiché.
-              </div>
-            ) : null}
-            {financeMode === 'FIXED' && typeof pricing?.financeFixedCents === 'number' ? (
-              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-                Votre partenaire prend en charge un montant fixe de{' '}
-                {new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(
-                  pricing.financeFixedCents / 100
-                )}{' '}
-                sur cette réservation.
-              </div>
-            ) : null}
+                      {financeMode === 'PERCENT' && typeof pricing?.financePercentValue === 'number' ? (
+                        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+                          Votre partenaire prend en charge {pricing.financePercentValue.toLocaleString('fr-FR', {
+                            minimumFractionDigits: 0,
+                            maximumFractionDigits: 2
+                          })} % du tarif partenaire affiché pour cette commande.
+                        </div>
+                      ) : null}
+                      {financeMode === 'FIXED' && group.pricing.financePartnerContributionTotalCents > 0 ? (
+                        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+                          Votre partenaire prend en charge un montant fixe de{' '}
+                          {currencyFormatter.format(group.pricing.financePartnerContributionTotalCents / 100)} sur cette commande.
+                        </div>
+                      ) : null}
+
+                      <p className="text-xs leading-relaxed text-slate-500">
+                        Conditions de vente de {group.organizerName} :{' '}
+                        <Link
+                          href={groupCgvUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-medium text-brand-500 underline"
+                        >
+                          consulter les CGV
+                        </Link>
+                        .
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
 
             <p className="text-sm leading-relaxed text-slate-600">
               Vos données personnelles seront utilisées pour traiter votre réservation, pour améliorer votre expérience
@@ -718,10 +1043,20 @@ export default function CheckoutRecapitulatifPage() {
                   className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-slate-300 sm:h-4 sm:w-4"
                 />
                 <span>
-                  J&apos;ai lu et j&apos;accepte les{' '}
-                  <Link href={organizerCgvUrl} target="_blank" rel="noopener noreferrer" className="text-brand-500">
-                    conditions générales
-                  </Link>{' '}
+                  J&apos;ai lu et j&apos;accepte les conditions générales des organisateurs concernés :{' '}
+                  {organizerGroups.map((group, index) => (
+                    <span key={group.organizerId}>
+                      {index > 0 ? ', ' : null}
+                      <Link
+                        href={organizerCgvUrls[group.organizerId] ?? '/cgv-organisateur'}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-brand-500"
+                      >
+                        {group.organizerName}
+                      </Link>
+                    </span>
+                  ))}{' '}
                   *
                 </span>
               </label>

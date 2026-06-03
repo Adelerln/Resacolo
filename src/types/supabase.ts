@@ -267,6 +267,8 @@ export type Database = {
         Row: {
           collectivity_id: string | null
           created_at: string
+          family_quotient: number | null
+          family_quotient_expires_on: string | null
           full_name: string | null
           phone: string | null
           user_id: string
@@ -274,6 +276,8 @@ export type Database = {
         Insert: {
           collectivity_id?: string | null
           created_at?: string
+          family_quotient?: number | null
+          family_quotient_expires_on?: string | null
           full_name?: string | null
           phone?: string | null
           user_id: string
@@ -281,6 +285,8 @@ export type Database = {
         Update: {
           collectivity_id?: string | null
           created_at?: string
+          family_quotient?: number | null
+          family_quotient_expires_on?: string | null
           full_name?: string | null
           phone?: string | null
           user_id?: string

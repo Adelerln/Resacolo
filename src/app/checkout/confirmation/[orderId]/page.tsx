@@ -12,7 +12,9 @@ import { isDevBypassCheckout } from '@/lib/checkout/dev-bypass';
 import { formatEuroFromCents } from '@/types/checkout';
 import {
   formatCheckoutConfirmationOrderStatus,
-  formatOrderReservationCode
+  formatOrderReservationCode,
+  resolveCheckoutConfirmationFollowUpMessage,
+  resolveCheckoutConfirmationSubtitle
 } from '@/lib/order-workflow';
 
 type OrderStatusResponse = {
@@ -20,6 +22,9 @@ type OrderStatusResponse = {
   status: string;
   paidAt: string | null;
   paymentStatus: string | null;
+  requestKind: string | null;
+  paymentModeLabel: string | null;
+  remainingBalanceCents: number;
   totalCents: number;
   currency: string;
   organizerContactEmail: string | null;
@@ -53,19 +58,39 @@ export default function CheckoutConfirmationPage() {
     isAncvConnectRequestMode ||
     isPartnerTotalMode ||
     isPartnerManualQuoteMode;
-  const displayedSubtitle = isVacafRequestMode
-    ? 'Votre demande a été transmise à l’organisme pour vérification VACAF/AVE.'
-    : isAncvConnectRequestMode
-      ? 'Votre demande a été transmise à l’organisme pour traitement ANCV Connect.'
-      : isPartnerManualQuoteMode
-        ? 'Votre demande de devis a été transmise à votre partenaire.'
-        : isPartnerTotalMode
-          ? 'Votre réservation est enregistrée sans paiement immédiat.'
-      : isCvPaperMode
-    ? 'Votre commande est enregistrée. Le règlement en ANCV papier sera finalisé hors ligne.'
-    : isDeferredMode
-      ? 'Votre commande est enregistrée. Le règlement différé sera finalisé ultérieurement.'
-      : 'Votre commande est en cours de traitement.';
+  const confirmationContext = useMemo(() => {
+    const requestKind = order?.requestKind ?? null;
+    const isVacafRequest = isVacafRequestMode || requestKind === 'VACAF';
+    const isAncvConnectRequest = isAncvConnectRequestMode || requestKind === 'ANCV_CONNECT';
+    const contextInput = {
+      orderStatus: order?.status ?? '',
+      paymentStatus: order?.paymentStatus ?? null,
+      requestKind,
+      paidAt: order?.paidAt ?? null,
+      isCvPaperMode,
+      isDeferredMode,
+      isVacafRequest,
+      isAncvConnectRequest,
+      isPartnerManualQuoteMode,
+      isPartnerTotalMode
+    };
+
+    return {
+      isVacafRequest,
+      isAncvConnectRequest,
+      subtitle: resolveCheckoutConfirmationSubtitle(contextInput),
+      followUpMessage: resolveCheckoutConfirmationFollowUpMessage(contextInput)
+    };
+  }, [
+    isAncvConnectRequestMode,
+    isCvPaperMode,
+    isDeferredMode,
+    isPartnerManualQuoteMode,
+    isPartnerTotalMode,
+    isVacafRequestMode,
+    order
+  ]);
+  const displayedSubtitle = confirmationContext.subtitle;
 
   useEffect(() => {
     if (!orderId) return;
@@ -109,6 +134,9 @@ export default function CheckoutConfirmationPage() {
         status: simulatedStatus,
         paidAt: simulatedPaidAt,
         paymentStatus: simulatedPaymentStatus,
+        requestKind: isVacafRequestMode ? 'VACAF' : isAncvConnectRequestMode ? 'ANCV_CONNECT' : null,
+        paymentModeLabel: null,
+        remainingBalanceCents: 0,
         totalCents: 0,
         currency: 'EUR',
         organizerContactEmail: null,
@@ -161,6 +189,9 @@ export default function CheckoutConfirmationPage() {
             status: isPartnerTotalMode ? 'PAID' : isPartnerManualQuoteMode ? 'REQUESTED' : 'REQUESTED',
             paidAt: isPartnerTotalMode ? new Date().toISOString() : null,
             paymentStatus: null,
+            requestKind: isVacafRequestMode ? 'VACAF' : isAncvConnectRequestMode ? 'ANCV_CONNECT' : null,
+            paymentModeLabel: null,
+            remainingBalanceCents: 0,
             totalCents: 0,
             currency: 'EUR',
             organizerContactEmail: null,
@@ -256,31 +287,25 @@ export default function CheckoutConfirmationPage() {
           </div>
           <div className="space-y-4">
             <p className="text-sm text-slate-600">
-              Statut commande :{' '}
+              Statut :{' '}
               <span className="font-semibold text-slate-900">
                 {formatCheckoutConfirmationOrderStatus(order.status, {
                   isPartnerTotalCoverage: isPartnerTotalMode
                 })}
               </span>
             </p>
-            <p className="text-sm text-slate-600">
-              Statut paiement :{' '}
-              <span className="font-semibold text-slate-900">
-                {isCvPaperMode
-                  ? 'En attente de règlement ANCV papier'
-                  : isDeferredMode
-                    ? 'Paiement différé'
-                    : isVacafRequestMode
-                      ? 'En attente de vérification VACAF/AVE'
-                      : isAncvConnectRequestMode
-                        ? 'En attente de contact organisme'
-                        : isPartnerManualQuoteMode
-                          ? 'En attente du devis partenaire'
-                          : isPartnerTotalMode
-                            ? 'Pris en charge par le partenaire'
-                    : order.paymentStatus ?? 'En attente'}
-              </span>
-            </p>
+            {order.paymentModeLabel ? (
+              <p className="text-sm text-slate-600">
+                Mode de paiement :{' '}
+                <span className="font-semibold text-slate-900">{order.paymentModeLabel}</span>
+              </p>
+            ) : null}
+            {order.remainingBalanceCents > 0 ? (
+              <p className="text-sm text-amber-700">
+                Solde à régler :{' '}
+                <span className="font-semibold">{formatEuroFromCents(order.remainingBalanceCents)}</span>
+              </p>
+            ) : null}
             <p className="text-sm text-slate-600">
               Total : <span className="font-semibold text-slate-900">{formatEuroFromCents(order.totalCents)}</span>
             </p>
@@ -290,58 +315,25 @@ export default function CheckoutConfirmationPage() {
               {isPartnerTotalMode ? 'Réservation validée' : 'Paiement validé'} le{' '}
               {new Date(order.paidAt).toLocaleString('fr-FR')}.
             </p>
-          ) : isVacafRequestMode ? (
-            <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5">
-              <p className="flex items-start gap-2 text-sm font-semibold text-amber-900">
-                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                <span>
-                  Votre demande est bien transmise. L&apos;organisme doit maintenant contrôler vos droits
-                  VACAF/AVE et saisir le montant CAF déduit.
-                </span>
-              </p>
-            </div>
-          ) : isAncvConnectRequestMode ? (
-            <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5">
-              <p className="flex items-start gap-2 text-sm font-semibold text-amber-900">
-                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                <span>
-                  Votre demande est bien transmise. L&apos;organisme vous recontactera pour finaliser le règlement
-                  ANCV Connect et saisir le montant reçu.
-                </span>
-              </p>
-            </div>
-          ) : isPartnerManualQuoteMode ? (
-            <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5">
-              <p className="flex items-start gap-2 text-sm font-semibold text-amber-900">
-                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                <span>
-                  Votre demande de devis est bien transmise. Votre partenaire doit maintenant préciser son montant de prise en charge avant validation finale.
-                </span>
-              </p>
-            </div>
-          ) : isPartnerTotalMode ? (
-            <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2.5">
-              <p className="flex items-start gap-2 text-sm font-semibold text-emerald-900">
-                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                <span>
-                  Votre réservation est bien enregistrée. Aucun règlement ne vous est demandé : votre partenaire réglera la totalité auprès de ResaColo.
-                </span>
-              </p>
-            </div>
-          ) : isCvPaperMode ? (
-            <p className="text-sm text-amber-700">
-              Votre commande est bien enregistrée. Le règlement en ANCV papier sera traité directement avec l&apos;organisateur.
-            </p>
-          ) : isDeferredMode ? (
-            <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5">
-              <p className="flex items-start gap-2 text-sm font-semibold text-amber-900">
-                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                <span>Votre commande est bien enregistrée. Le règlement est différé et sera finalisé ultérieurement.</span>
-              </p>
-            </div>
-          ) : (
-            <p className="text-sm text-amber-700">Le paiement n’est pas encore confirmé. Cette page se met à jour automatiquement.</p>
-          )}
+          ) : confirmationContext.followUpMessage ? (
+            confirmationContext.followUpMessage.tone === 'success' ? (
+              <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2.5">
+                <p className="flex items-start gap-2 text-sm font-semibold text-emerald-900">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                  <span>{confirmationContext.followUpMessage.message}</span>
+                </p>
+              </div>
+            ) : confirmationContext.followUpMessage.tone === 'warning' ? (
+              <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5">
+                <p className="flex items-start gap-2 text-sm font-semibold text-amber-900">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                  <span>{confirmationContext.followUpMessage.message}</span>
+                </p>
+              </div>
+            ) : (
+              <p className="text-sm text-amber-700">{confirmationContext.followUpMessage.message}</p>
+            )
+          ) : null}
           {mode === 'monetico-mock' ? (
             <p className="text-xs text-slate-500">Mode de test local : paiement Monetico mock simulé.</p>
           ) : null}

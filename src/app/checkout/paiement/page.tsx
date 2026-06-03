@@ -7,12 +7,8 @@ import { isDevBypassCheckout } from '@/lib/checkout/dev-bypass';
 import { CheckoutFrame } from '@/components/checkout/CheckoutFrame';
 import { useCart } from '@/context/CartContext';
 import { useCheckout } from '@/context/CheckoutContext';
-import { confirmPaymentManually, createPaymentIntent } from '@/lib/checkout/client';
-import type { CheckoutContact } from '@/types/checkout';
-
-function requiresOnlinePaymentStep(paymentMode: CheckoutContact['paymentMode']) {
-  return paymentMode !== 'CV_PAPER' && paymentMode !== 'DEFERRED';
-}
+import { confirmPaymentManually, createPaymentIntent, type CheckoutPaymentIntentResponse } from '@/lib/checkout/client';
+import { hasAnyOnlineOrganizerSelection } from '@/types/checkout';
 
 export default function CheckoutPaiementPage() {
   const router = useRouter();
@@ -20,7 +16,7 @@ export default function CheckoutPaiementPage() {
   const { hydrated, checkoutId, contact, participants, resetCheckout } = useCheckout();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const paymentRequiresOnlineStep = requiresOnlinePaymentStep(contact.paymentMode);
+  const paymentRequiresOnlineStep = hasAnyOnlineOrganizerSelection(contact);
 
   const isContactComplete = useMemo(() => {
     return Boolean(
@@ -94,35 +90,13 @@ export default function CheckoutPaiementPage() {
         return;
       }
 
-      let paymentData: {
-        orderId: string;
-        paymentId: string;
-        monetico?: {
-          mode: 'mock' | 'live';
-          paymentUrl: string;
-          formMethod: 'POST';
-          formFields: Record<string, string>;
-        };
-      } | null = null;
+      let paymentData: CheckoutPaymentIntentResponse | null = null;
 
       const cached = sessionStorage.getItem(cacheKey);
       if (cached) {
-        const parsed = JSON.parse(cached) as {
-          orderId?: string;
-          paymentId?: string;
-          monetico?: {
-            mode: 'mock' | 'live';
-            paymentUrl: string;
-            formMethod: 'POST';
-            formFields: Record<string, string>;
-          };
-        } | null;
-        if (parsed?.orderId && parsed?.paymentId) {
-          paymentData = {
-            orderId: parsed.orderId,
-            paymentId: parsed.paymentId,
-            monetico: parsed.monetico
-          };
+        const parsed = JSON.parse(cached) as CheckoutPaymentIntentResponse | null;
+        if (parsed?.orderId && parsed?.paymentId && Array.isArray(parsed.payments)) {
+          paymentData = parsed;
         } else {
           sessionStorage.removeItem(cacheKey);
         }
@@ -162,7 +136,7 @@ export default function CheckoutPaiementPage() {
           })
         });
 
-        paymentData = { orderId: response.orderId, paymentId: response.paymentId, monetico: response.monetico };
+        paymentData = response;
         sessionStorage.setItem(cacheKey, JSON.stringify(response));
 
         if (response.monetico.mode === 'live') {
@@ -184,14 +158,18 @@ export default function CheckoutPaiementPage() {
 
       await confirmPaymentManually({
         checkoutId,
-        orderId: paymentData.orderId,
-        paymentId: paymentData.paymentId
+        payments: paymentData.payments.map((payment) => ({
+          orderId: payment.orderId,
+          paymentId: payment.paymentId
+        }))
       });
 
       sessionStorage.removeItem(cacheKey);
       clearCart();
       resetCheckout();
-      router.push(`/checkout/confirmation/${paymentData.orderId}?mode=monetico-mock`);
+      router.push(
+        `${paymentData.confirmationPath}${paymentData.confirmationPath.includes('?') ? '&' : '?'}mode=monetico-mock`
+      );
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Le paiement a échoué.');
     } finally {

@@ -6,6 +6,7 @@ import { getStays, getStayCanonicalPath, resolveStayBySlug } from '@/lib/stays';
 import { buildStaySeoKeywords, buildStaySeoMetaDescription, buildStaySeoTitle } from '@/lib/stay-seo';
 import { StayDetailView } from '@/components/sejours/StayDetailView';
 import { getCurrentUser } from '@/lib/auth/session';
+import { applyCsePricingToStay, readUserCsePricingContext } from '@/lib/cse-pricing';
 import { applyPartnerDiscountPricingToStay, readUserPartnerPricingContext } from '@/lib/stay-partner-pricing';
 
 interface StayDetailPageProps {
@@ -209,9 +210,16 @@ export default async function StayDetailPage({ params }: StayDetailPageProps) {
   }
 
   const session = await getCurrentUser();
-  const partnerPricingContext =
-    session?.isClient && session.userId ? await readUserPartnerPricingContext(session.userId) : null;
-  const stay = partnerPricingContext ? applyPartnerDiscountPricingToStay(resolved.stay, partnerPricingContext) : resolved.stay;
+  const userId = session?.isClient && session.userId ? session.userId : null;
+  const [partnerPricingContext, csePricingContext] = userId
+    ? await Promise.all([readUserPartnerPricingContext(userId), readUserCsePricingContext(userId)])
+    : [null, null];
+  let stay = partnerPricingContext
+    ? applyPartnerDiscountPricingToStay(resolved.stay, partnerPricingContext)
+    : resolved.stay;
+  if (csePricingContext) {
+    stay = applyCsePricingToStay(stay, csePricingContext);
+  }
   const productJsonLd = serializeJsonLd(buildStayProductJsonLd(stay));
   const breadcrumbJsonLd = serializeJsonLd(buildStayBreadcrumbJsonLd(stay));
 

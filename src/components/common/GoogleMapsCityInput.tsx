@@ -1,6 +1,12 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import {
+  parseBanMunicipalitySelection,
+  type CityAddressSelection
+} from '@/lib/ban-address';
+
+export type { CityAddressSelection };
 
 type GoogleMapsCityInputProps = {
   name: string;
@@ -9,6 +15,8 @@ type GoogleMapsCityInputProps = {
   /** Mode contrôlé (ex. relecture de brouillon sans submit HTML natif). */
   value?: string;
   onValueChange?: (next: string) => void;
+  /** Remplit code postal, département, région et pays après sélection dans la liste. */
+  onCitySelect?: (selection: CityAddressSelection) => void;
   /** Affiche une ligne d’aide sur l’API des communes (désactivé par défaut). */
   showApiHint?: boolean;
   required?: boolean;
@@ -31,21 +39,17 @@ type AddressApiResponse = {
   features?: AddressApiFeature[];
 };
 
-type Suggestion = {
-  city: string;
+type Suggestion = CityAddressSelection & {
   subtitle: string;
 };
 
 function buildSuggestion(feature: AddressApiFeature): Suggestion | null {
-  const properties = feature.properties;
-  if (!properties) return null;
+  const selection = parseBanMunicipalitySelection(feature.properties);
+  if (!selection) return null;
 
-  const city = properties.city?.trim() || properties.name?.trim() || properties.label?.split(',')[0]?.trim();
-  if (!city) return null;
-
-  const subtitleParts = [properties.postcode, properties.context].filter(Boolean);
+  const subtitleParts = [selection.postalCode, feature.properties?.context].filter(Boolean);
   return {
-    city,
+    ...selection,
     subtitle: subtitleParts.join(' - ')
   };
 }
@@ -56,6 +60,7 @@ export default function GoogleMapsCityInput({
   defaultValue = '',
   value: controlledValue,
   onValueChange,
+  onCitySelect,
   required = false,
   className,
   inputClassName
@@ -209,6 +214,7 @@ export default function GoogleMapsCityInput({
                     onClick={() => {
                       skipNextLookupRef.current = true;
                       commitValue(suggestion.city);
+                      onCitySelect?.(suggestion);
                       setSuggestions([]);
                       setIsOpen(false);
                     }}

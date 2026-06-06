@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   normalizeAccommodationAddress,
+  resolveAccommodationLocationMode,
   validateAndParseAccommodationCenterCoordinates
 } from '@/lib/accommodation-location';
 import { repairAccommodationImportLocation } from '@/lib/french-department-codes';
@@ -1022,6 +1023,8 @@ function parseAccommodation(
   departmentCode: string | null;
   regionText: string | null;
   country: string | null;
+  locationMode: string | null;
+  itinerantZone: string | null;
   centerLatitude: number | null;
   centerLongitude: number | null;
 } | null {
@@ -1110,6 +1113,19 @@ function parseAccommodation(
   if (locationModeNorm === 'france' && !normalizedAddress.country) {
     normalizedAddress.country = 'France';
   }
+  const locationMode = resolveAccommodationLocationMode({
+    accommodationType,
+    locationMode: locationModeNorm,
+    country: normalizedAddress.country,
+    city: normalizedAddress.city,
+    addressText: normalizedAddress.addressText
+  });
+  const itinerantZone =
+    locationMode === 'itinerant'
+      ? sanitizeAccommodationText(String(object.itinerant_zone ?? normalizedAddress.regionText ?? ''), {
+          maxLength: 220
+        })
+      : null;
   const resolvedName = buildAccommodationName({
     title,
     description: descriptionText,
@@ -1143,6 +1159,8 @@ function parseAccommodation(
     departmentCode: normalizedAddress.departmentCode,
     regionText: normalizedAddress.regionText,
     country: normalizedAddress.country,
+    locationMode,
+    itinerantZone,
     centerLatitude: centerCoordinates.error ? null : centerCoordinates.value.centerLatitude,
     centerLongitude: centerCoordinates.error ? null : centerCoordinates.value.centerLongitude
   };
@@ -1888,6 +1906,8 @@ async function syncAccommodation(
     departmentCode: string | null;
     regionText: string | null;
     country: string | null;
+    locationMode: string | null;
+    itinerantZone: string | null;
     centerLatitude: number | null;
     centerLongitude: number | null;
   } | null
@@ -1965,6 +1985,8 @@ async function syncAccommodation(
       department_code: parsedAccommodation.departmentCode,
       region_text: parsedAccommodation.regionText,
       country: parsedAccommodation.country,
+      location_mode: parsedAccommodation.locationMode,
+      itinerant_zone: parsedAccommodation.itinerantZone,
       center_latitude: parsedAccommodation.centerLatitude,
       center_longitude: parsedAccommodation.centerLongitude,
       source_url: draft.source_url,
@@ -2009,6 +2031,8 @@ async function syncAccommodation(
       department_code: parsedAccommodation.departmentCode,
       region_text: parsedAccommodation.regionText,
       country: parsedAccommodation.country,
+      location_mode: parsedAccommodation.locationMode,
+      itinerant_zone: parsedAccommodation.itinerantZone,
       center_latitude: parsedAccommodation.centerLatitude,
       center_longitude: parsedAccommodation.centerLongitude,
       ai_extracted_data: extractedData,
@@ -2098,6 +2122,8 @@ export async function syncStayDraftPreviewAccommodation(
       department_code: parsed.departmentCode,
       region_text: parsed.regionText,
       country: parsed.country,
+      location_mode: parsed.locationMode,
+      itinerant_zone: parsed.itinerantZone,
       center_latitude: parsed.centerLatitude,
       center_longitude: parsed.centerLongitude,
       source_url: draft.source_url,
@@ -2138,6 +2164,8 @@ export async function syncStayDraftPreviewAccommodation(
       department_code: parsed.departmentCode,
       region_text: parsed.regionText,
       country: parsed.country,
+      location_mode: parsed.locationMode,
+      itinerant_zone: parsed.itinerantZone,
       center_latitude: parsed.centerLatitude,
       center_longitude: parsed.centerLongitude,
       ai_extracted_data: extractedData,

@@ -16,6 +16,7 @@ import {
   ensureParticipantsForCart,
   getDefaultParticipant,
   normalizeCheckoutContact,
+  normalizeCheckoutParticipant,
   type CheckoutContact,
   type CheckoutParticipant,
   type CheckoutState
@@ -58,7 +59,14 @@ function loadCheckoutState(): CheckoutState | null {
       checkoutId: typeof parsed.checkoutId === 'string' ? parsed.checkoutId : createCheckoutId(),
       contact: normalizeCheckoutContact(parsed.contact ?? {}),
       participants:
-        parsed.participants && typeof parsed.participants === 'object' ? parsed.participants : {}
+        parsed.participants && typeof parsed.participants === 'object'
+          ? Object.fromEntries(
+              Object.entries(parsed.participants).map(([cartItemId, participant]) => [
+                cartItemId,
+                normalizeCheckoutParticipant(participant, cartItemId)
+              ])
+            )
+          : {}
     };
   } catch {
     return null;

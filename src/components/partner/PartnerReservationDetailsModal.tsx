@@ -119,9 +119,9 @@ export function PartnerReservationDetailsModal({ reservation }: { reservation: P
               </button>
             </div>
 
-            <div className="overflow-y-auto px-6 pb-6 pt-2">
+            <div className="min-w-0 overflow-x-hidden overflow-y-auto px-6 pb-6 pt-2">
               <div
-                className={`mb-4 rounded-xl px-4 py-3 ${
+                className={`mb-4 min-w-0 rounded-xl px-4 py-3 ${
                   reservation.pendingActions.length > 0
                     ? 'border border-amber-200 bg-amber-50'
                     : 'border border-emerald-200 bg-emerald-50'
@@ -137,8 +137,12 @@ export function PartnerReservationDetailsModal({ reservation }: { reservation: P
                 {reservation.pendingActions.length > 0 ? (
                   <ul className="mt-2 space-y-2">
                     {reservation.pendingActions.map((action, index) => (
-                      <li key={`${action.actorLabel}-${index}`} className="rounded-lg bg-white/70 px-3 py-2 text-sm text-slate-900">
-                        <span className="font-semibold">{action.actorLabel} :</span> {action.description}
+                      <li
+                        key={`${action.actorLabel}-${index}`}
+                        className="min-w-0 break-words rounded-lg bg-white/70 px-3 py-2 text-sm leading-relaxed text-slate-900"
+                      >
+                        <span className="font-semibold">{action.actorLabel} :</span>{' '}
+                        <span className="break-words">{action.description}</span>
                       </li>
                     ))}
                   </ul>

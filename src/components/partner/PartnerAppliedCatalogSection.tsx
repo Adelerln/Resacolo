@@ -1,5 +1,6 @@
 'use client';
 
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useMemo, useState } from 'react';
 
 const STAYS_PER_PAGE = 7;
@@ -98,9 +99,10 @@ export default function PartnerAppliedCatalogSection({
               type="button"
               disabled={safePageIndex <= 0}
               onClick={() => setPageIndex((current) => Math.max(0, current - 1))}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+              aria-label="Page précédente"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              Précédent
+              <ChevronLeft className="h-4 w-4" aria-hidden />
             </button>
             <span className="text-sm text-slate-600">
               Page {safePageIndex + 1} / {pageCount}
@@ -113,9 +115,10 @@ export default function PartnerAppliedCatalogSection({
               type="button"
               disabled={safePageIndex >= pageCount - 1}
               onClick={() => setPageIndex((current) => Math.min(pageCount - 1, current + 1))}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+              aria-label="Page suivante"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              Suivant
+              <ChevronRight className="h-4 w-4" aria-hidden />
             </button>
           </div>
         ) : null}

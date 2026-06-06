@@ -1,7 +1,7 @@
 'use client';
 
 import Image from 'next/image';
-import { useDeferredValue, useEffect, useMemo, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Compass, Filter, Search, X } from 'lucide-react';
 import { FavoriteToggleButton } from '@/components/favorites/FavoriteToggleButton';
@@ -178,6 +178,7 @@ function StayCard({ stay }: { stay: Stay }) {
         durationLabel={stay.duration || 'Durée à venir'}
         priceFromEuros={stay.priceFrom}
         partnerPriceFromEuros={stay.partnerPriceFrom ?? null}
+        csePriceFromEuros={stay.csePriceFrom ?? null}
         partnerDiscountPercent={stay.partnerDiscountPercent ?? null}
         partnerFinanceMode={stay.partnerFinanceMode ?? null}
         partnerFinancePercentValue={stay.partnerFinancePercentValue ?? null}
@@ -229,6 +230,7 @@ function FiltersPanel({
   }> = [
     { key: 'seasonIds', label: 'SAISON', options: options.seasons },
     { key: 'categories', label: 'TYPE DE SÉJOUR', options: options.categories },
+    { key: 'destinationTypes', label: 'TYPE DE DESTINATION', options: options.destinationTypes },
     { key: 'destinations', label: 'DESTINATIONS', options: options.destinations },
     { key: 'departureCities', label: 'VILLE DE DÉPART', options: options.departureCities },
     { key: 'paymentAids', label: 'AIDES AU PAIEMENT', options: options.paymentAids },
@@ -492,20 +494,7 @@ export function StayCatalogPage({
   );
   const runtimeFiltersKey = useMemo(() => stayCatalogFilterStateKey(runtimeFilters), [runtimeFilters]);
   const runtimeQuery = runtimeSearchParams.toString();
-
-  useEffect(() => {
-    let cancelled = false;
-    queueMicrotask(() => {
-      if (cancelled) return;
-      setFilters((previous) =>
-        stayCatalogFilterStateKey(previous) === runtimeFiltersKey ? previous : runtimeFilters
-      );
-      setSort((previous) => (previous === runtimeSort ? previous : runtimeSort));
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [runtimeFilters, runtimeFiltersKey, runtimeSort]);
+  const pendingUrlSyncKeyRef = useRef<string | null>(null);
 
   const urlFilters = useMemo(
     () => {
@@ -577,10 +566,28 @@ export function StayCatalogPage({
       params.set('sort', sort);
     }
     const nextQuery = params.toString();
-    if (nextQuery === runtimeQuery) return;
+    if (nextQuery === runtimeQuery) {
+      pendingUrlSyncKeyRef.current = null;
+      return;
+    }
 
+    pendingUrlSyncKeyRef.current = urlFiltersKey;
     router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
   }, [sort, urlFilters, urlFiltersKey, pathname, router, runtimeQuery]);
+
+  useEffect(() => {
+    if (pendingUrlSyncKeyRef.current != null) {
+      if (runtimeFiltersKey === pendingUrlSyncKeyRef.current) {
+        pendingUrlSyncKeyRef.current = null;
+      }
+      return;
+    }
+
+    setFilters((previous) =>
+      stayCatalogFilterStateKey(previous) === runtimeFiltersKey ? previous : runtimeFilters
+    );
+    setSort((previous) => (previous === runtimeSort ? previous : runtimeSort));
+  }, [runtimeFilters, runtimeFiltersKey, runtimeSort]);
 
   const filteredStays = useMemo(
     () => applyStayCatalogFilters(indexedStays, deferredFilters, deferredSearchQuery),

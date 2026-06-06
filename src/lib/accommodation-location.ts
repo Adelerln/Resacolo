@@ -1,4 +1,12 @@
+import { parseAccommodationType } from '@/components/organisme/accommodation-type';
+
 export type AccommodationLocationMode = 'france' | 'abroad' | 'itinerant';
+
+export type AccommodationStructuredLocation = AccommodationAddressInput & {
+  locationMode?: string | null;
+  itinerantZone?: string | null;
+  accommodationType?: string | null;
+};
 
 type AccommodationLocationInput = {
   locationMode?: string | null;
@@ -35,8 +43,48 @@ function cleanValue(value?: string | null) {
   return trimmed || null;
 }
 
-function normalizeMode(value?: string | null): AccommodationLocationMode | null {
+export function normalizeAccommodationLocationMode(
+  value?: string | null
+): AccommodationLocationMode | null {
   if (value === 'france' || value === 'abroad' || value === 'itinerant') return value;
+  return null;
+}
+
+function normalizeMode(value?: string | null): AccommodationLocationMode | null {
+  return normalizeAccommodationLocationMode(value);
+}
+
+export function isItinerantAccommodationType(value?: string | null) {
+  return parseAccommodationType(value).baseType === 'mixte';
+}
+
+export function resolveAccommodationLocationMode(input: {
+  accommodationType?: string | null;
+  locationMode?: string | null;
+  country?: string | null;
+  city?: string | null;
+  addressText?: string | null;
+  legacyLocationMode?: string | null;
+}): AccommodationLocationMode | null {
+  const explicitMode = normalizeMode(input.locationMode);
+  if (explicitMode) return explicitMode;
+
+  if (isItinerantAccommodationType(input.accommodationType)) {
+    return 'itinerant';
+  }
+
+  const legacyMode = normalizeMode(input.legacyLocationMode);
+  if (legacyMode) return legacyMode;
+
+  const country = cleanValue(input.country)?.toLowerCase();
+  if (country && country !== 'france') {
+    return 'abroad';
+  }
+
+  if (cleanValue(input.city) || cleanValue(input.addressText) || country === 'france') {
+    return 'france';
+  }
+
   return null;
 }
 
@@ -54,10 +102,26 @@ function encodeMetaPart(value?: string | null) {
   return encodeURIComponent(value?.trim() ?? '');
 }
 
+function isInseeDepartmentCode(value: string) {
+  const compact = value.trim().toUpperCase().replace(/\s+/g, '');
+  return /^\d{2,3}$/.test(compact) || /^2[AB]$/.test(compact);
+}
+
+export function formatFrenchPlaceName(value: string) {
+  const lower = value.toLocaleLowerCase('fr-FR');
+  return lower.replace(/(^|[\s\-'])(\p{L})/gu, (_, separator: string, letter: string) => {
+    return separator + letter.toLocaleUpperCase('fr-FR');
+  });
+}
+
 function normalizeDepartmentCode(value?: string | null) {
   const cleaned = cleanValue(value);
   if (!cleaned) return null;
-  return cleaned.toUpperCase().replace(/\s+/g, '');
+  const compact = cleaned.replace(/\s+/g, '');
+  if (isInseeDepartmentCode(compact)) {
+    return compact.toUpperCase();
+  }
+  return formatFrenchPlaceName(cleaned);
 }
 
 function normalizePostalCode(value?: string | null) {
@@ -69,8 +133,7 @@ function normalizePostalCode(value?: string | null) {
 function normalizeCity(value?: string | null) {
   const cleaned = cleanValue(value);
   if (!cleaned) return null;
-  const lowerCased = cleaned.toLocaleLowerCase('fr-FR');
-  return lowerCased.charAt(0).toLocaleUpperCase('fr-FR') + lowerCased.slice(1);
+  return formatFrenchPlaceName(cleaned);
 }
 
 function normalizeCountry(value?: string | null) {
@@ -188,7 +251,10 @@ export function buildAccommodationLocationLabel(input: AccommodationLocationInpu
 
   if (normalized.locationMode === 'itinerant') {
     if (!normalized.itinerantZone) return null;
-    return `Itinérant : ${normalized.itinerantZone}`;
+    if (normalized.locationCountry && normalized.locationCountry.toLowerCase() !== 'france') {
+      return `${normalized.itinerantZone} (${normalized.locationCountry})`;
+    }
+    return normalized.itinerantZone;
   }
 
   return null;
@@ -217,6 +283,48 @@ export function buildAccommodationAddressLabel(input: AccommodationAddressInput)
   return null;
 }
 
+export function buildAccommodationLocationDisplayLabel(input: AccommodationStructuredLocation) {
+  const normalizedAddress = normalizeAccommodationAddress(input);
+  const locationMode = resolveAccommodationLocationMode({
+    accommodationType: input.accommodationType,
+    locationMode: input.locationMode,
+    country: normalizedAddress.country,
+    city: normalizedAddress.city,
+    addressText: normalizedAddress.addressText
+  });
+  const itinerantZone = cleanValue(input.itinerantZone) ?? normalizedAddress.regionText;
+
+  if (locationMode === 'itinerant') {
+    return buildAccommodationLocationLabel({
+      locationMode: 'itinerant',
+      itinerantZone,
+      locationCountry: normalizedAddress.country
+    });
+  }
+
+  if (locationMode === 'france') {
+    return (
+      buildAccommodationLocationLabel({
+        locationMode: 'france',
+        locationCity: normalizedAddress.city,
+        locationDepartmentCode: normalizedAddress.departmentCode
+      }) ?? buildAccommodationAddressLabel(normalizedAddress)
+    );
+  }
+
+  if (locationMode === 'abroad') {
+    return (
+      buildAccommodationLocationLabel({
+        locationMode: 'abroad',
+        locationCity: normalizedAddress.city,
+        locationCountry: normalizedAddress.country
+      }) ?? buildAccommodationAddressLabel(normalizedAddress)
+    );
+  }
+
+  return buildAccommodationAddressLabel(normalizedAddress);
+}
+
 export function validateAccommodationLocation(input: AccommodationLocationInput) {
   const normalized = normalizeAccommodationLocation(input);
 
@@ -224,69 +332,171 @@ export function validateAccommodationLocation(input: AccommodationLocationInput)
 
   if (normalized.locationMode === 'france') {
     if (!normalized.locationCity || !normalized.locationDepartmentCode) {
-      return 'Renseigne la ville et le numéro de département pour un hébergement en France.';
+      return 'Renseigne la ville et le département pour un hébergement fixe en France.';
     }
     return null;
   }
 
   if (normalized.locationMode === 'abroad') {
     if (!normalized.locationCity || !normalized.locationCountry) {
-      return 'Renseigne la ville et le pays pour un hébergement à l’étranger.';
+      return 'Renseigne la ville et le pays pour un hébergement fixe à l’étranger.';
     }
     return null;
   }
 
   if (!normalized.itinerantZone) {
-    return 'Renseigne la zone du circuit pour un hébergement itinérant.';
+    return 'Renseigne le libellé du circuit pour un hébergement itinérant.';
+  }
+
+  if (!normalized.locationCountry) {
+    return 'Renseigne le pays du circuit (France ou pays étranger).';
   }
 
   return null;
 }
 
-export function validateAccommodationAddress(input: AccommodationAddressInput) {
-  const normalized = normalizeAccommodationAddress(input);
-  const hasAnyValue = Object.values(normalized).some(Boolean);
+export function readAccommodationAddressFromFormData(
+  formData: FormData,
+  options?: { locationMode?: AccommodationLocationMode | null }
+) {
+  const locationMode = options?.locationMode ?? null;
+  const hideStreetAddress = locationMode === 'itinerant';
 
-  if (!hasAnyValue) return null;
-  if (normalized.postalCode && !normalized.city) {
+  return {
+    addressText: hideStreetAddress ? '' : String(formData.get('address_text') ?? '').trim(),
+    postalCode: hideStreetAddress ? '' : String(formData.get('postal_code') ?? '').trim(),
+    city: String(formData.get('city') ?? '').trim(),
+    departmentCode:
+      locationMode === 'abroad' || locationMode === 'itinerant'
+        ? ''
+        : String(formData.get('department_code') ?? '').trim(),
+    regionText:
+      locationMode === 'itinerant'
+        ? ''
+        : String(formData.get('region_text') ?? '').trim(),
+    country: String(formData.get('country') ?? '').trim()
+  } satisfies AccommodationAddressInput;
+}
+
+export function readAccommodationLocationFromFormData(formData: FormData) {
+  const accommodationType = String(formData.get('accommodation_type') ?? '').trim();
+  const requestedMode = normalizeMode(String(formData.get('location_mode') ?? '').trim());
+  const locationMode =
+    isItinerantAccommodationType(accommodationType) ? 'itinerant' : requestedMode;
+  const address = readAccommodationAddressFromFormData(formData, { locationMode });
+
+  return {
+    accommodationType,
+    locationMode,
+    itinerantZone:
+      locationMode === 'itinerant' ? String(formData.get('itinerant_zone') ?? '').trim() : '',
+    address
+  };
+}
+
+export function validateAccommodationFormLocation(input: {
+  accommodationType?: string | null;
+  locationMode?: string | null;
+  itinerantZone?: string | null;
+  address?: AccommodationAddressInput;
+}) {
+  const accommodationType = String(input.accommodationType ?? '').trim();
+  const isItinerantType = isItinerantAccommodationType(accommodationType);
+  const locationMode = resolveAccommodationLocationMode({
+    accommodationType,
+    locationMode: input.locationMode
+  });
+
+  if (!locationMode) {
+    return 'Choisissez un mode de localisation.';
+  }
+
+  if (isItinerantType && locationMode !== 'itinerant') {
+    return 'Le type « Itinérant (circuit) » impose un circuit itinérant.';
+  }
+
+  if (!isItinerantType && locationMode === 'itinerant') {
+    return 'Seul le type « Itinérant (circuit) » peut être itinérant.';
+  }
+
+  const normalizedAddress = normalizeAccommodationAddress(input.address ?? {});
+  const locationError = validateAccommodationLocation({
+    locationMode,
+    locationCity: normalizedAddress.city,
+    locationDepartmentCode: normalizedAddress.departmentCode,
+    locationCountry: normalizedAddress.country,
+    itinerantZone: input.itinerantZone
+  });
+  if (locationError) return locationError;
+
+  if (locationMode === 'france' && normalizedAddress.postalCode && !normalizedAddress.city) {
     return 'Renseigne la ville quand un code postal est saisi.';
   }
-  if (normalized.departmentCode && !normalized.city && !normalized.regionText) {
-    return 'Renseigne une ville ou une région avec le département.';
-  }
+
   return null;
+}
+
+export function validateAccommodationAddress(
+  input: AccommodationAddressInput,
+  options?: { locationMode?: AccommodationLocationMode | null; accommodationType?: string | null }
+) {
+  return validateAccommodationFormLocation({
+    accommodationType: options?.accommodationType,
+    locationMode: options?.locationMode,
+    itinerantZone: null,
+    address: input
+  });
 }
 
 export function extractAccommodationLocationMeta(
   description?: string | null,
-  structuredAddress?: AccommodationAddressInput | null
+  structured?: AccommodationStructuredLocation | null
 ) {
   const raw = description ?? '';
   const match = raw.match(ACCOMMODATION_LOCATION_META_PATTERN);
-  const [mode = '', city = '', departmentCode = '', country = '', itinerantZone = ''] =
+  const [mode = '', city = '', departmentCode = '', country = '', legacyItinerantZone = ''] =
     match?.[1]?.split('|') ?? [];
 
-  const normalized = normalizeAccommodationLocation({
+  const legacyMeta = normalizeAccommodationLocation({
     locationMode: decodeMetaPart(mode),
     locationCity: decodeMetaPart(city),
     locationDepartmentCode: decodeMetaPart(departmentCode),
     locationCountry: decodeMetaPart(country),
-    itinerantZone: decodeMetaPart(itinerantZone)
+    itinerantZone: decodeMetaPart(legacyItinerantZone)
   });
-  const normalizedAddress = normalizeAccommodationAddress(structuredAddress ?? {});
-  const structuredLocationLabel = buildAccommodationAddressLabel(normalizedAddress);
-  const legacyLocationLabel = buildAccommodationLocationLabel(normalized);
+  const normalizedAddress = normalizeAccommodationAddress(structured ?? {});
+  const resolvedLocationMode = resolveAccommodationLocationMode({
+    accommodationType: structured?.accommodationType,
+    locationMode: structured?.locationMode,
+    country: normalizedAddress.country,
+    city: normalizedAddress.city,
+    addressText: normalizedAddress.addressText,
+    legacyLocationMode: legacyMeta.locationMode
+  });
+  const resolvedItinerantZone =
+    cleanValue(structured?.itinerantZone) ??
+    legacyMeta.itinerantZone ??
+    (resolvedLocationMode === 'itinerant' ? normalizedAddress.regionText : null);
 
   return {
     description: raw.replace(ACCOMMODATION_LOCATION_META_PATTERN, '').trim() || null,
-    ...normalized,
+    locationMode: resolvedLocationMode,
+    locationCity: legacyMeta.locationCity,
+    locationDepartmentCode: legacyMeta.locationDepartmentCode,
+    locationCountry: legacyMeta.locationCountry,
+    itinerantZone: resolvedItinerantZone,
     addressText: normalizedAddress.addressText,
     postalCode: normalizedAddress.postalCode,
     city: normalizedAddress.city,
     departmentCode: normalizedAddress.departmentCode,
     regionText: normalizedAddress.regionText,
     country: normalizedAddress.country,
-    locationLabel: structuredLocationLabel ?? legacyLocationLabel
+    locationLabel: buildAccommodationLocationDisplayLabel({
+      accommodationType: structured?.accommodationType,
+      locationMode: resolvedLocationMode,
+      itinerantZone: resolvedItinerantZone,
+      ...normalizedAddress
+    })
   };
 }
 

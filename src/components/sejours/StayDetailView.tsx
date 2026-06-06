@@ -108,13 +108,13 @@ function formatSessionLabel(session: StaySessionOption) {
   const end = new Date(session.endDate).toLocaleDateString('fr-FR');
   const status = session.status === 'FULL' ? ' (COMPLET)' : '';
   const price =
-    session.partnerDiscountedPrice != null
-      ? ` · ${formatPrice(session.partnerDiscountedPrice)}`
-      : session.familyCentsAfterAid != null
+    session.familyCentsAfterAid != null && session.cseEligible
       ? ` · ${formatPrice(session.familyCentsAfterAid / 100)} (après CSE)`
-      : session.price != null
-        ? ` · ${formatPrice(session.price)}`
-        : '';
+      : session.partnerDiscountedPrice != null
+        ? ` · ${formatPrice(session.partnerDiscountedPrice)}`
+        : session.price != null
+          ? ` · ${formatPrice(session.price)}`
+          : '';
   return `${start} - ${end}${status}${price}`;
 }
 
@@ -533,6 +533,10 @@ export function StayDetailView({ stay }: { stay: Stay }) {
   const insuranceOptions = useMemo(() => bookingOptions?.insuranceOptions ?? [], [bookingOptions]);
   const extraOptions = useMemo(() => bookingOptions?.extraOptions ?? [], [bookingOptions]);
   const hasSessions = availableSessions.length > 0;
+  const hasAccommodationMyMaps = useMemo(
+    () => (stay.accommodations ?? []).some((accommodation) => Boolean(accommodation.mapEmbedSrc)),
+    [stay.accommodations]
+  );
   const openSessions = useMemo(
     () => availableSessions.filter((sessionItem) => sessionItem.status === 'OPEN'),
     [availableSessions]
@@ -1419,21 +1423,23 @@ export function StayDetailView({ stay }: { stay: Stay }) {
                         />
                       </div>
                     </div>
-                    <div>
-                      <h3 className="text-lg font-semibold text-slate-900">Localisation du centre</h3>
-                      {!stay.centerLocations?.length && !stay.location ? (
-                        <p className="mt-2 text-base leading-relaxed text-slate-600">
-                          Aucune donnée de localisation disponible pour ce séjour.
-                        </p>
-                      ) : null}
-                      <div className="mt-4">
-                        <StayLocationMap
-                          location={stay.displayLocation || stay.location}
-                          centerLocations={stay.centerLocations}
-                          className="h-[380px] overflow-hidden rounded-xl border border-slate-200"
-                        />
+                    {!hasAccommodationMyMaps ? (
+                      <div>
+                        <h3 className="text-lg font-semibold text-slate-900">Localisation du centre</h3>
+                        {!stay.centerLocations?.length && !stay.location ? (
+                          <p className="mt-2 text-base leading-relaxed text-slate-600">
+                            Aucune donnée de localisation disponible pour ce séjour.
+                          </p>
+                        ) : null}
+                        <div className="mt-4">
+                          <StayLocationMap
+                            location={stay.displayLocation || stay.location}
+                            centerLocations={stay.centerLocations}
+                            className="h-[380px] overflow-hidden rounded-xl border border-slate-200"
+                          />
+                        </div>
                       </div>
-                    </div>
+                    ) : null}
                   </div>
                 </section>
               )}

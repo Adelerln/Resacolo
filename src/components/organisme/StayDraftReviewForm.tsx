@@ -2010,6 +2010,12 @@ export default function StayDraftReviewForm({
                 label="Ville"
                 value={destinationCity}
                 onValueChange={setDestinationCity}
+                onCitySelect={(selection) => {
+                  setDestinationCity(selection.city);
+                  if (selection.postalCode) setDestinationPostalCode(selection.postalCode);
+                  if (selection.department) setDestinationDepartmentCode(selection.department);
+                  if (selection.region) setDestinationRegion(selection.region);
+                }}
                 showApiHint
                 inputClassName={draftReviewControlClass({
                   required: false,

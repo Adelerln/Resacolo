@@ -1,6 +1,9 @@
 'use client';
 
+import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { PartnerFinanceModeValue } from '@/lib/partner-offers';
+import { normalizePartnerFinanceMode } from '@/lib/partner-offers';
 import type { PartnerCatalogRules } from '@/types/partner-catalog-rules';
 import type { OrganizerRuleOption } from '@/components/partner/OrganizerRulesCards';
 import type { PartnerCatalogStaySnapshot } from '@/lib/partner-catalog-rules';
@@ -11,12 +14,14 @@ import RangeField from '@/components/partner/RangeField';
 import StayTypeRulesCards from '@/components/partner/StayTypeRulesCards';
 import OrganizerRulesCards from '@/components/partner/OrganizerRulesCards';
 import CountryDropdownField from '@/components/partner/CountryDropdownField';
+import PartnerCatalogQfScaleCard from '@/components/partner/PartnerCatalogQfScaleCard';
 
 const CATALOG_FORM_ID = 'partner-catalog-form';
 
 type QfRow = PartnerCatalogRules['qfScale'][number];
 
 type PartnerCatalogRulesConfiguratorProps = {
+  financeMode: PartnerFinanceModeValue;
   draftRules: PartnerCatalogRules;
   stayTypeOptions: string[];
   seasonOptions: string[];
@@ -27,12 +32,6 @@ type PartnerCatalogRulesConfiguratorProps = {
   baseSessionCount: number;
   eligibleSessionCount: number;
   catalogSnapshot: PartnerCatalogStaySnapshot[];
-  impactSummary: {
-    avgAidLabel: string;
-    avgFamilyLabel: string;
-    zeroAidCount: number;
-    topExclusions: Array<{ reason: string; count: number }>;
-  };
   fieldClassName: string;
 };
 
@@ -40,8 +39,10 @@ function hasCaps(rules: PartnerCatalogRules) {
   const financial = rules.financialRules;
   return (
     financial.capPerStayCents != null ||
+    financial.capPerChildYearCents != null ||
     financial.capPerFamilyYearCents != null ||
     financial.capPerDayCents != null ||
+    financial.maxStaysPerChildYear != null ||
     financial.maxSubsidizedDaysYear != null ||
     financial.minFamilyRemainderPercent != null ||
     financial.minFamilyRemainderCents != null
@@ -65,15 +66,14 @@ function buildInitialCriteriaState(rules: PartnerCatalogRules) {
     countries:
       rules.blockingRules.countriesAllowed.length > 0 ||
       rules.blockingRules.countriesExcluded.length > 0,
-    transport: rules.blockingRules.transportIncludedRequired,
-    aidMode: true,
     caps: hasCaps(rules),
     qfRange: rules.financialRules.qfMin != null || rules.financialRules.qfMax != null,
-    qfScale: rules.financialRules.aidMode === 'QF_SCALE'
+    qfScale: rules.qfScale.length > 0
   };
 }
 
 export default function PartnerCatalogRulesConfigurator({
+  financeMode,
   draftRules,
   stayTypeOptions,
   seasonOptions,
@@ -84,12 +84,11 @@ export default function PartnerCatalogRulesConfigurator({
   baseSessionCount,
   eligibleSessionCount,
   catalogSnapshot,
-  impactSummary,
   fieldClassName
 }: PartnerCatalogRulesConfiguratorProps) {
   const [criteria, setCriteria] = useState(() => buildInitialCriteriaState(draftRules));
-  const [aidMode, setAidMode] = useState(draftRules.financialRules.aidMode);
   const [previewTick, setPreviewTick] = useState(0);
+  const showFinancialRules = normalizePartnerFinanceMode(financeMode) === 'MANUAL';
 
   const bumpPreview = useCallback(() => {
     window.requestAnimationFrame(() => {
@@ -126,11 +125,6 @@ export default function PartnerCatalogRulesConfigurator({
     const rules = parsePartnerCatalogRulesFromFormData(new FormData(form));
     return countEligiblePartnerCatalogSessions(rules, catalogSnapshot);
   }, [previewTick, catalogSnapshot, eligibleSessionCount]);
-
-  const qfScaleVisible = useMemo(
-    () => criteria.qfScale && aidMode === 'QF_SCALE',
-    [aidMode, criteria.qfScale]
-  );
 
   return (
     <div className="space-y-6">
@@ -326,26 +320,10 @@ export default function PartnerCatalogRulesConfigurator({
               Liste limitée aux pays présents sur des séjours publiés actifs.
             </p>
           </PartnerCatalogCriterionCard>
-
-          <PartnerCatalogCriterionCard
-            title="Transport inclus"
-            description="N'afficher que les séjours avec transport inclus."
-            enabled={criteria.transport}
-            onEnabledChange={(enabled) => setCriterion('transport', enabled)}
-          >
-            <label className="inline-flex items-center gap-2 text-sm text-slate-700">
-              <input
-                type="checkbox"
-                name="transport_included_required"
-                defaultChecked={draftRules.blockingRules.transportIncludedRequired}
-                className="h-4 w-4 rounded border-slate-300"
-              />
-              Transport inclus obligatoire
-            </label>
-          </PartnerCatalogCriterionCard>
         </div>
       </section>
 
+      {showFinancialRules ? (
       <section className="space-y-3">
         <div>
           <h2 className="text-lg font-semibold text-slate-900">Règles financières</h2>
@@ -355,55 +333,6 @@ export default function PartnerCatalogRulesConfigurator({
         </div>
 
         <div className="grid gap-3 xl:grid-cols-2">
-          <PartnerCatalogCriterionCard
-            title="Mode de prise en charge"
-            description="Pourcentage, forfait ou barème QF."
-            enabled={criteria.aidMode}
-            onEnabledChange={(enabled) => setCriterion('aidMode', enabled)}
-          >
-            <div className="space-y-4">
-              <label className="text-sm font-medium text-slate-700">
-                Type d&apos;aide
-                <select
-                  name="aid_mode"
-                  defaultValue={draftRules.financialRules.aidMode}
-                  onChange={(event) =>
-                    setAidMode(event.target.value as PartnerCatalogRules['financialRules']['aidMode'])
-                  }
-                  className={fieldClassName}
-                >
-                  <option value="PERCENT">Pourcentage</option>
-                  <option value="FIXED">Forfait</option>
-                  <option value="QF_SCALE">Barème QF</option>
-                </select>
-              </label>
-              {aidMode === 'PERCENT' ? (
-                <label className="text-sm font-medium text-slate-700">
-                  Taux d&apos;aide (%)
-                  <input
-                    name="aid_percent"
-                    defaultValue={draftRules.financialRules.percentValue ?? ''}
-                    className={fieldClassName}
-                  />
-                </label>
-              ) : null}
-              {aidMode === 'FIXED' ? (
-                <label className="text-sm font-medium text-slate-700">
-                  Forfait d&apos;aide (€)
-                  <input
-                    name="aid_fixed_eur"
-                    defaultValue={
-                      draftRules.financialRules.fixedCents != null
-                        ? (draftRules.financialRules.fixedCents / 100).toString()
-                        : ''
-                    }
-                    className={fieldClassName}
-                  />
-                </label>
-              ) : null}
-            </div>
-          </PartnerCatalogCriterionCard>
-
           <PartnerCatalogCriterionCard
             title="Plafonds et limites"
             description="Caps par séjour, par famille ou sur la période."
@@ -418,6 +347,18 @@ export default function PartnerCatalogRulesConfigurator({
                   defaultValue={
                     draftRules.financialRules.capPerStayCents != null
                       ? (draftRules.financialRules.capPerStayCents / 100).toString()
+                      : ''
+                  }
+                  className={fieldClassName}
+                />
+              </label>
+              <label className="text-sm font-medium text-slate-700">
+                Plafond / enfant / an (€)
+                <input
+                  name="cap_per_child_year_eur"
+                  defaultValue={
+                    draftRules.financialRules.capPerChildYearCents != null
+                      ? (draftRules.financialRules.capPerChildYearCents / 100).toString()
                       : ''
                   }
                   className={fieldClassName}
@@ -444,6 +385,14 @@ export default function PartnerCatalogRulesConfigurator({
                       ? (draftRules.financialRules.capPerDayCents / 100).toString()
                       : ''
                   }
+                  className={fieldClassName}
+                />
+              </label>
+              <label className="text-sm font-medium text-slate-700">
+                Nb max séjours / enfant / an
+                <input
+                  name="max_stays_per_child_year"
+                  defaultValue={draftRules.financialRules.maxStaysPerChildYear ?? ''}
                   className={fieldClassName}
                 />
               </label>
@@ -496,107 +445,32 @@ export default function PartnerCatalogRulesConfigurator({
             </div>
           </PartnerCatalogCriterionCard>
 
-          <PartnerCatalogCriterionCard
-            title="Barème QF"
-            description="Grille de prise en charge par tranche de QF."
-            enabled={criteria.qfScale}
-            onEnabledChange={(enabled) => setCriterion('qfScale', enabled)}
-          >
-            {qfScaleVisible ? (
-              <div className="overflow-x-auto rounded-xl border border-amber-200 bg-amber-50/60">
-                <table className="min-w-[860px] w-full text-left text-sm">
-                  <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-                    <tr>
-                      <th className="px-3 py-2">QF min</th>
-                      <th className="px-3 py-2">QF max</th>
-                      <th className="px-3 py-2">Mode</th>
-                      <th className="px-3 py-2">Taux %</th>
-                      <th className="px-3 py-2">Forfait €</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {Array.from({ length: Math.max(qfRows.length, 8) }).map((_, index) => {
-                      const row = qfRows[index];
-                      return (
-                        <tr key={`qf-row-${index}`} className="border-t border-slate-100">
-                          <td className="px-3 py-2">
-                            <input
-                              name={`qf_min_${index}`}
-                              defaultValue={row?.minQf ?? ''}
-                              className="w-full rounded border border-slate-200 px-2 py-1.5"
-                            />
-                          </td>
-                          <td className="px-3 py-2">
-                            <input
-                              name={`qf_max_${index}`}
-                              defaultValue={row?.maxQf ?? ''}
-                              className="w-full rounded border border-slate-200 px-2 py-1.5"
-                            />
-                          </td>
-                          <td className="px-3 py-2">
-                            <select
-                              name={`qf_mode_${index}`}
-                              defaultValue={row?.aidMode ?? 'PERCENT'}
-                              className="w-full rounded border border-slate-200 px-2 py-1.5"
-                            >
-                              <option value="PERCENT">Pourcentage</option>
-                              <option value="FIXED">Forfait</option>
-                            </select>
-                          </td>
-                          <td className="px-3 py-2">
-                            <input
-                              name={`qf_percent_${index}`}
-                              defaultValue={row?.percentValue ?? ''}
-                              className="w-full rounded border border-slate-200 px-2 py-1.5"
-                            />
-                          </td>
-                          <td className="px-3 py-2">
-                            <input
-                              name={`qf_fixed_eur_${index}`}
-                              defaultValue={
-                                row?.fixedCents != null ? (row.fixedCents / 100).toString() : ''
-                              }
-                              className="w-full rounded border border-slate-200 px-2 py-1.5"
-                            />
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <p className="text-sm text-amber-800">
-                Activez le mode « Barème QF » dans le critère « Mode de prise en charge » pour éditer la grille.
-              </p>
-            )}
-          </PartnerCatalogCriterionCard>
+          <div className="xl:col-span-2">
+            <PartnerCatalogQfScaleCard
+              enabled={criteria.qfScale}
+              onEnabledChange={(enabled) => setCriterion('qfScale', enabled)}
+              qfRows={qfRows}
+              onValuesChange={bumpPreview}
+            />
+          </div>
         </div>
       </section>
-
-      <section className="rounded-2xl border border-slate-200 bg-white p-5">
-        <h2 className="text-lg font-semibold text-slate-900">Aperçu impact catalogue</h2>
-        <div className="mt-4 space-y-2 text-sm text-slate-700">
-          <p>
-            Aide moyenne : <span className="font-semibold">{impactSummary.avgAidLabel}</span>
+      ) : (
+        <section className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+          <h2 className="text-lg font-semibold text-slate-900">Règles financières</h2>
+          <p className="mt-2 text-sm text-slate-600">
+            Cette section est disponible uniquement avec le mode de prise en charge « Calcul manuel ». Configurez-le
+            dans la page{' '}
+            <Link
+              href="/partenaire/financement"
+              className="font-semibold text-slate-900 underline decoration-slate-300 underline-offset-2 hover:decoration-slate-500"
+            >
+              Financement
+            </Link>
+            .
           </p>
-          <p>
-            Reste famille moyen : <span className="font-semibold">{impactSummary.avgFamilyLabel}</span>
-          </p>
-          <p>
-            Sessions avec aide à 0 : <span className="font-semibold">{impactSummary.zeroAidCount}</span>
-          </p>
-          {impactSummary.topExclusions.length > 0 ? (
-            impactSummary.topExclusions.map((entry) => (
-              <p key={entry.reason}>
-                <span className="font-semibold">{entry.count}</span> · {entry.reason}
-              </p>
-            ))
-          ) : (
-            <p className="text-slate-500">Aucun motif d&apos;exclusion détecté.</p>
-          )}
-        </div>
-      </section>
+        </section>
+      )}
     </div>
   );
 }

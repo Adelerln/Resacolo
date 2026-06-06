@@ -37,6 +37,7 @@ export type CheckoutContact = {
 
 export type CheckoutParticipant = {
   cartItemId: string;
+  childId: string | null;
   childFirstName: string;
   childLastName: string;
   childBirthdate: string;
@@ -208,11 +209,30 @@ export function hasAnyOnlineOrganizerSelection(
 export function getDefaultParticipant(cartItemId: string): CheckoutParticipant {
   return {
     cartItemId,
+    childId: null,
     childFirstName: '',
     childLastName: '',
     childBirthdate: '',
     childGender: '',
     additionalInfo: ''
+  };
+}
+
+export function normalizeCheckoutParticipant(
+  participant: Partial<CheckoutParticipant> | null | undefined,
+  cartItemId: string
+): CheckoutParticipant {
+  return {
+    cartItemId,
+    childId: typeof participant?.childId === 'string' && participant.childId.trim() ? participant.childId.trim() : null,
+    childFirstName: participant?.childFirstName ?? '',
+    childLastName: participant?.childLastName ?? '',
+    childBirthdate: participant?.childBirthdate ?? '',
+    childGender:
+      participant?.childGender === 'MASCULIN' || participant?.childGender === 'FEMININ'
+        ? participant.childGender
+        : '',
+    additionalInfo: participant?.additionalInfo ?? ''
   };
 }
 
@@ -239,7 +259,7 @@ export function ensureParticipantsForCart(
   const next: Record<string, CheckoutParticipant> = {};
 
   for (const item of items) {
-    next[item.id] = participants[item.id] ?? getDefaultParticipant(item.id);
+    next[item.id] = normalizeCheckoutParticipant(participants[item.id], item.id);
   }
 
   return next;

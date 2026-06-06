@@ -1,5 +1,5 @@
 import { getDefaultPartnerCatalogRules } from '@/lib/partner-catalog-rules';
-import type { PartnerCatalogRules } from '@/types/partner-catalog-rules';
+import type { PartnerCatalogRules, QfScaleRow } from '@/types/partner-catalog-rules';
 
 function checkboxName(formData: FormData, key: string) {
   return formData.get(key) === 'on';
@@ -8,6 +8,12 @@ function checkboxName(formData: FormData, key: string) {
 function parseOptionalInt(formData: FormData, key: string) {
   const parsed = Number.parseInt(String(formData.get(key) ?? '').trim(), 10);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parseOptionalMinInt(formData: FormData, key: string, minimum = 1) {
+  const parsed = parseOptionalInt(formData, key);
+  if (parsed == null || parsed < minimum) return null;
+  return parsed;
 }
 
 function parseOptionalFloat(formData: FormData, key: string) {
@@ -59,7 +65,7 @@ export function parsePartnerCatalogRulesFromFormData(formData: FormData): Partne
       organizersExcluded: parseArray(formData, 'organizers_excluded'),
       activitiesAllowed: parseArray(formData, 'activities_allowed'),
       activitiesExcluded: parseArray(formData, 'activities_excluded'),
-      transportIncludedRequired: checkboxName(formData, 'transport_included_required'),
+      transportIncludedRequired: false,
       accommodationRequired: checkboxName(formData, 'accommodation_required'),
       partnerOrganizersOnly: checkboxName(formData, 'partner_organizers_only'),
       acmDeclaredRequired: checkboxName(formData, 'acm_declared_required'),
@@ -76,11 +82,11 @@ export function parsePartnerCatalogRulesFromFormData(formData: FormData): Partne
       percentValue: parseOptionalFloat(formData, 'aid_percent'),
       fixedCents: parseOptionalCents(formData, 'aid_fixed_eur'),
       capPerStayCents: parseOptionalCents(formData, 'cap_per_stay_eur'),
-      capPerChildYearCents: null,
+      capPerChildYearCents: parseOptionalCents(formData, 'cap_per_child_year_eur'),
       capPerFamilyYearCents: parseOptionalCents(formData, 'cap_per_family_year_eur'),
       capPerDayCents: parseOptionalCents(formData, 'cap_per_day_eur'),
-      maxStaysPerChildYear: null,
-      maxSubsidizedDaysYear: parseOptionalInt(formData, 'max_subsidized_days_year'),
+      maxStaysPerChildYear: parseOptionalMinInt(formData, 'max_stays_per_child_year'),
+      maxSubsidizedDaysYear: parseOptionalMinInt(formData, 'max_subsidized_days_year'),
       minFamilyRemainderPercent: parseOptionalFloat(formData, 'min_family_remainder_percent'),
       minFamilyRemainderCents: parseOptionalCents(formData, 'min_family_remainder_eur'),
       qfMin: parseOptionalFloat(formData, 'qf_min'),
@@ -89,22 +95,10 @@ export function parsePartnerCatalogRulesFromFormData(formData: FormData): Partne
     qfScale: []
   };
 
-  const rowCount = Number.parseInt(String(formData.get('qf_row_count') ?? '8'), 10);
-  for (let index = 0; index < Math.max(0, rowCount); index += 1) {
-    const minQf = parseOptionalFloat(formData, `qf_min_${index}`);
-    const maxQf = parseOptionalFloat(formData, `qf_max_${index}`);
-    const aidMode = String(formData.get(`qf_mode_${index}`) ?? '').trim();
-    const percentValue = parseOptionalFloat(formData, `qf_percent_${index}`);
-    const fixedCents = parseOptionalCents(formData, `qf_fixed_eur_${index}`);
-    if (minQf == null || !aidMode) continue;
-    rules.qfScale.push({
-      id: `row-${index}`,
-      minQf,
-      maxQf,
-      aidMode: aidMode === 'FIXED' ? 'FIXED' : 'PERCENT',
-      percentValue,
-      fixedCents
-    });
+  rules.qfScale = parseQfScaleFromFormData(formData);
+
+  if (rules.qfScale.length > 0) {
+    rules.financialRules.aidMode = 'QF_SCALE';
   }
 
   if (rules.financialRules.aidMode === 'PERCENT') {
@@ -118,4 +112,31 @@ export function parsePartnerCatalogRulesFromFormData(formData: FormData): Partne
   }
 
   return rules;
+}
+
+export function parseQfScaleFromFormData(formData: FormData): QfScaleRow[] {
+  const rowCount = Number.parseInt(String(formData.get('qf_row_count') ?? '3'), 10);
+  const scaleModeRaw = String(formData.get('qf_scale_mode') ?? formData.get('qf_mode_0') ?? 'PERCENT').trim();
+  const scaleMode = scaleModeRaw === 'FIXED' ? 'FIXED' : 'PERCENT';
+  const rows: QfScaleRow[] = [];
+
+  for (let index = 0; index < Math.max(0, rowCount); index += 1) {
+    const minQf = parseOptionalFloat(formData, `qf_min_${index}`);
+    const maxQf = parseOptionalFloat(formData, `qf_max_${index}`);
+    const percentValue =
+      scaleMode === 'PERCENT' ? parseOptionalFloat(formData, `qf_percent_${index}`) : null;
+    const fixedCents =
+      scaleMode === 'FIXED' ? parseOptionalCents(formData, `qf_fixed_eur_${index}`) : null;
+    if (minQf == null) continue;
+    rows.push({
+      id: `row-${index}`,
+      minQf,
+      maxQf,
+      aidMode: scaleMode,
+      percentValue,
+      fixedCents
+    });
+  }
+
+  return rows;
 }

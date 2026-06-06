@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { PartnerBeneficiariesTable } from '@/components/partner/PartnerBeneficiariesTable';
@@ -133,6 +134,17 @@ export default async function BeneficiairesPage({
           Ayants-droit rattachés à {collectivity.name} via le code{' '}
           <span className="font-semibold text-slate-800">{collectivity.code}</span>.
         </p>
+        <p className="mt-2 text-sm text-slate-600">
+          La gestion des quotients familiaux est réservée aux partenaires dont la prise en charge se fait par calcul
+          manuel (cf.{' '}
+          <Link
+            href="/partenaire/financement"
+            className="font-semibold text-slate-900 underline decoration-slate-300 underline-offset-2 hover:decoration-slate-500"
+          >
+            Financement
+          </Link>
+          ).
+        </p>
       </div>
 
       {errorMessage ? (
@@ -150,13 +162,6 @@ export default async function BeneficiairesPage({
           {buildFeatureActivationMessage('Le quotient familial (QF) des ayants-droit')}
         </p>
       ) : null}
-      {!showFamilyQuotientFields ? (
-        <p className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-          Le quotient familial n&apos;est visible que lorsque le mode de financement du partenaire est défini sur
-          <span className="font-semibold text-slate-900"> Calcul manuel</span>.
-        </p>
-      ) : null}
-
       <section className="grid gap-4 md:grid-cols-2">
         <article className="rounded-2xl border border-slate-200 bg-white p-5">
           <p className="admin-kpi-label">Ayants-droit rattachés</p>

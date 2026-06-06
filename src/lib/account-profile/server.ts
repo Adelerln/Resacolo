@@ -23,6 +23,10 @@ import {
   computePartnerFinanceSplit,
   partnerHasMarqueBlancheAccess
 } from '@/lib/partner-offers';
+import {
+  CLIENT_CHILDREN_MISSING_ERROR,
+  listFamilyChildren
+} from '@/lib/account-children.server';
 
 type ClientProfileRow = Database['public']['Tables']['client_profiles']['Row'];
 type ClientProfileInsert = Database['public']['Tables']['client_profiles']['Insert'];
@@ -68,10 +72,6 @@ async function waitForLegacyClientsRetry() {
 
 function normalizeText(value: string | null | undefined) {
   return (value ?? '').trim();
-}
-
-function normalizeUpper(value: string | null | undefined) {
-  return normalizeText(value).toUpperCase();
 }
 
 function normalizeCollectivityCode(value: string | null | undefined) {
@@ -227,11 +227,14 @@ function parseChildrenJson(value: Json | null): FamilyProfileChild[] {
       const additionalInfo =
         typeof record.additionalInfo === 'string' ? record.additionalInfo.trim() : '';
       return {
+        id: `${firstName.toLowerCase()}:${lastName.toLowerCase()}:${birthdate}`,
         firstName,
         lastName,
         birthdate,
         gender,
-        additionalInfo
+        additionalInfo,
+        createdAt: null,
+        updatedAt: null
       };
     })
     .filter((item): item is FamilyProfileChild => item !== null);
@@ -247,7 +250,7 @@ function toChildrenJson(children: FamilyProfileChild[]): Json {
   }));
 }
 
-function mapRowToProfile(row: ClientProfileRow): FamilyProfile {
+function mapRowToProfile(row: ClientProfileRow, children: FamilyProfileChild[]): FamilyProfile {
   return {
     userId: row.user_id,
     billingFirstName: row.parent1_first_name,
@@ -280,7 +283,7 @@ function mapRowToProfile(row: ClientProfileRow): FamilyProfile {
     parent2AddressLine2: row.parent2_address_line2,
     parent2PostalCode: row.parent2_postal_code,
     parent2City: row.parent2_city,
-    children: parseChildrenJson(row.children_json),
+    children,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
@@ -1091,7 +1094,7 @@ async function readReservations(
   const ownerUserIds = await resolveFamilyReservationOwnerUserIds(userId);
 
   async function readOrdersForClientUserIds(clientUserIds: string[]) {
-    let { data, error } = await supabase
+    const { data, error } = await supabase
       .from('orders')
       .select('id,status,created_at,paid_at,partially_paid_at,cancellation_reason,collectivity_id,external_aid_cents,external_paid_cents')
       .in('client_user_id', clientUserIds)
@@ -1775,7 +1778,7 @@ async function upsertProfile(profile: FamilyProfile): Promise<FamilyProfile> {
       throw legacyClientsError;
     }
   }
-  return mapRowToProfile(data as ClientProfileRow);
+  return mapRowToProfile(data as ClientProfileRow, profile.children);
 }
 
 export async function getFamilyProfile(userId: string): Promise<FamilyProfile | null> {
@@ -1793,7 +1796,17 @@ export async function getFamilyProfile(userId: string): Promise<FamilyProfile | 
     throw new Error(`Impossible de lire le profil famille: ${error.message}`);
   }
   if (!data) return null;
-  return mapRowToProfile(data as ClientProfileRow);
+
+  let children = parseChildrenJson((data as ClientProfileRow).children_json);
+  try {
+    children = await listFamilyChildren(userId);
+  } catch (childrenError) {
+    if (!(childrenError instanceof Error) || childrenError.message !== CLIENT_CHILDREN_MISSING_ERROR) {
+      throw childrenError;
+    }
+  }
+
+  return mapRowToProfile(data as ClientProfileRow, children);
 }
 
 export async function getFamilyProfileSnapshot(input: {
@@ -1913,14 +1926,6 @@ export async function upsertFamilyProfileFromCheckout(input: {
     });
   const currentAffiliation = await readFamilyCseAffiliation(input.userId);
 
-  const children: FamilyProfileChild[] = input.participants.map((participant) => ({
-    firstName: normalizeText(participant.childFirstName),
-    lastName: normalizeText(participant.childLastName),
-    birthdate: normalizeText(participant.childBirthdate),
-    gender: participant.childGender === 'MASCULIN' || participant.childGender === 'FEMININ' ? participant.childGender : '',
-    additionalInfo: normalizeText(participant.additionalInfo)
-  }));
-
   const nextProfile: FamilyProfile = {
     ...existing,
     billingFirstName: normalizeText(input.contact.billingFirstName),
@@ -1942,8 +1947,7 @@ export async function upsertFamilyProfileFromCheckout(input: {
     vacafNumber: normalizeVacafNumberInput(input.contact.vacafNumber),
     paymentMode: input.contact.paymentMode,
     parent1Status: existing.parent1Status,
-    parent1StatusOther: existing.parent1StatusOther,
-    children
+    parent1StatusOther: existing.parent1StatusOther
   };
 
   return upsertProfile(nextProfile);

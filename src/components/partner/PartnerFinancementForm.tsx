@@ -67,14 +67,29 @@ export function PartnerFinancementForm({
           )}
           {mode === 'MANUAL' && (
             <>
-              Si le partenaire privilégie le calcul manuel, il devra renseigner manuellement sa prise en charge dans la page{' '}
+              En calcul manuel, la prise en charge est déterminée par le barème QF et le quotient familial de
+              chaque ayant-droit. Configurez d&apos;abord les règles dans{' '}
+              <Link
+                href="/partenaire/catalogue"
+                className="font-semibold text-emerald-800 underline-offset-2 hover:underline"
+              >
+                Catalogue
+              </Link>
+              , puis saisissez les QF dans{' '}
+              <Link
+                href="/partenaire/beneficiaires"
+                className="font-semibold text-emerald-800 underline-offset-2 hover:underline"
+              >
+                Bénéficiaires
+              </Link>
+              . Vous pouvez aussi ajuster une prise en charge ponctuelle depuis{' '}
               <Link
                 href="/partenaire/reservations"
                 className="font-semibold text-emerald-800 underline-offset-2 hover:underline"
               >
                 Réservations
-              </Link>{' '}
-              pour chaque ayant-droit.
+              </Link>
+              .
             </>
           )}
         </p>

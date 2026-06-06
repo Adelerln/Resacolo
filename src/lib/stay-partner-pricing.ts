@@ -28,11 +28,11 @@ export function computePartnerDiscountedPrice(price: number | null | undefined, 
 }
 
 export function getStayDisplayedPrice(stay: Pick<Stay, 'partnerPriceFrom' | 'csePriceFrom' | 'priceFrom'>) {
-  if (typeof stay.partnerPriceFrom === 'number' && Number.isFinite(stay.partnerPriceFrom)) {
-    return stay.partnerPriceFrom;
-  }
   if (typeof stay.csePriceFrom === 'number' && Number.isFinite(stay.csePriceFrom)) {
     return stay.csePriceFrom;
+  }
+  if (typeof stay.partnerPriceFrom === 'number' && Number.isFinite(stay.partnerPriceFrom)) {
+    return stay.partnerPriceFrom;
   }
   if (typeof stay.priceFrom === 'number' && Number.isFinite(stay.priceFrom)) {
     return stay.priceFrom;
@@ -44,11 +44,11 @@ export function getSessionDisplayedBasePrice(
   session: Pick<StaySessionOption, 'partnerDiscountedPrice' | 'familyCentsAfterAid' | 'price'> | null | undefined,
   stay: Pick<Stay, 'partnerPriceFrom' | 'csePriceFrom' | 'priceFrom'>
 ) {
-  if (session?.partnerDiscountedPrice != null && Number.isFinite(session.partnerDiscountedPrice)) {
-    return session.partnerDiscountedPrice;
-  }
   if (session?.familyCentsAfterAid != null && Number.isFinite(session.familyCentsAfterAid)) {
     return session.familyCentsAfterAid / 100;
+  }
+  if (session?.partnerDiscountedPrice != null && Number.isFinite(session.partnerDiscountedPrice)) {
+    return session.partnerDiscountedPrice;
   }
   if (session?.price != null && Number.isFinite(session.price)) {
     return session.price;

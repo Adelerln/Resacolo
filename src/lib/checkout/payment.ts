@@ -6,7 +6,6 @@ import type { CartItem } from '@/types/cart';
 import {
   getOrganizerSelection,
   type CheckoutContact,
-  type CheckoutOrganizerSelection,
   type CheckoutParticipant,
   type CheckoutPricing,
   type CheckoutPricingItem
@@ -72,6 +71,10 @@ const HOLD_MINUTES = 30;
 type CollectivityFinanceRow = Pick<
   Database['public']['Tables']['collectivities']['Row'],
   'id' | 'finance_mode' | 'finance_percent_value' | 'finance_fixed_cents'
+>;
+type ClientChildRow = Pick<
+  Database['public']['Tables']['client_children']['Row'],
+  'id' | 'user_id' | 'first_name' | 'last_name' | 'birthdate' | 'gender' | 'additional_info'
 >;
 
 const ORDER_WORKFLOW_COLUMNS = [
@@ -144,9 +147,49 @@ function validateParticipants(items: CartItem[], participants: CheckoutParticipa
     if (!participant) {
       throw new CheckoutValidationError(`Informations enfant manquantes pour « ${item.title} ».`);
     }
+    if (!participant.childId?.trim()) {
+      throw new CheckoutValidationError(`Sélection enfant manquante pour « ${item.title} ».`);
+    }
   }
 
   return byItemId;
+}
+
+async function readSelectedChildrenForCheckout(
+  clientUserId: string,
+  participants: CheckoutParticipant[]
+) {
+  const childIds = Array.from(
+    new Set(
+      participants
+        .map((participant) => participant.childId?.trim() ?? '')
+        .filter((value): value is string => value.length > 0)
+    )
+  );
+  if (childIds.length === 0) {
+    return new Map<string, ClientChildRow>();
+  }
+
+  const supabase = getServerSupabaseClient();
+  const { data, error } = await supabase
+    .from('client_children')
+    .select('id,user_id,first_name,last_name,birthdate,gender,additional_info')
+    .eq('user_id', clientUserId)
+    .in('id', childIds);
+
+  if (error) {
+    throw new Error(`Impossible de charger les enfants sélectionnés : ${error.message}`);
+  }
+
+  const rows = data ?? [];
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  for (const childId of childIds) {
+    if (!byId.has(childId)) {
+      throw new CheckoutValidationError("Un enfant sélectionné n'est plus disponible sur votre compte.");
+    }
+  }
+
+  return byId;
 }
 
 function createMoneticoMockTransactionId(checkoutId: string, paymentId: string) {
@@ -556,6 +599,7 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
     };
   }
 
+  const childById = await readSelectedChildrenForCheckout(clientUserId, input.participants);
   await createOrUpdateClientProfile(clientUserId, input.contact, collectivity?.collectivityId ?? null);
   const pricedItemsByOrganizer = new Map<string, CheckoutPricingItem[]>();
   for (const pricedItem of pricing.items) {
@@ -640,6 +684,10 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
       if (!participant) {
         throw new CheckoutValidationError('Participant manquant pour un article du panier.');
       }
+      const child = participant.childId ? childById.get(participant.childId) ?? null : null;
+      if (!child) {
+        throw new CheckoutValidationError('Enfant sélectionné introuvable pour un article du panier.');
+      }
 
       const { data: orderItem, error: orderItemError } = await supabase
         .from('order_items')
@@ -647,9 +695,10 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
           order_id: order.id,
           organizer_id: pricedItem.organizerId,
           session_id: pricedItem.sessionId,
-          child_first_name: participant.childFirstName,
-          child_last_name: participant.childLastName,
-          child_birthdate: participant.childBirthdate,
+          child_id: child.id,
+          child_first_name: child.first_name,
+          child_last_name: child.last_name,
+          child_birthdate: child.birthdate,
           insurance_option_id: pricedItem.insuranceOptionId,
           transport_option_id: pricedItem.transportOptionId,
           base_price_cents: pricedItem.basePriceCents,
@@ -675,7 +724,15 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
         orderItemId: orderItem.id,
         transportDisplayLine: pricedItem.transportDisplayLine ?? pricedItem.transportLabel ?? null
       });
-      organizerParticipants.push(participant);
+      organizerParticipants.push({
+        ...participant,
+        childId: child.id,
+        childFirstName: child.first_name,
+        childLastName: child.last_name,
+        childBirthdate: child.birthdate,
+        childGender: child.gender === 'MASCULIN' || child.gender === 'FEMININ' ? child.gender : '',
+        additionalInfo: child.additional_info
+      });
 
       if (pricedItem.extraOptionId && pricedItem.extraOptionLabel) {
         const { error: extraInsertError } = await supabase.from('order_item_extra_options').insert({

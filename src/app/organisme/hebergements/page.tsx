@@ -81,7 +81,7 @@ export default async function OrganizerAccommodationsPage({ searchParams }: Page
     supabase
       .from('accommodations')
       .select(
-        'id,name,accommodation_type,address_text,postal_code,city,department_code,region_text,country,description,bed_info,bathroom_info,catering_info,accessibility_info,status,updated_at,validated_at'
+        'id,name,accommodation_type,location_mode,itinerant_zone,address_text,postal_code,city,department_code,region_text,country,description,bed_info,bathroom_info,catering_info,accessibility_info,status,updated_at,validated_at'
       )
       .eq('organizer_id', selectedOrganizerId),
     supabase.from('stay_accommodations').select('accommodation_id,stay_id'),
@@ -111,6 +111,9 @@ export default async function OrganizerAccommodationsPage({ searchParams }: Page
   const accommodations = (accommodationsRaw ?? [])
     .map((accommodation) => {
       const locationMeta = extractAccommodationLocationMeta(accommodation.description, {
+        accommodationType: accommodation.accommodation_type,
+        locationMode: accommodation.location_mode,
+        itinerantZone: accommodation.itinerant_zone,
         addressText: accommodation.address_text,
         postalCode: accommodation.postal_code,
         city: accommodation.city,

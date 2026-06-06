@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { formatOrganizerStayTypeLabel } from '@/lib/organizer-profile-options';
 
 type StayTypeRulesCardsProps = {
   stayTypeOptions: string[];
@@ -13,29 +14,14 @@ type StayTypeRulesCardsProps = {
   onValuesChange?: () => void;
 };
 
+type StayTypeState = 'allowed' | 'excluded';
+
 function normalizeValue(value: string) {
   return value.trim().toLowerCase();
 }
 
 function withDisplayCaps(value: string) {
-  const accentMap: Record<string, string> = {
-    age: 'Âge',
-    activite: 'Activité',
-    activites: 'Activités',
-    aout: 'Août',
-    cote: 'Côte',
-    ete: 'Été',
-    ile: 'Île',
-    iles: 'Îles',
-    noel: 'Noël',
-    sejour: 'Séjour',
-    sejours: 'Séjours'
-  };
-  return value.replace(/\p{L}+/gu, (word) => {
-    const normalized = word.toLowerCase();
-    if (accentMap[normalized]) return accentMap[normalized];
-    return word.charAt(0).toUpperCase() + word.slice(1);
-  });
+  return formatOrganizerStayTypeLabel(value);
 }
 
 function normalizeAndSort(values: string[]) {
@@ -56,6 +42,19 @@ function toggleSetValue(currentValues: string[], option: string) {
     return currentValues.filter((item) => normalizeValue(item) !== key);
   }
   return [...currentValues, option];
+}
+
+function buildInitialStayTypeStates(
+  options: string[],
+  initialAllowed: string[]
+): Record<string, StayTypeState> {
+  const allowedKeys = new Set(initialAllowed.map(normalizeValue));
+
+  const states: Record<string, StayTypeState> = {};
+  for (const option of options) {
+    states[option] = allowedKeys.has(normalizeValue(option)) ? 'allowed' : 'excluded';
+  }
+  return states;
 }
 
 function ToggleButton({
@@ -85,6 +84,158 @@ function ToggleButton({
   );
 }
 
+function formatSeasonLabel(value: string) {
+  const accentMap: Record<string, string> = {
+    automne: 'Automne',
+    ete: 'Été',
+    'fin d\'annee': "Fin d'année",
+    'fin d’annee': "Fin d'année",
+    hiver: 'Hiver',
+    printemps: 'Printemps'
+  };
+  const key = normalizeValue(value);
+  if (accentMap[key]) return accentMap[key];
+  return value.charAt(0).toLocaleUpperCase('fr-FR') + value.slice(1);
+}
+
+function formatSummaryList(options: string[], formatLabel: (value: string) => string = withDisplayCaps) {
+  if (options.length === 0) return 'Aucun';
+  return options.map(formatLabel).join(', ');
+}
+
+function StayTypeSingleCard({
+  stayTypes,
+  initialAllowed,
+  onValuesChange
+}: {
+  stayTypes: string[];
+  initialAllowed: string[];
+  onValuesChange?: () => void;
+}) {
+  const [stayTypeStates, setStayTypeStates] = useState<Record<string, StayTypeState>>(() =>
+    buildInitialStayTypeStates(stayTypes, initialAllowed)
+  );
+
+  const allowedTypes = stayTypes.filter((option) => stayTypeStates[option] === 'allowed');
+  const excludedTypes = stayTypes.filter((option) => stayTypeStates[option] === 'excluded');
+  const allAllowed = stayTypes.length > 0 && excludedTypes.length === 0;
+
+  const toggleStayType = (option: string) => {
+    setStayTypeStates((current) => ({
+      ...current,
+      [option]: current[option] === 'allowed' ? 'excluded' : 'allowed'
+    }));
+    onValuesChange?.();
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="rounded-xl border border-slate-200 bg-white p-4">
+        <div className="flex flex-wrap gap-2">
+          {stayTypes.map((option) => {
+            const isAllowed = stayTypeStates[option] === 'allowed';
+            return (
+              <button
+                key={`stay-type-${option}`}
+                type="button"
+                aria-pressed={isAllowed}
+                onClick={() => toggleStayType(option)}
+                className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-400 focus-visible:ring-offset-1 ${
+                  isAllowed
+                    ? 'border-emerald-400 bg-emerald-200 text-emerald-950'
+                    : 'border-rose-300 bg-rose-50 text-rose-900'
+                }`}
+              >
+                {withDisplayCaps(option)}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="space-y-1 text-sm font-normal text-slate-700">
+        <p>Autorisés : {formatSummaryList(allowedTypes)}</p>
+        <p>Exclus : {formatSummaryList(excludedTypes)}</p>
+      </div>
+
+      {!allAllowed
+        ? allowedTypes.map((value) => (
+            <input key={`hidden-allowed-${value}`} type="hidden" name="stay_types_allowed" value={value} />
+          ))
+        : null}
+      {!allAllowed
+        ? excludedTypes.map((value) => (
+            <input key={`hidden-excluded-${value}`} type="hidden" name="stay_types_excluded" value={value} />
+          ))
+        : null}
+    </div>
+  );
+}
+
+function SeasonSingleCard({
+  seasons,
+  initialAllowed,
+  onValuesChange
+}: {
+  seasons: string[];
+  initialAllowed: string[];
+  onValuesChange?: () => void;
+}) {
+  const [seasonStates, setSeasonStates] = useState<Record<string, StayTypeState>>(() =>
+    buildInitialStayTypeStates(seasons, initialAllowed)
+  );
+
+  const allowedSeasons = seasons.filter((option) => seasonStates[option] === 'allowed');
+  const excludedSeasons = seasons.filter((option) => seasonStates[option] === 'excluded');
+  const allAllowed = seasons.length > 0 && excludedSeasons.length === 0;
+
+  const toggleSeason = (option: string) => {
+    setSeasonStates((current) => ({
+      ...current,
+      [option]: current[option] === 'allowed' ? 'excluded' : 'allowed'
+    }));
+    onValuesChange?.();
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="rounded-xl border border-slate-200 bg-white p-4">
+        <div className="flex flex-wrap gap-2">
+          {seasons.map((option) => {
+            const isAllowed = seasonStates[option] === 'allowed';
+            return (
+              <button
+                key={`season-${option}`}
+                type="button"
+                aria-pressed={isAllowed}
+                onClick={() => toggleSeason(option)}
+                className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-400 focus-visible:ring-offset-1 ${
+                  isAllowed
+                    ? 'border-emerald-400 bg-emerald-200 text-emerald-950'
+                    : 'border-rose-300 bg-rose-50 text-rose-900'
+                }`}
+              >
+                {formatSeasonLabel(option)}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="space-y-1 text-sm font-normal text-slate-700">
+        <p>Autorisées : {formatSummaryList(allowedSeasons, formatSeasonLabel)}</p>
+        <p>Exclues : {formatSummaryList(excludedSeasons, formatSeasonLabel)}</p>
+      </div>
+
+      {!allAllowed
+        ? allowedSeasons.map((value) => (
+            <input key={`hidden-season-${value}`} type="hidden" name="seasons_allowed" value={value} />
+          ))
+        : null}
+    </div>
+  );
+}
+
 export default function StayTypeRulesCards({
   stayTypeOptions,
   seasonOptions,
@@ -103,7 +254,10 @@ export default function StayTypeRulesCards({
   );
   const [excludedTypes, setExcludedTypes] = useState<string[]>(
     filterInitialSelection(stayTypes, initialExcluded).filter(
-      (option) => !filterInitialSelection(stayTypes, initialAllowed).some((allowed) => normalizeValue(allowed) === normalizeValue(option))
+      (option) =>
+        !filterInitialSelection(stayTypes, initialAllowed).some(
+          (allowed) => normalizeValue(allowed) === normalizeValue(option)
+        )
     )
   );
   const [allowedSeasons, setAllowedSeasons] = useState<string[]>(
@@ -133,6 +287,26 @@ export default function StayTypeRulesCards({
     onValuesChange?.();
   };
 
+  if (showStayTypes && !showSeasons) {
+    return (
+      <StayTypeSingleCard
+        stayTypes={stayTypes}
+        initialAllowed={initialAllowed}
+        onValuesChange={onValuesChange}
+      />
+    );
+  }
+
+  if (!showStayTypes && showSeasons) {
+    return (
+      <SeasonSingleCard
+        seasons={seasons}
+        initialAllowed={initialSeasons}
+        onValuesChange={onValuesChange}
+      />
+    );
+  }
+
   return (
     <div className={`grid gap-4 ${showStayTypes && showSeasons ? 'lg:grid-cols-3' : ''}`}>
       {showStayTypes ? (
@@ -144,7 +318,9 @@ export default function StayTypeRulesCards({
                 <p className="text-sm font-medium text-slate-700">Types autorisés</p>
                 <div className="flex flex-wrap gap-2">
                   {stayTypes.map((option) => {
-                    const isSelected = allowedTypes.some((item) => normalizeValue(item) === normalizeValue(option));
+                    const isSelected = allowedTypes.some(
+                      (item) => normalizeValue(item) === normalizeValue(option)
+                    );
                     return (
                       <ToggleButton
                         key={`allowed-${option}`}
@@ -164,7 +340,9 @@ export default function StayTypeRulesCards({
                   <p className="text-sm font-medium text-slate-700">Saisons autorisées</p>
                   <div className="flex flex-wrap gap-2">
                     {seasons.map((option) => {
-                      const isSelected = allowedSeasons.some((item) => normalizeValue(item) === normalizeValue(option));
+                      const isSelected = allowedSeasons.some(
+                        (item) => normalizeValue(item) === normalizeValue(option)
+                      );
                       return (
                         <ToggleButton
                           key={`season-${option}`}
@@ -188,7 +366,9 @@ export default function StayTypeRulesCards({
               <p className="text-sm font-medium text-slate-700">Types exclus</p>
               <div className="flex flex-wrap gap-2">
                 {excludedVisibleOptions.map((option) => {
-                  const isSelected = excludedTypes.some((item) => normalizeValue(item) === normalizeValue(option));
+                  const isSelected = excludedTypes.some(
+                    (item) => normalizeValue(item) === normalizeValue(option)
+                  );
                   return (
                     <ToggleButton
                       key={`excluded-${option}`}
@@ -204,27 +384,6 @@ export default function StayTypeRulesCards({
             </div>
           </div>
         </>
-      ) : null}
-
-      {!showStayTypes && showSeasons ? (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-          <h3 className="text-sm font-semibold text-emerald-900">Saisons autorisées</h3>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {seasons.map((option) => {
-              const isSelected = allowedSeasons.some((item) => normalizeValue(item) === normalizeValue(option));
-              return (
-                <ToggleButton
-                  key={`season-only-${option}`}
-                  option={option}
-                  isSelected={isSelected}
-                  onClick={() => toggleSeason(option)}
-                  selectedClass="border-emerald-400 bg-emerald-200 text-emerald-950"
-                  unselectedClass="border-emerald-300 bg-emerald-50 text-emerald-900"
-                />
-              );
-            })}
-          </div>
-        </div>
       ) : null}
 
       {allowedTypes.map((value) => (

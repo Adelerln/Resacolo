@@ -10,7 +10,8 @@ import { parseAccommodationMediaUrls, replaceAccommodationMedia } from '@/lib/ac
 import {
   buildAccessibilityInfoFromForm,
   normalizeAccommodationAddress,
-  validateAccommodationAddress,
+  readAccommodationLocationFromFormData,
+  validateAccommodationFormLocation,
   validateAndParseAccommodationCenterCoordinates,
 } from '@/lib/accommodation-location';
 import { requireOrganizerPageAccess } from '@/lib/organizer-backoffice-access.server';
@@ -51,30 +52,22 @@ export default async function NewAccommodationPage({ searchParams }: PageProps) 
     'use server';
     const supabase = getServerSupabaseClient();
     const name = String(formData.get('name') ?? '').trim();
-    const selectedAccommodationType = String(formData.get('accommodation_type') ?? '').trim();
-    const mixedAccommodationTypes = formData
-      .getAll('accommodation_type_mixed_values')
-      .map((value) => String(value).trim());
-    const accommodationType = buildAccommodationTypeValue(selectedAccommodationType, mixedAccommodationTypes);
+    const locationForm = readAccommodationLocationFromFormData(formData);
+    const accommodationType = buildAccommodationTypeValue(locationForm.accommodationType);
     const parsedAccommodationType = parseAccommodationType(accommodationType);
     const description = String(formData.get('description') ?? '').trim();
-    const addressInput = normalizeAccommodationAddress({
-      addressText: String(formData.get('address_text') ?? '').trim(),
-      postalCode: String(formData.get('postal_code') ?? '').trim(),
-      city: String(formData.get('city') ?? '').trim(),
-      departmentCode: String(formData.get('department_code') ?? '').trim(),
-      regionText: String(formData.get('region_text') ?? '').trim(),
-      country: String(formData.get('country') ?? '').trim()
-    });
+    const addressInput = normalizeAccommodationAddress(locationForm.address);
 
     if (!name || !parsedAccommodationType.baseType) {
       redirect(withOrganizerQuery('/organisme/hebergements/new?error=missing-required-fields', selectedOrganizerId));
     }
-    if (parsedAccommodationType.baseType === 'mixte' && parsedAccommodationType.mixedTypes.length === 0) {
-      redirect(withOrganizerQuery('/organisme/hebergements/new?error=missing-mixed-types', selectedOrganizerId));
-    }
 
-    const addressError = validateAccommodationAddress(addressInput);
+    const addressError = validateAccommodationFormLocation({
+      accommodationType,
+      locationMode: locationForm.locationMode,
+      itinerantZone: locationForm.itinerantZone,
+      address: addressInput
+    });
     if (addressError) {
       redirect(
         withOrganizerQuery(
@@ -123,6 +116,8 @@ export default async function NewAccommodationPage({ searchParams }: PageProps) 
       department_code: addressInput.departmentCode || null,
       region_text: addressInput.regionText || null,
       country: addressInput.country || null,
+      location_mode: locationForm.locationMode,
+      itinerant_zone: locationForm.itinerantZone || null,
       description: description || null,
       bed_info: String(formData.get('bed_info') ?? '').trim() || null,
       bathroom_info: String(formData.get('bathroom_info') ?? '').trim() || null,

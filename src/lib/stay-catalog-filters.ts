@@ -325,20 +325,7 @@ function resolveValuesFromOptions(rawValues: string[], options: StayCatalogFilte
     const directValue = valueByNormalized.get(normalized) ?? labelByNormalized.get(normalized);
     if (directValue) {
       resolved.add(directValue);
-      return;
     }
-
-    options.forEach((option) => {
-      const normalizedLabel = normalizeCatalogText(option.label);
-      const normalizedValue = normalizeCatalogText(option.value);
-      if (
-        normalizedLabel.includes(normalized) ||
-        normalized.includes(normalizedLabel) ||
-        normalizedValue.includes(normalized)
-      ) {
-        resolved.add(option.value);
-      }
-    });
   });
 
   return options.map((option) => option.value).filter((value) => resolved.has(value));

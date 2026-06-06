@@ -75,11 +75,13 @@ export function OrganizerStayPreviewCard({
       : !subtitle && body.trim() !== normalizedTitle
         ? body
         : null;
+  const hasCsePrice = csePriceFromEuros != null;
   const hasPartnerPrice =
+    !hasCsePrice &&
     partnerPriceFromEuros != null &&
     priceFromEuros != null &&
     partnerPriceFromEuros < priceFromEuros;
-  const hasLegacyCsePrice = !hasPartnerPrice && csePriceFromEuros != null;
+  const hasLegacyCsePrice = hasCsePrice;
   const pricePillLabel =
     hasPartnerPrice && partnerDiscountPercent != null
       ? `-${Math.round(partnerDiscountPercent)}%`
@@ -270,7 +272,7 @@ export function OrganizerStayPreviewCard({
                   <>
                     À partir de{' '}
                     <span className={priceValueClass}>
-                      {csePriceFromEuros.toLocaleString('fr-FR', {
+                      {csePriceFromEuros!.toLocaleString('fr-FR', {
                         minimumFractionDigits: 2,
                         maximumFractionDigits: 2
                       })}
@@ -285,6 +287,9 @@ export function OrganizerStayPreviewCard({
                         €
                       </span>
                     ) : null}
+                    <span className="mt-1 block text-xs font-medium text-slate-500">
+                      Après prise en charge CSE
+                    </span>
                   </>
                 ) : priceFromEuros != null ? (
                   <>

@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { StayCatalogPage } from '@/components/sejours/StayCatalogPage';
 import { getStays } from '@/lib/stays';
 import { getCurrentUser } from '@/lib/auth/session';
+import { applyCsePricingToStays, readUserCsePricingContext } from '@/lib/cse-pricing';
 import { applyPartnerDiscountPricingToStays, readUserPartnerPricingContext } from '@/lib/stay-partner-pricing';
 
 export const metadata: Metadata = {
@@ -18,9 +19,14 @@ export default async function SejoursPage({
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const [staysRaw, session] = await Promise.all([getStays(), getCurrentUser()]);
-  const partnerPricingContext =
-    session?.isClient && session.userId ? await readUserPartnerPricingContext(session.userId) : null;
-  const stays = partnerPricingContext ? applyPartnerDiscountPricingToStays(staysRaw, partnerPricingContext) : staysRaw;
+  const userId = session?.isClient && session.userId ? session.userId : null;
+  const [partnerPricingContext, csePricingContext] = userId
+    ? await Promise.all([readUserPartnerPricingContext(userId), readUserCsePricingContext(userId)])
+    : [null, null];
+  let stays = partnerPricingContext ? applyPartnerDiscountPricingToStays(staysRaw, partnerPricingContext) : staysRaw;
+  if (csePricingContext) {
+    stays = applyCsePricingToStays(stays, csePricingContext);
+  }
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   return (
     <div style={{ fontFamily: 'Inter, var(--font-sans), sans-serif' }}>

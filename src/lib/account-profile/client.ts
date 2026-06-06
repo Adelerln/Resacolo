@@ -1,5 +1,7 @@
 import type {
   FamilyCheckoutSyncInput,
+  FamilyProfileChild,
+  FamilyProfileChildInput,
   FamilyParent2Patch,
   ParentStatus,
   FamilyProfile,
@@ -54,6 +56,26 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
 
 export async function fetchFamilyProfileSnapshot() {
   return fetchJson<FamilyProfileSnapshot>('/api/account/profile', { method: 'GET' });
+}
+
+export async function createFamilyChild(input: FamilyProfileChildInput) {
+  return fetchJson<{ child: FamilyProfileChild }>('/api/account/children', {
+    method: 'POST',
+    body: JSON.stringify({ child: input })
+  });
+}
+
+export async function updateFamilyChild(childId: string, input: FamilyProfileChildInput) {
+  return fetchJson<{ child: FamilyProfileChild }>(`/api/account/children/${childId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ child: input })
+  });
+}
+
+export async function deleteFamilyChild(childId: string) {
+  return fetchJson<{ ok: true }>(`/api/account/children/${childId}`, {
+    method: 'DELETE'
+  });
 }
 
 export async function syncFamilyProfileFromCheckout(input: FamilyCheckoutSyncInput) {

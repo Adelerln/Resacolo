@@ -1,6 +1,5 @@
 import { z } from 'zod';
 import {
-  normalizeAncvConnectMatriculeInput,
   validateAncvConnectMatricule
 } from '@/lib/ancv-connect-matricule';
 import { VACAF_NUMBER_MESSAGE, VACAF_NUMBER_OPTIONAL_REGEX } from '@/lib/vacaf-number';
@@ -177,6 +176,13 @@ export const checkoutContactSchema = z.object({
 
 export const checkoutParticipantSchema = z.object({
   cartItemId: z.string().trim().min(1),
+  childId: z
+    .union([z.string(), z.null(), z.undefined()])
+    .transform((value) => {
+      if (typeof value !== 'string') return null;
+      const trimmed = value.trim();
+      return trimmed || null;
+    }),
   childFirstName: trimmedStringFromJson.pipe(z.string().min(2, 'Prénom requis.')),
   childLastName: trimmedStringFromJson.pipe(z.string().min(2, 'Nom requis.')),
   childBirthdate: trimmedStringFromJson.pipe(
@@ -186,6 +192,14 @@ export const checkoutParticipantSchema = z.object({
     .union([z.enum(['MASCULIN', 'FEMININ']), z.literal(''), z.null(), z.undefined()])
     .transform((v) => (v == null ? '' : v)),
   additionalInfo: trimmedStringFromJson
+}).superRefine((data, ctx) => {
+  if (!data.childId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['childId'],
+      message: 'Sélectionnez un enfant.'
+    });
+  }
 });
 
 export const checkoutParticipantsSchema = z.array(checkoutParticipantSchema).min(1);

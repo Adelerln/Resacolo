@@ -2,6 +2,11 @@ import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { getCurrentUser } from '@/lib/auth/session';
 import { evaluatePartnerCatalogEligibility, simulatePartnerAid } from '@/lib/partner-catalog-rules';
 import { normalizePartnerCatalogRules } from '@/lib/partner-catalog-rules';
+import {
+  parseStoredFamilyQuotient,
+  resolveClientQfForAidSimulation,
+  withCatalogQfScaleAidMode
+} from '@/lib/partner-client-qf';
 import { computePartnerDiscountedPrice } from '@/lib/stay-partner-pricing';
 import { computePartnerFinanceDisplay, normalizePartnerFinanceMode } from '@/lib/partner-offers';
 import { isMissingColumnError } from '@/lib/supabase-schema-errors';
@@ -148,33 +153,49 @@ async function fetchStay(stayId: string): Promise<StayRow> {
   return data;
 }
 
-function getSimulationQfValue(rules: PartnerCatalogRules) {
-  return rules.financialRules.qfMax != null
-    ? ((rules.financialRules.qfMin ?? 0) + rules.financialRules.qfMax) / 2
-    : (rules.financialRules.qfMin ?? 1200);
-}
+type CheckoutCseContext = {
+  rules: PartnerCatalogRules;
+  qfValue: number | null;
+};
 
-async function readCheckoutCseRulesForCurrentUser() {
+async function readCheckoutCseContextForCurrentUser(): Promise<CheckoutCseContext | null> {
   const session = await getCurrentUser();
   if (!session?.userId) return null;
   const supabase = getServerSupabaseClient();
   const { data: client } = await supabase
     .from('clients')
-    .select('collectivity_id')
+    .select('collectivity_id,family_quotient,family_quotient_expires_on')
     .eq('user_id', session.userId)
     .maybeSingle();
   if (!client?.collectivity_id) return null;
 
   const { data: collectivity, error: collectivityError } = await supabase
     .from('collectivities')
-    .select('catalog_rules_published')
+    .select('catalog_rules_published,finance_mode')
     .eq('id', client.collectivity_id)
     .maybeSingle();
   if (collectivityError && isMissingColumnError(collectivityError, 'catalog_rules_published')) {
     return null;
   }
   if (!collectivity?.catalog_rules_published) return null;
-  return normalizePartnerCatalogRules(collectivity.catalog_rules_published);
+  if (normalizePartnerFinanceMode(collectivity.finance_mode) !== 'MANUAL') return null;
+
+  const rules = withCatalogQfScaleAidMode(
+    normalizePartnerCatalogRules(collectivity.catalog_rules_published)
+  );
+  const familyQuotient = parseStoredFamilyQuotient(client.family_quotient);
+  const familyQuotientExpiresOn = client.family_quotient_expires_on?.trim()
+    ? client.family_quotient_expires_on.trim().slice(0, 10)
+    : null;
+
+  return {
+    rules,
+    qfValue: resolveClientQfForAidSimulation({
+      rules,
+      familyQuotient,
+      familyQuotientExpiresOn
+    })
+  };
 }
 
 async function readCheckoutPartnerFinanceForCurrentUser() {
@@ -307,12 +328,13 @@ function assertRowBelongsToStay(optionStayId: string | null, stayId: string, lab
 }
 
 export async function repriceCart(items: CartItem[]): Promise<CheckoutPricing> {
-  const [cseRules, partnerFinance] = await Promise.all([
-    readCheckoutCseRulesForCurrentUser(),
+  const [cseContext, partnerFinance] = await Promise.all([
+    readCheckoutCseContextForCurrentUser(),
     readCheckoutPartnerFinanceForCurrentUser()
   ]);
   const hasCollectivityAffiliation = Boolean(partnerFinance);
-  const qfValue = cseRules ? getSimulationQfValue(cseRules) : null;
+  const cseRules = cseContext?.rules ?? null;
+  const qfValue = cseContext?.qfValue ?? null;
   const pricedItems = await Promise.all(
     items.map(async (cartItem): Promise<CheckoutPricingItem> => {
       const sessionId = cartItem.selection.sessionId;
@@ -442,7 +464,7 @@ export async function repriceCart(items: CartItem[]): Promise<CheckoutPricing> {
       let cseEligible = false;
       let cseLabel: string | null = null;
 
-      if (cseRules && qfValue != null) {
+      if (cseRules) {
         const eligibility = evaluatePartnerCatalogEligibility({
           rules: cseRules,
           stay: {

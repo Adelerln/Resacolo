@@ -57,13 +57,13 @@ export default async function PartnerOrganizerAmountsPage({ searchParams }: Page
           </p>
         </div>
 
-        <form method="get" className="flex flex-wrap items-end gap-3">
-          <label className="block text-sm">
-            <span className="mb-1 block font-medium text-slate-700">Saison</span>
+        <form method="get" className="shrink-0">
+          <p className="mb-1 text-sm font-medium text-slate-700">Saison</p>
+          <div className="flex flex-nowrap items-center gap-2">
             <select
               name="saison"
               defaultValue={selectedSeasonId ?? ''}
-              className="min-w-[220px] rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+              className="h-11 min-w-[220px] rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"
             >
               <option value="">Toutes les saisons</option>
               {model.seasonOptions.map((season) => (
@@ -72,15 +72,15 @@ export default async function PartnerOrganizerAmountsPage({ searchParams }: Page
                 </option>
               ))}
             </select>
-          </label>
-          <button type="submit" className="btn btn-secondary btn-sm">
-            Filtrer
-          </button>
-          {selectedSeasonId ? (
-            <Link href="/partenaire/montants-organisateurs" className="btn btn-ghost btn-sm">
-              Réinitialiser
-            </Link>
-          ) : null}
+            <button type="submit" className="btn btn-secondary btn-sm h-11 shrink-0">
+              Filtrer
+            </button>
+            {selectedSeasonId ? (
+              <Link href="/partenaire/montants-organisateurs" className="btn btn-ghost btn-sm h-11 shrink-0">
+                Réinitialiser
+              </Link>
+            ) : null}
+          </div>
         </form>
       </div>
 

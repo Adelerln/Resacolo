@@ -89,6 +89,24 @@ export const ORGANIZER_STAY_TYPE_OPTIONS: OrganizerOption<OrganizerStayTypeKey>[
   { key: 'sport', label: 'Sport', iconPath: '/image/sejours/pictos_sejours/sport.png' }
 ];
 
+const STAY_TYPE_LABEL_ALIASES: Record<string, string> = {
+  sportif: 'Sportif'
+};
+
+export function formatOrganizerStayTypeLabel(value: string) {
+  const key = value.trim().toLowerCase();
+  const known =
+    ORGANIZER_STAY_TYPE_OPTIONS.find((option) => option.key === key)?.label ??
+    STAY_TYPE_LABEL_ALIASES[key];
+  if (known) return known;
+
+  return value
+    .trim()
+    .split(/\s+/)
+    .map((word) => word.charAt(0).toLocaleUpperCase('fr-FR') + word.slice(1))
+    .join(' ');
+}
+
 export const ORGANIZER_ACTIVITY_OPTIONS: OrganizerOption<OrganizerActivityKey>[] = [
   { key: 'musique-chant', label: 'Musique - Chant', iconPath: '/image/sejours/pictos_activites/musique-chant.png' },
   { key: 'animaux', label: 'Animaux', iconPath: '/image/sejours/pictos_activites/animaux.png' },

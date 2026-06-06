@@ -33,7 +33,7 @@ export default function CheckoutPaiementPage() {
   const isParticipantsComplete = useMemo(() => {
     return items.every((item) => {
       const participant = participants[item.id];
-      return Boolean(participant?.childFirstName && participant?.childLastName && participant?.childBirthdate);
+      return Boolean(participant?.childId);
     });
   }, [items, participants]);
 
@@ -127,6 +127,7 @@ export default function CheckoutPaiementPage() {
             const participant = participants[item.id];
             return {
               cartItemId: item.id,
+              childId: participant?.childId ?? null,
               childFirstName: participant?.childFirstName ?? '',
               childLastName: participant?.childLastName ?? '',
               childBirthdate: participant?.childBirthdate ?? '',

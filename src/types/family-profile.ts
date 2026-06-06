@@ -2,12 +2,18 @@ import type { CheckoutContact, CheckoutParticipant } from '@/types/checkout';
 
 export type ParentStatus = 'pere' | 'mere' | 'grand-parent' | 'autre';
 
-export type FamilyProfileChild = {
+export type FamilyProfileChildInput = {
   firstName: string;
   lastName: string;
   birthdate: string;
   gender: '' | 'MASCULIN' | 'FEMININ';
   additionalInfo: string;
+};
+
+export type FamilyProfileChild = FamilyProfileChildInput & {
+  id: string;
+  createdAt: string | null;
+  updatedAt: string | null;
 };
 
 export type FamilyProfile = {

@@ -19,7 +19,7 @@ import {
 import type { Database } from '@/types/supabase';
 
 const DASHBOARD_WINDOW_DAYS = 30;
-const RECENT_RESERVATIONS_LIMIT = 6;
+const RECENT_RESERVATIONS_LIMIT = 4;
 const TOP_STAYS_LIMIT = 5;
 /** Libellés partenaire : plusieurs statuts techniques partagent le même libellé. */
 const PARTNER_STATUS_GROUPS: Array<{

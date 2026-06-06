@@ -47,23 +47,14 @@ function inferMixedTypesFromRaw(rawValue: string): MixedAccommodationTypeOption[
 
 export function buildAccommodationTypeValue(
   selectedType: string | null | undefined,
-  mixedTypes: readonly string[] = []
+  _mixedTypes: readonly string[] = []
 ): string {
   const normalizedType = String(selectedType ?? '').trim();
   if (!isAccommodationTypeOption(normalizedType)) {
     return '';
   }
 
-  if (normalizedType !== 'mixte') {
-    return normalizedType;
-  }
-
-  const normalizedMixedTypes = normalizeMixedTypes(mixedTypes);
-  if (normalizedMixedTypes.length === 0) {
-    return 'mixte';
-  }
-
-  return `${MIXED_PREFIX}${normalizedMixedTypes.join(',')}`;
+  return normalizedType;
 }
 
 export function parseAccommodationType(value?: string | null): {
@@ -107,10 +98,7 @@ export function formatAccommodationType(value?: string | null) {
   const parsed = parseAccommodationType(raw);
 
   if (parsed.baseType === 'mixte') {
-    if (parsed.mixedTypes.length > 0) {
-      return `Mixte (${parsed.mixedTypes.map((option) => capitalizeLabel(option)).join(', ')})`;
-    }
-    return 'Mixte';
+    return 'Itinérant (circuit)';
   }
 
   if (parsed.baseType) {

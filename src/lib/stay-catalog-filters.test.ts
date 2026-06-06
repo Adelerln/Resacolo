@@ -115,6 +115,28 @@ test('buildStayCatalogFilterOptions counts payment aids', () => {
   assert.equal(options.paymentAids.length, 3);
 });
 
+test('category filters round-trip through URL without expanding partial matches', () => {
+  const options = buildStayCatalogFilterOptions([
+    {
+      ...createStay({ id: 'stay-1', title: 'Séjour mer', departureCity: 'Paris' }),
+      categories: ['mer']
+    },
+    {
+      ...createStay({ id: 'stay-2', title: 'Séjour sportif', departureCity: 'Lyon' }),
+      categories: ['sportif']
+    }
+  ]);
+
+  const state = {
+    ...EMPTY_STAY_CATALOG_FILTERS,
+    categories: ['sportif']
+  };
+  const params = serializeStayCatalogFiltersToSearchParams(state);
+  const parsed = parseStayCatalogFiltersFromSearchParams(params, options);
+
+  assert.deepEqual(parsed.categories, ['sportif']);
+});
+
 test('payment aids filters serialize and parse from URL', () => {
   const state = {
     ...EMPTY_STAY_CATALOG_FILTERS,

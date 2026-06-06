@@ -412,6 +412,50 @@ export type Database = {
         }
         Relationships: []
       }
+      client_children: {
+        Row: {
+          additional_info: string
+          birthdate: string
+          created_at: string
+          first_name: string
+          gender: string
+          id: string
+          last_name: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          additional_info?: string
+          birthdate: string
+          created_at?: string
+          first_name?: string
+          gender?: string
+          id?: string
+          last_name?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          additional_info?: string
+          birthdate?: string
+          created_at?: string
+          first_name?: string
+          gender?: string
+          id?: string
+          last_name?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_children_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
       collectivities: {
         Row: {
           address_line1: string | null
@@ -999,6 +1043,7 @@ export type Database = {
           base_price_cents: number
           child_birthdate: string
           child_first_name: string
+          child_id: string | null
           child_last_name: string
           created_at: string
           id: string
@@ -1016,6 +1061,7 @@ export type Database = {
           base_price_cents?: number
           child_birthdate: string
           child_first_name: string
+          child_id?: string | null
           child_last_name: string
           created_at?: string
           id?: string
@@ -1033,6 +1079,7 @@ export type Database = {
           base_price_cents?: number
           child_birthdate?: string
           child_first_name?: string
+          child_id?: string | null
           child_last_name?: string
           created_at?: string
           id?: string
@@ -1047,6 +1094,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "order_items_child_id_fkey"
+            columns: ["child_id"]
+            isOneToOne: false
+            referencedRelation: "client_children"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "order_items_insurance_option_id_fkey"
             columns: ["insurance_option_id"]
@@ -1685,6 +1739,8 @@ export type Database = {
           description: string | null
           id: string
           indoor_features: string | null
+          itinerant_zone: string | null
+          location_mode: string | null
           medical_proximity: string | null
           map_iframe_html: string | null
           name: string
@@ -1718,6 +1774,8 @@ export type Database = {
           description?: string | null
           id?: string
           indoor_features?: string | null
+          itinerant_zone?: string | null
+          location_mode?: string | null
           medical_proximity?: string | null
           map_iframe_html?: string | null
           name: string
@@ -1751,6 +1809,8 @@ export type Database = {
           description?: string | null
           id?: string
           indoor_features?: string | null
+          itinerant_zone?: string | null
+          location_mode?: string | null
           medical_proximity?: string | null
           map_iframe_html?: string | null
           name?: string

@@ -100,7 +100,7 @@ export function getDefaultPartnerCatalogRules(): PartnerCatalogRules {
       capPerDayCents: null,
       maxStaysPerChildYear: null,
       maxSubsidizedDaysYear: null,
-      minFamilyRemainderPercent: 0,
+      minFamilyRemainderPercent: null,
       minFamilyRemainderCents: null,
       qfMin: null,
       qfMax: null
@@ -152,29 +152,61 @@ export function normalizePartnerCatalogRules(value: unknown): PartnerCatalogRule
     knownSiteCountries: normalizeStringList(meta?.knownSiteCountries)
   };
 
+  if (
+    merged.financialRules.maxStaysPerChildYear != null &&
+    merged.financialRules.maxStaysPerChildYear < 1
+  ) {
+    merged.financialRules.maxStaysPerChildYear = null;
+  }
+  if (
+    merged.financialRules.maxSubsidizedDaysYear != null &&
+    merged.financialRules.maxSubsidizedDaysYear < 1
+  ) {
+    merged.financialRules.maxSubsidizedDaysYear = null;
+  }
+  if (merged.financialRules.minFamilyRemainderPercent === 0) {
+    merged.financialRules.minFamilyRemainderPercent = null;
+  }
+
   return merged;
 }
 
-function validateQfScaleRows(rows: QfScaleRow[]) {
+function validateQfScaleBounds(rows: QfScaleRow[]) {
   const sorted = [...rows].sort((a, b) => a.minQf - b.minQf);
   for (let i = 0; i < sorted.length; i += 1) {
     const row = sorted[i];
     if (row.maxQf != null && row.maxQf < row.minQf) {
-      throw new Error(`Tranche QF invalide (${row.minQf}-${row.maxQf}).`);
+      throw new Error(`QF max inférieur au QF min sur une tranche (${row.minQf}-${row.maxQf}).`);
     }
+    if (i === 0) continue;
+    const prev = sorted[i - 1];
+    if (prev.maxQf == null) {
+      throw new Error('Une tranche sans QF max ne peut pas être suivie d’une autre tranche.');
+    }
+    if (row.minQf <= prev.maxQf) {
+      throw new Error('Les tranches QF min/max ne doivent pas se chevaucher.');
+    }
+  }
+}
+
+export function getPartnerCatalogQfScaleBoundsValidationError(rows: QfScaleRow[]): string | null {
+  if (rows.length === 0) return null;
+  try {
+    validateQfScaleBounds(rows);
+    return null;
+  } catch (error) {
+    return error instanceof Error ? error.message : 'Barème QF invalide.';
+  }
+}
+
+function validateQfScaleRows(rows: QfScaleRow[]) {
+  validateQfScaleBounds(rows);
+  for (const row of rows) {
     if (row.aidMode === 'PERCENT' && row.percentValue == null) {
       throw new Error(`Tranche QF invalide (${row.minQf}-${row.maxQf ?? '∞'}) : taux obligatoire.`);
     }
     if (row.aidMode === 'FIXED' && row.fixedCents == null) {
       throw new Error(`Tranche QF invalide (${row.minQf}-${row.maxQf ?? '∞'}) : forfait obligatoire.`);
-    }
-    if (i === 0) continue;
-    const prev = sorted[i - 1];
-    if (prev.maxQf == null) {
-      throw new Error('Une tranche QF ouverte ne peut pas être suivie d’une autre tranche.');
-    }
-    if (row.minQf <= prev.maxQf) {
-      throw new Error('Les tranches QF se chevauchent.');
     }
   }
 }
@@ -408,11 +440,13 @@ export function simulatePartnerAid(input: {
     aidCents = nextAid;
   }
   if (
+    financial.capPerChildYearCents != null ||
     financial.capPerFamilyYearCents != null ||
+    financial.maxStaysPerChildYear != null ||
     financial.maxSubsidizedDaysYear != null
   ) {
     warnings.push(
-      "Les plafonds ou quotas annuels par famille ne sont pas totalement simulables dans l'aperçu catalogue."
+      "Les plafonds/quotas annuels sont configurés mais ne sont pas totalement simulables dans l'aperçu catalogue."
     );
   }
 

@@ -74,18 +74,48 @@ function mapFamilyProfileToCheckoutContact(profile: FamilyProfile): CheckoutCont
 
 function isParticipantEmpty(participant: CheckoutParticipant | undefined) {
   if (!participant) return true;
-  return !participant.childFirstName && !participant.childLastName && !participant.childBirthdate;
+  return (
+    !participant.childId &&
+    !participant.childFirstName &&
+    !participant.childLastName &&
+    !participant.childBirthdate
+  );
 }
 
 function mapChildToParticipant(child: FamilyProfileChild, cartItemId: string): CheckoutParticipant {
   return {
     cartItemId,
+    childId: child.id,
     childFirstName: child.firstName,
     childLastName: child.lastName,
     childBirthdate: child.birthdate,
     childGender: child.gender,
     additionalInfo: child.additionalInfo
   };
+}
+
+function matchesParticipantToChild(
+  participant: CheckoutParticipant | undefined,
+  child: FamilyProfileChild
+) {
+  if (!participant) return false;
+  return (
+    participant.childFirstName.trim().toLowerCase() === child.firstName.trim().toLowerCase() &&
+    participant.childLastName.trim().toLowerCase() === child.lastName.trim().toLowerCase() &&
+    participant.childBirthdate.trim() === child.birthdate.trim()
+  );
+}
+
+function formatChildBirthdate(value: string) {
+  if (!value.trim()) return 'Date non renseignée';
+  const date = new Date(`${value}T12:00:00`);
+  if (!Number.isFinite(date.getTime())) return value;
+  return date.toLocaleDateString('fr-FR');
+}
+
+function formatChildOptionLabel(child: FamilyProfileChild) {
+  const identity = [child.firstName, child.lastName.toUpperCase()].filter(Boolean).join(' ').trim();
+  return `${identity} · ${formatChildBirthdate(child.birthdate)}`;
 }
 
 export default function CheckoutInformationsPage() {
@@ -110,6 +140,7 @@ export default function CheckoutInformationsPage() {
   const [accountPasswordConfirm, setAccountPasswordConfirm] = useState('');
   const [isFamilyAuthenticated, setIsFamilyAuthenticated] = useState(false);
   const [hasPrefilledFromProfile, setHasPrefilledFromProfile] = useState(false);
+  const [availableChildren, setAvailableChildren] = useState<FamilyProfileChild[]>([]);
 
   function isAuthRequiredProfileError(error: unknown) {
     if (!(error instanceof Error)) return false;
@@ -128,9 +159,10 @@ export default function CheckoutInformationsPage() {
   const isParticipantsComplete = useMemo(() => {
     return items.every((item) => {
       const participant = participants[item.id];
-      return Boolean(participant?.childFirstName && participant?.childLastName && participant?.childBirthdate);
+      return Boolean(participant?.childId);
     });
   }, [items, participants]);
+  const canCreateAccountBeforeChildren = !isFamilyAuthenticated && availableChildren.length === 0;
 
   useEffect(() => {
     // Même en mode dev bypass, on peut être connecté(e) : on pré-remplit depuis le profil si possible,
@@ -145,6 +177,7 @@ export default function CheckoutInformationsPage() {
         if (cancelled) return;
 
         setIsFamilyAuthenticated(true);
+        setAvailableChildren(snapshot.profile.children);
         const nextContact = mapFamilyProfileToCheckoutContact(snapshot.profile);
         setContact(nextContact);
         setForm(nextContact);
@@ -156,10 +189,21 @@ export default function CheckoutInformationsPage() {
             if (!child) return;
             updateParticipant(item.id, mapChildToParticipant(child, item.id));
           });
+        } else {
+          items.forEach((item) => {
+            const participant = participants[item.id];
+            if (participant?.childId) return;
+            const matchedChild = snapshot.profile.children.find((child) =>
+              matchesParticipantToChild(participant, child)
+            );
+            if (!matchedChild) return;
+            updateParticipant(item.id, mapChildToParticipant(matchedChild, item.id));
+          });
         }
       } catch (error) {
         if (cancelled) return;
         setIsFamilyAuthenticated(!isAuthRequiredProfileError(error));
+        setAvailableChildren([]);
       } finally {
         if (cancelled) return;
         setHasPrefilledFromProfile(true);
@@ -280,17 +324,14 @@ export default function CheckoutInformationsPage() {
 
         setCheckoutId(createCheckoutId());
         setContact(normalizedContact);
-        for (const item of items) {
-          const p = participants[item.id];
-          const gender =
-            p?.childGender === 'FEMININ' || p?.childGender === 'MASCULIN' ? p.childGender : 'MASCULIN';
-          updateParticipant(item.id, {
-            childFirstName: p?.childFirstName?.trim() || 'Enfant',
-            childLastName: p?.childLastName?.trim() || 'Dev',
-            childBirthdate: p?.childBirthdate || '2015-06-15',
-            childGender: gender,
-            additionalInfo: p?.additionalInfo ?? ''
-          });
+        if (availableChildren.length === 0) {
+          router.push('/mon-compte');
+          return;
+        }
+        for (const [index, item] of items.entries()) {
+          const selectedChild = availableChildren[index] ?? availableChildren[0];
+          if (!selectedChild) continue;
+          updateParticipant(item.id, mapChildToParticipant(selectedChild, item.id));
         }
         router.push('/checkout/recapitulatif');
         return;
@@ -321,22 +362,30 @@ export default function CheckoutInformationsPage() {
         setIsFamilyAuthenticated(true);
       }
 
-      const participantsPayload: CheckoutParticipant[] = items.map((item) => {
-        const participant = participants[item.id];
-        return {
-          cartItemId: item.id,
-          childFirstName: participant?.childFirstName ?? '',
-          childLastName: participant?.childLastName ?? '',
-          childBirthdate: participant?.childBirthdate ?? '',
-          childGender: participant?.childGender ?? '',
-          additionalInfo: participant?.additionalInfo ?? ''
-        };
-      });
+      const participantsPayload: CheckoutParticipant[] = canCreateAccountBeforeChildren
+        ? []
+        : items.map((item) => {
+            const participant = participants[item.id];
+            return {
+              cartItemId: item.id,
+              childId: participant?.childId ?? null,
+              childFirstName: participant?.childFirstName ?? '',
+              childLastName: participant?.childLastName ?? '',
+              childBirthdate: participant?.childBirthdate ?? '',
+              childGender: participant?.childGender ?? '',
+              additionalInfo: participant?.additionalInfo ?? ''
+            };
+          });
 
       await syncFamilyProfileFromCheckout({
         contact: normalizedContact,
         participants: participantsPayload
       });
+
+      if (canCreateAccountBeforeChildren) {
+        router.push('/mon-compte');
+        return;
+      }
 
       router.push('/checkout/recapitulatif');
     } catch (error) {
@@ -623,102 +672,72 @@ export default function CheckoutInformationsPage() {
                       Participant {index + 1}
                     </h3>
                   </div>
-                  <div className="mt-2.5 grid gap-2.5 md:grid-cols-2">
-                    <label className={COMPACT_LABEL_CLASS}>
-                      Prénom *
-                      <input
-                        form={FORM_ID}
-                        type="text"
-                        required
-                        value={participant?.childFirstName ?? ''}
-                        onChange={(event) =>
-                          updateParticipant(item.id, {
-                            childFirstName: event.target.value
-                          })
-                        }
-                        className={PARTICIPANT_INPUT_CLASS}
-                      />
-                    </label>
-                    <label className={COMPACT_LABEL_CLASS}>
-                      Nom *
-                      <input
-                        form={FORM_ID}
-                        type="text"
-                        required
-                        value={participant?.childLastName ?? ''}
-                        onChange={(event) =>
-                          updateParticipant(item.id, {
-                            childLastName: event.target.value
-                          })
-                        }
-                        className={PARTICIPANT_INPUT_CLASS}
-                      />
-                    </label>
-                    <label className={COMPACT_LABEL_CLASS}>
-                      Date de naissance *
-                      <input
-                        form={FORM_ID}
-                        type="date"
-                        required
-                        value={participant?.childBirthdate ?? ''}
-                        onChange={(event) =>
-                          updateParticipant(item.id, {
-                            childBirthdate: event.target.value
-                          })
-                        }
-                        className={PARTICIPANT_INPUT_CLASS}
-                      />
-                    </label>
-                    <fieldset className={COMPACT_LABEL_CLASS}>
-                      <legend>Genre</legend>
-                      <div className="mt-1 flex flex-wrap items-center gap-3 rounded-md border border-transparent bg-transparent px-0 py-1 text-xs font-semibold tracking-normal text-slate-600">
-                        <label className="flex items-center gap-2">
-                          <input
-                            form={FORM_ID}
-                            type="radio"
-                            name={`gender-${item.id}`}
-                            checked={(participant?.childGender ?? '') === 'MASCULIN'}
-                            onChange={() =>
+                  {availableChildren.length > 0 ? (
+                    <div className="mt-2.5 space-y-3">
+                      <label className={COMPACT_LABEL_CLASS}>
+                        Enfant *
+                        <select
+                          form={FORM_ID}
+                          required
+                          value={participant?.childId ?? ''}
+                          onChange={(event) => {
+                            const selectedChild =
+                              availableChildren.find((child) => child.id === event.target.value) ?? null;
+                            if (!selectedChild) {
                               updateParticipant(item.id, {
-                                childGender: 'MASCULIN'
-                              })
+                                childId: null,
+                                childFirstName: '',
+                                childLastName: '',
+                                childBirthdate: '',
+                                childGender: '',
+                                additionalInfo: ''
+                              });
+                              return;
                             }
-                            className="h-4 w-4 border-slate-300"
-                          />
-                          Masculin
-                        </label>
-                        <label className="flex items-center gap-2">
-                          <input
-                            form={FORM_ID}
-                            type="radio"
-                            name={`gender-${item.id}`}
-                            checked={(participant?.childGender ?? '') === 'FEMININ'}
-                            onChange={() =>
-                              updateParticipant(item.id, {
-                                childGender: 'FEMININ'
-                              })
-                            }
-                            className="h-4 w-4 border-slate-300"
-                          />
-                          Féminin
-                        </label>
-                      </div>
-                    </fieldset>
-                    <label className={`${COMPACT_LABEL_CLASS} md:col-span-2`}>
-                      Infos complémentaires
-                      <textarea
-                        form={FORM_ID}
-                        value={participant?.additionalInfo ?? ''}
-                        onChange={(event) =>
-                          updateParticipant(item.id, {
-                            additionalInfo: event.target.value
-                          })
-                        }
-                        rows={2}
-                        className={`${PARTICIPANT_INPUT_CLASS} min-h-[40px] resize-y`}
-                      />
-                    </label>
-                  </div>
+                            updateParticipant(item.id, mapChildToParticipant(selectedChild, item.id));
+                          }}
+                          className={PARTICIPANT_INPUT_CLASS}
+                        >
+                          <option value="">Sélectionner un enfant</option>
+                          {availableChildren.map((child) => (
+                            <option key={child.id} value={child.id}>
+                              {formatChildOptionLabel(child)}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+
+                      {participant?.childId ? (
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700">
+                          <p className="font-semibold text-slate-900">
+                            {[participant.childFirstName, participant.childLastName.toUpperCase()]
+                              .filter(Boolean)
+                              .join(' ')}
+                          </p>
+                          <p className="mt-1">Né(e) le {formatChildBirthdate(participant.childBirthdate)}</p>
+                          {participant.childGender ? (
+                            <p className="mt-1">Genre : {participant.childGender === 'FEMININ' ? 'Féminin' : 'Masculin'}</p>
+                          ) : null}
+                          {participant.additionalInfo.trim() ? (
+                            <p className="mt-2 whitespace-pre-wrap text-slate-600">
+                              {participant.additionalInfo.trim()}
+                            </p>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <div className="mt-2.5 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
+                      <p className="font-semibold">Aucun enfant enregistré sur ce compte.</p>
+                      <p className="mt-1">
+                        Ajoutez d&apos;abord vos enfants dans votre compte client, puis revenez sélectionner le
+                        participant pour ce séjour.
+                      </p>
+                      <Link href="/mon-compte" className="mt-3 inline-flex text-sm font-semibold text-amber-900 underline">
+                        Gérer mes enfants
+                      </Link>
+                    </div>
+                  )}
                 </div>
               );
             }}
@@ -739,13 +758,15 @@ export default function CheckoutInformationsPage() {
                 isSubmitting ||
                 isLoadingPricing ||
                 items.length === 0 ||
-                !isParticipantsComplete ||
+                (!isParticipantsComplete && !canCreateAccountBeforeChildren) ||
                 (!isDevBypassCheckout() && !hasSelectedSessionForAllItems)
               }
             >
               {isSubmitting
                 ? 'Enregistrement...'
-                : isParticipantsComplete
+                : canCreateAccountBeforeChildren
+                  ? 'Créer mon compte pour ajouter un enfant'
+                  : isParticipantsComplete
                   ? 'Continuer vers le récapitulatif'
                   : 'Compléter les participants'}
             </button>

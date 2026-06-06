@@ -131,7 +131,6 @@ export default function CheckoutRecapitulatifPage() {
   const primaryOrganizerId = organizerIds[0] ?? '';
   const financeMode = pricing?.financeMode ?? null;
   const financeRequiresQuote = Boolean(pricing?.financeRequiresQuote);
-  const financeFamilyPayableTotalCents = pricing?.financeFamilyPayableTotalCents ?? null;
   const isPartnerTotalCoverage = pricing ? isPartnerFullCoverageCheckout(pricing) : false;
   const showCseAffiliationField = !isPartnerTotalCoverage && hasCseAffiliation === false;
   const showComplementaryBenefitsCard = showCseAffiliationField;
@@ -178,12 +177,6 @@ export default function CheckoutRecapitulatifPage() {
       };
     });
   }, [contact, items, organizerCheckoutSettingsById, organizerIds, pricing]);
-  const primaryGroup = organizerGroups[0] ?? null;
-  const displayedPaymentModes = primaryGroup?.displayedPaymentModes ?? [];
-  const organizerCheckoutSettings = primaryGroup?.settings ?? null;
-  const requestKind = primaryGroup?.requestKind ?? null;
-  const wantsVacafAid = primaryOrganizerId ? Boolean(wantsVacafAidByOrganizer[primaryOrganizerId]) : false;
-  const organizerCgvUrl = organizerCgvUrls[primaryOrganizerId] ?? '/cgv-organisateur';
   const paymentRequiresOnlineStep = organizerGroups.some(
     (group) =>
       !group.pricing.financeRequiresQuote &&
@@ -245,7 +238,7 @@ export default function CheckoutRecapitulatifPage() {
   const isParticipantsComplete = useMemo(() => {
     return items.every((item) => {
       const participant = participants[item.id];
-      return Boolean(participant?.childFirstName && participant?.childLastName && participant?.childBirthdate);
+      return Boolean(participant?.childId);
     });
   }, [items, participants]);
 
@@ -470,6 +463,7 @@ export default function CheckoutRecapitulatifPage() {
         const participant = participants[item.id];
         return {
           cartItemId: item.id,
+          childId: participant?.childId ?? null,
           childFirstName: participant?.childFirstName ?? '',
           childLastName: participant?.childLastName ?? '',
           childBirthdate: participant?.childBirthdate ?? '',

@@ -20,12 +20,20 @@ import { formatMoneyCentsFr } from '@/lib/format-money-fr';
 import { orderStatusBadgeClassName } from '@/lib/order-workflow';
 import { useFavorites } from '@/components/favorites/FavoritesProvider';
 import {
+  createFamilyChild,
+  deleteFamilyChild,
   attachFamilyCseAffiliation,
   detachFamilyCseAffiliation,
-  fetchFamilyProfileSnapshot
+  fetchFamilyProfileSnapshot,
+  updateFamilyChild
 } from '@/lib/account-profile/client';
 import { formatPhoneDisplay, parentStatusLabel } from '@/lib/account-preferences';
-import type { FamilyCseAffiliation, FamilyProfile, FamilyReservation } from '@/types/family-profile';
+import type {
+  FamilyCseAffiliation,
+  FamilyProfile,
+  FamilyProfileChildInput,
+  FamilyReservation
+} from '@/types/family-profile';
 import type { Stay } from '@/types/stay';
 
 type MonCompteClientProps = {
@@ -72,6 +80,20 @@ function splitName(value: string | null | undefined) {
   };
 }
 
+function formatChildBirthdate(value: string) {
+  const date = new Date(`${value}T12:00:00`);
+  if (!Number.isFinite(date.getTime())) return value || 'Date non renseignée';
+  return date.toLocaleDateString('fr-FR');
+}
+
+const EMPTY_CHILD_FORM: FamilyProfileChildInput = {
+  firstName: '',
+  lastName: '',
+  birthdate: '',
+  gender: '',
+  additionalInfo: ''
+};
+
 export default function MonCompteClient({
   initialProfile,
   reservations,
@@ -87,6 +109,12 @@ export default function MonCompteClient({
   const [cseSubmitError, setCseSubmitError] = useState<string | null>(null);
   const [cseSubmitSuccess, setCseSubmitSuccess] = useState<string | null>(null);
   const [isSubmittingCse, setIsSubmittingCse] = useState(false);
+  const [childForm, setChildForm] = useState<FamilyProfileChildInput>(EMPTY_CHILD_FORM);
+  const [editingChildId, setEditingChildId] = useState<string | null>(null);
+  const [childError, setChildError] = useState<string | null>(null);
+  const [childSuccess, setChildSuccess] = useState<string | null>(null);
+  const [isSavingChild, setIsSavingChild] = useState(false);
+  const [deletingChildId, setDeletingChildId] = useState<string | null>(null);
   const { favoriteIdsArray, isLoaded } = useFavorites();
 
   const visibleFavoriteStays = useMemo(() => {
@@ -172,6 +200,88 @@ export default function MonCompteClient({
       setCseSubmitError(error instanceof Error ? error.message : 'Impossible de désaffilier ce compte du CSE.');
     } finally {
       setIsSubmittingCse(false);
+    }
+  }
+
+  async function handleSaveChild(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setChildError(null);
+    setChildSuccess(null);
+    setIsSavingChild(true);
+
+    try {
+      const payload: FamilyProfileChildInput = {
+        firstName: childForm.firstName.trim(),
+        lastName: childForm.lastName.trim(),
+        birthdate: childForm.birthdate,
+        gender: childForm.gender,
+        additionalInfo: childForm.additionalInfo.trim()
+      };
+      const response = editingChildId
+        ? await updateFamilyChild(editingChildId, payload)
+        : await createFamilyChild(payload);
+      setProfile((prev) => {
+        const otherChildren = prev.children.filter((child) => child.id !== response.child.id);
+        const nextChildren = editingChildId
+          ? [...otherChildren, response.child]
+          : [response.child, ...otherChildren];
+        nextChildren.sort((left, right) => right.birthdate.localeCompare(left.birthdate));
+        return {
+          ...prev,
+          children: nextChildren
+        };
+      });
+      setChildForm(EMPTY_CHILD_FORM);
+      setEditingChildId(null);
+      setChildSuccess(editingChildId ? "L'enfant a été mis à jour." : "L'enfant a été ajouté.");
+    } catch (error) {
+      setChildError(error instanceof Error ? error.message : "Impossible d'enregistrer l'enfant.");
+    } finally {
+      setIsSavingChild(false);
+    }
+  }
+
+  function handleEditChild(childId: string) {
+    const child = profile.children.find((entry) => entry.id === childId);
+    if (!child) return;
+    setEditingChildId(child.id);
+    setChildForm({
+      firstName: child.firstName,
+      lastName: child.lastName,
+      birthdate: child.birthdate,
+      gender: child.gender,
+      additionalInfo: child.additionalInfo
+    });
+    setChildError(null);
+    setChildSuccess(null);
+  }
+
+  function handleCancelChildEdit() {
+    setEditingChildId(null);
+    setChildForm(EMPTY_CHILD_FORM);
+    setChildError(null);
+    setChildSuccess(null);
+  }
+
+  async function handleDeleteChild(childId: string) {
+    setChildError(null);
+    setChildSuccess(null);
+    setDeletingChildId(childId);
+
+    try {
+      await deleteFamilyChild(childId);
+      setProfile((prev) => ({
+        ...prev,
+        children: prev.children.filter((child) => child.id !== childId)
+      }));
+      if (editingChildId === childId) {
+        handleCancelChildEdit();
+      }
+      setChildSuccess("L'enfant a été supprimé du compte.");
+    } catch (error) {
+      setChildError(error instanceof Error ? error.message : "Impossible de supprimer l'enfant.");
+    } finally {
+      setDeletingChildId(null);
     }
   }
 
@@ -261,6 +371,150 @@ export default function MonCompteClient({
               </div>
             </dl>
           </article>
+        </section>
+
+        <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h2 className="font-display text-lg font-semibold text-slate-900">Enfants du compte</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Ces enfants seront proposés au moment de réserver un séjour.
+              </p>
+            </div>
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-600">
+              {profile.children.length} enfant{profile.children.length > 1 ? 's' : ''}
+            </span>
+          </div>
+
+          <div className="mt-5 grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
+            <div className="space-y-3">
+              {profile.children.length === 0 ? (
+                <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                  Aucun enfant enregistré pour le moment.
+                </p>
+              ) : (
+                profile.children.map((child) => (
+                  <article key={child.id} className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="space-y-1">
+                        <p className="font-semibold text-slate-900">
+                          {[child.firstName, child.lastName.toUpperCase()].filter(Boolean).join(' ')}
+                        </p>
+                        <p className="text-sm text-slate-600">Né(e) le {formatChildBirthdate(child.birthdate)}</p>
+                        {child.gender ? (
+                          <p className="text-sm text-slate-600">
+                            Genre : {child.gender === 'FEMININ' ? 'Féminin' : 'Masculin'}
+                          </p>
+                        ) : null}
+                        {child.additionalInfo.trim() ? (
+                          <p className="text-sm whitespace-pre-wrap text-slate-600">{child.additionalInfo.trim()}</p>
+                        ) : null}
+                      </div>
+                      <div className="flex shrink-0 gap-2">
+                        <button type="button" onClick={() => handleEditChild(child.id)} className="btn btn-secondary btn-sm">
+                          Modifier
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteChild(child.id)}
+                          disabled={deletingChildId === child.id}
+                          className="btn btn-primary btn-sm"
+                        >
+                          {deletingChildId === child.id ? 'Suppression...' : 'Supprimer'}
+                        </button>
+                      </div>
+                    </div>
+                  </article>
+                ))
+              )}
+            </div>
+
+            <form onSubmit={handleSaveChild} className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4">
+              <h3 className="font-display text-base font-semibold text-slate-900">
+                {editingChildId ? "Modifier l'enfant" : 'Ajouter un enfant'}
+              </h3>
+              <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-1">
+                <label className="text-sm font-medium text-slate-700">
+                  Prénom
+                  <input
+                    type="text"
+                    value={childForm.firstName}
+                    onChange={(event) => setChildForm((prev) => ({ ...prev, firstName: event.target.value }))}
+                    className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+                    required
+                  />
+                </label>
+                <label className="text-sm font-medium text-slate-700">
+                  Nom
+                  <input
+                    type="text"
+                    value={childForm.lastName}
+                    onChange={(event) => setChildForm((prev) => ({ ...prev, lastName: event.target.value }))}
+                    className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+                    required
+                  />
+                </label>
+                <label className="text-sm font-medium text-slate-700">
+                  Date de naissance
+                  <input
+                    type="date"
+                    value={childForm.birthdate}
+                    onChange={(event) => setChildForm((prev) => ({ ...prev, birthdate: event.target.value }))}
+                    className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+                    required
+                  />
+                </label>
+                <label className="text-sm font-medium text-slate-700">
+                  Genre
+                  <select
+                    value={childForm.gender}
+                    onChange={(event) =>
+                      setChildForm((prev) => ({
+                        ...prev,
+                        gender: event.target.value as FamilyProfileChildInput['gender']
+                      }))
+                    }
+                    className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+                  >
+                    <option value="">Non précisé</option>
+                    <option value="MASCULIN">Masculin</option>
+                    <option value="FEMININ">Féminin</option>
+                  </select>
+                </label>
+                <label className="text-sm font-medium text-slate-700 md:col-span-2 xl:col-span-1">
+                  Informations complémentaires
+                  <textarea
+                    value={childForm.additionalInfo}
+                    onChange={(event) => setChildForm((prev) => ({ ...prev, additionalInfo: event.target.value }))}
+                    rows={4}
+                    className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+                  />
+                </label>
+              </div>
+
+              {childError ? (
+                <p className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                  {childError}
+                </p>
+              ) : null}
+              {childSuccess ? (
+                <p className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                  {childSuccess}
+                </p>
+              ) : null}
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button type="submit" disabled={isSavingChild} className="btn btn-primary btn-sm">
+                  {isSavingChild ? 'Enregistrement...' : editingChildId ? 'Enregistrer' : 'Ajouter'}
+                </button>
+                {editingChildId ? (
+                  <button type="button" onClick={handleCancelChildEdit} className="btn btn-secondary btn-sm">
+                    Annuler
+                  </button>
+                ) : null}
+              </div>
+            </form>
+          </div>
         </section>
 
         <div className="mt-8 grid gap-8 xl:grid-cols-2 xl:items-stretch [&>*]:min-h-0">

@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { requirePartner } from '@/lib/auth/require';
 import { canAccessPartnerSection, getPartnerAccessRoleFromSession } from '@/lib/partner-access';
+import { normalizePartnerFinanceMode } from '@/lib/partner-offers';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { listPartnerCatalogStays, readPartnerCollectivity } from '@/lib/partner.server';
 import PartnerCatalogRulesConfigurator from '@/components/partner/PartnerCatalogRulesConfigurator';
@@ -29,9 +30,7 @@ import type { PartnerCatalogRules } from '@/types/partner-catalog-rules';
 type PageProps = {
   searchParams?: Promise<{
     saved?: string;
-    published?: string;
     error?: string;
-    debug?: string;
     am?: string;
     ap?: string;
   }>;
@@ -107,7 +106,6 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
   const collectivityId = session.tenantId;
   const accessRole = getPartnerAccessRoleFromSession(session);
   const params = searchParams ? await searchParams : undefined;
-  const debugMode = params?.debug === '1';
 
   if (!canAccessPartnerSection(accessRole, 'catalog')) {
     redirect('/partenaire');
@@ -129,23 +127,55 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
     if (!nextSession.tenantId) redirect('/partenaire/catalogue?error=Aucune%20collectivite%20liee');
     if (!canAccessPartnerSection(accessRole, 'catalog')) redirect('/partenaire');
 
+    const collectivity = await readPartnerCollectivity(nextSession.tenantId);
     const siteCountries = await listSiteStayCountryLabels();
+    const parsedRules = parsePartnerCatalogRulesFromFormData(formData);
+    const existingRules = normalizePartnerCatalogRules(
+      collectivity.catalog_rules_draft ?? getDefaultPartnerCatalogRules()
+    );
+    if (normalizePartnerFinanceMode(collectivity.finance_mode) !== 'MANUAL') {
+      parsedRules.financialRules = existingRules.financialRules;
+      parsedRules.qfScale = existingRules.qfScale;
+    } else {
+      parsedRules.financialRules = {
+        ...parsedRules.financialRules,
+        aidMode: existingRules.financialRules.aidMode,
+        percentValue: existingRules.financialRules.percentValue,
+        fixedCents: existingRules.financialRules.fixedCents
+      };
+    }
     const rules: PartnerCatalogRules = syncKnownSiteCountriesWithRules(
-      normalizePartnerCatalogRules(parsePartnerCatalogRulesFromFormData(formData)),
+      normalizePartnerCatalogRules(parsedRules),
       siteCountries
     );
+    const now = new Date().toISOString();
+    let validatedRules: PartnerCatalogRules | null = null;
+    try {
+      validatedRules = parseAndValidatePartnerCatalogRules(rules);
+    } catch {
+      validatedRules = null;
+    }
 
     const supabase = getServerSupabaseClient();
     const { error } = await supabase
       .from('collectivities')
       .update({
         catalog_rules_draft: rules,
-        updated_at: new Date().toISOString()
+        ...(validatedRules
+          ? {
+              catalog_rules_published: validatedRules,
+              catalog_rules_published_at: now
+            }
+          : {}),
+        updated_at: now
       })
       .eq('id', nextSession.tenantId);
 
     if (error) {
-      if (isMissingColumnError(error, 'catalog_rules_draft')) {
+      if (
+        isMissingColumnError(error, 'catalog_rules_draft') ||
+        isMissingAnyColumnError(error, ['catalog_rules_published', 'catalog_rules_published_at'])
+      ) {
         redirect(buildCatalogErrorRedirectWithDraftState(
           formData,
           buildFeatureActivationMessage('L’enregistrement du catalogue')
@@ -158,77 +188,19 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
     redirect('/partenaire/catalogue?saved=1');
   }
 
-  async function publishDraft() {
-    'use server';
-    const nextSession = await requirePartner();
-    const accessRole = getPartnerAccessRoleFromSession(nextSession);
-    if (!nextSession.tenantId) redirect('/partenaire/catalogue?error=Aucune%20collectivite%20liee');
-    if (!canAccessPartnerSection(accessRole, 'catalog')) redirect('/partenaire');
-
-    const supabase = getServerSupabaseClient();
-    const { data, error: readError } = await supabase
-      .from('collectivities')
-      .select('catalog_rules_draft')
-      .eq('id', nextSession.tenantId)
-      .maybeSingle();
-    if (readError) {
-      if (isMissingColumnError(readError, 'catalog_rules_draft')) {
-        redirect(
-          `/partenaire/catalogue?error=${encodeURIComponent(
-            buildFeatureActivationMessage('Le catalogue partenaire')
-          )}`
-        );
-      }
-      redirect(`/partenaire/catalogue?error=${encodeURIComponent(readError.message)}`);
-    }
-
-    const siteCountries = await listSiteStayCountryLabels();
-    let validated: PartnerCatalogRules;
-    try {
-      validated = parseAndValidatePartnerCatalogRules(
-        syncKnownSiteCountriesWithRules(
-          normalizePartnerCatalogRules(data?.catalog_rules_draft ?? getDefaultPartnerCatalogRules()),
-          siteCountries
-        )
-      );
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Configuration invalide';
-      redirect(`/partenaire/catalogue?error=${encodeURIComponent(message)}`);
-    }
-
-    const now = new Date().toISOString();
-    const { error } = await supabase
-      .from('collectivities')
-      .update({
-        catalog_rules_published: validated,
-        catalog_rules_published_at: now,
-        updated_at: now
-      })
-      .eq('id', nextSession.tenantId);
-    if (error) {
-      if (isMissingAnyColumnError(error, ['catalog_rules_published', 'catalog_rules_published_at'])) {
-        redirect(
-          `/partenaire/catalogue?error=${encodeURIComponent(
-            buildFeatureActivationMessage('La publication des règles catalogue')
-          )}`
-        );
-      }
-      redirect(`/partenaire/catalogue?error=${encodeURIComponent(error.message)}`);
-    }
-    revalidatePath('/partenaire');
-    revalidatePath('/partenaire/catalogue');
-    redirect('/partenaire/catalogue?published=1');
-  }
-
-  const [collectivity, rawCatalogRows, siteCountries] = await Promise.all([
+  const supabase = getServerSupabaseClient();
+  const [collectivity, rawCatalogRows, siteCountries, seasonsResponse] = await Promise.all([
     readPartnerCollectivity(collectivityId),
     listPartnerCatalogStays(),
-    listSiteStayCountryLabels()
+    listSiteStayCountryLabels(),
+    supabase.from('seasons').select('name').order('start_date', { ascending: true }).order('name', { ascending: true })
   ]);
 
-  const draftRules = normalizePartnerCatalogRules(
-    collectivity.catalog_rules_draft ?? getDefaultPartnerCatalogRules()
+  const draftRules = syncKnownSiteCountriesWithRules(
+    normalizePartnerCatalogRules(collectivity.catalog_rules_draft ?? getDefaultPartnerCatalogRules()),
+    siteCountries
   );
+  draftRules.blockingRules.transportIncludedRequired = false;
   const runtimeAidModeParam = String(params?.am ?? '').trim();
   const runtimeAidPercentParam = String(params?.ap ?? '').trim();
   if (runtimeAidModeParam === 'PERCENT' || runtimeAidModeParam === 'FIXED' || runtimeAidModeParam === 'QF_SCALE') {
@@ -248,13 +220,11 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
       return error instanceof Error ? error.message : 'Configuration incomplète';
     }
   })();
-  const publishedRules = normalizePartnerCatalogRules(
-    collectivity.catalog_rules_published ?? draftRules
-  );
+  const activeRules = draftRules;
   const qfRows =
     draftRules.qfScale.length > 0
       ? draftRules.qfScale
-      : Array.from({ length: 4 }).map((_, index) => ({
+      : Array.from({ length: 3 }).map((_, index) => ({
           id: `default-${index}`,
           minQf: 0,
           maxQf: null,
@@ -264,8 +234,12 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
         }));
 
   const seasonOptions = Array.from(
-    new Set(rawCatalogRows.map((stay) => stay.season_name).filter(Boolean))
-  );
+    new Set([
+      ...(seasonsResponse.data ?? []).map((season) => season.name),
+      ...draftRules.blockingRules.seasonsAllowed,
+      ...rawCatalogRows.map((stay) => stay.season_name)
+    ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0))
+  ).sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }));
   const stayTypeOptions = Array.from(
     new Set(rawCatalogRows.flatMap((stay) => stay.categories ?? []).filter(Boolean))
   );
@@ -277,14 +251,14 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
       ])
     ).values()
   );
+  const financeMode = normalizePartnerFinanceMode(collectivity.finance_mode);
   const allCountryOptions = buildCatalogCountryOptions(siteCountries, draftRules);
   const catalogSnapshot = buildCatalogSnapshot(rawCatalogRows);
 
-  const excludedReasonCounts = new Map<string, number>();
   const catalogRows = rawCatalogRows.flatMap((stay) =>
     stay.sessions.map((sessionItem) => {
       const eligibility = evaluatePartnerCatalogEligibility({
-        rules: publishedRules,
+        rules: activeRules,
         stay: {
           age_min: stay.age_min,
           age_max: stay.age_max,
@@ -307,39 +281,23 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
         }
       });
 
-      if (eligibility.reasons[0]) {
-        excludedReasonCounts.set(
-          eligibility.reasons[0].message,
-          (excludedReasonCounts.get(eligibility.reasons[0].message) ?? 0) + 1
-        );
-      }
-
       const simulation = simulatePartnerAid({
-        rules: publishedRules,
+        rules: activeRules,
         priceCents: sessionItem.estimated_price_cents,
         durationDays: durationDays(sessionItem.start_date, sessionItem.end_date),
         qfValue:
-          publishedRules.financialRules.qfMax != null
-            ? ((publishedRules.financialRules.qfMin ?? 0) +
-                publishedRules.financialRules.qfMax) /
-              2
-            : (publishedRules.financialRules.qfMin ?? 1200)
+          activeRules.financialRules.qfMax != null
+            ? ((activeRules.financialRules.qfMin ?? 0) + activeRules.financialRules.qfMax) / 2
+            : (activeRules.financialRules.qfMin ?? 1200)
       });
 
       return { stay, sessionItem, eligibility, simulation };
     })
   );
 
-  const topExclusions = Array.from(excludedReasonCounts.entries())
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5);
-
   const errorMessage = sanitizeRedirectQueryValue(params?.error);
   const isSaved = params?.saved === '1';
-  const isPublished = params?.published === '1';
-  const displayedRows = debugMode
-    ? catalogRows
-    : catalogRows.filter((row) => row.eligibility.status === 'ELIGIBLE');
+  const displayedRows = catalogRows.filter((row) => row.eligibility.status === 'ELIGIBLE');
   const appliedCatalogRows: AppliedCatalogRow[] = displayedRows.map((row) => ({
     rowKey: `${row.stay.id}:${row.sessionItem.id}`,
     title: row.stay.title,
@@ -360,15 +318,6 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
       row.simulation.appliedCapLabels.length > 0 ? row.simulation.appliedCapLabels.join(' · ') : null,
     warning: row.simulation.warnings[0] ?? null
   }));
-  const avgAidCents =
-    catalogRows.length > 0
-      ? Math.round(catalogRows.reduce((sum, row) => sum + row.simulation.aidCents, 0) / catalogRows.length)
-      : 0;
-  const avgFamilyCents =
-    catalogRows.length > 0
-      ? Math.round(catalogRows.reduce((sum, row) => sum + row.simulation.familyCents, 0) / catalogRows.length)
-      : 0;
-  const zeroAidCount = catalogRows.filter((row) => row.simulation.aidCents === 0).length;
   const baseStayCount = rawCatalogRows.length;
   const baseSessionCount = rawCatalogRows.reduce((sum, stay) => sum + stay.sessions.length, 0);
   const eligibleSessionCount = countEligiblePartnerCatalogSessions(draftRules, catalogSnapshot);
@@ -377,26 +326,11 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
     <div className="space-y-6">
       <div className="bg-slate-50 pb-3">
         <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm sm:px-6 lg:px-8">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h1 className="admin-page-title">Catalogue</h1>
-              <p className="admin-page-subtitle mt-1">
-                Paramétrage des règles d’éligibilité CSE pour {collectivity.name ?? 'votre partenaire'}.
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <a
-                href={debugMode ? '/partenaire/catalogue' : '/partenaire/catalogue?debug=1'}
-                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
-              >
-                {debugMode ? 'Masquer inéligibles' : 'Mode debug'}
-              </a>
-              <form action={publishDraft}>
-                <button className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white">
-                  Publier
-                </button>
-              </form>
-            </div>
+          <div>
+            <h1 className="admin-page-title">Catalogue</h1>
+            <p className="admin-page-subtitle mt-1">
+              Paramétrage des règles d’éligibilité CSE pour {collectivity.name ?? 'votre partenaire'}.
+            </p>
           </div>
         </div>
       </div>
@@ -411,11 +345,6 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
           Enregistré.
         </p>
       ) : null}
-      {isPublished ? (
-        <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-          Règles publiées.
-        </p>
-      ) : null}
       {draftValidationWarning ? (
         <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
           Enregistré avec avertissement: {draftValidationWarning}
@@ -424,9 +353,8 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
 
       <form id="partner-catalog-form" action={saveDraft} className="space-y-4">
         <input type="hidden" name="version" value={String(draftRules.version)} />
-        <input type="hidden" name="qf_row_count" value={String(Math.max(qfRows.length, 8))} />
-
         <PartnerCatalogRulesConfigurator
+          financeMode={financeMode}
           draftRules={draftRules}
           stayTypeOptions={stayTypeOptions}
           seasonOptions={seasonOptions}
@@ -437,12 +365,6 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
           baseSessionCount={baseSessionCount}
           eligibleSessionCount={eligibleSessionCount}
           catalogSnapshot={catalogSnapshot}
-          impactSummary={{
-            avgAidLabel: formatCurrencyFromCents(avgAidCents),
-            avgFamilyLabel: formatCurrencyFromCents(avgFamilyCents),
-            zeroAidCount,
-            topExclusions: topExclusions.map(([reason, count]) => ({ reason, count }))
-          }}
           fieldClassName={fieldClassName()}
         />
       </form>
@@ -459,7 +381,7 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
 
       <PartnerAppliedCatalogSection
         rows={appliedCatalogRows}
-        emptyMessage="Aucun séjour à afficher selon les règles publiées."
+        emptyMessage="Aucun séjour éligible selon vos règles."
       />
     </div>
   );

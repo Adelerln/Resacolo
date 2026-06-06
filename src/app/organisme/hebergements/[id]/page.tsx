@@ -13,7 +13,8 @@ import {
   buildAccessibilityInfoFromForm,
   extractAccommodationLocationMeta,
   normalizeAccommodationAddress,
-  validateAccommodationAddress,
+  readAccommodationLocationFromFormData,
+  validateAccommodationFormLocation,
   validateAndParseAccommodationCenterCoordinates,
 } from '@/lib/accommodation-location';
 import { deleteAccommodationForOrganizer, parseAccommodationMediaUrls, replaceAccommodationMedia } from '@/lib/accommodations';
@@ -83,9 +84,9 @@ export default async function AccommodationDetailPage({ params: paramsPromise, s
   }
 
   const accommodationSelectWithMapIframe =
-    'id,name,accommodation_type,address_text,postal_code,city,department_code,region_text,country,description,bed_info,bathroom_info,catering_info,accessibility_info,status,updated_at,validated_at,validated_by_user_id,organizer_id,ai_extracted_data,center_latitude,center_longitude,map_iframe_html';
+    'id,name,accommodation_type,location_mode,itinerant_zone,address_text,postal_code,city,department_code,region_text,country,description,bed_info,bathroom_info,catering_info,accessibility_info,status,updated_at,validated_at,validated_by_user_id,organizer_id,ai_extracted_data,center_latitude,center_longitude,map_iframe_html';
   const accommodationSelectLegacy =
-    'id,name,accommodation_type,address_text,postal_code,city,department_code,region_text,country,description,bed_info,bathroom_info,catering_info,accessibility_info,status,updated_at,validated_at,validated_by_user_id,organizer_id,ai_extracted_data,center_latitude,center_longitude';
+    'id,name,accommodation_type,location_mode,itinerant_zone,address_text,postal_code,city,department_code,region_text,country,description,bed_info,bathroom_info,catering_info,accessibility_info,status,updated_at,validated_at,validated_by_user_id,organizer_id,ai_extracted_data,center_latitude,center_longitude';
 
   const primaryAccommodationResult = await supabase
     .from('accommodations')
@@ -116,6 +117,9 @@ export default async function AccommodationDetailPage({ params: paramsPromise, s
     redirect(withOrganizerQuery('/organisme/hebergements', selectedOrganizerId));
   }
   const currentAccommodationLocation = extractAccommodationLocationMeta(accommodation.description, {
+    accommodationType: accommodation.accommodation_type,
+    locationMode: accommodation.location_mode,
+    itinerantZone: accommodation.itinerant_zone,
     addressText: accommodation.address_text,
     postalCode: accommodation.postal_code,
     city: accommodation.city,
@@ -126,6 +130,8 @@ export default async function AccommodationDetailPage({ params: paramsPromise, s
   const currentAccommodation = {
     ...accommodation,
     description: currentAccommodationLocation.description,
+    location_mode: currentAccommodationLocation.locationMode,
+    itinerant_zone: currentAccommodationLocation.itinerantZone,
     address_text: currentAccommodationLocation.addressText,
     postal_code: currentAccommodationLocation.postalCode,
     city: currentAccommodationLocation.city,
@@ -159,11 +165,8 @@ export default async function AccommodationDetailPage({ params: paramsPromise, s
     }
 
     const name = String(formData.get('name') ?? '').trim();
-    const selectedAccommodationType = String(formData.get('accommodation_type') ?? '').trim();
-    const mixedAccommodationTypes = formData
-      .getAll('accommodation_type_mixed_values')
-      .map((value) => String(value).trim());
-    const accommodationType = buildAccommodationTypeValue(selectedAccommodationType, mixedAccommodationTypes);
+    const locationForm = readAccommodationLocationFromFormData(formData);
+    const accommodationType = buildAccommodationTypeValue(locationForm.accommodationType);
     const parsedAccommodationType = parseAccommodationType(accommodationType);
 
     if (!name || !parsedAccommodationType.baseType) {
@@ -174,24 +177,9 @@ export default async function AccommodationDetailPage({ params: paramsPromise, s
         )
       );
     }
-    if (parsedAccommodationType.baseType === 'mixte' && parsedAccommodationType.mixedTypes.length === 0) {
-      redirect(
-        withOrganizerQuery(
-          `/organisme/hebergements/${params.id}?error=missing-mixed-types`,
-          selectedOrganizerId
-        )
-      );
-    }
 
     const description = String(formData.get('description') ?? '').trim();
-    const addressInput = normalizeAccommodationAddress({
-      addressText: String(formData.get('address_text') ?? '').trim(),
-      postalCode: String(formData.get('postal_code') ?? '').trim(),
-      city: String(formData.get('city') ?? '').trim(),
-      departmentCode: String(formData.get('department_code') ?? '').trim(),
-      regionText: String(formData.get('region_text') ?? '').trim(),
-      country: String(formData.get('country') ?? '').trim()
-    });
+    const addressInput = normalizeAccommodationAddress(locationForm.address);
     const now = new Date().toISOString();
     const mapIframeRaw = String(formData.get('map_iframe_html') ?? '').trim();
     const mapEmbedSrc = extractGoogleMapsEmbedSrcFromInput(mapIframeRaw);
@@ -205,7 +193,12 @@ export default async function AccommodationDetailPage({ params: paramsPromise, s
     const validatedByUserId = isUuid(session.userId) ? session.userId : null;
     const mediaUrls = parseAccommodationMediaUrls(formData.get('media_urls'));
 
-    const addressError = validateAccommodationAddress(addressInput);
+    const addressError = validateAccommodationFormLocation({
+      accommodationType,
+      locationMode: locationForm.locationMode,
+      itinerantZone: locationForm.itinerantZone,
+      address: addressInput
+    });
     if (addressError) {
       redirect(
         withOrganizerQuery(
@@ -246,6 +239,8 @@ export default async function AccommodationDetailPage({ params: paramsPromise, s
       department_code: addressInput.departmentCode || null,
       region_text: addressInput.regionText || null,
       country: addressInput.country || null,
+      location_mode: locationForm.locationMode,
+      itinerant_zone: locationForm.itinerantZone || null,
       bed_info: String(formData.get('bed_info') ?? '').trim() || null,
       bathroom_info: String(formData.get('bathroom_info') ?? '').trim() || null,
       catering_info: String(formData.get('catering_info') ?? '').trim() || null,

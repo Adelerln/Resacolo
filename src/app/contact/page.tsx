@@ -52,6 +52,8 @@ export default function ContactPage() {
   const [phone, setPhone] = useState('');
   const [message, setMessage] = useState('');
   const [siteKey, setSiteKey] = useState('');
+  const [turnstileScriptReady, setTurnstileScriptReady] = useState(false);
+  const [captchaWidgetState, setCaptchaWidgetState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const widgetContainerRef = useRef<HTMLDivElement | null>(null);
   const widgetIdRef = useRef<string | null>(null);
   const [turnstileToken, setTurnstileToken] = useState('');
@@ -62,23 +64,45 @@ export default function ContactPage() {
   const [organizersLoadError, setOrganizersLoadError] = useState<string | null>(null);
 
   useEffect(() => {
-    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-    const isVercelPreviewHost = window.location.hostname.endsWith('.vercel.app');
-    const usePreviewConfig = isPreviewOrDev || isVercelPreviewHost;
-    if (usePreviewConfig && isLocalhost) {
+    const hostname = window.location.hostname;
+    const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
+    const isVercelPreviewHost = hostname.endsWith('.vercel.app');
+    const isProductionHost =
+      !isLocalhost && !isVercelPreviewHost && process.env.NODE_ENV === 'production' && vercelEnv !== 'preview';
+
+    if (isProductionHost) {
+      setSiteKey(configuredSiteKey);
+      return;
+    }
+
+    const previewOrDevKey = configuredDevSiteKey || configuredSiteKey;
+    if (previewOrDevKey) {
+      setSiteKey(previewOrDevKey);
+      return;
+    }
+
+    if (isLocalhost || isVercelPreviewHost || isPreviewOrDev) {
       setSiteKey(TURNSTILE_TEST_SITE_KEY);
       return;
     }
-    if (usePreviewConfig) {
-      setSiteKey(configuredDevSiteKey || configuredSiteKey);
-      return;
-    }
-    setSiteKey(configuredSiteKey);
-  }, [configuredDevSiteKey, configuredSiteKey, isPreviewOrDev]);
 
-  const renderTurnstile = useCallback(() => {
-    if (!siteKey || !widgetContainerRef.current || !window.turnstile || widgetIdRef.current) {
-      return;
+    setSiteKey(configuredSiteKey);
+  }, [configuredDevSiteKey, configuredSiteKey, isPreviewOrDev, vercelEnv]);
+
+  useEffect(() => {
+    if (window.turnstile) {
+      setTurnstileScriptReady(true);
+    }
+  }, []);
+
+  const mountTurnstileWidget = useCallback(() => {
+    if (!siteKey || !widgetContainerRef.current || !window.turnstile) {
+      return false;
+    }
+
+    if (widgetIdRef.current && window.turnstile.remove) {
+      window.turnstile.remove(widgetIdRef.current);
+      widgetIdRef.current = null;
     }
 
     widgetIdRef.current = window.turnstile.render(widgetContainerRef.current, {
@@ -86,6 +110,7 @@ export default function ContactPage() {
       theme: 'light',
       callback: (token: string) => {
         setTurnstileToken(token);
+        setCaptchaWidgetState('ready');
         setErrorMessage(null);
       },
       'expired-callback': () => {
@@ -93,6 +118,7 @@ export default function ContactPage() {
       },
       'error-callback': (errorCode?: string) => {
         setTurnstileToken('');
+        setCaptchaWidgetState('error');
         if (errorCode === '110200') {
           setErrorMessage(
             'Captcha indisponible (110200) : domaine non autorisé pour cette clé Turnstile. Ajoutez ce domaine dans Cloudflare > Turnstile > Hostname Management.'
@@ -104,17 +130,65 @@ export default function ContactPage() {
         );
       }
     });
+
+    setCaptchaWidgetState('ready');
+    return true;
   }, [siteKey]);
 
   useEffect(() => {
-    renderTurnstile();
-    return () => {
+    if (!siteKey) {
+      setCaptchaWidgetState('error');
+      return;
+    }
+    if (!turnstileScriptReady) {
+      setCaptchaWidgetState('loading');
+      return;
+    }
+
+    let widgetMounted = false;
+    const cleanupWidget = () => {
       if (widgetIdRef.current && window.turnstile?.remove) {
         window.turnstile.remove(widgetIdRef.current);
       }
       widgetIdRef.current = null;
     };
-  }, [renderTurnstile]);
+
+    const tryMount = () => {
+      if (widgetMounted) return true;
+      if (mountTurnstileWidget()) {
+        widgetMounted = true;
+        return true;
+      }
+      return false;
+    };
+
+    setCaptchaWidgetState('loading');
+    if (tryMount()) {
+      return cleanupWidget;
+    }
+
+    const retryDelaysMs = [50, 150, 400, 800];
+    const timers = retryDelaysMs.map((delayMs) =>
+      window.setTimeout(() => {
+        tryMount();
+      }, delayMs)
+    );
+
+    const failTimer = window.setTimeout(() => {
+      if (!widgetMounted) {
+        setCaptchaWidgetState('error');
+        setErrorMessage(
+          'Le captcha n’a pas pu s’afficher. Rechargez la page ou désactivez temporairement votre bloqueur de publicités.'
+        );
+      }
+    }, 2500);
+
+    return () => {
+      timers.forEach((timer) => window.clearTimeout(timer));
+      window.clearTimeout(failTimer);
+      cleanupWidget();
+    };
+  }, [mountTurnstileWidget, siteKey, turnstileScriptReady]);
 
   const resetTurnstile = useCallback(() => {
     setTurnstileToken('');
@@ -169,6 +243,8 @@ export default function ContactPage() {
       controller.abort();
     };
   }, []);
+
+  const isTestSiteKey = siteKey === TURNSTILE_TEST_SITE_KEY;
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -229,10 +305,12 @@ export default function ContactPage() {
   return (
     <div className="min-h-screen bg-white">
       <Script
+        id="cloudflare-turnstile"
         src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"
         strategy="afterInteractive"
-        onLoad={renderTurnstile}
+        onLoad={() => setTurnstileScriptReady(true)}
         onError={() => {
+          setCaptchaWidgetState('error');
           setErrorMessage(
             'Impossible de charger Cloudflare Turnstile. Vérifiez votre connexion réseau ou votre bloqueur de contenu.'
           );
@@ -393,7 +471,22 @@ export default function ContactPage() {
               {siteKey ? (
                 <>
                   <p className="mb-3 text-sm text-slate-600">Veuillez valider le captcha avant l&apos;envoi du formulaire.</p>
-                  <div ref={widgetContainerRef} />
+                  {isTestSiteKey ? (
+                    <p className="mb-2 text-sm text-amber-800">
+                      Mode démo Turnstile actif (aucune clé configurée). Ajoutez{' '}
+                      <code className="rounded bg-amber-100 px-1">NEXT_PUBLIC_TURNSTILE_SITE_KEY</code> pour le
+                      captcha réel en production.
+                    </p>
+                  ) : null}
+                  {captchaWidgetState === 'loading' ? (
+                    <p className="mb-2 text-sm text-slate-500">Chargement du captcha…</p>
+                  ) : null}
+                  <div ref={widgetContainerRef} className="min-h-[4.5rem]" />
+                  {captchaWidgetState === 'error' && !errorMessage ? (
+                    <p className="mt-2 text-sm text-red-600">
+                      Le captcha n&apos;a pas pu s&apos;afficher. Rechargez la page ou contactez-nous par un autre canal.
+                    </p>
+                  ) : null}
                 </>
               ) : (
                 <p className="text-sm text-red-600">

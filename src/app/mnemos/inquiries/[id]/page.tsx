@@ -2,6 +2,9 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { requireRole } from '@/lib/auth/require';
 import { isMissingPublicTableError } from '@/lib/mnemos/supabase-table-missing';
+import { MnemosDt, MnemosFieldLabel } from '@/components/mnemos/MnemosFieldLabel';
+import { formatInquiryContact } from '@/lib/inquiries';
+import { formatMnemosStaffRole } from '@/lib/mnemos-display';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { updateInquiry } from '../actions';
 
@@ -23,8 +26,7 @@ export default async function MnemosInquiryDetailPage({ params, searchParams }: 
   if (error && isMissingPublicTableError(error)) {
     return (
       <div className="rounded-lg border border-amber-800/50 bg-amber-950/30 p-6 text-sm text-amber-100">
-        Table <code className="rounded bg-black/30 px-1">inquiries</code> absente. Appliquez{' '}
-        <code className="rounded bg-black/30 px-1">sql/20260416_mnemos_internal_tables.sql</code>.
+        La table des demandes est absente. Appliquez la migration Mnemos sur Supabase.
       </div>
     );
   }
@@ -33,6 +35,7 @@ export default async function MnemosInquiryDetailPage({ params, searchParams }: 
   }
 
   const { data: staff } = await supabase.from('staff_users').select('user_id, role').order('role');
+  const contact = formatInquiryContact(row);
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -60,20 +63,20 @@ export default async function MnemosInquiryDetailPage({ params, searchParams }: 
         <h2 className="text-sm font-semibold text-slate-400">Message initial</h2>
         <dl className="mt-3 space-y-2 text-sm">
           <div>
-            <dt className="text-slate-500">Contact</dt>
+            <MnemosDt className="text-slate-500">Contact</MnemosDt>
             <dd className="text-slate-200">
-              {row.contact_name ?? '—'} · {row.contact_email}
-              {row.contact_phone ? ` · ${row.contact_phone}` : ''}
+              {contact.name ?? '—'} · {contact.email || '—'}
+              {contact.phone ? ` · ${contact.phone}` : ''}
             </dd>
           </div>
           {row.subject ? (
             <div>
-              <dt className="text-slate-500">Sujet</dt>
+              <MnemosDt className="text-slate-500">Sujet</MnemosDt>
               <dd className="text-slate-200">{row.subject}</dd>
             </div>
           ) : null}
           <div>
-            <dt className="text-slate-500">Message</dt>
+            <MnemosDt className="text-slate-500">Message</MnemosDt>
             <dd className="whitespace-pre-wrap text-slate-300">{row.message}</dd>
           </div>
         </dl>
@@ -84,7 +87,7 @@ export default async function MnemosInquiryDetailPage({ params, searchParams }: 
         <form action={updateInquiry} className="mt-4 space-y-4">
           <input type="hidden" name="id" value={row.id} />
           <label className="block text-sm text-slate-300">
-            Statut
+            <MnemosFieldLabel>Statut</MnemosFieldLabel>
             <input
               name="status"
               defaultValue={row.status}
@@ -92,7 +95,7 @@ export default async function MnemosInquiryDetailPage({ params, searchParams }: 
             />
           </label>
           <label className="block text-sm text-slate-300">
-            Type
+            <MnemosFieldLabel>Type</MnemosFieldLabel>
             <input
               name="inquiry_type"
               defaultValue={row.inquiry_type}
@@ -100,7 +103,7 @@ export default async function MnemosInquiryDetailPage({ params, searchParams }: 
             />
           </label>
           <label className="block text-sm text-slate-300">
-            Assigné à (user_id staff)
+            <MnemosFieldLabel>Assigné à (équipe interne)</MnemosFieldLabel>
             <select
               name="assigned_to_user_id"
               defaultValue={row.assigned_to_user_id ?? ''}
@@ -109,19 +112,10 @@ export default async function MnemosInquiryDetailPage({ params, searchParams }: 
               <option value="">— Non assigné —</option>
               {(staff ?? []).map((s) => (
                 <option key={s.user_id} value={s.user_id}>
-                  {s.user_id} ({s.role})
+                  {s.user_id} ({formatMnemosStaffRole(s.role)})
                 </option>
               ))}
             </select>
-          </label>
-          <label className="block text-sm text-slate-300">
-            Notes internes
-            <textarea
-              name="internal_notes"
-              rows={5}
-              defaultValue={row.internal_notes ?? ''}
-              className="mt-1 block w-full rounded-lg border border-slate-600 bg-slate-950 px-3 py-2 text-white"
-            />
           </label>
           <button
             type="submit"

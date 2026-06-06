@@ -5,6 +5,7 @@ import { isRagInfraMissingError } from '@/lib/rag/errors';
 import { getRagEnv, isPublicChatbotEnabled } from '@/lib/rag/env';
 import { redactPIIText } from '@/lib/rag/pii';
 import { sendEscalationEmail } from '@/lib/rag/smtp';
+import { buildChatbotHandoffInquiryInsert } from '@/lib/inquiries';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 
 export const runtime = 'nodejs';
@@ -49,14 +50,14 @@ export async function POST(request: Request) {
 
     const { data: inquiry, error: inquiryError } = await supabase
       .from('inquiries')
-      .insert({
-        inquiry_type: 'CHATBOT_HANDOFF',
-        status: 'NEW',
-        contact_email: contactEmail,
-        contact_name: body.contactName ?? null,
-        subject,
-        message
-      })
+      .insert(
+        buildChatbotHandoffInquiryInsert({
+          contactEmail,
+          contactName: body.contactName ?? null,
+          subject,
+          message
+        })
+      )
       .select('id')
       .single();
 

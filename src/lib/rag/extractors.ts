@@ -198,7 +198,7 @@ async function extractInquiries(): Promise<RagDocumentInput[]> {
   const { data } = await supabase
     .from('inquiries')
     .select(
-      'id,status,inquiry_type,subject,message,contact_name,contact_email,contact_phone,internal_notes,assigned_to_user_id,created_at,updated_at'
+      'id,status,inquiry_type,subject,message,email,first_name,last_name,phone,assigned_to_user_id,created_at,updated_at'
     )
     .order('updated_at', { ascending: false })
     .limit(500);
@@ -221,11 +221,10 @@ async function extractInquiries(): Promise<RagDocumentInput[]> {
       inquiry_type: row.inquiry_type,
       subject: row.subject,
       message: row.message,
-      contact_name: row.contact_name,
-      contact_email: row.contact_email,
-      contact_phone: row.contact_phone,
+      contact_name: [row.first_name, row.last_name].filter(Boolean).join(' ').trim() || null,
+      contact_email: row.email,
+      contact_phone: row.phone,
       assigned_to_user_id: row.assigned_to_user_id,
-      internal_notes: row.internal_notes,
       created_at: row.created_at,
       updated_at: row.updated_at
     })

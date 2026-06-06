@@ -3,6 +3,13 @@ import { notFound } from 'next/navigation';
 import { requireRole } from '@/lib/auth/require';
 import { canManageBackofficeAccess } from '@/lib/mnemos-backoffice-access-admins';
 import { createSignedMnemosInvoicePdfUrl } from '@/lib/mnemos/invoice-pdf.server';
+import { MnemosDt, MnemosFieldLabel } from '@/components/mnemos/MnemosFieldLabel';
+import {
+  formatMnemosBillingEventType,
+  formatMnemosInvoiceType,
+  formatMnemosRevokeReason,
+  formatMnemosStatus
+} from '@/lib/mnemos-display';
 import { ORGANIZER_ACCESS_LABELS, ORGANIZER_ACCESS_ROLE_VALUES } from '@/lib/organizer-access';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import {
@@ -133,7 +140,7 @@ export default async function MnemosOrganizerDetailPage({ params, searchParams }
           href={`/mnemos/billing?organizer_id=${encodeURIComponent(id)}`}
           className="inline-flex shrink-0 items-center justify-center rounded-lg border border-violet-500/70 bg-violet-950/50 px-4 py-2 text-sm font-semibold text-violet-100 hover:border-violet-400"
         >
-          Facturation période
+          Facturation par période
         </Link>
       </div>
 
@@ -141,19 +148,19 @@ export default async function MnemosOrganizerDetailPage({ params, searchParams }
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Informations organisme</h2>
         <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
           <div>
-            <dt className="text-slate-500">Email contact</dt>
+            <MnemosDt className="text-slate-500">Courriel de contact</MnemosDt>
             <dd className="text-slate-200">{org.contact_email ?? '—'}</dd>
           </div>
           <div>
-            <dt className="text-slate-500">Site web</dt>
+            <MnemosDt className="text-slate-500">Site web</MnemosDt>
             <dd className="text-slate-200">{org.website_url ?? '—'}</dd>
           </div>
           <div>
-            <dt className="text-slate-500">Membre fondateur</dt>
+            <MnemosDt className="text-slate-500">Membre fondateur</MnemosDt>
             <dd className="text-slate-200">{org.is_founding_member ? 'Oui' : 'Non'}</dd>
           </div>
           <div>
-            <dt className="text-slate-500">Membre ResaColo</dt>
+            <MnemosDt className="text-slate-500">Membre Resacolo</MnemosDt>
             <dd className="text-slate-200">{org.is_resacolo_member ? 'Oui' : 'Non'}</dd>
           </div>
         </dl>
@@ -164,22 +171,22 @@ export default async function MnemosOrganizerDetailPage({ params, searchParams }
         {billing ? (
           <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
             <div>
-              <dt className="text-slate-500">Commission</dt>
+              <MnemosDt className="text-slate-500">Commission</MnemosDt>
               <dd className="text-slate-200">{Number(billing.commission_percent)} %</dd>
             </div>
             <div>
-              <dt className="text-slate-500">Forfait publication</dt>
+              <MnemosDt className="text-slate-500">Forfait publication</MnemosDt>
               <dd className="text-slate-200">{euros(billing.publication_fee_cents)}</dd>
             </div>
             {billing.notes ? (
               <div className="sm:col-span-2">
-                <dt className="text-slate-500">Notes</dt>
+                <MnemosDt className="text-slate-500">Notes</MnemosDt>
                 <dd className="whitespace-pre-wrap text-slate-300">{billing.notes}</dd>
               </div>
             ) : null}
           </dl>
         ) : (
-          <p className="mt-3 text-sm text-slate-500">Aucune ligne dans organizer_billing_settings.</p>
+          <p className="mt-3 text-sm text-slate-500">Aucun paramètre de facturation enregistré.</p>
         )}
       </section>
 
@@ -187,24 +194,24 @@ export default async function MnemosOrganizerDetailPage({ params, searchParams }
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Indicateurs</h2>
         <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-3">
           <div>
-            <dt className="text-slate-500">Séjours publiés</dt>
+            <MnemosDt className="text-slate-500">Séjours publiés</MnemosDt>
             <dd className="text-xl font-semibold text-white">{overview?.published_stays_count ?? '—'}</dd>
           </div>
           <div>
-            <dt className="text-slate-500">Ventes (lignes)</dt>
+            <MnemosDt className="text-slate-500">Ventes (lignes)</MnemosDt>
             <dd className="text-xl font-semibold text-white">{overview?.sales_count ?? '—'}</dd>
           </div>
           <div>
-            <dt className="text-slate-500">Séjours (tous statuts)</dt>
+            <MnemosDt className="text-slate-500">Séjours (tous statuts)</MnemosDt>
             <dd className="text-xl font-semibold text-white">{overview?.stays_count ?? '—'}</dd>
           </div>
         </dl>
       </section>
 
       <section className="rounded-xl border border-slate-700 bg-slate-900/50 p-5">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Accès back-office</h2>
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Accès espace organisateur</h2>
         <p className="mt-1 text-xs text-slate-500">
-          Source de vérité des accès organisme (pilotage Mnemos + synchronisation admin).
+          Référence des accès organisme (pilotage Mnemos et synchronisation administration).
         </p>
 
         {accessSaved && (
@@ -220,14 +227,15 @@ export default async function MnemosOrganizerDetailPage({ params, searchParams }
 
         {!canManageAccess && (
           <div className="mt-4 rounded-lg border border-amber-700/50 bg-amber-950/30 px-3 py-2 text-sm text-amber-200">
-            Vous etes connecte en admin, mais seul Jeanne et Adele peuvent gerer les acces back-office.
+            Vous êtes connecté en tant qu’administrateur, mais seules Jeanne et Adèle peuvent gérer les accès
+            organisateur.
           </div>
         )}
         {canManageAccess && (
           <form action={addBackofficeAccess} className="mt-5 grid gap-3 md:grid-cols-[minmax(0,1fr)_220px_auto]">
             <input type="hidden" name="organizer_id" value={id} />
             <label className="text-xs font-medium uppercase tracking-wide text-slate-400">
-              Email
+              <MnemosFieldLabel>Courriel</MnemosFieldLabel>
               <input
                 name="email"
                 type="email"
@@ -237,7 +245,7 @@ export default async function MnemosOrganizerDetailPage({ params, searchParams }
               />
             </label>
             <label className="text-xs font-medium uppercase tracking-wide text-slate-400">
-              Role
+              <MnemosFieldLabel>Rôle</MnemosFieldLabel>
               <select
                 name="role"
                 defaultValue="EDITOR"
@@ -260,7 +268,7 @@ export default async function MnemosOrganizerDetailPage({ params, searchParams }
 
         <form className="mt-4 grid gap-2 md:max-w-md" method="get">
           <label className="text-xs font-medium uppercase tracking-wide text-slate-400">
-            Rechercher par email
+            <MnemosFieldLabel>Rechercher par courriel</MnemosFieldLabel>
             <input
               name="q"
               defaultValue={resolvedSearchParams?.q ?? ''}
@@ -278,10 +286,10 @@ export default async function MnemosOrganizerDetailPage({ params, searchParams }
             <thead className="bg-slate-900 text-xs uppercase text-slate-500">
               <tr>
                 <th className="px-3 py-2">Matricule</th>
-                <th className="px-3 py-2">Email</th>
+                <th className="px-3 py-2">Courriel</th>
                 <th className="px-3 py-2">Nom</th>
-                <th className="px-3 py-2">ID app</th>
-                <th className="px-3 py-2">Role</th>
+                <th className="px-3 py-2">Identifiant appli</th>
+                <th className="px-3 py-2">Rôle</th>
                 <th className="px-3 py-2">Historique</th>
                 <th className="px-3 py-2">Actions</th>
               </tr>
@@ -292,7 +300,7 @@ export default async function MnemosOrganizerDetailPage({ params, searchParams }
                 const roleLabel =
                   ORGANIZER_ACCESS_LABELS[row.role as keyof typeof ORGANIZER_ACCESS_LABELS] ?? row.role;
                 const revokedLabel = row.revoked_at
-                  ? `Retire le ${new Date(row.revoked_at).toLocaleString('fr-FR')}`
+                  ? `Retiré le ${new Date(row.revoked_at).toLocaleString('fr-FR')}`
                   : 'Actif';
 
                 return (
@@ -303,9 +311,11 @@ export default async function MnemosOrganizerDetailPage({ params, searchParams }
                     <td className="px-3 py-2 font-mono text-xs text-slate-500">{row.app_user_id}</td>
                     <td className="px-3 py-2 text-slate-300">{roleLabel}</td>
                     <td className="px-3 py-2 text-xs text-slate-400">
-                      <div>Attribue le {new Date(row.granted_at ?? row.created_at).toLocaleString('fr-FR')}</div>
+                      <div>Attribué le {new Date(row.granted_at ?? row.created_at).toLocaleString('fr-FR')}</div>
                       <div>{revokedLabel}</div>
-                      {row.revoke_reason ? <div>Motif : {row.revoke_reason}</div> : null}
+                      {row.revoke_reason ? (
+                        <div>Motif : {formatMnemosRevokeReason(row.revoke_reason) ?? row.revoke_reason}</div>
+                      ) : null}
                     </td>
                     <td className="px-3 py-2">
                       {canManageAccess ? (
@@ -325,7 +335,7 @@ export default async function MnemosOrganizerDetailPage({ params, searchParams }
                               ))}
                             </select>
                             <button className="rounded-md border border-slate-600 px-2 py-1 text-xs font-semibold text-slate-200">
-                              Mettre a jour
+                              Mettre à jour
                             </button>
                           </form>
                           <form action={removeBackofficeAccess}>
@@ -346,7 +356,7 @@ export default async function MnemosOrganizerDetailPage({ params, searchParams }
               {!filteredAccessRows.length && (
                 <tr>
                   <td colSpan={7} className="px-3 py-6 text-center text-slate-500">
-                    Aucun accès back-office attribué.
+                    Aucun accès organisateur attribué.
                   </td>
                 </tr>
               )}
@@ -357,7 +367,7 @@ export default async function MnemosOrganizerDetailPage({ params, searchParams }
 
       <section className="rounded-xl border border-slate-700 bg-slate-900/50 p-5">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Historique de facturation</h2>
-        <p className="mt-1 text-xs text-slate-500">Factures émises et événements liés (V1).</p>
+        <p className="mt-1 text-xs text-slate-500">Factures émises et événements liés.</p>
 
         <h3 className="mt-6 text-xs font-semibold text-slate-400">Factures</h3>
         <div className="mt-2 overflow-x-auto rounded-lg border border-slate-800">
@@ -380,10 +390,10 @@ export default async function MnemosOrganizerDetailPage({ params, searchParams }
                     <td className="px-3 py-2 tabular-nums text-slate-200">
                       {inv.year}-{String(inv.number).padStart(4, '0')}
                     </td>
-                    <td className="px-3 py-2 text-slate-300">{inv.invoice_type}</td>
+                    <td className="px-3 py-2 text-slate-300">{formatMnemosInvoiceType(inv.invoice_type)}</td>
                     <td className="px-3 py-2">
                       <span className="rounded-full bg-slate-800 px-2 py-0.5 text-xs text-slate-300">
-                        {inv.status}
+                        {formatMnemosStatus(inv.status)}
                       </span>
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums text-slate-200">{euros(inv.total_cents)}</td>
@@ -438,14 +448,14 @@ export default async function MnemosOrganizerDetailPage({ params, searchParams }
           );
         })}
 
-        <h3 className="mt-8 text-xs font-semibold text-slate-400">Événements billing</h3>
+        <h3 className="mt-8 text-xs font-semibold text-slate-400">Événements de facturation</h3>
         <ul className="mt-2 space-y-2 text-sm">
           {(events ?? []).map((ev) => (
             <li
               key={ev.id}
               className="flex flex-wrap items-baseline justify-between gap-2 rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2"
             >
-              <span className="font-medium text-violet-200">{ev.event_type}</span>
+              <span className="font-medium text-violet-200">{formatMnemosBillingEventType(ev.event_type)}</span>
               <span className="text-xs text-slate-500">{new Date(ev.created_at).toLocaleString('fr-FR')}</span>
               {ev.invoice_id ? (
                 <span className="w-full text-xs text-slate-500">Facture : {ev.invoice_id}</span>
@@ -453,7 +463,7 @@ export default async function MnemosOrganizerDetailPage({ params, searchParams }
             </li>
           ))}
           {!(events ?? []).length && (
-            <li className="text-slate-500">Aucun événement (table organizer_billing_events ou vide).</li>
+            <li className="text-slate-500">Aucun événement de facturation enregistré.</li>
           )}
         </ul>
       </section>

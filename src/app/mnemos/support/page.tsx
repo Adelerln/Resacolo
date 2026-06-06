@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { requireRole } from '@/lib/auth/require';
 import { isMissingPublicTableError } from '@/lib/mnemos/supabase-table-missing';
+import { MnemosFieldLabel } from '@/components/mnemos/MnemosFieldLabel';
+import { formatMnemosStatus } from '@/lib/mnemos-display';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
@@ -57,14 +59,21 @@ export default async function MnemosSupportPage({ searchParams }: { searchParams
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-white">Support organismes</h1>
-        <p className="mt-1 text-sm text-slate-400">Tickets, filtres et suivi.</p>
+        <h1 className="text-2xl font-semibold text-white">Assistance organismes</h1>
+        <p className="mt-1 text-sm text-slate-400">
+          Tickets ouverts par les organismes partenaires depuis leur espace — pas les messages du formulaire de
+          contact public.
+        </p>
+        <p className="mt-2 text-sm text-violet-300">
+          <Link href="/mnemos/inquiries" className="font-semibold underline hover:text-violet-200">
+            Voir les demandes de renseignements (formulaire de contact)
+          </Link>
+        </p>
       </div>
 
       {tableMissing && (
         <div className="rounded-lg border border-amber-800/50 bg-amber-950/30 px-4 py-3 text-sm text-amber-100">
-          Tables support absentes. Exécutez{' '}
-          <code className="rounded bg-black/30 px-1">sql/20260416_mnemos_internal_tables.sql</code>.
+          Les tables d&apos;assistance sont absentes. Appliquez la migration Mnemos sur Supabase.
         </div>
       )}
 
@@ -79,7 +88,7 @@ export default async function MnemosSupportPage({ searchParams }: { searchParams
         className="flex flex-wrap items-end gap-3 rounded-xl border border-slate-700 bg-slate-900/50 p-4"
       >
         <label className="text-sm text-slate-300">
-          Organisme
+          <MnemosFieldLabel>Organisme</MnemosFieldLabel>
           <select
             name="organizer_id"
             defaultValue={sp.organizer_id ?? ''}
@@ -94,7 +103,7 @@ export default async function MnemosSupportPage({ searchParams }: { searchParams
           </select>
         </label>
         <label className="text-sm text-slate-300">
-          Statut
+          <MnemosFieldLabel>Statut</MnemosFieldLabel>
           <input
             name="status"
             defaultValue={sp.status ?? ''}
@@ -102,7 +111,7 @@ export default async function MnemosSupportPage({ searchParams }: { searchParams
           />
         </label>
         <label className="text-sm text-slate-300">
-          Priorité
+          <MnemosFieldLabel>Priorité</MnemosFieldLabel>
           <input
             name="priority"
             defaultValue={sp.priority ?? ''}
@@ -110,7 +119,7 @@ export default async function MnemosSupportPage({ searchParams }: { searchParams
           />
         </label>
         <label className="text-sm text-slate-300">
-          Catégorie
+          <MnemosFieldLabel>Catégorie</MnemosFieldLabel>
           <input
             name="category"
             defaultValue={sp.category ?? ''}
@@ -150,7 +159,7 @@ export default async function MnemosSupportPage({ searchParams }: { searchParams
                     <td className="px-3 py-2 text-slate-200">{orgName ?? r.organizer_id}</td>
                     <td className="px-3 py-2">
                       <span className="rounded-full bg-slate-800 px-2 py-0.5 text-xs text-violet-200">
-                        {r.status}
+                        {formatMnemosStatus(r.status)}
                       </span>
                     </td>
                     <td className="px-3 py-2 text-slate-400">{r.priority}</td>
@@ -169,7 +178,14 @@ export default async function MnemosSupportPage({ searchParams }: { searchParams
               {!rows?.length && !error && (
                 <tr>
                   <td colSpan={6} className="px-4 py-10 text-center text-slate-500">
-                    Aucun ticket.
+                    Aucune demande d&apos;organisme.
+                    <span className="mt-2 block text-xs text-slate-600">
+                      Les messages du formulaire de contact sont dans{' '}
+                      <Link href="/mnemos/inquiries" className="text-violet-400 underline hover:text-violet-200">
+                        Demandes de renseignements
+                      </Link>
+                      .
+                    </span>
                   </td>
                 </tr>
               )}

@@ -386,54 +386,12 @@ export default function MonCompteClient({
             </span>
           </div>
 
-          <div className="mt-5 grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
-            <div className="space-y-3">
-              {profile.children.length === 0 ? (
-                <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                  Aucun enfant enregistré pour le moment.
-                </p>
-              ) : (
-                profile.children.map((child) => (
-                  <article key={child.id} className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="space-y-1">
-                        <p className="font-semibold text-slate-900">
-                          {[child.firstName, child.lastName.toUpperCase()].filter(Boolean).join(' ')}
-                        </p>
-                        <p className="text-sm text-slate-600">Né(e) le {formatChildBirthdate(child.birthdate)}</p>
-                        {child.gender ? (
-                          <p className="text-sm text-slate-600">
-                            Genre : {child.gender === 'FEMININ' ? 'Féminin' : 'Masculin'}
-                          </p>
-                        ) : null}
-                        {child.additionalInfo.trim() ? (
-                          <p className="text-sm whitespace-pre-wrap text-slate-600">{child.additionalInfo.trim()}</p>
-                        ) : null}
-                      </div>
-                      <div className="flex shrink-0 gap-2">
-                        <button type="button" onClick={() => handleEditChild(child.id)} className="btn btn-secondary btn-sm">
-                          Modifier
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteChild(child.id)}
-                          disabled={deletingChildId === child.id}
-                          className="btn btn-primary btn-sm"
-                        >
-                          {deletingChildId === child.id ? 'Suppression...' : 'Supprimer'}
-                        </button>
-                      </div>
-                    </div>
-                  </article>
-                ))
-              )}
-            </div>
-
+          <div className="mt-5 flex flex-col gap-6">
             <form onSubmit={handleSaveChild} className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4">
               <h3 className="font-display text-base font-semibold text-slate-900">
                 {editingChildId ? "Modifier l'enfant" : 'Ajouter un enfant'}
               </h3>
-              <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-1">
+              <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <label className="text-sm font-medium text-slate-700">
                   Prénom
                   <input
@@ -481,12 +439,12 @@ export default function MonCompteClient({
                     <option value="FEMININ">Féminin</option>
                   </select>
                 </label>
-                <label className="text-sm font-medium text-slate-700 md:col-span-2 xl:col-span-1">
+                <label className="text-sm font-medium text-slate-700 sm:col-span-2 lg:col-span-4">
                   Informations complémentaires
                   <textarea
                     value={childForm.additionalInfo}
                     onChange={(event) => setChildForm((prev) => ({ ...prev, additionalInfo: event.target.value }))}
-                    rows={4}
+                    rows={2}
                     className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
                   />
                 </label>
@@ -514,6 +472,48 @@ export default function MonCompteClient({
                 ) : null}
               </div>
             </form>
+
+            <div className="space-y-3">
+              {profile.children.length === 0 ? (
+                <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                  Aucun enfant enregistré pour le moment.
+                </p>
+              ) : (
+                profile.children.map((child) => (
+                  <article key={child.id} className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="space-y-1">
+                        <p className="font-semibold text-slate-900">
+                          {[child.firstName, child.lastName.toUpperCase()].filter(Boolean).join(' ')}
+                        </p>
+                        <p className="text-sm text-slate-600">Né(e) le {formatChildBirthdate(child.birthdate)}</p>
+                        {child.gender ? (
+                          <p className="text-sm text-slate-600">
+                            Genre : {child.gender === 'FEMININ' ? 'Féminin' : 'Masculin'}
+                          </p>
+                        ) : null}
+                        {child.additionalInfo.trim() ? (
+                          <p className="text-sm whitespace-pre-wrap text-slate-600">{child.additionalInfo.trim()}</p>
+                        ) : null}
+                      </div>
+                      <div className="flex shrink-0 gap-2">
+                        <button type="button" onClick={() => handleEditChild(child.id)} className="btn btn-secondary btn-sm">
+                          Modifier
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteChild(child.id)}
+                          disabled={deletingChildId === child.id}
+                          className="btn btn-primary btn-sm"
+                        >
+                          {deletingChildId === child.id ? 'Suppression...' : 'Supprimer'}
+                        </button>
+                      </div>
+                    </div>
+                  </article>
+                ))
+              )}
+            </div>
           </div>
         </section>
 

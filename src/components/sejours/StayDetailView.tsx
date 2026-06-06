@@ -13,7 +13,7 @@ import { formatSessionDateRangeFr } from '@/lib/cart/formatSessionRange';
 import { createCartItemFromStay } from '@/lib/cart/normalizeCartItem';
 import { FILTER_LABELS } from '@/lib/constants';
 import { getMockImageUrl, mockImages } from '@/lib/mockImages';
-import { getSessionDisplayedBasePrice, getStayDisplayedPrice } from '@/lib/stay-partner-pricing';
+import { getStayDisplayedPrice } from '@/lib/stay-partner-pricing';
 import { computePartnerFinanceDisplay, normalizePartnerFinanceMode } from '@/lib/partner-offers';
 import { formatNoPaymentAsBeneficiaryMessage } from '@/lib/partner-beneficiary-copy';
 import {
@@ -642,43 +642,57 @@ export function StayDetailView({ stay }: { stay: Stay }) {
     [extraOptions, selectedExtraOptionId]
   );
   const isSelectedSessionUnavailable = selectedSession ? selectedSession.status !== 'OPEN' : false;
-  const publicBasePrice = useMemo(() => {
+  const publicSessionBase = useMemo(() => {
     if (selectedSession?.price != null) return selectedSession.price;
     if (typeof stay.priceFrom === 'number' && Number.isFinite(stay.priceFrom)) return stay.priceFrom;
     return null;
   }, [selectedSession, stay.priceFrom]);
-  const displayedBasePrice = useMemo(
-    () => getSessionDisplayedBasePrice(selectedSession, stay),
-    [selectedSession, stay]
-  );
-  const estimatedPrice = useMemo(() => {
-    return computeDisplayedTotal({
-      basePrice: displayedBasePrice,
+  const partnerSessionBase = useMemo(() => {
+    if (selectedSession?.partnerDiscountedPrice != null) return selectedSession.partnerDiscountedPrice;
+    return publicSessionBase;
+  }, [publicSessionBase, selectedSession]);
+  const cseSessionFamilyBase = useMemo(() => {
+    if (selectedSession?.cseEligible && selectedSession.familyCentsAfterAid != null) {
+      return selectedSession.familyCentsAfterAid / 100;
+    }
+    return null;
+  }, [selectedSession]);
+  const pricingExtras = useMemo(
+    () => ({
       transportAmount: selectedTransportAmount,
       extraOptionAmount: selectedExtraOption?.amount ?? 0,
       insuranceOption: selectedInsuranceOption
-    });
-  }, [
-    displayedBasePrice,
-    selectedExtraOption,
-    selectedInsuranceOption,
-    selectedTransportAmount
-  ]);
-  const estimatedPublicPrice = useMemo(
-    () =>
-      computeDisplayedTotal({
-        basePrice: publicBasePrice,
-        transportAmount: selectedTransportAmount,
-        extraOptionAmount: selectedExtraOption?.amount ?? 0,
-        insuranceOption: selectedInsuranceOption
-      }),
-    [publicBasePrice, selectedExtraOption, selectedInsuranceOption, selectedTransportAmount]
+    }),
+    [selectedExtraOption, selectedInsuranceOption, selectedTransportAmount]
   );
+  const estimatedPublicPrice = useMemo(
+    () => computeDisplayedTotal({ basePrice: publicSessionBase, ...pricingExtras }),
+    [pricingExtras, publicSessionBase]
+  );
+  const estimatedAfterPartnerDiscount = useMemo(
+    () => computeDisplayedTotal({ basePrice: partnerSessionBase, ...pricingExtras }),
+    [partnerSessionBase, pricingExtras]
+  );
+  const estimatedAfterCse = useMemo(
+    () =>
+      cseSessionFamilyBase != null
+        ? computeDisplayedTotal({ basePrice: cseSessionFamilyBase, ...pricingExtras })
+        : null,
+    [cseSessionFamilyBase, pricingExtras]
+  );
+  const estimatedDisplayPrice =
+    estimatedAfterCse ?? estimatedAfterPartnerDiscount ?? estimatedPublicPrice;
   const partnerDiscountAmount =
     estimatedPublicPrice != null &&
-    estimatedPrice != null &&
-    estimatedPrice < estimatedPublicPrice
-      ? Math.round((estimatedPublicPrice - estimatedPrice) * 100) / 100
+    estimatedAfterPartnerDiscount != null &&
+    estimatedAfterPartnerDiscount < estimatedPublicPrice
+      ? Math.round((estimatedPublicPrice - estimatedAfterPartnerDiscount) * 100) / 100
+      : null;
+  const cseAidAmount =
+    estimatedAfterCse != null &&
+    estimatedAfterPartnerDiscount != null &&
+    estimatedAfterCse < estimatedAfterPartnerDiscount
+      ? Math.round((estimatedAfterPartnerDiscount - estimatedAfterCse) * 100) / 100
       : null;
   const hasStartedSelection = Boolean(
     selectedSessionId ||
@@ -689,7 +703,10 @@ export function StayDetailView({ stay }: { stay: Stay }) {
       selectedExtraOptionId
   );
   const normalizedFinanceMode = stay.partnerFinanceMode ? normalizePartnerFinanceMode(stay.partnerFinanceMode) : null;
-  const financeReferencePrice = hasStartedSelection && estimatedPrice != null ? estimatedPrice : getStayDisplayedPrice(stay);
+  const financeReferencePrice =
+    hasStartedSelection && estimatedDisplayPrice != null
+      ? estimatedDisplayPrice
+      : getStayDisplayedPrice(stay);
   const partnerFinanceDisplay = useMemo(() => {
     if (financeReferencePrice == null || !stay.partnerFinanceMode) return null;
     return computePartnerFinanceDisplay({
@@ -853,7 +870,7 @@ export function StayDetailView({ stay }: { stay: Stay }) {
 
     addItem(
       createCartItemFromStay(stay, {
-        unitPrice: estimatedPrice ?? null,
+        unitPrice: estimatedDisplayPrice ?? null,
         selection: {
           sessionId: selectedSession?.id ?? null,
           transportMode,
@@ -1471,15 +1488,15 @@ export function StayDetailView({ stay }: { stay: Stay }) {
                 Informations & Réservation
               </h2>
               <div className="mt-2">
-                {partnerDiscountAmount != null && estimatedPublicPrice != null ? (
+                {(partnerDiscountAmount != null || cseAidAmount != null) && estimatedPublicPrice != null ? (
                   <p className="text-sm font-semibold text-slate-400 line-through">
                     {formatPrice(estimatedPublicPrice)}
                   </p>
                 ) : null}
                 <p className="text-2xl font-bold text-accent-600">
-                  {hasStartedSelection && estimatedPrice != null ? (
+                  {hasStartedSelection && estimatedDisplayPrice != null ? (
                     <span>
-                      <span className="inline-block">{formatPrice(estimatedPrice)}</span>
+                      <span className="inline-block">{formatPrice(estimatedDisplayPrice)}</span>
                       <span className="block text-sm font-medium text-accent-500 sm:inline sm:ml-2">
                         (sélection actuelle)
                       </span>
@@ -1495,6 +1512,19 @@ export function StayDetailView({ stay }: { stay: Stay }) {
                     </span>
                     <span className="text-sm font-semibold text-emerald-700">
                       Remise partenaire : -{formatPrice(partnerDiscountAmount)}
+                    </span>
+                  </div>
+                ) : null}
+                {cseAidAmount != null ? (
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <span className="inline-flex items-center rounded-full bg-sky-100 px-2.5 py-1 text-xs font-bold text-sky-800">
+                      CSE
+                    </span>
+                    <span className="text-sm font-semibold text-sky-800">
+                      Prise en charge CSE : -{formatPrice(cseAidAmount)}
+                      {selectedSession?.cseLabel ? (
+                        <span className="font-normal text-sky-700"> · {selectedSession.cseLabel}</span>
+                      ) : null}
                     </span>
                   </div>
                 ) : null}

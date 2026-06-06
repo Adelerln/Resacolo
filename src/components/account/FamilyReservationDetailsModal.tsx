@@ -158,6 +158,12 @@ export default function FamilyReservationDetailsModal({ reservation }: { reserva
                 <dl className="divide-y divide-slate-100">
                   <DetailRow label="Participant(s)" value={reservation.children.join(', ') || reservation.child} />
                   <DetailRow label="Mode de paiement" value={reservation.paymentModeLabel} />
+                  {reservation.partnerDiscountLine ? (
+                    <DetailRow label="Remise partenaire" value={reservation.partnerDiscountLine} accent />
+                  ) : null}
+                  {reservation.partnerCoverageLine ? (
+                    <DetailRow label="Prise en charge" value={reservation.partnerCoverageLine} accent />
+                  ) : null}
                   {reservation.transportOutboundLine || reservation.transportReturnLine ? (
                     <>
                       {reservation.transportOutboundLine ? (

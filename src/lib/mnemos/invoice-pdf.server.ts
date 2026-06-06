@@ -4,11 +4,17 @@ import { readFile } from 'fs/promises';
 import { join } from 'path';
 import { deflateSync, inflateSync } from 'zlib';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { RESACOLO_COMPANY } from '@/lib/resacolo-company';
+import { formatOrderReservationCode } from '@/lib/order-workflow';
 import type { Database } from '@/types/supabase';
 import type { LedgerLinePreview } from './ledger-period-preview.server';
 
 const INVOICE_PDF_BUCKET = 'invoice-pdfs';
 const RESACOLO_LOGO_PATH = join(process.cwd(), 'public/image/accueil/images_accueil/logo-resacolo.png');
+const RESACOLO_LOGO_WHITE_PATH = join(
+  process.cwd(),
+  'public/image/footer/logo_footer/logo-resacolo-RVB-blanc_logo-final copie 2.png'
+);
 const RALEWAY_REGULAR_PATH = join(process.cwd(), 'public/fonts/Raleway-Regular.ttf');
 const RALEWAY_BOLD_PATH = join(process.cwd(), 'public/fonts/Raleway-Bold.ttf');
 const VAT_RATE = 0.2;
@@ -23,6 +29,30 @@ type MnemosInvoicePdfInput = {
   periodStartIso: string;
   periodEndIso: string;
   lines: LedgerLinePreview[];
+};
+
+type ClientTravelInvoicePdfLine = {
+  label: string;
+  amountCents: number;
+};
+
+type ClientTravelInvoicePdfInput = {
+  invoiceId: string;
+  invoiceNumber: number;
+  invoiceYear: number;
+  issuedAt: string;
+  paidAt: string | null;
+  isProvisional: boolean;
+  orderId: string;
+  organizerName: string | null;
+  billingName: string;
+  billingAddressLines: string[];
+  billingEmail: string | null;
+  paymentModeLabel: string;
+  totalCents: number;
+  paidCents: number;
+  remainingBalanceCents: number;
+  lines: ClientTravelInvoicePdfLine[];
 };
 
 type PdfLine = {
@@ -48,10 +78,16 @@ type PdfFonts = {
 };
 
 function euros(cents: number) {
-  return (cents / 100).toLocaleString('fr-FR', {
+  const formatted = (cents / 100).toLocaleString('fr-FR', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
-  }) + ' EUR';
+  });
+  return `${formatted.replace(/\u202f/g, ' ').replace(/\u00a0/g, ' ')} EUR`;
+}
+
+function estimateTextWidth(value: string, size: number, font: 'regular' | 'bold' = 'regular') {
+  const weight = font === 'bold' ? 0.56 : 0.5;
+  return normalizePdfText(value).length * size * weight;
 }
 
 function formatDate(iso: string) {
@@ -118,8 +154,8 @@ class PdfPage {
     const size = options?.size ?? 10;
     const font = options?.font === 'bold' ? 'F2' : 'F1';
     const color = options?.color ?? '0 0 0';
-    const approxWidth = normalizePdfText(value).length * size * 0.5;
-    const tx = options?.align === 'right' ? x - approxWidth : x;
+    const width = estimateTextWidth(value, size, options?.font === 'bold' ? 'bold' : 'regular');
+    const tx = options?.align === 'right' ? x - width : x;
     this.commands.push(`${color} rg BT /${font} ${size} Tf ${tx.toFixed(2)} ${y.toFixed(2)} Td (${pdfText(value)}) Tj ET`);
   }
 
@@ -329,8 +365,16 @@ function parsePngRgba(buffer: Buffer): PdfImage {
   return { name: 'ResacoloLogo', width, height, rgb, alpha: hasAlpha ? alpha : null };
 }
 
-async function loadResacoloLogo() {
-  return parsePngRgba(await readFile(RESACOLO_LOGO_PATH));
+async function loadResacoloLogo(preferWhite = false) {
+  const candidates = preferWhite ? [RESACOLO_LOGO_WHITE_PATH, RESACOLO_LOGO_PATH] : [RESACOLO_LOGO_PATH, RESACOLO_LOGO_WHITE_PATH];
+  for (const path of candidates) {
+    try {
+      return parsePngRgba(await readFile(path));
+    } catch {
+      // try next logo asset
+    }
+  }
+  throw new Error('Logo Resacolo introuvable.');
 }
 
 async function loadRalewayFonts(): Promise<PdfFonts | null> {
@@ -451,6 +495,147 @@ function renderInvoicePdf(input: MnemosInvoicePdfInput, logo: PdfImage | null, f
   return buildPdf([page.stream()], logo ? [logo] : [], fonts);
 }
 
+function renderClientTravelInvoicePdf(
+  input: ClientTravelInvoicePdfInput,
+  logo: PdfImage | null,
+  fonts: PdfFonts | null
+) {
+  const page = new PdfPage();
+  const invoiceNumber = `${String(input.invoiceYear).slice(2)}-C01-${String(input.invoiceNumber).padStart(4, '0')}`;
+  const visibleLines = input.lines.length > 18 ? input.lines.slice(0, 17) : input.lines;
+  const overflowLines = input.lines.slice(visibleLines.length);
+  const summaryHasBalance = input.remainingBalanceCents > 0;
+  const summaryHasPaid = input.paidCents > 0;
+  const summaryHeight = 34 + (summaryHasBalance ? 24 : 0) + (summaryHasPaid ? 20 : 0);
+  const summaryBottom = 118;
+  const summaryTop = summaryBottom + summaryHeight;
+  const tableBottomLimit = summaryTop + 18;
+  const footerTop = 96;
+
+  page.rect(0, 792, 595, 50, '0.98 0.50 0.00');
+  if (logo) {
+    const logoWidth = 168;
+    const logoHeight = Math.max(24, Math.round((logo.height / logo.width) * logoWidth));
+    page.image(logo.name, 36, 804 + (32 - logoHeight) / 2, logoWidth, logoHeight);
+  } else {
+    page.text('RESACOLO', 40, 812, { size: 20, font: 'bold', color: '1 1 1' });
+  }
+  page.text('Facture', 555, 816, { size: 13, font: 'bold', align: 'right', color: '1 1 1' });
+
+  page.text(`${RESACOLO_COMPANY.legalName} ${RESACOLO_COMPANY.legalForm}`, 40, 772, { size: 10, font: 'bold' });
+  page.text(RESACOLO_COMPANY.addressLine1, 40, 758, { size: 9 });
+  page.text(`${RESACOLO_COMPANY.postalCode} ${RESACOLO_COMPANY.city.toUpperCase()}`, 40, 744, { size: 9 });
+  page.text(`SIRET ${RESACOLO_COMPANY.siret}`, 40, 730, { size: 8, color: '0.35 0.38 0.42' });
+  page.text(`TVA intracommunautaire ${RESACOLO_COMPANY.vatNumber}`, 40, 716, { size: 8, color: '0.35 0.38 0.42' });
+
+  page.text(input.billingName, 330, 772, { size: 12, font: 'bold' });
+  let customerY = 756;
+  input.billingAddressLines.slice(0, 4).forEach((line) => {
+    page.text(line, 330, customerY, { size: 9 });
+    customerY -= 14;
+  });
+  if (input.billingEmail) {
+    page.text(input.billingEmail, 330, customerY, { size: 9, color: '0.35 0.38 0.42' });
+    customerY -= 14;
+  }
+
+  page.line(36, 698, 559, 698, '0.88 0.90 0.93');
+
+  let metaY = 682;
+  page.text(`Facture ${invoiceNumber}`, 40, metaY, { size: 15, font: 'bold' });
+  metaY -= 18;
+  page.text(`Commande ${formatOrderReservationCode(input.orderId)}`, 40, metaY, { size: 9, color: '0.35 0.38 0.42' });
+  metaY -= 14;
+  page.text(`Date d'émission : ${formatDate(input.issuedAt)}`, 40, metaY, { size: 9 });
+  metaY -= 14;
+  page.text(
+    `Date de règlement : ${input.paidAt ? formatDate(input.paidAt) : 'en attente de solde'}`,
+    40,
+    metaY,
+    { size: 9 }
+  );
+  metaY -= 14;
+  page.text(`Mode de règlement : ${input.paymentModeLabel}`, 40, metaY, { size: 9 });
+  metaY -= 14;
+  if (input.organizerName) {
+    page.text(`Organisateur du séjour : ${input.organizerName}`, 40, metaY, { size: 9 });
+    metaY -= 14;
+  }
+
+  metaY -= 6;
+  page.text(
+    'Régime particulier - Agences de voyage. TVA non détaillée sur cette facture.',
+    40,
+    metaY,
+    { size: 8, color: '0.45 0.48 0.52' }
+  );
+
+  let y = metaY - 24;
+  page.rect(36, y - 10, 523, 26, '0.96 0.97 0.99');
+  page.strokeRect(36, y - 10, 523, 26);
+  page.text('Désignation', 46, y, { size: 8.5, font: 'bold' });
+  page.text('Montant TTC', 552, y, { size: 8.5, font: 'bold', align: 'right' });
+  y -= 28;
+
+  visibleLines.forEach((line) => {
+    const wrapped = wrapText(line.label, 72).slice(0, 3);
+    const rowHeight = Math.max(24, wrapped.length * 12 + 8);
+    if (y - rowHeight < tableBottomLimit) {
+      return;
+    }
+    page.line(36, y + 8, 559, y + 8, '0.92 0.94 0.96');
+    wrapped.forEach((part, index) => page.text(part, 46, y - index * 12, { size: 8.5 }));
+    page.text(euros(line.amountCents), 552, y, { size: 8.5, align: 'right' });
+    y -= rowHeight;
+  });
+
+  if (overflowLines.length > 0 && y >= tableBottomLimit) {
+    const overflowTotal = overflowLines.reduce((sum, line) => sum + line.amountCents, 0);
+    page.line(36, y + 8, 559, y + 8, '0.92 0.94 0.96');
+    page.text(`Autres lignes regroupées (${overflowLines.length})`, 46, y, { size: 8.5 });
+    page.text(euros(overflowTotal), 552, y, { size: 8.5, align: 'right' });
+    y -= 24;
+  }
+
+  page.rect(332, summaryBottom, 223, summaryHeight, '0.98 0.50 0.00');
+  let summaryY = summaryTop - 16;
+  page.text('TOTAL TTC', 348, summaryY, { size: 11, font: 'bold', color: '1 1 1' });
+  page.text(euros(input.totalCents), 548, summaryY, { size: 11, font: 'bold', align: 'right', color: '1 1 1' });
+  summaryY -= 24;
+
+  if (summaryHasPaid) {
+    page.text('Déjà réglé', 348, summaryY, { size: 9, color: '1 1 1' });
+    page.text(euros(input.paidCents), 548, summaryY, { size: 9, align: 'right', color: '1 1 1' });
+    summaryY -= 20;
+  }
+
+  if (summaryHasBalance) {
+    page.text('RESTANT DÛ', 348, summaryY, { size: 11, font: 'bold', color: '1 1 1' });
+    page.text(euros(input.remainingBalanceCents), 548, summaryY, {
+      size: 11,
+      font: 'bold',
+      align: 'right',
+      color: '1 1 1'
+    });
+  }
+
+  page.line(36, footerTop, 559, footerTop, '0.88 0.90 0.93');
+  page.text(
+    `${RESACOLO_COMPANY.legalName}, ${RESACOLO_COMPANY.legalForm} au capital de ${RESACOLO_COMPANY.shareCapitalLabel}, ${RESACOLO_COMPANY.addressLine1}, ${RESACOLO_COMPANY.postalCode} ${RESACOLO_COMPANY.city.toUpperCase()}`,
+    40,
+    78,
+    { size: 7.5, color: '0.35 0.38 0.42' }
+  );
+  page.text(
+    `RCS ${RESACOLO_COMPANY.rcsCity.toUpperCase()} ${RESACOLO_COMPANY.rcsNumber} | SIRET ${RESACOLO_COMPANY.siret} | TVA ${RESACOLO_COMPANY.vatNumber} | Atout France ${RESACOLO_COMPANY.atoutFranceRegistration}`,
+    40,
+    64,
+    { size: 7.5, color: '0.35 0.38 0.42' }
+  );
+
+  return buildPdf([page.stream()], logo ? [logo] : [], fonts);
+}
+
 async function ensureInvoicePdfBucket(supabase: SupabaseClient<Database>) {
   const { error } = await supabase.storage.getBucket(INVOICE_PDF_BUCKET);
   if (!error) return;
@@ -479,6 +664,30 @@ export async function createAndUploadMnemosInvoicePdf(
   const fonts = await loadRalewayFonts();
   const pdf = renderInvoicePdf(input, logo, fonts);
   const path = `mnemos/${input.invoiceYear}/${input.invoiceId}.pdf`;
+  const { error } = await supabase.storage.from(INVOICE_PDF_BUCKET).upload(path, pdf, {
+    contentType: 'application/pdf',
+    upsert: true
+  });
+
+  if (error) throw error;
+  return path;
+}
+
+export async function createAndUploadClientTravelInvoicePdf(
+  supabase: SupabaseClient<Database>,
+  input: ClientTravelInvoicePdfInput
+) {
+  await ensureInvoicePdfBucket(supabase);
+
+  let logo: PdfImage | null = null;
+  try {
+    logo = await loadResacoloLogo(true);
+  } catch {
+    logo = null;
+  }
+  // Helvetica natif : espacement correct (les TTF embarqués avec Widths fixes déforment les lettres).
+  const pdf = renderClientTravelInvoicePdf(input, logo, null);
+  const path = `clients/${input.invoiceYear}/${input.invoiceId}.pdf`;
   const { error } = await supabase.storage.from(INVOICE_PDF_BUCKET).upload(path, pdf, {
     contentType: 'application/pdf',
     upsert: true

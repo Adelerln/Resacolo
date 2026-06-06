@@ -4,10 +4,10 @@ import { requireRole } from '@/lib/auth/require';
 
 const mnemosNav = [
   { href: '/mnemos/organizers', label: 'Organismes' },
-  { href: '/mnemos/billing', label: 'Facturation période' },
-  { href: '/mnemos/inquiries', label: 'Demandes renseignements' },
-  { href: '/mnemos/support', label: 'Support organismes' },
-  { href: '/mnemos/chatbot', label: 'Chatbot' }
+  { href: '/mnemos/billing', label: 'Facturation par période' },
+  { href: '/mnemos/inquiries', label: 'Demandes de renseignements' },
+  { href: '/mnemos/support', label: 'Assistance organismes' },
+  { href: '/mnemos/chatbot', label: 'Assistant en ligne' }
 ];
 
 export default async function MnemosLayout({ children }: { children: React.ReactNode }) {
@@ -22,7 +22,7 @@ export default async function MnemosLayout({ children }: { children: React.React
             className="inline-flex items-center gap-1 text-xs font-medium text-slate-400 hover:text-white"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
-            Site
+            Site public
           </Link>
           <span className="text-base font-semibold tracking-tight text-violet-200">Mnemos</span>
         </div>
@@ -51,7 +51,7 @@ export default async function MnemosLayout({ children }: { children: React.React
             <div className="mt-4">
               <p className="text-xs font-semibold uppercase tracking-widest text-violet-400">Interne</p>
               <h1 className="mt-1 text-lg font-bold text-white">Mnemos</h1>
-              <p className="mt-1 text-xs text-slate-500">Back-office opérationnel</p>
+              <p className="mt-1 text-xs text-slate-500">Espace opérationnel interne</p>
             </div>
           </div>
           <nav className="flex-1 space-y-0.5 px-2 text-sm">

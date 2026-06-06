@@ -43,14 +43,14 @@ function ensureOrganizerAccessRole(organizerId: string, value: string) {
 export async function addBackofficeAccess(formData: FormData) {
   const session = await requireRole('MNEMOS');
   if (!canManageBackofficeAccess(session.email)) {
-    redirectWithAccessError(ensureOrganizerId(formData), 'Vous ne pouvez pas gerer ces acces.');
+    redirectWithAccessError(ensureOrganizerId(formData), 'Vous ne pouvez pas gérer ces accès.');
   }
   const organizerId = ensureOrganizerId(formData);
   const email = String(formData.get('email') ?? '').trim();
   const role = ensureOrganizerAccessRole(organizerId, String(formData.get('role') ?? '').trim());
 
   if (!email) {
-    redirectWithAccessError(organizerId, 'Email requis.');
+    redirectWithAccessError(organizerId, 'Courriel requis.');
   }
 
   try {
@@ -73,7 +73,7 @@ export async function addBackofficeAccess(formData: FormData) {
 export async function updateBackofficeAccessRole(formData: FormData) {
   const session = await requireRole('MNEMOS');
   if (!canManageBackofficeAccess(session.email)) {
-    redirectWithAccessError(ensureOrganizerId(formData), 'Vous ne pouvez pas gerer ces acces.');
+    redirectWithAccessError(ensureOrganizerId(formData), 'Vous ne pouvez pas gérer ces accès.');
   }
   const organizerId = ensureOrganizerId(formData);
   const appUserId = String(formData.get('app_user_id') ?? '').trim();
@@ -103,7 +103,7 @@ export async function updateBackofficeAccessRole(formData: FormData) {
 export async function removeBackofficeAccess(formData: FormData) {
   const session = await requireRole('MNEMOS');
   if (!canManageBackofficeAccess(session.email)) {
-    redirectWithAccessError(ensureOrganizerId(formData), 'Vous ne pouvez pas gerer ces acces.');
+    redirectWithAccessError(ensureOrganizerId(formData), 'Vous ne pouvez pas gérer ces accès.');
   }
   const organizerId = ensureOrganizerId(formData);
   const appUserId = String(formData.get('app_user_id') ?? '').trim();

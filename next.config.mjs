@@ -4,6 +4,9 @@ const supabaseHostname = process.env.NEXT_PUBLIC_SUPABASE_URL
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  env: {
+    NEXT_PUBLIC_VERCEL_ENV: process.env.VERCEL_ENV ?? ''
+  },
   transpilePackages: ['framer-motion'],
   output: 'standalone',
   images: {

@@ -239,11 +239,17 @@ export function applyCountryDecision(
     ...rules,
     blockingRules: {
       ...rules.blockingRules,
-      countriesAllowed: mergeCountryLabels(countriesAllowed.filter(isCatalogCountryLabel)),
-      countriesExcluded: mergeCountryLabels(countriesExcluded.filter(isCatalogCountryLabel))
+      countriesAllowed: mergeCountryLabels(
+        countriesAllowed.filter((label) => isCatalogCountryLabel(label))
+      ),
+      countriesExcluded: mergeCountryLabels(
+        countriesExcluded.filter((label) => isCatalogCountryLabel(label))
+      )
     },
     meta: {
-      knownSiteCountries: mergeCountryLabels(getKnownSiteCountries(rules).filter(isCatalogCountryLabel), [
+      knownSiteCountries: mergeCountryLabels(
+        getKnownSiteCountries(rules).filter((label) => isCatalogCountryLabel(label)),
+        [
         label
       ])
     }

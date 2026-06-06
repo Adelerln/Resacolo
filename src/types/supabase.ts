@@ -837,47 +837,61 @@ export type Database = {
       inquiries: {
         Row: {
           assigned_to_user_id: string | null
-          contact_email: string
-          contact_name: string | null
-          contact_phone: string | null
           created_at: string
+          email: string
+          first_name: string | null
           id: string
           inquiry_type: string
-          internal_notes: string | null
+          last_name: string | null
           message: string
+          organizer_id: string | null
+          phone: string | null
+          source: string | null
           status: string
           subject: string | null
           updated_at: string
         }
         Insert: {
           assigned_to_user_id?: string | null
-          contact_email: string
-          contact_name?: string | null
-          contact_phone?: string | null
           created_at?: string
+          email: string
+          first_name?: string | null
           id?: string
           inquiry_type?: string
-          internal_notes?: string | null
+          last_name?: string | null
           message: string
+          organizer_id?: string | null
+          phone?: string | null
+          source?: string | null
           status?: string
           subject?: string | null
           updated_at?: string
         }
         Update: {
           assigned_to_user_id?: string | null
-          contact_email?: string
-          contact_name?: string | null
-          contact_phone?: string | null
           created_at?: string
+          email?: string
+          first_name?: string | null
           id?: string
           inquiry_type?: string
-          internal_notes?: string | null
+          last_name?: string | null
           message?: string
+          organizer_id?: string | null
+          phone?: string | null
+          source?: string | null
           status?: string
           subject?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "inquiries_organizer_id_fkey"
+            columns: ["organizer_id"]
+            isOneToOne: false
+            referencedRelation: "organizers"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       invoice_counters: {
         Row: {

@@ -8,7 +8,6 @@ import { MainNavigation } from '@/components/layout/MainNavigation';
 import { PartnerHeroBanner } from '@/components/layout/PartnerHeroBanner';
 import { Footer } from '@/components/layout/Footer';
 import { PageTransition } from '@/components/ui/PageTransition';
-import clsx from 'clsx';
 import type { PublicSitePartnerBranding } from '@/types/partner-branding';
 
 const LazyPublicChatbotWidget = dynamic(
@@ -39,6 +38,7 @@ export function SiteShell({
   const hidePublicShell =
     pathname.startsWith('/admin') ||
     pathname.startsWith('/back-office') ||
+    pathname.startsWith('/mnemos') ||
     pathname.startsWith('/organisme') ||
     pathname.startsWith('/partenaire') ||
     pathname === '/forbidden';
@@ -47,8 +47,6 @@ export function SiteShell({
     pathname.startsWith('/checkout') ||
     isMobileViewport;
   const showPartnerHero = pathname === '/';
-  const needsFooterGouttesClearance =
-    pathname === '/panier' || pathname.startsWith('/checkout');
   if (hidePublicShell) {
     /* Pas d’animation entre pages dans les espaces admin / organisateur / partenaire */
     return (
@@ -64,9 +62,7 @@ export function SiteShell({
           initialHidePartnerMarketingLinks={initialHidePartnerMarketingLinks}
         />
         {showPartnerHero ? <PartnerHeroBanner branding={initialBranding} /> : null}
-        <main
-          className={clsx('min-h-0 flex-1', needsFooterGouttesClearance && 'main-footer-gouttes-clearance')}
-        >
+        <main className="main-footer-gouttes-clearance min-h-0 flex-1">
           <Suspense fallback={<div className="min-h-screen" />}>
             {disablePageTransition ? children : <PageTransition>{children}</PageTransition>}
           </Suspense>

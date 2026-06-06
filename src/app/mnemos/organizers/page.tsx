@@ -39,9 +39,8 @@ export default async function MnemosOrganizersPage() {
 
       {viewMissing && (
         <div className="rounded-lg border border-amber-700/50 bg-amber-950/30 px-4 py-3 text-sm text-amber-100">
-          La vue <code className="rounded bg-black/30 px-1">organizer_admin_overview</code> est introuvable côté
-          Supabase. Créez-la en base (agrégation organizers + billing + compteurs) ou régénérez les types depuis le
-          projet à jour.
+          La vue consolidée des organismes est introuvable côté Supabase. Créez-la en base ou régénérez les types
+          depuis le projet à jour.
         </div>
       )}
 
@@ -52,10 +51,10 @@ export default async function MnemosOrganizersPage() {
               <tr>
                 <th className="px-3 py-3">Organisme</th>
                 <th className="px-3 py-3">Contact</th>
-                <th className="px-3 py-3">Fondateur</th>
-                <th className="px-3 py-3">Membre ResaColo</th>
-                <th className="px-3 py-3 text-right">Commission %</th>
-                <th className="px-3 py-3 text-right">Forfait pub.</th>
+                <th className="px-3 py-3">Membre fondateur</th>
+                <th className="px-3 py-3">Membre Resacolo</th>
+                <th className="px-3 py-3 text-right">Commission (%)</th>
+                <th className="px-3 py-3 text-right">Forfait publication</th>
                 <th className="px-3 py-3 text-right">Séjours publiés</th>
                 <th className="px-3 py-3 text-right">Ventes</th>
                 <th className="px-3 py-3" />

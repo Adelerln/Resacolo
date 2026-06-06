@@ -22,7 +22,6 @@ type PageProps = {
   }>;
 };
 
-type OrderStatus = Database['public']['Enums']['order_status'];
 type ClientProfileReservationDetails = Pick<
   Database['public']['Tables']['client_profiles']['Row'],
   | 'user_id'
@@ -221,6 +220,15 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
           organizerId
         )
       );
+    }
+
+    if (nextStatus === 'PAID') {
+      try {
+        const { ensureClientTravelInvoiceForOrder } = await import('@/lib/client-travel-invoice.server');
+        await ensureClientTravelInvoiceForOrder(orderId);
+      } catch (invoiceError) {
+        console.error('organisme/reservations: génération facture client échouée', invoiceError);
+      }
     }
 
     revalidatePath(withOrganizerQuery('/organisme/reservations', organizerId));

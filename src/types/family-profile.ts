@@ -70,6 +70,8 @@ export type FamilyReservation = {
   paymentMode: CheckoutContact['paymentMode'];
   paymentModeLabel: string;
   remainingBalanceCents: number;
+  partnerDiscountLine: string | null;
+  partnerCoverageLine: string | null;
   transportLine: string | null;
   transportOutboundLine: string | null;
   transportReturnLine: string | null;

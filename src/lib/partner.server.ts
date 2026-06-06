@@ -19,6 +19,7 @@ type OrderItemRow = Pick<
   Database['public']['Tables']['order_items']['Row'],
   'id' | 'order_id' | 'session_id' | 'child_first_name' | 'child_last_name' | 'total_price_cents'
 >;
+type SessionPriceRow = Pick<Database['public']['Tables']['session_prices']['Row'], 'session_id' | 'amount_cents'>;
 type PartnerPaymentMode = 'FULL' | 'DEPOSIT_200' | 'CV_CONNECT' | 'CV_PAPER' | 'DEFERRED';
 
 const PAYMENT_MODE_LABELS: Record<PartnerPaymentMode, string> = {
@@ -814,7 +815,12 @@ export async function listPartnerCatalogStays() {
   const stayIds = (stays ?? []).map((stay) => stay.id);
   const organizerIds = Array.from(new Set((stays ?? []).map((stay) => stay.organizer_id).filter(Boolean)));
 
-  const [{ data: sessions, error: sessionsError }, { data: organizers, error: organizersError }, { data: seasons }] =
+  const [
+    { data: sessions, error: sessionsError },
+    { data: organizers, error: organizersError },
+    { data: seasons },
+    { data: sessionPrices, error: sessionPricesError }
+  ] =
     await Promise.all([
       stayIds.length
         ? supabase
@@ -829,7 +835,10 @@ export async function listPartnerCatalogStays() {
             .select('id,name,is_resacolo_member,education_project_path')
             .in('id', organizerIds)
         : Promise.resolve({ data: [], error: null }),
-      supabase.from('seasons').select('id,name')
+      supabase.from('seasons').select('id,name'),
+      stayIds.length
+        ? supabase.from('session_prices').select('session_id,amount_cents')
+        : Promise.resolve({ data: [] as SessionPriceRow[], error: null })
     ]);
 
   if (sessionsError) {
@@ -837,6 +846,9 @@ export async function listPartnerCatalogStays() {
   }
   if (organizersError) {
     throw new Error(`Impossible de charger les organisateurs du catalogue : ${organizersError.message}`);
+  }
+  if (sessionPricesError) {
+    throw new Error(`Impossible de charger les tarifs des sessions du catalogue : ${sessionPricesError.message}`);
   }
 
   const sessionIds = (sessions ?? []).map((session) => session.id);
@@ -855,11 +867,17 @@ export async function listPartnerCatalogStays() {
     priceSamplesBySession.set(row.session_id, existing);
   }
 
+  const sessionPriceBySessionId = new Map(
+    (sessionPrices ?? [])
+      .filter((row): row is SessionPriceRow & { amount_cents: number } => typeof row.amount_cents === 'number')
+      .map((row) => [row.session_id, row.amount_cents])
+  );
+
   const sessionsByStayId = new Map<string, Array<{ id: string; start_date: string; end_date: string; status: string; capacity_total: number; estimated_price_cents: number }>>();
   for (const session of sessions ?? []) {
     const existing = sessionsByStayId.get(session.stay_id) ?? [];
     const prices = priceSamplesBySession.get(session.id) ?? [];
-    const estimatedPriceCents = prices.length > 0 ? Math.min(...prices) : 0;
+    const estimatedPriceCents = sessionPriceBySessionId.get(session.id) ?? (prices.length > 0 ? Math.min(...prices) : 0);
     existing.push({
       id: session.id,
       start_date: session.start_date,

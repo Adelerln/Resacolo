@@ -6,6 +6,8 @@ import {
 } from '@/lib/mnemos/ledger-period-preview.server';
 import { periodEndExclusive, periodStartIso } from '@/lib/mnemos/period-bounds';
 import { isMissingPublicTableError } from '@/lib/mnemos/supabase-table-missing';
+import { MnemosFieldLabel } from '@/components/mnemos/MnemosFieldLabel';
+import { formatMnemosLedgerChannel } from '@/lib/mnemos-display';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { createCommissionPeriodInvoice, createPublicationPeriodInvoice } from './actions';
 
@@ -55,7 +57,7 @@ export default async function MnemosBillingPage({
     ledgerError = pub.error ?? com.error ?? null;
     if (ledgerError && isMissingPublicTableError({ message: ledgerError })) {
       ledgerError =
-        'Table resacolo_fee_ledger absente : appliquez sql/20260414_resacolo_fee_ledger.sql pour activer la facturation sur journal.';
+        'Le journal des frais Resacolo est absent : appliquez la migration de facturation pour activer cette fonctionnalité.';
     }
   }
 
@@ -64,9 +66,8 @@ export default async function MnemosBillingPage({
       <div>
         <h1 className="text-2xl font-semibold text-white">Facturation par période</h1>
         <p className="mt-1 max-w-3xl text-sm text-slate-400">
-          Les montants sont issus du journal <code className="text-violet-300">resacolo_fee_ledger</code> sur la
-          période choisie. La création enregistre une facture + lignes + un événement dans{' '}
-          <code className="text-violet-300">organizer_billing_events</code>.
+          Les montants proviennent du journal des frais Resacolo sur la période choisie. La création enregistre une
+          facture, ses lignes et un événement dans l&apos;historique de facturation.
         </p>
       </div>
 
@@ -86,7 +87,7 @@ export default async function MnemosBillingPage({
         className="flex flex-wrap items-end gap-4 rounded-xl border border-slate-700 bg-slate-900/50 p-5"
       >
         <label className="block min-w-[14rem] text-sm text-slate-300">
-          Organisateur
+          <MnemosFieldLabel>Organisateur</MnemosFieldLabel>
           <select
             name="organizer_id"
             defaultValue={organizerId}
@@ -101,7 +102,7 @@ export default async function MnemosBillingPage({
           </select>
         </label>
         <label className="block text-sm text-slate-300">
-          Début
+          <MnemosFieldLabel>Début</MnemosFieldLabel>
           <input
             type="date"
             name="start_date"
@@ -110,7 +111,7 @@ export default async function MnemosBillingPage({
           />
         </label>
         <label className="block text-sm text-slate-300">
-          Fin
+          <MnemosFieldLabel>Fin</MnemosFieldLabel>
           <input
             type="date"
             name="end_date"
@@ -211,7 +212,7 @@ export default async function MnemosBillingPage({
                   {comLines.map((l) => (
                     <tr key={l.id}>
                       <td className="px-2 py-1.5">{new Date(l.occurred_at).toLocaleString('fr-FR')}</td>
-                      <td className="px-2 py-1.5">{l.channel}</td>
+                      <td className="px-2 py-1.5">{formatMnemosLedgerChannel(l.channel)}</td>
                       <td className="px-2 py-1.5 text-right tabular-nums">{euros(l.amount_cents)}</td>
                     </tr>
                   ))}

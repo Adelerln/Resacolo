@@ -2,6 +2,8 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { requireRole } from '@/lib/auth/require';
 import { isMissingPublicTableError } from '@/lib/mnemos/supabase-table-missing';
+import { MnemosFieldLabel } from '@/components/mnemos/MnemosFieldLabel';
+import { formatMnemosStaffRole } from '@/lib/mnemos-display';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { addSupportMessage, updateSupportTicket } from '../actions';
 
@@ -33,8 +35,7 @@ export default async function MnemosSupportDetailPage({ params, searchParams }: 
   if (error && isMissingPublicTableError(error)) {
     return (
       <div className="rounded-lg border border-amber-800/50 bg-amber-950/30 p-6 text-sm text-amber-100">
-        Tables support absentes. Appliquez{' '}
-        <code className="rounded bg-black/30 px-1">sql/20260416_mnemos_internal_tables.sql</code>.
+        Les tables d&apos;assistance sont absentes. Appliquez la migration Mnemos sur Supabase.
       </div>
     );
   }
@@ -55,7 +56,7 @@ export default async function MnemosSupportDetailPage({ params, searchParams }: 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <Link href="/mnemos/support" className="text-xs font-medium text-violet-400 hover:text-violet-200">
-        ← Tickets
+        ← Demandes
       </Link>
 
       {sp.saved === '1' && (
@@ -70,7 +71,7 @@ export default async function MnemosSupportDetailPage({ params, searchParams }: 
       )}
 
       <div>
-        <h1 className="text-2xl font-semibold text-white">{ticket.subject ?? 'Ticket support'}</h1>
+        <h1 className="text-2xl font-semibold text-white">{ticket.subject ?? 'Demande d’assistance'}</h1>
         <p className="mt-1 text-sm text-slate-400">{org?.name ?? ticket.organizer_id}</p>
         <p className="text-xs text-slate-600">{ticket.id}</p>
       </div>
@@ -83,11 +84,11 @@ export default async function MnemosSupportDetailPage({ params, searchParams }: 
       ) : null}
 
       <section className="rounded-xl border border-slate-700 bg-slate-900/50 p-5">
-        <h2 className="text-sm font-semibold text-slate-400">Paramètres ticket</h2>
+        <h2 className="text-sm font-semibold text-slate-400">Paramètres de la demande</h2>
         <form action={updateSupportTicket} className="mt-4 grid gap-3 sm:grid-cols-2">
           <input type="hidden" name="id" value={ticket.id} />
           <label className="block text-sm text-slate-300 sm:col-span-2">
-            Sujet
+            <MnemosFieldLabel>Sujet</MnemosFieldLabel>
             <input
               name="subject"
               defaultValue={ticket.subject ?? ''}
@@ -95,7 +96,7 @@ export default async function MnemosSupportDetailPage({ params, searchParams }: 
             />
           </label>
           <label className="block text-sm text-slate-300">
-            Statut
+            <MnemosFieldLabel>Statut</MnemosFieldLabel>
             <input
               name="status"
               defaultValue={ticket.status}
@@ -103,7 +104,7 @@ export default async function MnemosSupportDetailPage({ params, searchParams }: 
             />
           </label>
           <label className="block text-sm text-slate-300">
-            Priorité
+            <MnemosFieldLabel>Priorité</MnemosFieldLabel>
             <input
               name="priority"
               defaultValue={ticket.priority}
@@ -111,7 +112,7 @@ export default async function MnemosSupportDetailPage({ params, searchParams }: 
             />
           </label>
           <label className="block text-sm text-slate-300 sm:col-span-2">
-            Catégorie
+            <MnemosFieldLabel>Catégorie</MnemosFieldLabel>
             <input
               name="category"
               defaultValue={ticket.category ?? ''}
@@ -119,7 +120,7 @@ export default async function MnemosSupportDetailPage({ params, searchParams }: 
             />
           </label>
           <label className="block text-sm text-slate-300 sm:col-span-2">
-            Assigné à (user_id)
+            <MnemosFieldLabel>Assigné à (équipe interne)</MnemosFieldLabel>
             <select
               name="assigned_to_user_id"
               defaultValue={ticket.assigned_to_user_id ?? ''}
@@ -128,7 +129,7 @@ export default async function MnemosSupportDetailPage({ params, searchParams }: 
               <option value="">— Non assigné —</option>
               {(staff ?? []).map((s) => (
                 <option key={s.user_id} value={s.user_id}>
-                  {s.user_id} ({s.role})
+                  {s.user_id} ({formatMnemosStaffRole(s.role)})
                 </option>
               ))}
             </select>
@@ -138,7 +139,7 @@ export default async function MnemosSupportDetailPage({ params, searchParams }: 
               type="submit"
               className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-500"
             >
-              Mettre à jour le ticket
+              Mettre à jour la demande
             </button>
           </div>
         </form>
@@ -170,7 +171,7 @@ export default async function MnemosSupportDetailPage({ params, searchParams }: 
         <form action={addSupportMessage} className="mt-6 space-y-3 border-t border-slate-800 pt-4">
           <input type="hidden" name="id" value={ticket.id} />
           <label className="block text-sm text-slate-300">
-            Réponse / note
+            <MnemosFieldLabel>Réponse ou note</MnemosFieldLabel>
             <textarea
               name="body"
               rows={4}

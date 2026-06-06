@@ -809,6 +809,12 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
 
       const { recordCommissionFeesOnOrderPaid } = await import('@/lib/resacolo-fee-ledger.server');
       await recordCommissionFeesOnOrderPaid(supabase, order.id, paidAt ?? requestedAt);
+      try {
+        const { ensureClientTravelInvoiceForOrder } = await import('@/lib/client-travel-invoice.server');
+        await ensureClientTravelInvoiceForOrder(order.id);
+      } catch (invoiceError) {
+        console.error('checkout: génération facture client échouée après paiement total partenaire', invoiceError);
+      }
     }
 
     groupResults.push({
@@ -1028,6 +1034,12 @@ export async function markOrderPaid(input: {
   if (nextStatus === 'PAID') {
     const { recordCommissionFeesOnOrderPaid } = await import('@/lib/resacolo-fee-ledger.server');
     await recordCommissionFeesOnOrderPaid(supabase, input.orderId, paidAt);
+    try {
+      const { ensureClientTravelInvoiceForOrder } = await import('@/lib/client-travel-invoice.server');
+      await ensureClientTravelInvoiceForOrder(input.orderId);
+    } catch (invoiceError) {
+      console.error('checkout: génération facture client échouée après paiement', invoiceError);
+    }
   }
 
   return {

@@ -13,8 +13,6 @@ export async function updateInquiry(formData: FormData) {
   const status = String(formData.get('status') ?? '').trim();
   const inquiryType = String(formData.get('inquiry_type') ?? '').trim();
   const assignedTo = String(formData.get('assigned_to_user_id') ?? '').trim();
-  const internalNotes = String(formData.get('internal_notes') ?? '');
-
   const supabase = getServerSupabaseClient();
   const patch: Record<string, unknown> = {
     updated_at: new Date().toISOString()
@@ -22,7 +20,6 @@ export async function updateInquiry(formData: FormData) {
   if (status) patch.status = status;
   if (inquiryType) patch.inquiry_type = inquiryType;
   patch.assigned_to_user_id = assignedTo || null;
-  patch.internal_notes = internalNotes || null;
 
   const { error } = await supabase.from('inquiries').update(patch).eq('id', id);
   if (error) {

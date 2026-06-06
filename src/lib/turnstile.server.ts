@@ -36,13 +36,24 @@ async function verifyTurnstileTokenWithSecret(secret: string, token: string, rem
   };
 }
 
-export async function verifyTurnstileToken(token: string, remoteIp: string | null) {
+export function isTurnstilePreviewOrDevContext(request?: Request) {
+  const vercelEnv = (process.env.VERCEL_ENV ?? '').trim().toLowerCase();
+  if (process.env.NODE_ENV !== 'production' || vercelEnv === 'preview' || vercelEnv === 'development') {
+    return true;
+  }
+
+  const host =
+    request?.headers.get('x-forwarded-host')?.split(',')[0]?.trim().toLowerCase() ??
+    request?.headers.get('host')?.split(':')[0]?.trim().toLowerCase() ??
+    '';
+  return host.endsWith('.vercel.app') || host === 'localhost' || host === '127.0.0.1';
+}
+
+export async function verifyTurnstileToken(token: string, remoteIp: string | null, request?: Request) {
   const secrets: string[] = [];
   const envSecret = process.env.TURNSTILE_SECRET_KEY?.trim();
   const devSecret = process.env.TURNSTILE_SECRET_KEY_DEV?.trim();
-  const vercelEnv = (process.env.VERCEL_ENV ?? '').trim().toLowerCase();
-  const isPreviewOrDev =
-    process.env.NODE_ENV !== 'production' || vercelEnv === 'preview' || vercelEnv === 'development';
+  const isPreviewOrDev = isTurnstilePreviewOrDevContext(request);
 
   if (envSecret) {
     secrets.push(envSecret);
@@ -72,6 +83,22 @@ export async function verifyTurnstileToken(token: string, remoteIp: string | nul
   }
 
   return lastResult;
+}
+
+export function formatTurnstileUserError(errorCodes: string[]) {
+  if (errorCodes.includes('invalid-input-secret')) {
+    return 'Configuration captcha incorrecte côté serveur. Vérifiez que TURNSTILE_SECRET_KEY correspond à NEXT_PUBLIC_TURNSTILE_SITE_KEY sur Vercel.';
+  }
+  if (errorCodes.includes('invalid-input-response')) {
+    return 'Captcha refusé : ajoutez le domaine de ce site (ex. votre-url.vercel.app) dans Cloudflare Turnstile > Hostname Management, puis redéployez.';
+  }
+  if (errorCodes.includes('timeout-or-duplicate')) {
+    return 'Captcha expiré ou déjà utilisé. Rechargez la page et réessayez.';
+  }
+  if (errorCodes.includes('verification_unavailable')) {
+    return 'Service captcha momentanément indisponible. Réessayez dans quelques instants.';
+  }
+  return 'Captcha invalide ou expiré. Merci de réessayer.';
 }
 
 export function getClientIp(request: Request) {

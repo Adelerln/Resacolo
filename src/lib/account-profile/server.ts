@@ -479,9 +479,16 @@ function formatFamilyTransportRouteLabel(
 type TransportOptionSnapshot = {
   id: string;
   session_id: string | null;
+  stay_id: string | null;
   departure_city: string | null;
   return_city: string | null;
   amount_cents: number;
+};
+
+type ResolvedTransportLines = {
+  summaryLine: string | null;
+  outboundLine: string | null;
+  returnLine: string | null;
 };
 
 function parseOrderItemTransportSnapshotsFromPayload(rawPayload: Json | null | undefined) {
@@ -509,22 +516,49 @@ function parseOrderItemTransportSnapshotsFromPayload(rawPayload: Json | null | u
   return snapshots;
 }
 
-function resolveTransportLineFromSessionOptions(input: {
+function scoreDifferentiatedTransportMatch(
+  departureOption: TransportOptionSnapshot,
+  returnOption: TransportOptionSnapshot,
+  outboundCents: number,
+  returnCents: number
+) {
+  let score = 0;
+  const departureCity = normalizeText(departureOption.departure_city);
+  const returnCity = normalizeText(returnOption.return_city);
+
+  if (departureCity && departureCity !== 'SUR PLACE') score += 2;
+  if (returnCity && returnCity !== 'SUR PLACE') score += 2;
+  if (departureCity && returnCity && departureCity !== returnCity) score += 3;
+  if (outboundCents > 0) score += 1;
+  if (returnCents > 0) score += 1;
+
+  return score;
+}
+
+function resolveTransportLinesFromOptions(input: {
   transportCents: number;
   options: TransportOptionSnapshot[];
-}) {
+}): ResolvedTransportLines {
+  const empty: ResolvedTransportLines = { summaryLine: null, outboundLine: null, returnLine: null };
   if (input.transportCents <= 0 || input.options.length === 0) {
-    return null;
+    return empty;
   }
 
   const singleMatch = input.options.find((option) => option.amount_cents === input.transportCents);
   if (singleMatch) {
-    return formatFamilyTransportRouteLabel(
-      singleMatch.departure_city,
-      singleMatch.return_city,
-      singleMatch.amount_cents
-    );
+    return {
+      summaryLine: formatFamilyTransportRouteLabel(
+        singleMatch.departure_city,
+        singleMatch.return_city,
+        singleMatch.amount_cents
+      ),
+      outboundLine: null,
+      returnLine: null
+    };
   }
+
+  let best: ResolvedTransportLines | null = null;
+  let bestScore = -1;
 
   for (const departureOption of input.options) {
     for (const returnOption of input.options) {
@@ -544,18 +578,52 @@ function resolveTransportLineFromSessionOptions(input: {
         continue;
       }
 
-      const parts = [
-        buildTransportLegLine('Aller', departureOption.departure_city, outboundCents),
-        buildTransportLegLine('Retour', returnOption.return_city, returnCents)
-      ].filter((value): value is string => Boolean(value));
+      const outboundLine = buildTransportLegLine('Aller', departureOption.departure_city, outboundCents);
+      const returnLine = buildTransportLegLine('Retour', returnOption.return_city, returnCents);
+      const parts = [outboundLine, returnLine].filter((value): value is string => Boolean(value));
+      if (parts.length === 0) {
+        continue;
+      }
 
-      if (parts.length > 0) {
-        return parts.join(' / ');
+      const score = scoreDifferentiatedTransportMatch(departureOption, returnOption, outboundCents, returnCents);
+      if (score > bestScore) {
+        bestScore = score;
+        best = {
+          summaryLine: parts.join(' / '),
+          outboundLine,
+          returnLine
+        };
       }
     }
   }
 
-  return null;
+  return best ?? empty;
+}
+
+function resolveTransportLineFromSessionOptions(input: {
+  transportCents: number;
+  options: TransportOptionSnapshot[];
+}) {
+  return resolveTransportLinesFromOptions(input).summaryLine;
+}
+
+function getTransportOptionsForOrderItem(
+  item: { session_id: string | null },
+  sessionsById: Map<string, { id: string; start_date: string; end_date: string; stay_id: string }>,
+  transportOptionsBySessionId: Map<string, TransportOptionSnapshot[]>,
+  transportOptionsByStayId: Map<string, TransportOptionSnapshot[]>
+) {
+  const sessionOptions = item.session_id ? transportOptionsBySessionId.get(item.session_id) ?? [] : [];
+  if (sessionOptions.length > 0) {
+    return sessionOptions;
+  }
+
+  const stayId = item.session_id ? sessionsById.get(item.session_id)?.stay_id ?? null : null;
+  if (!stayId) {
+    return [] as TransportOptionSnapshot[];
+  }
+
+  return transportOptionsByStayId.get(stayId) ?? [];
 }
 
 function computeDifferentiatedTransportAmount(
@@ -568,6 +636,46 @@ function computeDifferentiatedTransportAmount(
     return normalizeText(returnCity) ? Math.round(amountCents / 2) : amountCents;
   }
   return normalizeText(departureCity) ? Math.round(amountCents / 2) : amountCents;
+}
+
+function buildPartnerDiscountLine(input: {
+  itemsForOrder: Array<{ session_id: string | null; base_price_cents: number }>;
+  publicPriceBySessionId: Map<string, number>;
+  partnerDiscountPercent: number | null;
+}) {
+  let discountCents = 0;
+
+  for (const item of input.itemsForOrder) {
+    if (!item.session_id) continue;
+    const publicCents = input.publicPriceBySessionId.get(item.session_id);
+    if (publicCents == null || publicCents <= item.base_price_cents) continue;
+    discountCents += publicCents - item.base_price_cents;
+  }
+
+  if (discountCents <= 0) {
+    return null;
+  }
+
+  const percentPart =
+    input.partnerDiscountPercent != null && input.partnerDiscountPercent > 0
+      ? `-${Math.round(input.partnerDiscountPercent)} % · `
+      : '';
+
+  return `${percentPart}-${formatEuroFromCents(discountCents)}`;
+}
+
+function buildPartnerCoverageLine(input: {
+  partnerCents: number;
+  externalAidCents: number;
+  collectivityName: string | null;
+}) {
+  const totalCents = Math.max(0, input.partnerCents) + Math.max(0, input.externalAidCents);
+  if (totalCents <= 0) {
+    return null;
+  }
+
+  const prefix = input.collectivityName?.trim() ? `${input.collectivityName.trim()} · ` : '';
+  return `${prefix}-${formatEuroFromCents(totalCents)}`;
 }
 
 function buildTransportLegLine(
@@ -1321,10 +1429,25 @@ async function readReservations(
     }
   }
 
-  const { data: stays } = stayIds.size
-    ? await supabase.from('stays').select('id,title,organizer_id').in('id', Array.from(stayIds))
-    : { data: [] as Array<{ id: string; title: string; organizer_id: string | null }> };
+  const [{ data: stays }, { data: sessionPrices }] = await Promise.all([
+    stayIds.size
+      ? supabase.from('stays').select('id,title,organizer_id,partner_discount_percent').in('id', Array.from(stayIds))
+      : Promise.resolve({
+          data: [] as Array<{
+            id: string;
+            title: string;
+            organizer_id: string | null;
+            partner_discount_percent: number | null;
+          }>
+        }),
+    sessionIds.size
+      ? supabase.from('session_prices').select('session_id,amount_cents').in('session_id', Array.from(sessionIds))
+      : Promise.resolve({ data: [] as Array<{ session_id: string; amount_cents: number }> })
+  ]);
   const staysById = new Map((stays ?? []).map((stay) => [stay.id, stay]));
+  const publicPriceBySessionId = new Map(
+    (sessionPrices ?? []).map((row) => [row.session_id, row.amount_cents] as const)
+  );
   const { data: stayMediaRows } = stayIds.size
     ? await supabase
         .from('stay_media')
@@ -1369,14 +1492,15 @@ async function readReservations(
       .select('order_id,amount_cents,currency,status,updated_at,raw_payload')
       .in('order_id', orderIds)
       .order('updated_at', { ascending: false }),
-    transportOptionIds.size || sessionIds.size
+    transportOptionIds.size || sessionIds.size || stayIds.size
       ? supabase
           .from('transport_options')
-          .select('id,session_id,departure_city,return_city,amount_cents')
+          .select('id,session_id,stay_id,departure_city,return_city,amount_cents')
           .or(
             [
               transportOptionIds.size ? `id.in.(${Array.from(transportOptionIds).join(',')})` : null,
-              sessionIds.size ? `session_id.in.(${Array.from(sessionIds).join(',')})` : null
+              sessionIds.size ? `session_id.in.(${Array.from(sessionIds).join(',')})` : null,
+              stayIds.size ? `stay_id.in.(${Array.from(stayIds).join(',')})` : null
             ]
               .filter(Boolean)
               .join(',')
@@ -1412,7 +1536,7 @@ async function readReservations(
     collectivityIds.length
       ? supabase
           .from('collectivities')
-          .select('id,finance_mode,finance_percent_value,finance_fixed_cents')
+          .select('id,name,finance_mode,finance_percent_value,finance_fixed_cents')
           .in('id', collectivityIds)
       : Promise.resolve({
           data: [] as Array<{
@@ -1465,11 +1589,18 @@ async function readReservations(
 
   const transportById = new Map((transportOptions ?? []).map((option) => [option.id, option]));
   const transportOptionsBySessionId = new Map<string, TransportOptionSnapshot[]>();
+  const transportOptionsByStayId = new Map<string, TransportOptionSnapshot[]>();
   for (const option of transportOptions ?? []) {
-    if (!option.session_id) continue;
-    const existing = transportOptionsBySessionId.get(option.session_id) ?? [];
-    existing.push(option);
-    transportOptionsBySessionId.set(option.session_id, existing);
+    if (option.session_id) {
+      const existing = transportOptionsBySessionId.get(option.session_id) ?? [];
+      existing.push(option);
+      transportOptionsBySessionId.set(option.session_id, existing);
+    }
+    if (option.stay_id) {
+      const existing = transportOptionsByStayId.get(option.stay_id) ?? [];
+      existing.push(option);
+      transportOptionsByStayId.set(option.stay_id, existing);
+    }
   }
   const transportSnapshotsByOrderItemId = new Map<string, string>();
   for (const payment of payments ?? []) {
@@ -1637,15 +1768,24 @@ async function readReservations(
           continue;
         }
 
-        const sessionTransportOptions = item.session_id
-          ? transportOptionsBySessionId.get(item.session_id) ?? []
-          : [];
-        const resolvedLine = resolveTransportLineFromSessionOptions({
+        const availableTransportOptions = getTransportOptionsForOrderItem(
+          item,
+          sessionsById,
+          transportOptionsBySessionId,
+          transportOptionsByStayId
+        );
+        const resolvedLines = resolveTransportLinesFromOptions({
           transportCents,
-          options: sessionTransportOptions
+          options: availableTransportOptions
         });
-        if (resolvedLine) {
-          transportSummaryLines.add(resolvedLine);
+        if (resolvedLines.summaryLine) {
+          transportSummaryLines.add(resolvedLines.summaryLine);
+        }
+        if (resolvedLines.outboundLine) {
+          outboundTransportLines.add(resolvedLines.outboundLine);
+        }
+        if (resolvedLines.returnLine) {
+          returnTransportLines.add(resolvedLines.returnLine);
         }
       }
 
@@ -1688,13 +1828,28 @@ async function readReservations(
         paymentMode,
         paymentModeLabel: PAYMENT_MODE_LABELS[paymentMode],
         remainingBalanceCents,
+        partnerDiscountLine: buildPartnerDiscountLine({
+          itemsForOrder,
+          publicPriceBySessionId,
+          partnerDiscountPercent: stay?.partner_discount_percent ?? null
+        }),
+        partnerCoverageLine: buildPartnerCoverageLine({
+          partnerCents: financeSplit.partnerCents,
+          externalAidCents: order.external_aid_cents ?? 0,
+          collectivityName: collectivity?.name ?? null
+        }),
         transportLine:
           Array.from(transportSummaryLines).join(' / ') ||
           (estimatedTransportResidualCents > 0
             ? resolveTransportLineFromSessionOptions({
                 transportCents: estimatedTransportResidualCents,
-                options: itemsForOrder.flatMap(
-                  (item) => (item.session_id ? transportOptionsBySessionId.get(item.session_id) ?? [] : [])
+                options: itemsForOrder.flatMap((item) =>
+                  getTransportOptionsForOrderItem(
+                    item,
+                    sessionsById,
+                    transportOptionsBySessionId,
+                    transportOptionsByStayId
+                  )
                 )
               })
             : null),

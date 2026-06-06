@@ -51,6 +51,10 @@ function canContactOrganizer(reservation: FamilyReservation) {
   );
 }
 
+function canDownloadInvoice(reservation: FamilyReservation) {
+  return reservation.orderStatus !== 'CART' && reservation.orderStatus !== 'CANCELLED';
+}
+
 export default function FamilyReservationAccordion({
   reservation,
   defaultOpen = false
@@ -59,6 +63,7 @@ export default function FamilyReservationAccordion({
   defaultOpen?: boolean;
 }) {
   const showBalancePay = canPayBalance(reservation);
+  const showInvoiceDownload = canDownloadInvoice(reservation);
 
   return (
     <details
@@ -166,6 +171,12 @@ export default function FamilyReservationAccordion({
         <dl className="mt-4 divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white px-4">
           <DetailRow label="Participant(s)" value={reservation.children.join(', ') || reservation.child} />
           <DetailRow label="Mode de paiement" value={reservation.paymentModeLabel} />
+          {reservation.partnerDiscountLine ? (
+            <DetailRow label="Remise partenaire" value={reservation.partnerDiscountLine} accent />
+          ) : null}
+          {reservation.partnerCoverageLine ? (
+            <DetailRow label="Prise en charge" value={reservation.partnerCoverageLine} accent />
+          ) : null}
           {reservation.transportOutboundLine || reservation.transportReturnLine ? (
             <>
               {reservation.transportOutboundLine ? (
@@ -205,6 +216,16 @@ export default function FamilyReservationAccordion({
             >
               <Mail className="h-4 w-4" />
               Contacter l&apos;organisme
+            </a>
+          ) : null}
+          {showInvoiceDownload ? (
+            <a
+              href={`/api/orders/${reservation.orderId}/invoice`}
+              target="_blank"
+              rel="noreferrer"
+              className="btn btn-secondary btn-sm"
+            >
+              Télécharger la facture
             </a>
           ) : null}
         </div>

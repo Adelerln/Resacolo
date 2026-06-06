@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import { buildContactInquiryInsert } from '@/lib/inquiries';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
-import { getClientIp, verifyTurnstileToken } from '@/lib/turnstile.server';
+import { formatTurnstileUserError, getClientIp, verifyTurnstileToken } from '@/lib/turnstile.server';
 
 export const runtime = 'nodejs';
 
@@ -15,30 +16,15 @@ const contactSchema = z.object({
   turnstileToken: z.string().trim().min(1)
 });
 
-function buildInquiryType(recipient: string) {
-  return recipient.startsWith('organizer:') ? 'ORGANIZER_CONTACT' : 'TECH_SUPPORT';
-}
-
-function buildSubject(recipient: string) {
-  if (recipient.startsWith('organizer:')) {
-    return 'Contact organisateur depuis formulaire public';
-  }
-  return 'Contact assistance technique';
-}
-
-function buildMessageBody(recipient: string, message: string) {
-  return [`Destinataire: ${recipient}`, '', message].join('\n');
-}
-
 export async function POST(request: Request) {
   try {
     const input = contactSchema.parse(await request.json());
 
-    const verification = await verifyTurnstileToken(input.turnstileToken, getClientIp(request));
+    const verification = await verifyTurnstileToken(input.turnstileToken, getClientIp(request), request);
     if (!verification.success) {
       return NextResponse.json(
         {
-          error: 'Captcha invalide ou expiré. Merci de réessayer.',
+          error: formatTurnstileUserError(verification.errorCodes),
           errorCodes: verification.errorCodes
         },
         { status: 400 }
@@ -48,15 +34,16 @@ export async function POST(request: Request) {
     const supabase = getServerSupabaseClient();
     const { data, error } = await supabase
       .from('inquiries')
-      .insert({
-        inquiry_type: buildInquiryType(input.recipient),
-        status: 'NEW',
-        contact_email: input.email,
-        contact_name: `${input.firstName} ${input.lastName}`.trim(),
-        contact_phone: input.phone || null,
-        subject: buildSubject(input.recipient),
-        message: buildMessageBody(input.recipient, input.message)
-      })
+      .insert(
+        buildContactInquiryInsert({
+          recipient: input.recipient,
+          firstName: input.firstName,
+          lastName: input.lastName,
+          email: input.email,
+          phone: input.phone,
+          message: input.message
+        })
+      )
       .select('id')
       .single();
 

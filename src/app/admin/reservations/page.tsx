@@ -236,6 +236,15 @@ export default async function AdminRequestsPage({ searchParams }: { searchParams
         .from('orders')
         .update(buildOrderStatusUpdate(currentOrder, nextStatus))
         .eq('id', orderId);
+
+      if (nextStatus === 'PAID') {
+        try {
+          const { ensureClientTravelInvoiceForOrder } = await import('@/lib/client-travel-invoice.server');
+          await ensureClientTravelInvoiceForOrder(orderId);
+        } catch (invoiceError) {
+          console.error('admin/reservations: génération facture client échouée', invoiceError);
+        }
+      }
     }
 
     redirect(target);

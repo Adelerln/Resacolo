@@ -3,7 +3,15 @@ import { requireRole } from '@/lib/auth/require';
 import { isMissingPublicTableError } from '@/lib/mnemos/supabase-table-missing';
 import { MnemosFieldLabel } from '@/components/mnemos/MnemosFieldLabel';
 import { formatInquiryContact } from '@/lib/inquiries';
-import { formatMnemosInquiryType, formatMnemosStatus } from '@/lib/mnemos-display';
+import {
+  INQUIRY_SOURCE_LABELS,
+  INQUIRY_SOURCE_VALUES,
+  INQUIRY_STATUS_LABELS,
+  INQUIRY_STATUS_VALUES,
+  INQUIRY_TYPE_LABELS,
+  INQUIRY_TYPE_VALUES
+} from '@/lib/inquiry-options';
+import { formatMnemosInquirySource, formatMnemosInquiryType, formatMnemosStatus } from '@/lib/mnemos-display';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
@@ -12,6 +20,7 @@ export const revalidate = 0;
 type Sp = {
   status?: string;
   inquiry_type?: string;
+  source?: string;
   from?: string;
   to?: string;
 };
@@ -27,6 +36,9 @@ export default async function MnemosInquiriesPage({ searchParams }: { searchPara
   }
   if (sp.inquiry_type?.trim()) {
     q = q.eq('inquiry_type', sp.inquiry_type.trim());
+  }
+  if (sp.source?.trim()) {
+    q = q.eq('source', sp.source.trim());
   }
   if (sp.from?.trim()) {
     q = q.gte('created_at', new Date(`${sp.from}T00:00:00.000Z`).toISOString());
@@ -65,20 +77,48 @@ export default async function MnemosInquiriesPage({ searchParams }: { searchPara
       >
         <label className="text-sm text-slate-300">
           <MnemosFieldLabel>Statut</MnemosFieldLabel>
-          <input
+          <select
             name="status"
             defaultValue={sp.status ?? ''}
-            placeholder="Filtrer…"
             className="mt-1 block rounded-lg border border-slate-600 bg-slate-950 px-3 py-2 text-white"
-          />
+          >
+            <option value="">Tous</option>
+            {INQUIRY_STATUS_VALUES.map((value) => (
+              <option key={value} value={value}>
+                {INQUIRY_STATUS_LABELS[value]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="text-sm text-slate-300">
+          <MnemosFieldLabel>Origine</MnemosFieldLabel>
+          <select
+            name="source"
+            defaultValue={sp.source ?? ''}
+            className="mt-1 block rounded-lg border border-slate-600 bg-slate-950 px-3 py-2 text-white"
+          >
+            <option value="">Toutes</option>
+            {INQUIRY_SOURCE_VALUES.map((value) => (
+              <option key={value} value={value}>
+                {INQUIRY_SOURCE_LABELS[value]}
+              </option>
+            ))}
+          </select>
         </label>
         <label className="text-sm text-slate-300">
           <MnemosFieldLabel>Type</MnemosFieldLabel>
-          <input
+          <select
             name="inquiry_type"
             defaultValue={sp.inquiry_type ?? ''}
             className="mt-1 block rounded-lg border border-slate-600 bg-slate-950 px-3 py-2 text-white"
-          />
+          >
+            <option value="">Tous</option>
+            {INQUIRY_TYPE_VALUES.map((value) => (
+              <option key={value} value={value}>
+                {INQUIRY_TYPE_LABELS[value]}
+              </option>
+            ))}
+          </select>
         </label>
         <label className="text-sm text-slate-300">
           <MnemosFieldLabel>Du</MnemosFieldLabel>
@@ -113,6 +153,7 @@ export default async function MnemosInquiriesPage({ searchParams }: { searchPara
               <tr>
                 <th className="px-3 py-2">Date</th>
                 <th className="px-3 py-2">Statut</th>
+                <th className="px-3 py-2">Origine</th>
                 <th className="px-3 py-2">Type</th>
                 <th className="px-3 py-2">Contact</th>
                 <th className="px-3 py-2">Sujet</th>
@@ -132,6 +173,7 @@ export default async function MnemosInquiriesPage({ searchParams }: { searchPara
                       {formatMnemosStatus(r.status)}
                     </span>
                   </td>
+                  <td className="px-3 py-2 text-slate-300">{formatMnemosInquirySource(r.source)}</td>
                   <td className="px-3 py-2 text-slate-300">{formatMnemosInquiryType(r.inquiry_type)}</td>
                   <td className="px-3 py-2 text-slate-300">
                     {contact.name ? `${contact.name} · ` : ''}
@@ -151,7 +193,7 @@ export default async function MnemosInquiriesPage({ searchParams }: { searchPara
               })}
               {!rows?.length && !error && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-10 text-center text-slate-500">
+                  <td colSpan={7} className="px-4 py-10 text-center text-slate-500">
                     Aucune demande pour le moment.
                     <span className="mt-2 block text-xs text-slate-600">
                       Les tickets des organismes sont dans{' '}

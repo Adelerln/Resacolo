@@ -114,49 +114,6 @@ export function AdminFinancesDetailsModal({ row }: { row: FinancesBreakdownRow }
                   </table>
                 </div>
               </section>
-
-              <section>
-                <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <h3 className="text-base font-semibold text-slate-900">Commissions partenaires</h3>
-                  <p className="text-sm font-semibold text-slate-700">{eurosFromCents(row.commissionPartnerCents)}</p>
-                </div>
-                <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200">
-                  <table className="min-w-[760px] w-full text-left text-sm">
-                    <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-                      <tr>
-                        <th className="px-3 py-2">Organisateur</th>
-                        <th className="px-3 py-2">Séjour</th>
-                        <th className="px-3 py-2 text-right">CA lignes commande TTC</th>
-                        <th className="px-3 py-2 text-right">Commission partenaire</th>
-                        <th className="px-3 py-2 text-right">Lignes</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {row.partnerCommissionDetails.map((detail) => (
-                        <tr key={detail.key}>
-                          <td className="px-3 py-2 font-medium text-slate-900">{detail.organizerName}</td>
-                          <td className="px-3 py-2 text-slate-700">{detail.stayTitle}</td>
-                          <td className="px-3 py-2 text-right tabular-nums text-slate-700">
-                            {eurosFromCents(detail.orderVolumeCents)}
-                          </td>
-                          <td className="px-3 py-2 text-right tabular-nums text-slate-700">
-                            {eurosFromCents(detail.commissionClientCents)}
-                          </td>
-                          <td className="px-3 py-2 text-right tabular-nums text-slate-600">{detail.lineCount}</td>
-                        </tr>
-                      ))}
-                      {row.partnerCommissionDetails.length === 0 && (
-                        <tr>
-                          <td colSpan={5} className="px-3 py-6 text-center text-slate-500">
-                            Aucune commission partenaire sur cette ligne.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </section>
-
             </div>
           </div>
         </div>

@@ -514,7 +514,13 @@ const DEFAULT_GALLERY = [
 ];
 const VISIT_TRACKING_DEDUP_MS = 60_000;
 
-export function StayDetailView({ stay }: { stay: Stay }) {
+export function StayDetailView({
+  stay,
+  disableGalleryFallback = false
+}: {
+  stay: Stay;
+  disableGalleryFallback?: boolean;
+}) {
   const router = useRouter();
   const { addItem } = useCart();
   const [activeTab, setActiveTab] = useState<TabId>('sejour');
@@ -901,10 +907,10 @@ export function StayDetailView({ stay }: { stay: Stay }) {
     const fromStay = (stay.galleryImages ?? []).filter((url) => typeof url === 'string' && url.trim().length > 0);
     const prioritized = stay.coverImage ? [stay.coverImage, ...fromStay] : fromStay;
     const unique = Array.from(new Set(prioritized));
-    if (unique.length >= 3) return unique;
+    if (disableGalleryFallback || unique.length >= 3) return unique;
     const fallback = DEFAULT_GALLERY.filter((url) => !unique.includes(url));
     return [...unique, ...fallback].slice(0, 3);
-  }, [stay.coverImage, stay.galleryImages]);
+  }, [disableGalleryFallback, stay.coverImage, stay.galleryImages]);
   const videoUrls = useMemo(
     () =>
       Array.from(

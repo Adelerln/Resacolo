@@ -6,6 +6,7 @@ export type OrganizerWorkspaceSection =
   | 'stays'
   | 'accommodations'
   | 'reservations'
+  | 'inquiries'
   | 'users';
 
 export const ORGANIZER_ACCESS_COOKIE_NAME = 'resacolo_organizer_access_role';
@@ -23,9 +24,9 @@ export const ORGANIZER_ACCESS_LABELS: Record<OrganizerAccessRole, string> = {
 };
 
 const ORGANIZER_ACCESS_SECTIONS: Record<OrganizerAccessRole, OrganizerWorkspaceSection[]> = {
-  OWNER: ['dashboard', 'organizer-profile', 'stays', 'accommodations', 'reservations', 'users'],
-  EDITOR: ['dashboard', 'stays', 'accommodations', 'reservations'],
-  RESERVATION_MANAGER: ['dashboard', 'reservations']
+  OWNER: ['dashboard', 'organizer-profile', 'stays', 'accommodations', 'reservations', 'inquiries', 'users'],
+  EDITOR: ['dashboard', 'stays', 'accommodations', 'reservations', 'inquiries'],
+  RESERVATION_MANAGER: ['dashboard', 'reservations', 'inquiries']
 };
 
 const ORGANIZER_NAV_LINKS: Array<{
@@ -38,6 +39,7 @@ const ORGANIZER_NAV_LINKS: Array<{
   { href: '/organisme/sejours', label: 'Séjours', section: 'stays' },
   { href: '/organisme/hebergements', label: 'Hébergements', section: 'accommodations' },
   { href: '/organisme/reservations', label: 'Réservations', section: 'reservations' },
+  { href: '/organisme/demandes', label: 'Demandes', section: 'inquiries' },
   { href: '/organisme/utilisateurs', label: 'Utilisateurs', section: 'users' }
 ];
 
@@ -73,6 +75,7 @@ export function getOrganizerSectionFromPath(pathname: string): OrganizerWorkspac
   }
   if (pathname.startsWith('/organisme/hebergements')) return 'accommodations';
   if (pathname.startsWith('/organisme/reservations')) return 'reservations';
+  if (pathname.startsWith('/organisme/demandes')) return 'inquiries';
   if (pathname.startsWith('/organisme/utilisateurs')) return 'users';
   return 'dashboard';
 }

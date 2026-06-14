@@ -11,8 +11,10 @@ export function mnemosLabel(label: string) {
 const STATUS_LABELS: Record<string, string> = {
   NEW: 'Nouveau',
   IN_PROGRESS: 'En cours',
-  RESOLVED: 'Résolu',
+  OPEN: 'Ouvert',
+  ANSWERED: 'Résolu',
   CLOSED: 'Clôturé',
+  RESOLVED: 'Résolu',
   ISSUED: 'Émise',
   DRAFT: 'Brouillon',
   CANCELLED: 'Annulée',
@@ -21,8 +23,14 @@ const STATUS_LABELS: Record<string, string> = {
 
 const INQUIRY_TYPE_LABELS: Record<string, string> = {
   GENERAL: 'Général',
+  OTHER: 'Autre'
+};
+
+const INQUIRY_SOURCE_LABELS: Record<string, string> = {
   CONTACT_FORM: 'Formulaire de contact',
-  PLATFORM: 'Plateforme'
+  PLATFORM: 'Assistant en ligne',
+  MNEMOS: 'Mnemos (interne)',
+  MNEMOS_TRANSFER: 'Transféré à un organisateur'
 };
 
 const INVOICE_TYPE_LABELS: Record<string, string> = {
@@ -46,8 +54,10 @@ const STAFF_ROLE_LABELS: Record<string, string> = {
 };
 
 const LEDGER_CHANNEL_LABELS: Record<string, string> = {
+  CLIENT: 'CLIENT',
+  PARTNER: 'PARTENAIRE',
+  NA: 'N/A',
   DIRECT: 'Direct',
-  PARTNER: 'Partenaire',
   MARKETPLACE: 'Place de marché',
   WEB: 'Web'
 };
@@ -64,6 +74,11 @@ export function formatMnemosStatus(value: string | null | undefined) {
 export function formatMnemosInquiryType(value: string | null | undefined) {
   if (!value) return '—';
   return INQUIRY_TYPE_LABELS[value] ?? humanizeToken(value);
+}
+
+export function formatMnemosInquirySource(value: string | null | undefined) {
+  if (!value) return '—';
+  return INQUIRY_SOURCE_LABELS[value] ?? humanizeToken(value);
 }
 
 export function formatMnemosInvoiceType(value: string | null | undefined) {

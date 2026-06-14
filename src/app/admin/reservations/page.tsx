@@ -6,6 +6,7 @@ import {
   orderStatusBadgeClassName,
   orderStatusLabel
 } from '@/lib/order-workflow';
+import { isMissingAnyColumnError } from '@/lib/supabase-schema-errors';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { isMissingAnyColumnError } from '@/lib/supabase-schema-errors';
 import type { Database } from '@/types/supabase';
@@ -81,6 +82,44 @@ function buildOrderStatusUpdate(
   }
 
   return update;
+}
+
+const ORDER_WORKFLOW_V2_COLUMNS = ['partially_paid_at', 'transferred_at'] as const;
+
+function stripUnsupportedOrderUpdate(update: OrderUpdate) {
+  const { partially_paid_at, transferred_at, ...rest } = update;
+  return rest;
+}
+
+async function loadAdminOrders(supabase: ReturnType<typeof getServerSupabaseClient>) {
+  const fullSelect =
+    'id,status,created_at,requested_at,partially_paid_at,paid_at,client_user_id,collectivity_id';
+  const legacySelect = 'id,status,created_at,requested_at,paid_at,client_user_id,collectivity_id';
+
+  let result = await supabase
+    .from('orders')
+    .select(fullSelect)
+    .neq('status', 'CART')
+    .order('created_at', { ascending: false });
+
+  if (result.error && isMissingAnyColumnError(result.error, [...ORDER_WORKFLOW_V2_COLUMNS])) {
+    result = await supabase
+      .from('orders')
+      .select(legacySelect)
+      .neq('status', 'CART')
+      .order('created_at', { ascending: false });
+  }
+
+  return {
+    data: (result.data ?? []).map((order) => ({
+      ...order,
+      partially_paid_at:
+        'partially_paid_at' in order
+          ? (order as { partially_paid_at?: string | null }).partially_paid_at ?? null
+          : null
+    })),
+    error: result.error
+  };
 }
 
 export const dynamic = 'force-dynamic';
@@ -258,6 +297,17 @@ export default async function AdminRequestsPage({ searchParams }: { searchParams
       .maybeSingle();
 
     if (currentOrder) {
+      const update = buildOrderStatusUpdate(currentOrder, nextStatus);
+      let { error: updateError } = await supabase.from('orders').update(update).eq('id', orderId);
+
+      if (updateError && isMissingAnyColumnError(updateError, [...ORDER_WORKFLOW_V2_COLUMNS])) {
+        ({ error: updateError } = await supabase
+          .from('orders')
+          .update(stripUnsupportedOrderUpdate(update))
+          .eq('id', orderId));
+      }
+
+      if (nextStatus === 'PAID' && !updateError) {
       const statusUpdate = buildOrderStatusUpdate(
         { ...currentOrder, partially_paid_at: null },
         nextStatus

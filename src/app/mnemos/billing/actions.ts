@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { requireRole } from '@/lib/auth/require';
 import { allocateInvoiceNumber } from '@/lib/mnemos/allocate-invoice-number.server';
+import { assertMnemosBillingPeriodAllowed } from '@/lib/mnemos/billing-period-guard.server';
 import { createAndUploadMnemosInvoicePdf } from '@/lib/mnemos/invoice-pdf.server';
 import {
   loadLedgerCommissionLines,
@@ -52,6 +53,15 @@ export async function createPublicationPeriodInvoice(formData: FormData) {
   }
   const startIso = periodStartIso(startDate);
   const endIso = periodEndExclusive(endDate);
+  const periodCheck = await assertMnemosBillingPeriodAllowed(supabase, {
+    organizerId,
+    eventType: 'INVOICE_PUBLICATION_PERIOD',
+    startIso,
+    endExclusiveIso: endIso
+  });
+  if (!periodCheck.allowed) {
+    redirect(`${base}&flash_err=${encodeURIComponent(periodCheck.conflictMessage ?? 'Période déjà facturée.')}`);
+  }
   const { lines, error } = await loadLedgerPublicationLines(supabase, organizerId, startIso, endIso);
   if (error) {
     redirect(`${base}&flash_err=${encodeURIComponent(error)}`);
@@ -161,6 +171,15 @@ export async function createCommissionPeriodInvoice(formData: FormData) {
   const supabase = getServerSupabaseClient();
   const startIso = periodStartIso(startDate);
   const endIso = periodEndExclusive(endDate);
+  const periodCheck = await assertMnemosBillingPeriodAllowed(supabase, {
+    organizerId,
+    eventType: 'INVOICE_COMMISSION_PERIOD',
+    startIso,
+    endExclusiveIso: endIso
+  });
+  if (!periodCheck.allowed) {
+    redirect(`${base}&flash_err=${encodeURIComponent(periodCheck.conflictMessage ?? 'Période déjà facturée.')}`);
+  }
   const { lines, error } = await loadLedgerCommissionLines(supabase, organizerId, startIso, endIso);
   if (error) {
     redirect(`${base}&flash_err=${encodeURIComponent(error)}`);

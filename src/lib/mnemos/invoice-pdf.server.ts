@@ -6,8 +6,10 @@ import { deflateSync, inflateSync } from 'zlib';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { RESACOLO_COMPANY } from '@/lib/resacolo-company';
 import { formatOrderReservationCode } from '@/lib/order-workflow';
+import { formatMnemosLedgerChannel } from '@/lib/mnemos-display';
 import type { Database } from '@/types/supabase';
 import type { LedgerLinePreview } from './ledger-period-preview.server';
+import { enrichLedgerLinesForInvoice } from './ledger-period-preview.server';
 
 const INVOICE_PDF_BUCKET = 'invoice-pdfs';
 const RESACOLO_LOGO_PATH = join(process.cwd(), 'public/image/accueil/images_accueil/logo-resacolo.png');
@@ -15,8 +17,6 @@ const RESACOLO_LOGO_WHITE_PATH = join(
   process.cwd(),
   'public/image/footer/logo_footer/logo-resacolo-RVB-blanc_logo-final copie 2.png'
 );
-const RALEWAY_REGULAR_PATH = join(process.cwd(), 'public/fonts/Raleway-Regular.ttf');
-const RALEWAY_BOLD_PATH = join(process.cwd(), 'public/fonts/Raleway-Bold.ttf');
 const VAT_RATE = 0.2;
 
 type MnemosInvoicePdfInput = {
@@ -377,24 +377,15 @@ async function loadResacoloLogo(preferWhite = false) {
   throw new Error('Logo Resacolo introuvable.');
 }
 
-async function loadRalewayFonts(): Promise<PdfFonts | null> {
-  try {
-    const [regular, bold] = await Promise.all([
-      readFile(RALEWAY_REGULAR_PATH),
-      readFile(RALEWAY_BOLD_PATH)
-    ]);
-    return { regular, bold };
-  } catch {
-    return null;
-  }
-}
-
 function toPdfLine(line: LedgerLinePreview): PdfLine {
   const totalCents = line.amount_cents;
   const netCents = Math.round(totalCents / (1 + VAT_RATE));
   const vatCents = totalCents - netCents;
   return {
-    label: line.note?.trim() || (line.stay_id ? `Séjour ${line.stay_id.slice(0, 8)}` : 'Prestation Resacolo'),
+    label:
+      line.prestationLabel?.trim() ||
+      line.note?.trim() ||
+      (line.stay_id ? `Séjour ${line.stay_id.slice(0, 8)}` : 'Prestation Resacolo'),
     date: formatDate(line.occurred_at),
     channel: line.channel,
     totalCents,
@@ -448,7 +439,7 @@ function renderInvoicePdf(input: MnemosInvoicePdfInput, logo: PdfImage | null, f
     page.line(35, y + 10, 560, y + 10);
     page.text(line.date, 45, y, { size: 8 });
     wrapped.forEach((part, index) => page.text(part, 105, y - index * 11, { size: 8 }));
-    page.text(line.channel, 315, y, { size: 8 });
+    page.text(formatMnemosLedgerChannel(line.channel), 315, y, { size: 8 });
     page.text(euros(line.totalCents), 410, y, { size: 8, align: 'right' });
     page.text(euros(line.vatCents), 480, y, { size: 8, align: 'right' });
     page.text(euros(line.netCents), 550, y, { size: 8, align: 'right' });
@@ -661,8 +652,8 @@ export async function createAndUploadMnemosInvoicePdf(
   } catch {
     logo = null;
   }
-  const fonts = await loadRalewayFonts();
-  const pdf = renderInvoicePdf(input, logo, fonts);
+  const enrichedLines = await enrichLedgerLinesForInvoice(supabase, input.lines);
+  const pdf = renderInvoicePdf({ ...input, lines: enrichedLines }, logo, null);
   const path = `mnemos/${input.invoiceYear}/${input.invoiceId}.pdf`;
   const { error } = await supabase.storage.from(INVOICE_PDF_BUCKET).upload(path, pdf, {
     contentType: 'application/pdf',

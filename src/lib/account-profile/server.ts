@@ -1541,6 +1541,7 @@ async function readReservations(
       : Promise.resolve({
           data: [] as Array<{
             id: string;
+            name: string | null;
             finance_mode: string;
             finance_percent_value: number | null;
             finance_fixed_cents: number | null;

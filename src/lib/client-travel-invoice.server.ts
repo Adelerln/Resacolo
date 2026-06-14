@@ -12,7 +12,7 @@ const CLIENT_TRAVEL_INVOICE_TYPE = 'CLIENT';
 
 type InvoiceRow = Pick<
   Database['public']['Tables']['invoices']['Row'],
-  'id' | 'number' | 'year' | 'pdf_url' | 'issued_at' | 'status'
+  'id' | 'number' | 'year' | 'pdf_url' | 'issued_at' | 'status' | 'total_cents'
 >;
 
 type InvoiceLineDraft = {
@@ -305,7 +305,7 @@ export async function ensureClientTravelInvoiceForOrder(orderId: string) {
 
   const { data: existingInvoice } = await supabase
     .from('invoices')
-    .select('id,number,year,pdf_url,issued_at,status')
+    .select('id,number,year,pdf_url,issued_at,status,total_cents')
     .eq('order_id', orderId)
     .eq('invoice_type', CLIENT_TRAVEL_INVOICE_TYPE)
     .order('created_at', { ascending: false })
@@ -331,7 +331,7 @@ export async function ensureClientTravelInvoiceForOrder(orderId: string) {
         total_cents: model.totalCents,
         pdf_url: null
       })
-      .select('id,number,year,pdf_url,issued_at,status')
+      .select('id,number,year,pdf_url,issued_at,status,total_cents')
       .single();
 
     if (createError || !createdInvoice) {

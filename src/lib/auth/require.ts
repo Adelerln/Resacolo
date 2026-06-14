@@ -90,7 +90,7 @@ export async function requireAdminSection(section: AdminWorkspaceSection, option
 
 export async function requireAdminMutateSection(section: AdminWorkspaceSection, options?: RequireOptions) {
   const session = await requireAdminSection(section, options);
-  if (!canMutateAdminSection(session.role, section)) {
+  if (!isAdminWorkspaceRole(session.role) || !canMutateAdminSection(session.role, section)) {
     redirectToAuthorizedHome(session.role);
   }
   return session;

@@ -75,7 +75,7 @@ export default async function MnemosBillingPage({
     const [pub, com] = await Promise.all([
       publicationFeeEnabled
         ? loadLedgerPublicationLines(supabase, organizerId, startIso, endIso)
-        : Promise.resolve({ lines: [] as Awaited<ReturnType<typeof loadLedgerPublicationLines>>['lines'] }),
+        : Promise.resolve({ lines: [] as Awaited<ReturnType<typeof loadLedgerPublicationLines>>['lines'], error: undefined }),
       loadLedgerCommissionLines(supabase, organizerId, startIso, endIso)
     ]);
     pubLines = pub.lines;

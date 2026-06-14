@@ -8,7 +8,6 @@ import {
 } from '@/lib/order-workflow';
 import { isMissingAnyColumnError } from '@/lib/supabase-schema-errors';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
-import { isMissingAnyColumnError } from '@/lib/supabase-schema-errors';
 import type { Database } from '@/types/supabase';
 
 type SearchParams = Promise<{ status?: string; season?: string }>;
@@ -86,38 +85,54 @@ function buildOrderStatusUpdate(
 
 const ORDER_WORKFLOW_V2_COLUMNS = ['partially_paid_at', 'transferred_at'] as const;
 
+type AdminOrderRow = {
+  id: string;
+  status: string;
+  created_at: string;
+  requested_at: string | null;
+  paid_at: string | null;
+  client_user_id: string;
+  collectivity_id: string | null;
+  partially_paid_at: string | null;
+};
+
 function stripUnsupportedOrderUpdate(update: OrderUpdate) {
   const { partially_paid_at, transferred_at, ...rest } = update;
   return rest;
 }
 
-async function loadAdminOrders(supabase: ReturnType<typeof getServerSupabaseClient>) {
+async function loadAdminOrders(
+  supabase: ReturnType<typeof getServerSupabaseClient>,
+  options?: { salesWorkspaceOnly?: boolean }
+) {
   const fullSelect =
     'id,status,created_at,requested_at,partially_paid_at,paid_at,client_user_id,collectivity_id';
   const legacySelect = 'id,status,created_at,requested_at,paid_at,client_user_id,collectivity_id';
 
-  let result = await supabase
-    .from('orders')
-    .select(fullSelect)
-    .neq('status', 'CART')
-    .order('created_at', { ascending: false });
+  const buildQuery = (select: string) => {
+    let query = supabase.from('orders').select(select).neq('status', 'CART');
+    if (options?.salesWorkspaceOnly) {
+      query = query.not('collectivity_id', 'is', null);
+    }
+    return query.order('created_at', { ascending: false });
+  };
+
+  let result = await buildQuery(fullSelect);
 
   if (result.error && isMissingAnyColumnError(result.error, [...ORDER_WORKFLOW_V2_COLUMNS])) {
-    result = await supabase
-      .from('orders')
-      .select(legacySelect)
-      .neq('status', 'CART')
-      .order('created_at', { ascending: false });
+    result = await buildQuery(legacySelect);
   }
 
   return {
-    data: (result.data ?? []).map((order) => ({
-      ...order,
-      partially_paid_at:
-        'partially_paid_at' in order
-          ? (order as { partially_paid_at?: string | null }).partially_paid_at ?? null
-          : null
-    })),
+    data: (result.data ?? []).map((order): AdminOrderRow => {
+      const row = order as unknown as Omit<AdminOrderRow, 'partially_paid_at'> & {
+        partially_paid_at?: string | null;
+      };
+      return {
+        ...row,
+        partially_paid_at: row.partially_paid_at ?? null
+      };
+    }),
     error: result.error
   };
 }
@@ -143,37 +158,9 @@ export default async function AdminRequestsPage({ searchParams }: { searchParams
   }`;
 
   const supabase = getServerSupabaseClient();
-  let ordersQuery = supabase
-    .from('orders')
-    .select(
-      'id,status,created_at,requested_at,partially_paid_at,paid_at,client_user_id,collectivity_id'
-    )
-    .neq('status', 'CART');
-
-  if (isSalesWorkspace) {
-    ordersQuery = ordersQuery.not('collectivity_id', 'is', null);
-  }
-
-  let { data: ordersRaw, error } = await ordersQuery.order('created_at', { ascending: false });
-
-  if (error && isMissingAnyColumnError(error, ['partially_paid_at'])) {
-    let legacyQuery = supabase
-      .from('orders')
-      .select('id,status,created_at,requested_at,paid_at,client_user_id,collectivity_id')
-      .neq('status', 'CART');
-
-    if (isSalesWorkspace) {
-      legacyQuery = legacyQuery.not('collectivity_id', 'is', null);
-    }
-
-    const legacyResult = await legacyQuery.order('created_at', { ascending: false });
-
-    ordersRaw = (legacyResult.data ?? []).map((order) => ({
-      ...order,
-      partially_paid_at: null
-    }));
-    error = legacyResult.error;
-  }
+  const { data: ordersRaw, error } = await loadAdminOrders(supabase, {
+    salesWorkspaceOnly: isSalesWorkspace
+  });
 
   const orders = ordersRaw ?? [];
   const orderIds = orders.map((order) => order.id);
@@ -297,7 +284,10 @@ export default async function AdminRequestsPage({ searchParams }: { searchParams
       .maybeSingle();
 
     if (currentOrder) {
-      const update = buildOrderStatusUpdate(currentOrder, nextStatus);
+      const update = buildOrderStatusUpdate(
+        { ...currentOrder, partially_paid_at: null },
+        nextStatus
+      );
       let { error: updateError } = await supabase.from('orders').update(update).eq('id', orderId);
 
       if (updateError && isMissingAnyColumnError(updateError, [...ORDER_WORKFLOW_V2_COLUMNS])) {
@@ -308,27 +298,12 @@ export default async function AdminRequestsPage({ searchParams }: { searchParams
       }
 
       if (nextStatus === 'PAID' && !updateError) {
-      const statusUpdate = buildOrderStatusUpdate(
-        { ...currentOrder, partially_paid_at: null },
-        nextStatus
-      );
-      const { error: updateError } = await supabase
-        .from('orders')
-        .update(statusUpdate)
-        .eq('id', orderId);
-
-      if (updateError && isMissingAnyColumnError(updateError, ['partially_paid_at'])) {
-        const { partially_paid_at: _ignored, ...legacyUpdate } = statusUpdate;
-        await supabase.from('orders').update(legacyUpdate).eq('id', orderId);
-      }
-
-      if (nextStatus === 'PAID') {
         try {
           const { recordCommissionFeesOnOrderPaid } = await import('@/lib/resacolo-fee-ledger.server');
           await recordCommissionFeesOnOrderPaid(
             supabase,
             orderId,
-            statusUpdate.paid_at ?? new Date().toISOString()
+            update.paid_at ?? new Date().toISOString()
           );
         } catch (ledgerError) {
           console.error('admin/reservations: écriture journal commissions échouée', ledgerError);

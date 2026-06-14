@@ -9,11 +9,13 @@ import { requireOrganizerPageAccess } from '@/lib/organizer-backoffice-access.se
 import { withOrganizerQuery } from '@/lib/organizers.server';
 import { resolveStaySeasonPicto } from '@/lib/organizer-profile-options';
 import { staySessionsAppearFullyBooked } from '@/lib/stay-catalog-availability';
+import {
+  buildStayPreviewFromDraft,
+  formatDurationFromDraftSessions
+} from '@/lib/stay-draft-preview';
 import { getStayCanonicalPath, getStays } from '@/lib/stays';
 import { readDraftDestinationFields } from '@/lib/stay-draft-destination';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
-import type { Stay, StaySessionOption } from '@/types/stay';
-import { slugify } from '@/lib/utils';
 
 type PageProps = {
   searchParams?: Promise<{
@@ -52,124 +54,6 @@ function formatAgeRange(ages: unknown): string {
   if (numericAges.length === 0) return 'Tous âges';
   if (numericAges.length === 1) return `${numericAges[0]} ans`;
   return `${numericAges[0]}-${numericAges[numericAges.length - 1]} ans`;
-}
-
-function formatDurationFromSessions(sessions: unknown): string {
-  if (!Array.isArray(sessions) || sessions.length === 0) return 'Durée à venir';
-  const first = sessions[0] as Record<string, unknown>;
-  const duration = first?.duration_days;
-  const days = typeof duration === 'number' ? duration : Number(duration);
-  if (!Number.isFinite(days) || days <= 0) return 'Durée à venir';
-  return `${Math.round(days)} jours`;
-}
-
-function toNumberOrNull(value: unknown): number | null {
-  const parsed = typeof value === 'number' ? value : Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function buildPreviewSessions(sessions: unknown): StaySessionOption[] {
-  if (!Array.isArray(sessions)) return [];
-  return sessions
-    .map<StaySessionOption | null>((row, index) => {
-      if (!row || typeof row !== 'object' || Array.isArray(row)) return null;
-      const item = row as Record<string, unknown>;
-      const start = normalizeString(item.start_date);
-      const end = normalizeString(item.end_date);
-      if (!start || !end) return null;
-      return {
-        id: `draft-session-${index + 1}`,
-        startDate: start,
-        endDate: end,
-        price: toNumberOrNull(item.price),
-        status: normalizeString(item.availability).toLowerCase() === 'full' ? 'FULL' : 'OPEN',
-        transportOptions: [] as StaySessionOption['transportOptions']
-      } satisfies StaySessionOption;
-    })
-    .filter((row): row is StaySessionOption => row !== null);
-}
-
-function buildPreviewStayFromDraft(input: {
-  draftId: string;
-  organizerId: string;
-  title: string;
-  summary: string;
-  description: string;
-  locationLabel: string;
-  regionText: string;
-  ageRangeLabel: string;
-  durationLabel: string;
-  coverUrl: string | null;
-  sessions: unknown;
-  destination: ReturnType<typeof readDraftDestinationFields>;
-}): Stay {
-  const slug = slugify(input.title) || `draft-${input.draftId}`;
-  const previewSessions = buildPreviewSessions(input.sessions);
-  const ageRangeMatch = input.ageRangeLabel.match(/(\d+)(?:-(\d+))?/);
-  const ageMin = ageRangeMatch?.[1] ? Number(ageRangeMatch[1]) : null;
-  const ageMax = ageRangeMatch?.[2] ? Number(ageRangeMatch[2]) : ageMin;
-
-  return {
-    id: input.draftId,
-    title: input.title,
-    slug,
-    canonicalSlug: slug,
-    legacySlugs: [],
-    summary: input.summary,
-    description: input.description,
-    seasonId: 'draft',
-    seasonName: '',
-    organizerId: input.organizerId,
-    organizer: {
-      name: 'Organisateur',
-      website: '',
-      slug: undefined,
-      logoUrl: undefined
-    },
-    location: input.locationLabel,
-    displayLocation: input.locationLabel,
-    region: input.regionText || '',
-    country: input.destination.destinationCountry ?? '',
-    destinationType: input.destination.destinationType ?? null,
-    destinationCity: input.destination.destinationCity,
-    destinationPostalCode: input.destination.destinationPostalCode,
-    destinationDepartmentCode: input.destination.destinationDepartmentCode,
-    destinationRegion: input.destination.destinationRegion,
-    destinationCountry: input.destination.destinationCountry,
-    destinationItineraryLabel: input.destination.destinationItineraryLabel,
-    destinationCountries: input.destination.destinationCountries,
-    ageMin,
-    ageMax,
-    ageRange: input.ageRangeLabel,
-    duration: input.durationLabel,
-    priceFrom: null,
-    period: [],
-    categories: [],
-    highlights: [],
-    activitiesText: '',
-    programText: '',
-    transportText: '',
-    coverImage: input.coverUrl ?? undefined,
-    galleryImages: input.coverUrl ? [input.coverUrl] : [],
-    videoUrls: [],
-    filters: {
-      categories: [],
-      audiences: [],
-      durations: [],
-      periods: [],
-      priceRange: null,
-      transport: []
-    },
-    bookingOptions: {
-      transportMode: '',
-      sessions: previewSessions,
-      insuranceOptions: [],
-      extraOptions: []
-    },
-    centerLocations: [],
-    accommodations: [],
-    updatedAt: new Date().toISOString()
-  };
 }
 
 export const dynamic = 'force-dynamic';
@@ -211,7 +95,6 @@ export default async function OrganizerPublishedPreviewPage({ searchParams }: Pa
     const season = resolveStaySeasonPicto(stay.seasonName || stay.period[0] || null);
     const isFullyBooked = staySessionsAppearFullyBooked(stay.bookingOptions?.sessions);
     const stayPath = getStayCanonicalPath(stay);
-    const cardSearchHref = `/sejours?q=${encodeURIComponent(stay.title)}`;
 
     return (
       <div className="space-y-6">
@@ -232,9 +115,6 @@ export default async function OrganizerPublishedPreviewPage({ searchParams }: Pa
           <div className="mt-4 flex flex-wrap gap-2">
             <Link href={stayPath} target="_blank" rel="noreferrer" className="organizer-btn-primary">
               Voir la fiche publique
-            </Link>
-            <Link href={cardSearchHref} target="_blank" rel="noreferrer" className="organizer-btn-secondary">
-              Voir la card dans /sejours
             </Link>
           </div>
         </section>
@@ -293,7 +173,9 @@ export default async function OrganizerPublishedPreviewPage({ searchParams }: Pa
   const supabase = getServerSupabaseClient();
   const { data: draft } = await supabase
     .from('stay_drafts')
-    .select('id,title,summary,location_text,region_text,ages,sessions_json,images,status,raw_payload,description')
+    .select(
+      'id,title,summary,location_text,region_text,ages,sessions_json,images,status,raw_payload,description,program_text,activities_text,transport_text,transport_mode,transport_options_json,accommodations_json,supervision_text,required_documents_text'
+    )
     .eq('id', draftId)
     .eq('organizer_id', selectedOrganizerId)
     .maybeSingle();
@@ -319,27 +201,23 @@ export default async function OrganizerPublishedPreviewPage({ searchParams }: Pa
     withFrenchAccents(normalizeString(draft.region_text)) ||
     'Lieu à préciser';
   const ageRangeLabel = formatAgeRange(draft.ages);
-  const durationLabel = formatDurationFromSessions(draft.sessions_json);
+  const durationLabel = formatDurationFromDraftSessions(draft.sessions_json);
   const images = Array.isArray(draft.images) ? draft.images.filter((v): v is string => typeof v === 'string') : [];
   const coverUrl = images[0] ?? null;
   const seasonNames = Array.isArray(rawPayload.draft_season_names)
     ? rawPayload.draft_season_names.filter((v): v is string => typeof v === 'string' && v.trim().length > 0)
     : [];
   const season = resolveStaySeasonPicto(seasonNames[0] ?? null);
-  const previewStay = buildPreviewStayFromDraft({
-    draftId,
-    organizerId: selectedOrganizerId,
-    title,
-    summary,
-    description,
-    locationLabel,
-    regionText: normalizeString(draft.region_text),
-    ageRangeLabel,
-    durationLabel,
-    coverUrl,
-    sessions: draft.sessions_json,
-    destination
-  });
+  const previewStay = await buildStayPreviewFromDraft(
+    {
+      ...draft,
+      title,
+      summary,
+      description,
+      location_text: locationLabel === 'Lieu à préciser' ? draft.location_text : locationLabel
+    },
+    selectedOrganizerId
+  );
 
   return (
     <div className="space-y-6">
@@ -386,7 +264,7 @@ export default async function OrganizerPublishedPreviewPage({ searchParams }: Pa
         <h2 className="text-lg font-semibold text-slate-900">Aperçu fiche séjour</h2>
         <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white">
           <FavoritesProvider>
-            <StayDetailView stay={previewStay} />
+            <StayDetailView stay={previewStay} disableGalleryFallback />
           </FavoritesProvider>
         </div>
       </section>

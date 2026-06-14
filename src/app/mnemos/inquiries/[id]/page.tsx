@@ -4,7 +4,16 @@ import { requireRole } from '@/lib/auth/require';
 import { isMissingPublicTableError } from '@/lib/mnemos/supabase-table-missing';
 import { MnemosDt, MnemosFieldLabel } from '@/components/mnemos/MnemosFieldLabel';
 import { formatInquiryContact } from '@/lib/inquiries';
-import { formatMnemosStaffRole } from '@/lib/mnemos-display';
+import {
+  INQUIRY_STATUS_LABELS,
+  INQUIRY_STATUS_VALUES,
+  INQUIRY_TYPE_LABELS,
+  INQUIRY_TYPE_VALUES,
+  isMnemosTransferredInquiry,
+  normalizeInquiryTypeValue
+} from '@/lib/inquiry-options';
+import { loadMnemosInternalAssignees } from '@/lib/mnemos/inquiry-assignees.server';
+import { formatMnemosInquirySource } from '@/lib/mnemos-display';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { updateInquiry } from '../actions';
 
@@ -34,8 +43,14 @@ export default async function MnemosInquiryDetailPage({ params, searchParams }: 
     notFound();
   }
 
-  const { data: staff } = await supabase.from('staff_users').select('user_id, role').order('role');
+  const [{ data: organizers }, internalAssignees] = await Promise.all([
+    supabase.from('organizers').select('id, name').order('name'),
+    loadMnemosInternalAssignees(supabase)
+  ]);
   const contact = formatInquiryContact(row);
+  const transferredOrganizerId =
+    isMnemosTransferredInquiry(row.source) && row.organizer_id ? row.organizer_id : '';
+  const inquiryType = normalizeInquiryTypeValue(row.inquiry_type);
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -84,23 +99,42 @@ export default async function MnemosInquiryDetailPage({ params, searchParams }: 
 
       <section className="rounded-xl border border-slate-700 bg-slate-900/50 p-5">
         <h2 className="text-sm font-semibold text-slate-400">Traitement interne</h2>
+        <p className="mt-1 text-xs text-slate-500">
+          Assignez un membre Mnemos ou transférez la demande à un organisateur. Un transfert la rend visible
+          pour tous les comptes de l&apos;organisme concerné.
+        </p>
+        <p className="mt-2 text-sm text-slate-400">
+          Origine : <span className="text-slate-200">{formatMnemosInquirySource(row.source)}</span>
+        </p>
         <form action={updateInquiry} className="mt-4 space-y-4">
           <input type="hidden" name="id" value={row.id} />
           <label className="block text-sm text-slate-300">
             <MnemosFieldLabel>Statut</MnemosFieldLabel>
-            <input
+            <select
               name="status"
               defaultValue={row.status}
               className="mt-1 block w-full rounded-lg border border-slate-600 bg-slate-950 px-3 py-2 text-white"
-            />
+            >
+              {INQUIRY_STATUS_VALUES.map((value) => (
+                <option key={value} value={value}>
+                  {INQUIRY_STATUS_LABELS[value]}
+                </option>
+              ))}
+            </select>
           </label>
           <label className="block text-sm text-slate-300">
             <MnemosFieldLabel>Type</MnemosFieldLabel>
-            <input
+            <select
               name="inquiry_type"
-              defaultValue={row.inquiry_type}
+              defaultValue={inquiryType}
               className="mt-1 block w-full rounded-lg border border-slate-600 bg-slate-950 px-3 py-2 text-white"
-            />
+            >
+              {INQUIRY_TYPE_VALUES.map((value) => (
+                <option key={value} value={value}>
+                  {INQUIRY_TYPE_LABELS[value]}
+                </option>
+              ))}
+            </select>
           </label>
           <label className="block text-sm text-slate-300">
             <MnemosFieldLabel>Assigné à (équipe interne)</MnemosFieldLabel>
@@ -110,9 +144,24 @@ export default async function MnemosInquiryDetailPage({ params, searchParams }: 
               className="mt-1 block w-full rounded-lg border border-slate-600 bg-slate-950 px-3 py-2 text-white"
             >
               <option value="">— Non assigné —</option>
-              {(staff ?? []).map((s) => (
-                <option key={s.user_id} value={s.user_id}>
-                  {s.user_id} ({formatMnemosStaffRole(s.role)})
+              {internalAssignees.map((assignee) => (
+                <option key={assignee.userId} value={assignee.userId}>
+                  {assignee.displayLabel}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block text-sm text-slate-300">
+            <MnemosFieldLabel>Transférer à l&apos;organisme</MnemosFieldLabel>
+            <select
+              name="transfer_organizer_id"
+              defaultValue={transferredOrganizerId}
+              className="mt-1 block w-full rounded-lg border border-slate-600 bg-slate-950 px-3 py-2 text-white"
+            >
+              <option value="">— Ne pas transférer —</option>
+              {(organizers ?? []).map((organizer) => (
+                <option key={organizer.id} value={organizer.id}>
+                  {organizer.name}
                 </option>
               ))}
             </select>

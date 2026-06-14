@@ -112,7 +112,7 @@ export default async function FamilyRegisterPage({
               </p>
             ) : null}
 
-            <form className="mt-5 space-y-4.5" action="/api/auth/register-client" method="post">
+            <form className="mt-5 space-y-6" action="/api/auth/register-client" method="post">
               <input type="hidden" name="redirectTo" value={safeRedirectTo} />
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="block text-sm font-medium text-slate-700">
@@ -150,20 +150,22 @@ export default async function FamilyRegisterPage({
                   <input name="city" type="text" className={INPUT_CLASS} required />
                 </label>
               </div>
-              <label className="block text-sm font-medium text-slate-700">
-                Mot de passe
-                <PasswordInput
-                  name="password"
-                  required
-                  minLength={PASSWORD_POLICY_MIN_LENGTH}
-                  pattern={PASSWORD_POLICY_HTML_PATTERN}
-                  title={PASSWORD_POLICY_MESSAGE}
-                  inputClassName={INPUT_CLASS}
-                />
-              </label>
-              <p className="rounded-lg border border-sky-100 bg-sky-50/80 px-3 py-2 text-xs text-sky-800">
-                {PASSWORD_POLICY_MESSAGE}
-              </p>
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-slate-700">
+                  Mot de passe
+                  <PasswordInput
+                    name="password"
+                    required
+                    minLength={PASSWORD_POLICY_MIN_LENGTH}
+                    pattern={PASSWORD_POLICY_HTML_PATTERN}
+                    title={PASSWORD_POLICY_MESSAGE}
+                    inputClassName={INPUT_CLASS}
+                  />
+                </label>
+                <p className="rounded-lg border border-sky-100 bg-sky-50/80 px-3 py-2 text-xs text-sky-800">
+                  {PASSWORD_POLICY_MESSAGE}
+                </p>
+              </div>
 
               <details className="rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3.5">
                 <summary className="cursor-pointer list-none text-sm font-semibold text-slate-900">

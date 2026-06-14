@@ -1,5 +1,11 @@
 import { requireRole } from '@/lib/auth/require';
 import {
+  computeNextBillingStartDate,
+  formatBillingStartDateFr,
+  loadInvoicedBillingPeriods,
+  validateMnemosBillingPeriod
+} from '@/lib/mnemos/billing-period-guard.server';
+import {
   loadLedgerCommissionLines,
   loadLedgerPublicationLines,
   sumCents
@@ -44,6 +50,21 @@ export default async function MnemosBillingPage({
   let pubLines: Awaited<ReturnType<typeof loadLedgerPublicationLines>>['lines'] = [];
   let comLines: Awaited<ReturnType<typeof loadLedgerCommissionLines>>['lines'] = [];
   let ledgerError: string | null = null;
+  let pubPeriodValidation: ReturnType<typeof validateMnemosBillingPeriod> | null = null;
+  let comPeriodValidation: ReturnType<typeof validateMnemosBillingPeriod> | null = null;
+
+  let pubInvoicedPeriods: Awaited<ReturnType<typeof loadInvoicedBillingPeriods>> = [];
+  let comInvoicedPeriods: Awaited<ReturnType<typeof loadInvoicedBillingPeriods>> = [];
+
+  if (organizerId) {
+    [pubInvoicedPeriods, comInvoicedPeriods] = await Promise.all([
+      loadInvoicedBillingPeriods(supabase, organizerId, 'INVOICE_PUBLICATION_PERIOD'),
+      loadInvoicedBillingPeriods(supabase, organizerId, 'INVOICE_COMMISSION_PERIOD')
+    ]);
+  }
+
+  const pubNextStartDate = organizerId ? computeNextBillingStartDate(pubInvoicedPeriods) : null;
+  const comNextStartDate = organizerId ? computeNextBillingStartDate(comInvoicedPeriods) : null;
 
   if (organizerId && startDate && endDate) {
     const startIso = periodStartIso(startDate);
@@ -54,6 +75,18 @@ export default async function MnemosBillingPage({
     ]);
     pubLines = pub.lines;
     comLines = com.lines;
+    pubPeriodValidation = validateMnemosBillingPeriod(
+      pubInvoicedPeriods,
+      startIso,
+      endIso,
+      periodStartIso
+    );
+    comPeriodValidation = validateMnemosBillingPeriod(
+      comInvoicedPeriods,
+      startIso,
+      endIso,
+      periodStartIso
+    );
     ledgerError = pub.error ?? com.error ?? null;
     if (ledgerError && isMissingPublicTableError({ message: ledgerError })) {
       ledgerError =
@@ -127,6 +160,30 @@ export default async function MnemosBillingPage({
         </button>
       </form>
 
+      {organizerId ? (
+        <div className="rounded-xl border border-slate-700 bg-slate-900/50 p-4 text-sm text-slate-300">
+          <p className="font-semibold text-white">Prochaine date de début possible</p>
+          <ul className="mt-2 space-y-1">
+            <li>
+              Publications :{' '}
+              {pubNextStartDate ? (
+                <span className="font-medium text-violet-200">{formatBillingStartDateFr(pubNextStartDate)}</span>
+              ) : (
+                <span className="text-slate-400">aucune facture enregistrée — période libre</span>
+              )}
+            </li>
+            <li>
+              Commissions :{' '}
+              {comNextStartDate ? (
+                <span className="font-medium text-violet-200">{formatBillingStartDateFr(comNextStartDate)}</span>
+              ) : (
+                <span className="text-slate-400">aucune facture enregistrée — période libre</span>
+              )}
+            </li>
+          </ul>
+        </div>
+      ) : null}
+
       {organizerId && startDate && endDate && (
         <div className="grid gap-8 lg:grid-cols-2">
           <section className="rounded-xl border border-slate-700 bg-slate-900/50 p-5">
@@ -143,13 +200,20 @@ export default async function MnemosBillingPage({
                 <input type="hidden" name="end_date" value={endDate} />
                 <button
                   type="submit"
-                  disabled={!pubLines.length || sumCents(pubLines) <= 0}
+                  disabled={
+                    !pubLines.length ||
+                    sumCents(pubLines) <= 0 ||
+                    pubPeriodValidation?.allowed === false
+                  }
                   className="rounded-lg border border-violet-500/60 px-3 py-1.5 text-sm font-semibold text-violet-100 disabled:opacity-40"
                 >
                   Créer facture
                 </button>
               </form>
             </div>
+            {pubPeriodValidation?.conflictMessage ? (
+              <p className="mt-2 text-sm text-amber-200">{pubPeriodValidation.conflictMessage}</p>
+            ) : null}
             {ledgerError && <p className="mt-2 text-sm text-rose-300">{ledgerError}</p>}
             <div className="mt-4 max-h-72 overflow-auto rounded-lg border border-slate-800">
               <table className="w-full text-left text-xs">
@@ -192,13 +256,20 @@ export default async function MnemosBillingPage({
                 <input type="hidden" name="end_date" value={endDate} />
                 <button
                   type="submit"
-                  disabled={!comLines.length || sumCents(comLines) <= 0}
+                  disabled={
+                    !comLines.length ||
+                    sumCents(comLines) <= 0 ||
+                    comPeriodValidation?.allowed === false
+                  }
                   className="rounded-lg border border-violet-500/60 px-3 py-1.5 text-sm font-semibold text-violet-100 disabled:opacity-40"
                 >
                   Créer facture
                 </button>
               </form>
             </div>
+            {comPeriodValidation?.conflictMessage ? (
+              <p className="mt-2 text-sm text-amber-200">{comPeriodValidation.conflictMessage}</p>
+            ) : null}
             <div className="mt-4 max-h-72 overflow-auto rounded-lg border border-slate-800">
               <table className="w-full text-left text-xs">
                 <thead className="sticky top-0 bg-slate-900 text-slate-500">

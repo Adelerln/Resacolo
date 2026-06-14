@@ -5,7 +5,6 @@ import { useState } from 'react';
 type FinancesBreakdownRow = {
   label: string;
   commissionClientCents: number;
-  publicationFeeCents: number;
   commissionDetails: Array<{
     key: string;
     organizerName: string;
@@ -13,13 +12,6 @@ type FinancesBreakdownRow = {
     orderVolumeCents: number;
     commissionClientCents: number;
     lineCount: number;
-  }>;
-  publicationDetails: Array<{
-    key: string;
-    organizerName: string;
-    publicationFeeCents: number;
-    stayCount: number;
-    stayTitles: string[];
   }>;
 };
 
@@ -98,55 +90,6 @@ export function AdminFinancesDetailsModal({ row }: { row: FinancesBreakdownRow }
                         <tr>
                           <td colSpan={5} className="px-3 py-6 text-center text-slate-500">
                             Aucune commission client sur cette ligne.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </section>
-
-              <section>
-                <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <h3 className="text-base font-semibold text-slate-900">Forfaits publication TTC</h3>
-                  <p className="text-sm font-semibold text-slate-700">{eurosFromCents(row.publicationFeeCents)}</p>
-                </div>
-                <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200">
-                  <table className="min-w-[760px] w-full text-left text-sm">
-                    <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-                      <tr>
-                        <th className="px-3 py-2">Organisateur</th>
-                        <th className="px-3 py-2 text-right">Séjours mis en ligne</th>
-                        <th className="px-3 py-2">Séjours</th>
-                        <th className="px-3 py-2 text-right">Forfait TTC</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {row.publicationDetails.map((detail) => (
-                        <tr key={detail.key}>
-                          <td className="px-3 py-2 font-medium text-slate-900">{detail.organizerName}</td>
-                          <td className="px-3 py-2 text-right tabular-nums text-slate-700">{detail.stayCount}</td>
-                          <td className="px-3 py-2 text-slate-700">
-                            <details>
-                              <summary className="cursor-pointer text-xs font-semibold text-emerald-700">
-                                Voir la liste
-                              </summary>
-                              <ul className="mt-2 max-h-32 list-inside list-disc overflow-y-auto text-xs text-slate-600">
-                                {detail.stayTitles.map((title) => (
-                                  <li key={title}>{title}</li>
-                                ))}
-                              </ul>
-                            </details>
-                          </td>
-                          <td className="px-3 py-2 text-right tabular-nums text-slate-700">
-                            {eurosFromCents(detail.publicationFeeCents)}
-                          </td>
-                        </tr>
-                      ))}
-                      {row.publicationDetails.length === 0 && (
-                        <tr>
-                          <td colSpan={4} className="px-3 py-6 text-center text-slate-500">
-                            Aucun forfait publication sur cette ligne.
                           </td>
                         </tr>
                       )}

@@ -116,6 +116,7 @@ export function buildStayDestinationLabel(input: StayDestinationInput) {
   const normalized = normalizeStayDestination(input);
 
   if (normalized.destinationType === 'fixed_france') {
+    if (normalized.destinationRegion) return normalized.destinationRegion;
     if (normalized.destinationCity && normalized.destinationPostalCode) {
       return `${normalized.destinationCity} (${normalized.destinationPostalCode})`;
     }
@@ -123,7 +124,6 @@ export function buildStayDestinationLabel(input: StayDestinationInput) {
       return `${normalized.destinationCity} (${normalized.destinationDepartmentCode})`;
     }
     if (normalized.destinationCity) return normalized.destinationCity;
-    if (normalized.destinationRegion) return normalized.destinationRegion;
   }
 
   if (normalized.destinationType === 'fixed_abroad') {

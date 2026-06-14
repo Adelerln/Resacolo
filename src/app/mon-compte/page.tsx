@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import { getCurrentUser } from '@/lib/auth/session';
 import { getFamilyProfileSnapshot } from '@/lib/account-profile/server';
 import { getFavoriteStayIdsForUserId } from '@/lib/favorites.server';
-import { getStays } from '@/lib/stays';
+import { getStaysByIds } from '@/lib/stays';
 import type { FamilyProfileSnapshot } from '@/types/family-profile';
 import type { Stay } from '@/types/stay';
 import MonCompteClient from './MonCompteClient';
@@ -68,6 +68,9 @@ export default async function MonComptePage() {
   };
   let profileLoadError: string | null = null;
   let favoriteStays: Stay[] = [];
+
+  const favoriteIdsPromise = getFavoriteStayIdsForUserId(session.userId).catch(() => [] as string[]);
+
   try {
     snapshot = await getFamilyProfileSnapshot({
       userId: session.userId,
@@ -82,14 +85,11 @@ export default async function MonComptePage() {
       cseAffiliation: null
     };
   }
+
   try {
-    const favoriteIds = await getFavoriteStayIdsForUserId(session.userId);
+    const favoriteIds = await favoriteIdsPromise;
     if (favoriteIds.length > 0) {
-      const favoriteIdSet = new Set(favoriteIds);
-      const favoriteOrder = new Map(favoriteIds.map((id, index) => [id, index]));
-      favoriteStays = (await getStays())
-        .filter((stay) => favoriteIdSet.has(stay.id))
-        .sort((left, right) => (favoriteOrder.get(left.id) ?? 0) - (favoriteOrder.get(right.id) ?? 0));
+      favoriteStays = await getStaysByIds(favoriteIds);
     }
   } catch {
     favoriteStays = [];

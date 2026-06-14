@@ -1,6 +1,8 @@
 import 'server-only';
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { readResacoloBillingSettings } from '@/lib/resacolo-billing-settings.server';
+import { repairMissingCommissionFeesForPaidOrders } from '@/lib/resacolo-fee-ledger.server';
 import type { Database } from '@/types/supabase';
 
 export type FinancesGranularity = 'mois' | 'annee' | 'saison' | 'organisateur';
@@ -10,9 +12,11 @@ export type FinancesBreakdownRow = {
   label: string;
   orderVolumeCents: number;
   commissionClientCents: number;
+  commissionPartnerCents: number;
   publicationFeeCents: number;
   publicationPositiveCount: number;
   commissionDetails: FinancesCommissionDetail[];
+  partnerCommissionDetails: FinancesCommissionDetail[];
   publicationDetails: FinancesPublicationDetail[];
 };
 
@@ -120,15 +124,18 @@ function stayTitleFromNested(row: LedgerReportRow) {
 type Agg = {
   orderVolumeCents: number;
   commissionClientCents: number;
+  commissionPartnerCents: number;
   publicationFeeCents: number;
   publicationPositiveCount: number;
   commissionDetails: Map<string, FinancesCommissionDetail>;
+  partnerCommissionDetails: Map<string, FinancesCommissionDetail>;
   publicationDetails: Map<string, FinancesPublicationDetail>;
 };
 
 const EMPTY_TOTALS = {
   orderVolumeCents: 0,
   commissionClientCents: 0,
+  commissionPartnerCents: 0,
   publicationFeeCents: 0
 };
 
@@ -153,17 +160,27 @@ export async function loadAdminFinancesReport(
   totals: {
     orderVolumeCents: number;
     commissionClientCents: number;
+    commissionPartnerCents: number;
     publicationFeeCents: number;
   };
   organizerNames: Record<string, string>;
   warnings: string[];
   ledgerTableMissing: boolean;
+  publicationFeeEnabled: boolean;
 }> {
   const { start, end, startIso, endIso } = yearBoundsUtc(year);
+  await repairMissingCommissionFeesForPaidOrders(supabase, year);
+  const settings = await readResacoloBillingSettings(supabase);
+  const publicationFeeEnabled = settings.publication_fee_enabled;
   const warnings: string[] = [
     'Les montants proviennent du journal des frais : une ligne de commission est créée au paiement de la commande, avec le taux de commission en vigueur à ce moment-là pour l’organisateur concerné.',
-    'Un forfait publication est enregistré à la première mise en ligne d’une fiche séjour (passage au statut « Publié »). Les écritures négatives (annulation / abstention après validation admin) apparaîtront dans le même journal lorsque le flux correspondant sera branché.'
+    'Les réservations via un partenaire (CSE / collectivité) sont comptées dans « Commission partenaires », distinctes des familles directes.'
   ];
+  if (publicationFeeEnabled) {
+    warnings.push(
+      'Un forfait publication est enregistré à la première mise en ligne d’une fiche séjour (passage au statut « Publié »). Les écritures négatives (annulation / abstention après validation admin) apparaîtront dans le même journal lorsque le flux correspondant sera branché.'
+    );
+  }
 
   const { data: ledgerRaw, error: ledgerError } = await supabase
     .from('resacolo_fee_ledger')
@@ -198,7 +215,8 @@ export async function loadAdminFinancesReport(
       totals: { ...EMPTY_TOTALS },
       organizerNames: {},
       warnings: [],
-      ledgerTableMissing: true
+      ledgerTableMissing: true,
+      publicationFeeEnabled
     };
   }
 
@@ -219,13 +237,16 @@ export async function loadAdminFinancesReport(
     const cur = bucket.get(key) ?? {
       orderVolumeCents: 0,
       commissionClientCents: 0,
+      commissionPartnerCents: 0,
       publicationFeeCents: 0,
       publicationPositiveCount: 0,
       commissionDetails: new Map<string, FinancesCommissionDetail>(),
+      partnerCommissionDetails: new Map<string, FinancesCommissionDetail>(),
       publicationDetails: new Map<string, FinancesPublicationDetail>()
     };
     if (patch.orderVolumeCents != null) cur.orderVolumeCents += patch.orderVolumeCents;
     if (patch.commissionClientCents != null) cur.commissionClientCents += patch.commissionClientCents;
+    if (patch.commissionPartnerCents != null) cur.commissionPartnerCents += patch.commissionPartnerCents;
     if (patch.publicationFeeCents != null) cur.publicationFeeCents += patch.publicationFeeCents;
     if (patch.publicationPositiveCount != null) cur.publicationPositiveCount += patch.publicationPositiveCount;
     bucket.set(key, cur);
@@ -250,6 +271,7 @@ export async function loadAdminFinancesReport(
     const row = raw as unknown as LedgerReportRow;
     const t = new Date(row.occurred_at).getTime();
     if (t < start || t >= end) continue;
+    if (!publicationFeeEnabled && row.fee_kind === 'PUBLICATION') continue;
 
     const seasonName = seasonNameFromNested(row as Parameters<typeof seasonNameFromNested>[0]);
     const key = rowKey(t, row.organizer_id, seasonName);
@@ -259,25 +281,45 @@ export async function loadAdminFinancesReport(
     if (row.fee_kind === 'COMMISSION') {
       const lineTotal = row.order_items?.total_price_cents ?? 0;
       const clientPart = row.channel === 'CLIENT' ? row.amount_cents : 0;
+      const partnerPart = row.channel === 'PARTNER' ? row.amount_cents : 0;
       bump(key, {
         orderVolumeCents: lineTotal,
-        commissionClientCents: clientPart
+        commissionClientCents: clientPart,
+        commissionPartnerCents: partnerPart
       });
-      if (clientPart > 0) {
+      if (clientPart > 0 || partnerPart > 0) {
         const current = bucket.get(key);
         const detailKey = `${row.organizer_id}:${stayTitle}`;
-        const detail = current?.commissionDetails.get(detailKey) ?? {
-          key: detailKey,
-          organizerName,
-          stayTitle,
-          orderVolumeCents: 0,
-          commissionClientCents: 0,
-          lineCount: 0
-        };
-        detail.orderVolumeCents += lineTotal;
-        detail.commissionClientCents += clientPart;
-        detail.lineCount += 1;
-        current?.commissionDetails.set(detailKey, detail);
+
+        if (clientPart > 0) {
+          const detail = current?.commissionDetails.get(detailKey) ?? {
+            key: detailKey,
+            organizerName,
+            stayTitle,
+            orderVolumeCents: 0,
+            commissionClientCents: 0,
+            lineCount: 0
+          };
+          detail.orderVolumeCents += lineTotal;
+          detail.commissionClientCents += clientPart;
+          detail.lineCount += 1;
+          current?.commissionDetails.set(detailKey, detail);
+        }
+
+        if (partnerPart > 0) {
+          const detail = current?.partnerCommissionDetails.get(detailKey) ?? {
+            key: detailKey,
+            organizerName,
+            stayTitle,
+            orderVolumeCents: 0,
+            commissionClientCents: 0,
+            lineCount: 0
+          };
+          detail.orderVolumeCents += lineTotal;
+          detail.commissionClientCents += partnerPart;
+          detail.lineCount += 1;
+          current?.partnerCommissionDetails.set(detailKey, detail);
+        }
       }
     } else if (row.fee_kind === 'PUBLICATION') {
       bump(key, {
@@ -320,9 +362,15 @@ export async function loadAdminFinancesReport(
       label,
       orderVolumeCents: agg.orderVolumeCents,
       commissionClientCents: agg.commissionClientCents,
+      commissionPartnerCents: agg.commissionPartnerCents,
       publicationFeeCents: agg.publicationFeeCents,
       publicationPositiveCount: agg.publicationPositiveCount,
       commissionDetails: Array.from(agg.commissionDetails.values()).sort((left, right) => {
+        const organizerDelta = left.organizerName.localeCompare(right.organizerName, 'fr', { sensitivity: 'base' });
+        if (organizerDelta !== 0) return organizerDelta;
+        return left.stayTitle.localeCompare(right.stayTitle, 'fr', { sensitivity: 'base' });
+      }),
+      partnerCommissionDetails: Array.from(agg.partnerCommissionDetails.values()).sort((left, right) => {
         const organizerDelta = left.organizerName.localeCompare(right.organizerName, 'fr', { sensitivity: 'base' });
         if (organizerDelta !== 0) return organizerDelta;
         return left.stayTitle.localeCompare(right.stayTitle, 'fr', { sensitivity: 'base' });
@@ -344,10 +392,11 @@ export async function loadAdminFinancesReport(
     (acc, r) => ({
       orderVolumeCents: acc.orderVolumeCents + r.orderVolumeCents,
       commissionClientCents: acc.commissionClientCents + r.commissionClientCents,
+      commissionPartnerCents: acc.commissionPartnerCents + r.commissionPartnerCents,
       publicationFeeCents: acc.publicationFeeCents + r.publicationFeeCents
     }),
-    { orderVolumeCents: 0, commissionClientCents: 0, publicationFeeCents: 0 }
+    { orderVolumeCents: 0, commissionClientCents: 0, commissionPartnerCents: 0, publicationFeeCents: 0 }
   );
 
-  return { rows, totals, organizerNames, warnings, ledgerTableMissing: false };
+  return { rows, totals, organizerNames, warnings, ledgerTableMissing: false, publicationFeeEnabled };
 }

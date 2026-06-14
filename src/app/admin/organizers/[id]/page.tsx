@@ -4,6 +4,10 @@ import { notFound } from 'next/navigation';
 import { requireRole } from '@/lib/auth/require';
 import { AdminOrganizerMembersSection } from '@/components/admin/AdminOrganizerMembersSection';
 import { sanitizeOrganizerRichText } from '@/lib/organizer-rich-text';
+import {
+  readResacoloBillingSettings,
+  resolveOrganizerCommissionPercent
+} from '@/lib/resacolo-billing-settings.server';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import type { Database } from '@/types/supabase';
 
@@ -85,9 +89,10 @@ export default async function AdminOrganizerDetailPage({ params: paramsPromise, 
 
   const organizerSlug = row.slug ?? row.id;
 
-  const [{ data: overview }, { data: billing }] = await Promise.all([
+  const [{ data: overview }, { data: billing }, billingSettings] = await Promise.all([
     supabase.from('organizer_admin_overview').select('*').eq('id', row.id).maybeSingle(),
-    supabase.from('organizer_billing_settings').select('*').eq('organizer_id', row.id).maybeSingle()
+    supabase.from('organizer_billing_settings').select('*').eq('organizer_id', row.id).maybeSingle(),
+    readResacoloBillingSettings(supabase)
   ]);
 
   const metrics = overview as OverviewRow | null;
@@ -119,10 +124,8 @@ export default async function AdminOrganizerDetailPage({ params: paramsPromise, 
     : null;
   const hasProject = Boolean(row.education_project_path);
 
-  const defaultCommission =
-    billingRow?.commission_percent ?? num(metrics?.commission_percent);
-  const defaultFeeEuros =
-    (billingRow?.publication_fee_cents ?? num(metrics?.publication_fee_cents)) / 100;
+  const appliedCommission =
+    billingRow?.commission_percent ?? resolveOrganizerCommissionPercent(row, billingSettings);
 
   return (
     <div className="space-y-6">
@@ -159,7 +162,7 @@ export default async function AdminOrganizerDetailPage({ params: paramsPromise, 
       )}
       {billingSuccessParam && (
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-          Paramètres de facturation enregistrés.
+          Notes internes de facturation enregistrées.
         </div>
       )}
 
@@ -258,6 +261,9 @@ export default async function AdminOrganizerDetailPage({ params: paramsPromise, 
 
         <div className="border-t border-slate-100 pt-6">
           <h2 className="admin-section-title">Statut organisme</h2>
+          <p className="mt-1 text-xs text-slate-500">
+            Ce statut est piloté uniquement par l’administration et détermine automatiquement la commission appliquée.
+          </p>
           <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:gap-8">
             <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-700">
               <input
@@ -454,36 +460,20 @@ export default async function AdminOrganizerDetailPage({ params: paramsPromise, 
         method="post"
         className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-600 sm:p-6"
       >
-        <h2 className="admin-section-title">Paramètres de facturation (admin)</h2>
-        <p className="text-xs text-slate-500">
-          Commission sur les ventes et forfait de publication par séjour, pilotés par ResaColo.
-        </p>
-        <div className="grid gap-4 md:grid-cols-2">
-          <label className="block text-sm font-medium text-slate-700">
-            Commission (%)
-            <input
-              name="commission_percent"
-              type="number"
-              min="0"
-              max="100"
-              step="0.01"
-              required
-              defaultValue={String(defaultCommission)}
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-            />
-          </label>
-          <label className="block text-sm font-medium text-slate-700">
-            Forfait publication (€ TTC)
-            <input
-              name="publication_fee_euros"
-              type="number"
-              min="0"
-              step="0.01"
-              required
-              defaultValue={String(defaultFeeEuros)}
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-            />
-          </label>
+        <h2 className="admin-section-title">Facturation appliquée</h2>
+        <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+          <div className="text-xs uppercase tracking-wide text-slate-500">Commission actuelle</div>
+          <div className="mt-1 text-xl font-semibold text-slate-900">
+            {appliedCommission.toLocaleString('fr-FR', {
+              minimumFractionDigits: 0,
+              maximumFractionDigits: 2
+            })}
+            %
+          </div>
+          <p className="mt-2 text-xs text-slate-500">
+            Le pourcentage vient des paramètres globaux admin et se recalcule automatiquement si le statut de
+            l’organisme change.
+          </p>
         </div>
         <label className="block text-sm font-medium text-slate-700">
           Notes internes
@@ -500,7 +490,7 @@ export default async function AdminOrganizerDetailPage({ params: paramsPromise, 
             type="submit"
             className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
           >
-            Enregistrer la facturation
+            Enregistrer les notes
           </button>
         </div>
       </form>

@@ -8,6 +8,7 @@ import {
 } from '@/lib/auth/roles';
 import {
   canAccessAdminSection,
+  canMutateAdminSection,
   isAdminWorkspaceRole,
   type AdminWorkspaceSection
 } from '@/lib/admin-access';
@@ -82,6 +83,14 @@ export async function requirePartner(options?: RequireOptions) {
 export async function requireAdminSection(section: AdminWorkspaceSection, options?: RequireOptions) {
   const session = await requireAnyRole(['ADMIN', 'ADMIN_SALES', 'MNEMOS'], options);
   if (!isAdminWorkspaceRole(session.role) || !canAccessAdminSection(session.role, section)) {
+    redirectToAuthorizedHome(session.role);
+  }
+  return session;
+}
+
+export async function requireAdminMutateSection(section: AdminWorkspaceSection, options?: RequireOptions) {
+  const session = await requireAdminSection(section, options);
+  if (!canMutateAdminSection(session.role, section)) {
     redirectToAuthorizedHome(session.role);
   }
   return session;

@@ -4,7 +4,7 @@ import { requireRole } from '@/lib/auth/require';
 
 const mnemosNav = [
   { href: '/mnemos/organizers', label: 'Organismes' },
-  { href: '/mnemos/billing', label: 'Facturation par période' },
+  { href: '/mnemos/billing', label: 'Commissions' },
   { href: '/mnemos/inquiries', label: 'Demandes de renseignements' },
   { href: '/mnemos/support', label: 'Assistance organismes' },
   { href: '/mnemos/chatbot', label: 'Assistant en ligne' }

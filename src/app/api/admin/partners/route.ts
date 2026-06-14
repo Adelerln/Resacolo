@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
-import { requireApiAdmin } from '@/lib/auth/api';
+import { requireApiAdminMutateSection } from '@/lib/auth/api';
 import { isPasswordPolicyValid, PASSWORD_POLICY_MESSAGE } from '@/lib/auth/password-policy';
 import {
   isCollectivityMembersRoleConstraintError,
@@ -18,7 +18,7 @@ function isCollectivityContactsTableMissingError(error: { message?: string; code
 export const runtime = 'nodejs';
 
 export async function POST(req: Request) {
-  const unauthorized = await requireApiAdmin(req);
+  const unauthorized = await requireApiAdminMutateSection(req, 'partners');
   if (unauthorized) return unauthorized;
 
   const formData = await req.formData();

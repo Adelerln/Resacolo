@@ -1,6 +1,6 @@
 import { revalidatePath } from 'next/cache';
 import { NextResponse } from 'next/server';
-import { requireApiAdmin } from '@/lib/auth/api';
+import { requireApiAdminMutateSection } from '@/lib/auth/api';
 import { isPasswordPolicyValid, PASSWORD_POLICY_MESSAGE } from '@/lib/auth/password-policy';
 import {
   isCollectivityMembersRoleConstraintError,
@@ -73,7 +73,7 @@ async function upsertPartnerContact(input: {
 export const runtime = 'nodejs';
 
 export async function POST(req: Request, context: { params: Promise<{ id: string }> }) {
-  const unauthorized = await requireApiAdmin(req);
+  const unauthorized = await requireApiAdminMutateSection(req, 'partners');
   if (unauthorized) return unauthorized;
 
   const { id } = await context.params;

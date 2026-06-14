@@ -568,13 +568,16 @@ export async function resolveStayBySlug(requestedSlug: string): Promise<StaySlug
   return resolveStayFromSlug(stays, requestedSlug);
 }
 
-async function fetchStaysFromSupabase(): Promise<Stay[]> {
+async function fetchStaysFromSupabase(options: { stayIds?: string[] } = {}): Promise<Stay[]> {
   const supabase = getServerSupabaseClient();
+  const filteredStayIds = Array.from(new Set((options.stayIds ?? []).filter(Boolean)));
 
-  const { data, error } = await supabase
-    .from('stays')
-    .select('*')
-    .order('created_at', { ascending: false });
+  let staysQuery = supabase.from('stays').select('*').order('created_at', { ascending: false });
+  if (filteredStayIds.length) {
+    staysQuery = staysQuery.in('id', filteredStayIds);
+  }
+
+  const { data, error } = await staysQuery;
 
   if (error) {
     console.error('Erreur Supabase (stays)', error.message);
@@ -663,13 +666,19 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
       : Promise.resolve({ data: [] as TransportOptionRow[] | null })
   ]);
 
+  const accommodationIds = Array.from(new Set((stayAccommodationRows ?? []).map((item) => item.accommodation_id)));
+
   let accommodationsRaw: AccommodationRow[] | null = [];
-  if (stayIds.length) {
+  if (accommodationIds.length) {
+    const accommodationSelectWithMap =
+      'id,name,accommodation_type,address_text,postal_code,city,department_code,region_text,country,description,bed_info,bathroom_info,catering_info,accessibility_info,center_latitude,center_longitude,map_iframe_html,ai_extracted_data';
+    const accommodationSelectLegacy =
+      'id,name,accommodation_type,address_text,postal_code,city,department_code,region_text,country,description,bed_info,bathroom_info,catering_info,accessibility_info,center_latitude,center_longitude,ai_extracted_data';
+
     const withMapResult = await supabase
       .from('accommodations')
-      .select(
-        'id,name,accommodation_type,address_text,postal_code,city,department_code,region_text,country,description,bed_info,bathroom_info,catering_info,accessibility_info,center_latitude,center_longitude,map_iframe_html,ai_extracted_data'
-      );
+      .select(accommodationSelectWithMap)
+      .in('id', accommodationIds);
 
     const shouldFallbackLegacy =
       withMapResult.error &&
@@ -678,16 +687,13 @@ async function fetchStaysFromSupabase(): Promise<Stay[]> {
     if (shouldFallbackLegacy) {
       const legacyResult = await supabase
         .from('accommodations')
-        .select(
-          'id,name,accommodation_type,address_text,postal_code,city,department_code,region_text,country,description,bed_info,bathroom_info,catering_info,accessibility_info,center_latitude,center_longitude,ai_extracted_data'
-        );
+        .select(accommodationSelectLegacy)
+        .in('id', accommodationIds);
       accommodationsRaw = (legacyResult.data ?? []).map((row) => ({ ...row, map_iframe_html: null }));
     } else {
       accommodationsRaw = withMapResult.data ?? [];
     }
   }
-
-  const accommodationIds = Array.from(new Set((stayAccommodationRows ?? []).map((item) => item.accommodation_id)));
   const { data: accommodationMediaRaw } = accommodationIds.length
     ? await supabase
         .from('accommodation_media')
@@ -1114,6 +1120,17 @@ export async function getStays(options: { forceRefresh?: boolean } = {}) {
     return fetchStaysFromSupabase();
   }
   return loadStays();
+}
+
+export async function getStaysByIds(stayIds: string[]): Promise<Stay[]> {
+  const normalizedIds = Array.from(new Set(stayIds.map((id) => id.trim()).filter(Boolean)));
+  if (!normalizedIds.length) {
+    return [];
+  }
+
+  const stays = await fetchStaysFromSupabase({ stayIds: normalizedIds });
+  const order = new Map(normalizedIds.map((id, index) => [id, index]));
+  return stays.sort((left, right) => (order.get(left.id) ?? 0) - (order.get(right.id) ?? 0));
 }
 
 export function filterStays(stays: Stay[], params: StaySearchParams = {}) {

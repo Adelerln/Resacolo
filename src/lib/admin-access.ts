@@ -38,8 +38,9 @@ export function canAccessAdminSection(role: AdminWorkspaceRole, section: AdminWo
 }
 
 export function canMutateAdminSection(role: AdminWorkspaceRole, section: AdminWorkspaceSection) {
-  void section;
-  return role === 'ADMIN' || role === 'MNEMOS';
+  if (role === 'ADMIN' || role === 'MNEMOS') return true;
+  if (role === 'ADMIN_SALES') return section === 'partners';
+  return false;
 }
 
 export function getAdminSectionFromPath(pathname: string): AdminWorkspaceSection {

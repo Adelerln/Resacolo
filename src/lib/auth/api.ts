@@ -4,6 +4,12 @@ import { cookies } from 'next/headers';
 import type { SessionPayload } from '@/lib/auth/session';
 import { resolveRoleContextForUserId } from '@/lib/auth/roles';
 import { hasRequiredRole, type AuthenticatedAppRole } from '@/lib/auth/roles';
+import {
+  canAccessAdminSection,
+  canMutateAdminSection,
+  isAdminWorkspaceRole,
+  type AdminWorkspaceSection
+} from '@/lib/admin-access';
 import type { Database } from '@/types/supabase';
 
 function buildApiSessionPayload(
@@ -74,6 +80,21 @@ export async function requireApiRole(req: Request, role: AuthenticatedAppRole) {
 
 export async function requireApiAdmin(req: Request) {
   return requireApiRole(req, 'ADMIN');
+}
+
+export async function requireApiAdminMutateSection(req: Request, section: AdminWorkspaceSection) {
+  void req;
+  const { unauthorized, session } = await requireApiAuth();
+  if (unauthorized || !session) {
+    return unauthorized;
+  }
+  if (!isAdminWorkspaceRole(session.role) || !canAccessAdminSection(session.role, section)) {
+    return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 });
+  }
+  if (!canMutateAdminSection(session.role, section)) {
+    return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 });
+  }
+  return null;
 }
 
 export async function requireApiMnemos(req: Request) {

@@ -1,6 +1,6 @@
 import { revalidatePath } from 'next/cache';
 import { NextResponse } from 'next/server';
-import { requireApiAdmin } from '@/lib/auth/api';
+import { requireApiAdminMutateSection } from '@/lib/auth/api';
 import { normalizePartnerOffer } from '@/lib/partner-offers';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 
@@ -58,7 +58,7 @@ async function syncPrimaryCollectivityContact(input: {
 export const runtime = 'nodejs';
 
 export async function POST(req: Request, context: { params: Promise<{ id: string }> }) {
-  const unauthorized = await requireApiAdmin(req);
+  const unauthorized = await requireApiAdminMutateSection(req, 'partners');
   if (unauthorized) return unauthorized;
 
   const { id } = await context.params;

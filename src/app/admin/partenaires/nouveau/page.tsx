@@ -1,5 +1,5 @@
 import { PasswordInput } from '@/components/auth/PasswordInput';
-import { requireRole } from '@/lib/auth/require';
+import { requireAdminMutateSection } from '@/lib/auth/require';
 import {
   PASSWORD_POLICY_HTML_PATTERN,
   PASSWORD_POLICY_MESSAGE,
@@ -10,7 +10,7 @@ import { PARTNER_OFFER_LABELS, PARTNER_OFFER_VALUES } from '@/lib/partner-offers
 type PageProps = { searchParams?: Promise<{ error?: string }> };
 
 export default async function AdminPartnerNewPage({ searchParams }: PageProps) {
-  await requireRole('ADMIN');
+  await requireAdminMutateSection('partners');
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
 
   return (

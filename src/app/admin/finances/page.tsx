@@ -35,7 +35,7 @@ export default async function AdminFinancesPage({ searchParams }: PageProps) {
   const granularity = (GRANULARITIES.some((g) => g.value === granRaw) ? granRaw : 'mois') as FinancesGranularity;
 
   const supabase = getServerSupabaseClient();
-  const { rows, totals, warnings, ledgerTableMissing } = await loadAdminFinancesReport(
+  const { rows, totals, warnings, ledgerTableMissing, publicationFeeEnabled } = await loadAdminFinancesReport(
     supabase,
     safeYear,
     granularity
@@ -49,15 +49,14 @@ export default async function AdminFinancesPage({ searchParams }: PageProps) {
         <div>
           <h1 className="admin-page-title">Recettes ResaColo</h1>
           <p className="admin-page-subtitle mt-1">
-            Frais constatés dans le journal : commissions au paiement des commandes, forfaits publication à la mise en
-            ligne.
+            Journal ResaColo des commissions constatées au paiement des commandes.
           </p>
         </div>
         <Link
           href="/admin/organizers"
           className="text-sm font-medium text-emerald-700 hover:text-emerald-800"
         >
-          Paramètres de facturation par organisme →
+          Paramètres business globaux →
         </Link>
       </div>
 
@@ -80,6 +79,9 @@ export default async function AdminFinancesPage({ searchParams }: PageProps) {
             {warnings.map((w, i) => (
               <li key={i}>{w}</li>
             ))}
+            {!publicationFeeEnabled && (
+              <li>Les frais de publication sont actuellement désactivés dans l’admin.</li>
+            )}
           </ul>
         </div>
       )}
@@ -140,8 +142,7 @@ export default async function AdminFinancesPage({ searchParams }: PageProps) {
                 </th>
                 <th className="px-4 py-3 text-right">CA lignes commande (TTC)</th>
                 <th className="px-4 py-3 text-right">Commission clients</th>
-                <th className="px-4 py-3 text-right">Forfaits publication TTC</th>
-                <th className="px-4 py-3 text-right tabular-nums">Mises en ligne facturées</th>
+                <th className="px-4 py-3 text-right">Commission partenaires</th>
                 <th className="px-4 py-3 text-right">Détail</th>
               </tr>
             </thead>
@@ -156,10 +157,7 @@ export default async function AdminFinancesPage({ searchParams }: PageProps) {
                     {eurosFromCents(row.commissionClientCents)}
                   </td>
                   <td className="px-4 py-3 text-right tabular-nums text-slate-700">
-                    {eurosFromCents(row.publicationFeeCents)}
-                  </td>
-                  <td className="px-4 py-3 text-right tabular-nums text-slate-600">
-                    {row.publicationPositiveCount}
+                    {eurosFromCents(row.commissionPartnerCents)}
                   </td>
                   <td className="px-4 py-3 text-right">
                     <AdminFinancesDetailsModal row={row} />
@@ -176,17 +174,14 @@ export default async function AdminFinancesPage({ searchParams }: PageProps) {
                     {eurosFromCents(totals.commissionClientCents)}
                   </td>
                   <td className="px-4 py-3 text-right tabular-nums">
-                    {eurosFromCents(totals.publicationFeeCents)}
-                  </td>
-                  <td className="px-4 py-3 text-right tabular-nums text-slate-600">
-                    {rows.reduce((s, r) => s + r.publicationPositiveCount, 0)}
+                    {eurosFromCents(totals.commissionPartnerCents)}
                   </td>
                   <td className="px-4 py-3" />
                 </tr>
               )}
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
+                  <td colSpan={5} className="px-4 py-8 text-center text-slate-500">
                     Aucune donnée pour cette année et ce regroupement.
                   </td>
                 </tr>

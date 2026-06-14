@@ -5,6 +5,8 @@ import { useState } from 'react';
 type FinancesBreakdownRow = {
   label: string;
   commissionClientCents: number;
+  commissionPartnerCents: number;
+  publicationFeeCents: number;
   commissionDetails: Array<{
     key: string;
     organizerName: string;
@@ -12,6 +14,21 @@ type FinancesBreakdownRow = {
     orderVolumeCents: number;
     commissionClientCents: number;
     lineCount: number;
+  }>;
+  partnerCommissionDetails: Array<{
+    key: string;
+    organizerName: string;
+    stayTitle: string;
+    orderVolumeCents: number;
+    commissionClientCents: number;
+    lineCount: number;
+  }>;
+  publicationDetails: Array<{
+    key: string;
+    organizerName: string;
+    publicationFeeCents: number;
+    stayCount: number;
+    stayTitles: string[];
   }>;
 };
 

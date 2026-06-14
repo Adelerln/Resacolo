@@ -1,19 +1,19 @@
 import Link from 'next/link';
 import { requireRole } from '@/lib/auth/require';
 import { isMissingPublicTableError } from '@/lib/mnemos/supabase-table-missing';
+import {
+  readResacoloBillingSettings,
+  resolveOrganizerCommissionPercent
+} from '@/lib/resacolo-billing-settings.server';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-function euros(cents: number | null | undefined) {
-  const n = Number(cents ?? 0);
-  return (n / 100).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' });
-}
-
 export default async function MnemosOrganizersPage() {
   await requireRole('MNEMOS');
   const supabase = getServerSupabaseClient();
+  const settings = await readResacoloBillingSettings(supabase);
 
   const { data: rows, error } = await supabase
     .from('organizer_admin_overview')
@@ -27,7 +27,7 @@ export default async function MnemosOrganizersPage() {
       <div>
         <h1 className="text-2xl font-semibold text-white">Organismes</h1>
         <p className="mt-1 text-sm text-slate-400">
-          Vue consolidée (profil, facturation indicative, séjours publiés, ventes).
+          Vue consolidée des organismes, commissions appliquées, séjours publiés et ventes.
         </p>
       </div>
 
@@ -54,42 +54,43 @@ export default async function MnemosOrganizersPage() {
                 <th className="px-3 py-3">Membre fondateur</th>
                 <th className="px-3 py-3">Membre Resacolo</th>
                 <th className="px-3 py-3 text-right">Commission (%)</th>
-                <th className="px-3 py-3 text-right">Forfait publication</th>
                 <th className="px-3 py-3 text-right">Séjours publiés</th>
                 <th className="px-3 py-3 text-right">Ventes</th>
                 <th className="px-3 py-3" />
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800">
-              {(rows ?? []).map((o) => (
-                <tr key={o.id} className="hover:bg-slate-800/40">
-                  <td className="px-3 py-2.5 font-medium text-slate-100">{o.name}</td>
-                  <td className="px-3 py-2.5 text-slate-400">{o.contact_email ?? '—'}</td>
-                  <td className="px-3 py-2.5 text-slate-300">{o.is_founding_member ? 'Oui' : 'Non'}</td>
-                  <td className="px-3 py-2.5 text-slate-300">{o.is_resacolo_member ? 'Oui' : 'Non'}</td>
-                  <td className="px-3 py-2.5 text-right tabular-nums text-slate-300">
-                    {o.commission_percent != null ? `${Number(o.commission_percent)} %` : '—'}
-                  </td>
-                  <td className="px-3 py-2.5 text-right tabular-nums text-slate-300">
-                    {o.publication_fee_cents != null ? euros(o.publication_fee_cents) : '—'}
-                  </td>
-                  <td className="px-3 py-2.5 text-right tabular-nums text-slate-300">
-                    {o.published_stays_count ?? '—'}
-                  </td>
-                  <td className="px-3 py-2.5 text-right tabular-nums text-slate-300">{o.sales_count ?? '—'}</td>
-                  <td className="px-3 py-2.5">
-                    <Link
-                      href={`/mnemos/organizers/${o.id}`}
-                      className="inline-flex rounded-lg border border-violet-600/60 px-2.5 py-1 text-xs font-semibold text-violet-200 transition hover:border-violet-400 hover:text-white"
-                    >
-                      Voir la fiche
-                    </Link>
-                  </td>
-                </tr>
-              ))}
+              {(rows ?? []).map((o) => {
+                const commissionPercent = resolveOrganizerCommissionPercent(o, settings);
+                return (
+                  <tr key={o.id} className="hover:bg-slate-800/40">
+                    <td className="px-3 py-2.5 font-medium text-slate-100">{o.name}</td>
+                    <td className="px-3 py-2.5 text-slate-400">{o.contact_email ?? '—'}</td>
+                    <td className="px-3 py-2.5 text-slate-300">{o.is_founding_member ? 'Oui' : 'Non'}</td>
+                    <td className="px-3 py-2.5 text-slate-300">{o.is_resacolo_member ? 'Oui' : 'Non'}</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums text-slate-300">
+                      {`${commissionPercent} %`}
+                    </td>
+                    <td className="px-3 py-2.5 text-right tabular-nums text-slate-300">
+                      {o.published_stays_count ?? '—'}
+                    </td>
+                    <td className="px-3 py-2.5 text-right tabular-nums text-slate-300">
+                      {o.sales_count ?? '—'}
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <Link
+                        href={`/mnemos/organizers/${o.id}`}
+                        className="inline-flex rounded-lg border border-violet-600/60 px-2.5 py-1 text-xs font-semibold text-violet-200 transition hover:border-violet-400 hover:text-white"
+                      >
+                        Voir la fiche
+                      </Link>
+                    </td>
+                  </tr>
+                );
+              })}
               {!rows?.length && !error && (
                 <tr>
-                  <td colSpan={9} className="px-4 py-10 text-center text-slate-500">
+                  <td colSpan={8} className="px-4 py-10 text-center text-slate-500">
                     Aucun organisateur.
                   </td>
                 </tr>

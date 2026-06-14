@@ -12,6 +12,7 @@ import {
   sumCents
 } from '@/lib/mnemos/ledger-period-preview.server';
 import { invoiceYearFromRange, periodEndExclusive, periodStartIso } from '@/lib/mnemos/period-bounds';
+import { readResacoloBillingSettings } from '@/lib/resacolo-billing-settings.server';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 
 function formatFrDate(iso: string): string {
@@ -46,6 +47,10 @@ export async function createPublicationPeriodInvoice(formData: FormData) {
   }
 
   const supabase = getServerSupabaseClient();
+  const billingSettings = await readResacoloBillingSettings(supabase);
+  if (!billingSettings.publication_fee_enabled) {
+    redirect(`${base}&flash_err=${encodeURIComponent('Les frais de publication sont désactivés.')}`);
+  }
   const startIso = periodStartIso(startDate);
   const endIso = periodEndExclusive(endDate);
   const periodCheck = await assertMnemosBillingPeriodAllowed(supabase, {

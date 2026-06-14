@@ -5,6 +5,7 @@ import {
   extractOrganizerDurationMeta
 } from '@/lib/organizer-rich-text';
 import { requireApiAdmin } from '@/lib/auth/api';
+import { syncOrganizerBillingSettingsForOrganizer } from '@/lib/resacolo-billing-settings.server';
 import { syncOrganizerProfileCompletenessPercent } from '@/lib/organizer-profile-completeness';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { slugify } from '@/lib/utils';
@@ -149,6 +150,28 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
       .from('organizers')
       .update({ education_project_path: projectPath })
       .eq('id', organizer.id);
+  }
+
+  try {
+    await syncOrganizerBillingSettingsForOrganizer(supabase, {
+      id: organizer.id,
+      is_founding_member: isFoundingMember,
+      is_resacolo_member: isResacoloMember
+    }, {
+      source: 'STATUS_CHANGE'
+    });
+  } catch (syncError) {
+    return NextResponse.redirect(
+      new URL(
+        `/admin/organizers/${urlSlug}?error=${encodeURIComponent(
+          syncError instanceof Error
+            ? syncError.message
+            : 'Impossible de synchroniser la commission organisateur.'
+        )}`,
+        req.url
+      ),
+      303
+    );
   }
 
   await syncOrganizerProfileCompletenessPercent(supabase, organizer.id);

@@ -7,6 +7,7 @@ import {
   removePrismaUserIfExists,
   syncBackofficeAccessFromOrganizerMember
 } from '@/lib/organizer-backoffice-sync.server';
+import { syncOrganizerBillingSettingsForOrganizer } from '@/lib/resacolo-billing-settings.server';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { slugify } from '@/lib/utils';
 
@@ -211,6 +212,36 @@ export async function POST(req: Request) {
       new URL(
         `/admin/organizers/new?error=${encodeURIComponent(
           syncError instanceof Error ? syncError.message : 'Impossible de synchroniser les accès back-office'
+        )}`,
+        req.url
+      ),
+      303
+    );
+  }
+
+  try {
+    await syncOrganizerBillingSettingsForOrganizer(supabase, {
+      id: organizer.id,
+      is_founding_member: false,
+      is_resacolo_member: false
+    }, {
+      source: 'ORG_CREATE'
+    });
+  } catch (syncError) {
+    await supabase
+      .from('organizer_members')
+      .delete()
+      .eq('organizer_id', organizer.id)
+      .eq('user_id', userData.user.id);
+    await supabase.auth.admin.deleteUser(userData.user.id);
+    await supabase.from('organizers').delete().eq('id', organizer.id);
+    await removePrismaUserIfExists(createdPrismaUserId);
+    return NextResponse.redirect(
+      new URL(
+        `/admin/organizers/new?error=${encodeURIComponent(
+          syncError instanceof Error
+            ? syncError.message
+            : 'Impossible de synchroniser la commission organisateur.'
         )}`,
         req.url
       ),

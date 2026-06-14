@@ -16,7 +16,6 @@ type OrganizerOverviewRow = {
   published_stays_count: number | null;
   sales_count: number | null;
   commission_percent: number | null;
-  publication_fee_cents: number | null;
 };
 
 type SortKey =
@@ -28,8 +27,7 @@ type SortKey =
   | 'stays_count'
   | 'published_stays_count'
   | 'sales_count'
-  | 'commission_percent'
-  | 'publication_fee_cents';
+  | 'commission_percent';
 
 function num(value: unknown): number {
   if (value == null) return 0;
@@ -68,8 +66,6 @@ function getSortValue(row: OrganizerOverviewRow, key: SortKey): string {
       return String(num(row.sales_count));
     case 'commission_percent':
       return String(num(row.commission_percent));
-    case 'publication_fee_cents':
-      return String(num(row.publication_fee_cents));
     default:
       return '';
   }
@@ -92,8 +88,7 @@ export function AdminOrganizersTable({ rows }: { rows: OrganizerOverviewRow[] })
         key === 'stays_count' ||
         key === 'published_stays_count' ||
         key === 'sales_count' ||
-        key === 'commission_percent' ||
-        key === 'publication_fee_cents'
+        key === 'commission_percent'
       ) {
         return Number(left) - Number(right);
       }
@@ -145,17 +140,12 @@ export function AdminOrganizersTable({ rows }: { rows: OrganizerOverviewRow[] })
               <th className="px-3 py-3">{renderHeader('Publiés', 'published_stays_count')}</th>
               <th className="px-3 py-3">{renderHeader('Ventes', 'sales_count')}</th>
               <th className="px-3 py-3">{renderHeader('Commission', 'commission_percent')}</th>
-              <th className="px-3 py-3">{renderHeader('Forfait pub.', 'publication_fee_cents')}</th>
               <th className="px-3 py-3" />
             </tr>
           </thead>
           <tbody>
             {sortedRows.map((row) => {
               const hrefId = row.slug ?? row.id;
-              const feeEuros = (num(row.publication_fee_cents) / 100).toLocaleString('fr-FR', {
-                style: 'currency',
-                currency: 'EUR'
-              });
               const commission = num(row.commission_percent);
 
               return (
@@ -181,7 +171,6 @@ export function AdminOrganizersTable({ rows }: { rows: OrganizerOverviewRow[] })
                     })}
                     %
                   </td>
-                  <td className="px-3 py-3 text-slate-600 tabular-nums">{feeEuros}</td>
                   <td className="px-3 py-3 text-right">
                     <Link
                       href={`/admin/organizers/${hrefId}`}
@@ -196,7 +185,7 @@ export function AdminOrganizersTable({ rows }: { rows: OrganizerOverviewRow[] })
             })}
             {rows.length === 0 && (
               <tr>
-                <td className="px-4 py-6 text-slate-500" colSpan={11}>
+                <td className="px-4 py-6 text-slate-500" colSpan={10}>
                   Aucun organisme.
                 </td>
               </tr>

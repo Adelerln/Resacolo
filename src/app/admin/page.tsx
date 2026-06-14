@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { requireAdminSection } from '@/lib/auth/require';
+import { isAdminWorkspaceRole } from '@/lib/admin-access';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 
 const SEASON_ORDER_STATUSES = new Set(['PENDING_PAYMENT', 'PARTIALLY_PAID', 'PAID']);
@@ -179,7 +180,8 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 export default async function AdminHome() {
-  await requireAdminSection('dashboard');
+  const session = await requireAdminSection('dashboard');
+  const isSalesWorkspace = isAdminWorkspaceRole(session.role) && session.role === 'ADMIN_SALES';
   const supabase = getServerSupabaseClient();
 
   const [
@@ -188,14 +190,26 @@ export default async function AdminHome() {
     { data: organizersRaw },
     { data: membersRaw },
     { data: sessionsRaw },
-    { data: orderItemsRaw }
+    { data: orderItemsRaw },
+    { data: partnersRaw },
+    { data: partnerMembersRaw }
   ] = await Promise.all([
-    supabase.from('stays').select('id,status'),
-    supabase.from('orders').select('id,status'),
-    supabase.from('organizer_admin_overview').select('id,profile_completeness_percent'),
-    supabase.from('organizer_members').select('id'),
+    isSalesWorkspace ? Promise.resolve({ data: [] as { id: string; status: string }[] }) : supabase.from('stays').select('id,status'),
+    isSalesWorkspace
+      ? supabase.from('orders').select('id,status').not('collectivity_id', 'is', null)
+      : supabase.from('orders').select('id,status'),
+    isSalesWorkspace
+      ? Promise.resolve({ data: [] as { id: string; profile_completeness_percent: number | null }[] })
+      : supabase.from('organizer_admin_overview').select('id,profile_completeness_percent'),
+    isSalesWorkspace
+      ? Promise.resolve({ data: [] as { id: string }[] })
+      : supabase.from('organizer_members').select('id'),
     supabase.from('sessions').select('id,start_date'),
-    supabase.from('order_items').select('order_id,session_id')
+    supabase.from('order_items').select('order_id,session_id'),
+    isSalesWorkspace ? supabase.from('collectivities').select('id') : Promise.resolve({ data: [] as { id: string }[] }),
+    isSalesWorkspace
+      ? supabase.from('collectivity_members').select('collectivity_id')
+      : Promise.resolve({ data: [] as { collectivity_id: string }[] })
   ]);
 
   const stays = staysRaw ?? [];
@@ -204,6 +218,8 @@ export default async function AdminHome() {
   const members = membersRaw ?? [];
   const sessions = sessionsRaw ?? [];
   const orderItems = orderItemsRaw ?? [];
+  const partners = partnersRaw ?? [];
+  const partnerMembers = partnerMembersRaw ?? [];
   const reservationSeasonCards = getUpcomingReservationSeasonCards(new Date());
 
   const totalStays = stays.length;
@@ -213,6 +229,9 @@ export default async function AdminHome() {
     (stay) => stay.status === 'HIDDEN' || stay.status === 'ARCHIVED'
   ).length;
   const archivedStays = stays.filter((stay) => stay.status === 'ARCHIVED').length;
+  const totalPartners = partners.length;
+  const partnersWithUsers = new Set(partnerMembers.map((member) => member.collectivity_id)).size;
+  const partnersWithoutUsers = Math.max(totalPartners - partnersWithUsers, 0);
 
   const requestedOrders = orders.filter((order) => order.status === 'REQUESTED').length;
   const seasonOrderIds = new Set(
@@ -237,15 +256,28 @@ export default async function AdminHome() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="admin-page-title">Dashboard admin</h1>
+        <h1 className="admin-page-title">{isSalesWorkspace ? 'Dashboard commercial' : 'Dashboard admin'}</h1>
       </div>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <AdminKpiCard label="Séjours publiés" value={publishedStays} />
-        <AdminKpiCard label="Séjours en brouillon" value={draftStays} />
-        <AdminKpiCard label="Séjours archivés et masqués" value={hiddenOrArchivedStays} />
-        <AdminKpiCard label="Organismes" value={organizers.length} />
-      </section>
+      {isSalesWorkspace ? (
+        <section className="grid gap-4 md:grid-cols-2">
+          <AdminKpiCard label="Partenaires" value={totalPartners} href="/admin/partenaires" />
+          <AdminKpiCard
+            label="Réservations"
+            labelSecondLine="à traiter"
+            value={requestedOrders}
+            tone="lightGray"
+            href="/admin/reservations?status=REQUESTED"
+          />
+        </section>
+      ) : (
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <AdminKpiCard label="Séjours publiés" value={publishedStays} />
+          <AdminKpiCard label="Séjours en brouillon" value={draftStays} />
+          <AdminKpiCard label="Séjours archivés et masqués" value={hiddenOrArchivedStays} />
+          <AdminKpiCard label="Organismes" value={organizers.length} />
+        </section>
+      )}
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
         <AdminKpiCard
@@ -275,35 +307,70 @@ export default async function AdminHome() {
       <section className="rounded-2xl border border-slate-200 bg-white p-6">
         <h2 className="admin-section-title">Actions rapides</h2>
         <div className="mt-4 grid gap-3 md:grid-cols-2">
-          <Link
-            href="/admin/sejours"
-            prefetch={false}
-            className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 hover:border-slate-300"
-          >
-            Gérer les <span className="rounded bg-orange-100 px-1">séjours</span> ({totalStays}, dont {archivedStays}{' '}
-            archivés)
-          </Link>
-          <Link
-            href="/admin/organizers"
-            prefetch={false}
-            className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 hover:border-slate-300"
-          >
-            Gérer les <span className="rounded bg-orange-100 px-1">organismes</span> ({members.length} membres liés)
-          </Link>
-          <Link
-            href="/admin/finances"
-            prefetch={false}
-            className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 hover:border-slate-300"
-          >
-            Voir les <span className="rounded bg-orange-100 px-1">recettes</span>
-          </Link>
-          <Link
-            href="/admin/utilisateurs"
-            prefetch={false}
-            className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 hover:border-slate-300"
-          >
-            Gérer les <span className="rounded bg-orange-100 px-1">utilisateurs de back-office</span>
-          </Link>
+          {isSalesWorkspace ? (
+            <>
+              <Link
+                href="/admin/partenaires"
+                prefetch={false}
+                className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 hover:border-slate-300"
+              >
+                Gérer les <span className="rounded bg-orange-100 px-1">partenaires</span> ({totalPartners})
+              </Link>
+              <Link
+                href="/admin/partenaires/nouveau"
+                prefetch={false}
+                className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 hover:border-slate-300"
+              >
+                Créer un <span className="rounded bg-orange-100 px-1">partenaire</span>
+              </Link>
+              <Link
+                href="/admin/reservations?status=REQUESTED"
+                prefetch={false}
+                className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 hover:border-slate-300"
+              >
+                Réservations <span className="rounded bg-orange-100 px-1">à traiter</span> ({requestedOrders})
+              </Link>
+              <Link
+                href="/admin/reservations"
+                prefetch={false}
+                className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 hover:border-slate-300"
+              >
+                Voir toutes les <span className="rounded bg-orange-100 px-1">réservations</span>
+              </Link>
+            </>
+          ) : (
+            <>
+              <Link
+                href="/admin/sejours"
+                prefetch={false}
+                className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 hover:border-slate-300"
+              >
+                Gérer les <span className="rounded bg-orange-100 px-1">séjours</span> ({totalStays}, dont {archivedStays}{' '}
+                archivés)
+              </Link>
+              <Link
+                href="/admin/organizers"
+                prefetch={false}
+                className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 hover:border-slate-300"
+              >
+                Gérer les <span className="rounded bg-orange-100 px-1">organismes</span> ({members.length} membres liés)
+              </Link>
+              <Link
+                href="/admin/finances"
+                prefetch={false}
+                className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 hover:border-slate-300"
+              >
+                Voir les <span className="rounded bg-orange-100 px-1">recettes</span>
+              </Link>
+              <Link
+                href="/admin/utilisateurs"
+                prefetch={false}
+                className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 hover:border-slate-300"
+              >
+                Gérer les <span className="rounded bg-orange-100 px-1">utilisateurs de back-office</span>
+              </Link>
+            </>
+          )}
         </div>
       </section>
 
@@ -313,9 +380,15 @@ export default async function AdminHome() {
           <div className="rounded-xl border border-slate-100 p-4 text-sm text-slate-600">
             {requestedOrders} réservation(s) en attente de traitement.
           </div>
-          <div className="rounded-xl border border-slate-100 p-4 text-sm text-slate-600">
-            {lowProfileOrganizers} organisme(s) avec une complétude profil inférieure à 70%.
-          </div>
+          {isSalesWorkspace ? (
+            <div className="rounded-xl border border-slate-100 p-4 text-sm text-slate-600">
+              {partnersWithoutUsers} partenaire(s) sans utilisateur rattaché.
+            </div>
+          ) : (
+            <div className="rounded-xl border border-slate-100 p-4 text-sm text-slate-600">
+              {lowProfileOrganizers} organisme(s) avec une complétude profil inférieure à 70%.
+            </div>
+          )}
         </div>
       </section>
     </div>

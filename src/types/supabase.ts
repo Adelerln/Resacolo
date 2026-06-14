@@ -1406,6 +1406,47 @@ export type Database = {
           },
         ]
       }
+      organizer_commission_history: {
+        Row: {
+          commission_percent: number
+          created_at: string
+          effective_from: string
+          effective_to: string | null
+          id: string
+          organizer_id: string
+          source: string
+          status_code: string
+        }
+        Insert: {
+          commission_percent: number
+          created_at?: string
+          effective_from: string
+          effective_to?: string | null
+          id?: string
+          organizer_id: string
+          source?: string
+          status_code: string
+        }
+        Update: {
+          commission_percent?: number
+          created_at?: string
+          effective_from?: string
+          effective_to?: string | null
+          id?: string
+          organizer_id?: string
+          source?: string
+          status_code?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "organizer_commission_history_organizer_id_fkey"
+            columns: ["organizer_id"]
+            isOneToOne: false
+            referencedRelation: "organizers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       organizer_support_requests: {
         Row: {
           assigned_to_user_id: string | null
@@ -1701,6 +1742,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      resacolo_billing_settings: {
+        Row: {
+          created_at: string
+          external_commission_percent: number
+          founding_member_commission_percent: number
+          id: string
+          publication_fee_cents: number
+          publication_fee_enabled: boolean
+          resacolo_member_commission_percent: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          external_commission_percent?: number
+          founding_member_commission_percent?: number
+          id?: string
+          publication_fee_cents?: number
+          publication_fee_enabled?: boolean
+          resacolo_member_commission_percent?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          external_commission_percent?: number
+          founding_member_commission_percent?: number
+          id?: string
+          publication_fee_cents?: number
+          publication_fee_enabled?: boolean
+          resacolo_member_commission_percent?: number
+          updated_at?: string
+        }
+        Relationships: []
       }
       accommodation_media: {
         Row: {

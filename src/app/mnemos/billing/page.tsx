@@ -14,6 +14,7 @@ import { periodEndExclusive, periodStartIso } from '@/lib/mnemos/period-bounds';
 import { isMissingPublicTableError } from '@/lib/mnemos/supabase-table-missing';
 import { MnemosFieldLabel } from '@/components/mnemos/MnemosFieldLabel';
 import { formatMnemosLedgerChannel } from '@/lib/mnemos-display';
+import { readResacoloBillingSettings } from '@/lib/resacolo-billing-settings.server';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { createCommissionPeriodInvoice, createPublicationPeriodInvoice } from './actions';
 
@@ -40,12 +41,14 @@ export default async function MnemosBillingPage({
   await requireRole('MNEMOS');
   const sp = searchParams ? await searchParams : {};
   const supabase = getServerSupabaseClient();
+  const billingSettings = await readResacoloBillingSettings(supabase);
 
   const { data: organizers } = await supabase.from('organizers').select('id, name').order('name', { ascending: true });
 
   const organizerId = sp.organizer_id?.trim() ?? '';
   const startDate = sp.start_date?.trim() ?? '';
   const endDate = sp.end_date?.trim() ?? '';
+  const publicationFeeEnabled = billingSettings.publication_fee_enabled;
 
   let pubLines: Awaited<ReturnType<typeof loadLedgerPublicationLines>>['lines'] = [];
   let comLines: Awaited<ReturnType<typeof loadLedgerCommissionLines>>['lines'] = [];
@@ -70,7 +73,9 @@ export default async function MnemosBillingPage({
     const startIso = periodStartIso(startDate);
     const endIso = periodEndExclusive(endDate);
     const [pub, com] = await Promise.all([
-      loadLedgerPublicationLines(supabase, organizerId, startIso, endIso),
+      publicationFeeEnabled
+        ? loadLedgerPublicationLines(supabase, organizerId, startIso, endIso)
+        : Promise.resolve({ lines: [] as Awaited<ReturnType<typeof loadLedgerPublicationLines>>['lines'] }),
       loadLedgerCommissionLines(supabase, organizerId, startIso, endIso)
     ]);
     pubLines = pub.lines;
@@ -97,12 +102,19 @@ export default async function MnemosBillingPage({
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-semibold text-white">Facturation par période</h1>
+        <h1 className="text-2xl font-semibold text-white">Commissions par période</h1>
         <p className="mt-1 max-w-3xl text-sm text-slate-400">
-          Les montants proviennent du journal des frais Resacolo sur la période choisie. La création enregistre une
-          facture, ses lignes et un événement dans l&apos;historique de facturation.
+          Les montants proviennent du journal des commissions Resacolo sur la période choisie. La création enregistre
+          une facture, ses lignes et un événement dans l&apos;historique de facturation.
         </p>
       </div>
+
+      {!publicationFeeEnabled && (
+        <div className="rounded-lg border border-slate-700 bg-slate-900/50 px-4 py-3 text-sm text-slate-300">
+          Les frais de publication sont actuellement désactivés globalement. Seules les commissions restent visibles
+          et facturables.
+        </div>
+      )}
 
       {sp.flash && (
         <div className="rounded-lg border border-emerald-800/60 bg-emerald-950/40 px-4 py-3 text-sm text-emerald-100">
@@ -185,7 +197,8 @@ export default async function MnemosBillingPage({
       ) : null}
 
       {organizerId && startDate && endDate && (
-        <div className="grid gap-8 lg:grid-cols-2">
+        <div className={`grid gap-8 ${publicationFeeEnabled ? 'lg:grid-cols-2' : ''}`}>
+          {publicationFeeEnabled && (
           <section className="rounded-xl border border-slate-700 bg-slate-900/50 p-5">
             <div className="flex items-start justify-between gap-2">
               <div>
@@ -241,11 +254,12 @@ export default async function MnemosBillingPage({
               </table>
             </div>
           </section>
+          )}
 
           <section className="rounded-xl border border-slate-700 bg-slate-900/50 p-5">
             <div className="flex items-start justify-between gap-2">
               <div>
-                <h2 className="text-lg font-semibold text-white">B. Commissions</h2>
+                <h2 className="text-lg font-semibold text-white">Commissions</h2>
                 <p className="text-sm text-slate-500">
                   Total : <span className="font-mono text-violet-200">{euros(sumCents(comLines))}</span>
                 </p>

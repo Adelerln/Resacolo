@@ -11,6 +11,10 @@ import {
   formatMnemosStatus
 } from '@/lib/mnemos-display';
 import { ORGANIZER_ACCESS_LABELS, ORGANIZER_ACCESS_ROLE_VALUES } from '@/lib/organizer-access';
+import {
+  readResacoloBillingSettings,
+  resolveOrganizerCommissionPercent
+} from '@/lib/resacolo-billing-settings.server';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import {
   addBackofficeAccess,
@@ -41,6 +45,7 @@ export default async function MnemosOrganizerDetailPage({ params, searchParams }
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const canManageAccess = canManageBackofficeAccess(session.email);
   const supabase = getServerSupabaseClient();
+  const billingSettings = await readResacoloBillingSettings(supabase);
 
   const [{ data: org }, { data: overview }, { data: billing }, { data: invoices }, { data: events }] =
     await Promise.all([
@@ -69,9 +74,16 @@ export default async function MnemosOrganizerDetailPage({ params, searchParams }
   if (!org) {
     notFound();
   }
+  const commissionPercent = resolveOrganizerCommissionPercent(org, billingSettings);
   const accessSaved = resolvedSearchParams?.access_saved === '1';
   const accessError = resolvedSearchParams?.access_error ?? '';
   const searchTerm = String(resolvedSearchParams?.q ?? '').trim().toLowerCase();
+  const filteredInvoices = billingSettings.publication_fee_enabled
+    ? invoices ?? []
+    : (invoices ?? []).filter((invoice) => invoice.invoice_type !== 'MNEMOS_PUBLICATION_PERIOD');
+  const filteredEvents = billingSettings.publication_fee_enabled
+    ? events ?? []
+    : (events ?? []).filter((event) => event.event_type !== 'INVOICE_PUBLICATION_PERIOD');
 
   const appUserIds = Array.from(new Set((accessRows ?? []).map((row) => row.app_user_id).filter(Boolean)));
   const appUsers = await Promise.all(
@@ -98,7 +110,7 @@ export default async function MnemosOrganizerDetailPage({ params, searchParams }
   const appUserById = new Map(appUsers.map((user) => [user.id, user]));
   const invoicePdfUrls = new Map(
     await Promise.all(
-      (invoices ?? []).map(async (invoice) => [
+      filteredInvoices.map(async (invoice) => [
         invoice.id,
         await createSignedMnemosInvoicePdfUrl(supabase, invoice.pdf_url)
       ] as const)
@@ -111,7 +123,7 @@ export default async function MnemosOrganizerDetailPage({ params, searchParams }
     return email.includes(searchTerm);
   });
 
-  const invoiceIds = (invoices ?? []).map((i) => i.id);
+  const invoiceIds = filteredInvoices.map((i) => i.id);
   const { data: lines } = invoiceIds.length
     ? await supabase.from('invoice_lines').select('*').in('invoice_id', invoiceIds)
     : { data: [] as { id: string; invoice_id: string; label: string; amount_cents: number }[] };
@@ -140,7 +152,7 @@ export default async function MnemosOrganizerDetailPage({ params, searchParams }
           href={`/mnemos/billing?organizer_id=${encodeURIComponent(id)}`}
           className="inline-flex shrink-0 items-center justify-center rounded-lg border border-violet-500/70 bg-violet-950/50 px-4 py-2 text-sm font-semibold text-violet-100 hover:border-violet-400"
         >
-          Facturation par période
+          Facturation commissions
         </Link>
       </div>
 
@@ -168,26 +180,18 @@ export default async function MnemosOrganizerDetailPage({ params, searchParams }
 
       <section className="rounded-xl border border-slate-700 bg-slate-900/50 p-5">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Paramètres de facturation</h2>
-        {billing ? (
-          <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
-            <div>
-              <MnemosDt className="text-slate-500">Commission</MnemosDt>
-              <dd className="text-slate-200">{Number(billing.commission_percent)} %</dd>
+        <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+          <div>
+            <MnemosDt className="text-slate-500">Commission</MnemosDt>
+            <dd className="text-slate-200">{commissionPercent} %</dd>
+          </div>
+          {billing?.notes ? (
+            <div className="sm:col-span-2">
+              <MnemosDt className="text-slate-500">Notes</MnemosDt>
+              <dd className="whitespace-pre-wrap text-slate-300">{billing.notes}</dd>
             </div>
-            <div>
-              <MnemosDt className="text-slate-500">Forfait publication</MnemosDt>
-              <dd className="text-slate-200">{euros(billing.publication_fee_cents)}</dd>
-            </div>
-            {billing.notes ? (
-              <div className="sm:col-span-2">
-                <MnemosDt className="text-slate-500">Notes</MnemosDt>
-                <dd className="whitespace-pre-wrap text-slate-300">{billing.notes}</dd>
-              </div>
-            ) : null}
-          </dl>
-        ) : (
-          <p className="mt-3 text-sm text-slate-500">Aucun paramètre de facturation enregistré.</p>
-        )}
+          ) : null}
+        </dl>
       </section>
 
       <section className="rounded-xl border border-slate-700 bg-slate-900/50 p-5">
@@ -377,7 +381,7 @@ export default async function MnemosOrganizerDetailPage({ params, searchParams }
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800">
-              {(invoices ?? []).map((inv) => {
+              {filteredInvoices.map((inv) => {
                 const pdfUrl = invoicePdfUrls.get(inv.id);
                 return (
                   <tr key={inv.id}>
@@ -411,7 +415,7 @@ export default async function MnemosOrganizerDetailPage({ params, searchParams }
                   </tr>
                 );
               })}
-              {!(invoices ?? []).length && (
+              {!filteredInvoices.length && (
                 <tr>
                   <td colSpan={6} className="px-3 py-6 text-center text-slate-500">
                     Aucune facture.
@@ -422,7 +426,7 @@ export default async function MnemosOrganizerDetailPage({ params, searchParams }
           </table>
         </div>
 
-        {(invoices ?? []).map((inv) => {
+        {filteredInvoices.map((inv) => {
           const invLines = linesByInvoice.get(inv.id) ?? [];
           if (!invLines.length) return null;
           return (
@@ -444,7 +448,7 @@ export default async function MnemosOrganizerDetailPage({ params, searchParams }
 
         <h3 className="mt-8 text-xs font-semibold text-slate-400">Événements de facturation</h3>
         <ul className="mt-2 space-y-2 text-sm">
-          {(events ?? []).map((ev) => (
+          {filteredEvents.map((ev) => (
             <li
               key={ev.id}
               className="flex flex-wrap items-baseline justify-between gap-2 rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2"
@@ -456,7 +460,7 @@ export default async function MnemosOrganizerDetailPage({ params, searchParams }
               ) : null}
             </li>
           ))}
-          {!(events ?? []).length && (
+          {!filteredEvents.length && (
             <li className="text-slate-500">Aucun événement de facturation enregistré.</li>
           )}
         </ul>

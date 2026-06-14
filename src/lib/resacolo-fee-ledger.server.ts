@@ -1,6 +1,10 @@
 import 'server-only';
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import {
+  readResacoloBillingSettings,
+  resolveOrganizerCommissionRatesForLedger
+} from '@/lib/resacolo-billing-settings.server';
 import type { Database } from '@/types/supabase';
 
 type LedgerInsert = Database['public']['Tables']['resacolo_fee_ledger']['Insert'];
@@ -31,11 +35,7 @@ export async function recordCommissionFeesOnOrderPaid(
   const already = new Set((existingRows ?? []).map((r) => r.order_item_id).filter(Boolean) as string[]);
 
   const orgIds = Array.from(new Set(items.map((i) => i.organizer_id)));
-  const { data: billings } = await supabase
-    .from('organizer_billing_settings')
-    .select('organizer_id, commission_percent')
-    .in('organizer_id', orgIds);
-  const rateByOrg = new Map((billings ?? []).map((b) => [b.organizer_id, Number(b.commission_percent) || 0]));
+  const rateByOrg = await resolveOrganizerCommissionRatesForLedger(supabase, orgIds, paidAtIso);
 
   const inserts: LedgerInsert[] = [];
   for (const item of items) {
@@ -87,12 +87,10 @@ export async function maybeRecordPublicationFeeWhenStayPublished(
     .maybeSingle();
   if (existing) return;
 
-  const { data: billing } = await supabase
-    .from('organizer_billing_settings')
-    .select('publication_fee_cents')
-    .eq('organizer_id', params.organizerId)
-    .maybeSingle();
-  const cents = Number(billing?.publication_fee_cents ?? 0);
+  const settings = await readResacoloBillingSettings(supabase);
+  if (!settings.publication_fee_enabled) return;
+
+  const cents = Number(settings.publication_fee_cents ?? 0);
   if (cents <= 0) return;
 
   const { error: insertError } = await supabase.from('resacolo_fee_ledger').insert({
@@ -109,4 +107,52 @@ export async function maybeRecordPublicationFeeWhenStayPublished(
   if (insertError) {
     console.error('resacolo_fee_ledger: échec insertion publication', insertError.message);
   }
+}
+
+function yearBoundsUtc(year: number) {
+  const startIso = new Date(Date.UTC(year, 0, 1, 0, 0, 0, 0)).toISOString();
+  const endIso = new Date(Date.UTC(year + 1, 0, 1, 0, 0, 0, 0)).toISOString();
+  return { startIso, endIso };
+}
+
+/** Répare les commandes payées sans écriture de commission (idempotent). */
+export async function repairMissingCommissionFeesForPaidOrders(
+  supabase: SupabaseClient<Database>,
+  year: number
+): Promise<number> {
+  const { startIso, endIso } = yearBoundsUtc(year);
+  const { data: orders, error } = await supabase
+    .from('orders')
+    .select('id,paid_at')
+    .eq('status', 'PAID')
+    .not('paid_at', 'is', null)
+    .gte('paid_at', startIso)
+    .lt('paid_at', endIso);
+
+  if (error) {
+    console.warn('repairMissingCommissionFeesForPaidOrders: lecture commandes', error.message);
+    return 0;
+  }
+
+  let repaired = 0;
+  for (const order of orders ?? []) {
+    if (!order.paid_at) continue;
+    const { count, error: ledgerError } = await supabase
+      .from('resacolo_fee_ledger')
+      .select('id', { count: 'exact', head: true })
+      .eq('order_id', order.id)
+      .eq('fee_kind', 'COMMISSION')
+      .gt('amount_cents', 0);
+
+    if (ledgerError) {
+      console.warn('repairMissingCommissionFeesForPaidOrders: lecture journal', ledgerError.message);
+      continue;
+    }
+    if ((count ?? 0) > 0) continue;
+
+    await recordCommissionFeesOnOrderPaid(supabase, order.id, order.paid_at);
+    repaired += 1;
+  }
+
+  return repaired;
 }

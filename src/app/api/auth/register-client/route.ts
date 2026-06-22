@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { isPasswordPolicyValid, PASSWORD_POLICY_MESSAGE } from '@/lib/auth/password-policy';
 import { upsertFamilyProfileFromRegistration } from '@/lib/account-profile/server';
 import { getApiErrorMessage } from '@/lib/checkout/api';
+import { getServerSupabaseClient } from '@/lib/supabase/server';
 import type { Database } from '@/types/supabase';
 
 export const runtime = 'nodejs';
@@ -17,6 +18,52 @@ const trimmedEmail = (message: string) => stringFromUnknown.pipe(z.string().trim
 
 function joinNameParts(firstName: string, lastName: string) {
   return [firstName.trim(), lastName.trim()].filter(Boolean).join(' ').trim();
+}
+
+function isDevEmailConfirmationFailure(error: { message?: string | null } | null | undefined) {
+  if (process.env.NODE_ENV === 'production') return false;
+  const message = String(error?.message ?? '').toLowerCase();
+  return message.includes('error sending confirmation email');
+}
+
+async function createConfirmedDevUserAndSession(input: {
+  email: string;
+  password: string;
+  firstName: string;
+  lastName: string;
+  name: string;
+  supabase: ReturnType<typeof createRouteHandlerClient<Database>>;
+}) {
+  const adminSupabase = getServerSupabaseClient();
+  const { data: created, error: createError } = await adminSupabase.auth.admin.createUser({
+    email: input.email,
+    password: input.password,
+    email_confirm: true,
+    user_metadata: {
+      first_name: input.firstName,
+      last_name: input.lastName,
+      full_name: input.name,
+      name: input.name
+    }
+  });
+
+  if (createError || !created.user?.id) {
+    throw createError ?? new Error('Impossible de créer le compte en local.');
+  }
+
+  const { data: signedIn, error: signInError } = await input.supabase.auth.signInWithPassword({
+    email: input.email,
+    password: input.password
+  });
+
+  if (signInError) {
+    throw signInError;
+  }
+
+  return {
+    user: created.user,
+    session: signedIn.session
+  };
 }
 
 const registerClientFullSchema = z
@@ -159,7 +206,19 @@ export async function POST(req: Request) {
       }
     });
 
-    if (error || !data.user?.id) {
+    const authResult =
+      isDevEmailConfirmationFailure(error)
+        ? await createConfirmedDevUserAndSession({
+            email,
+            password: input.password,
+            firstName: input.firstName,
+            lastName: input.lastName,
+            name,
+            supabase
+          })
+        : data;
+
+    if ((error && !isDevEmailConfirmationFailure(error)) || !authResult?.user?.id) {
       const isExistingAccount = error?.message?.toLowerCase().includes('already registered');
       const message =
         isExistingAccount
@@ -177,7 +236,7 @@ export async function POST(req: Request) {
         : '';
 
       await upsertFamilyProfileFromRegistration({
-        userId: data.user.id,
+        userId: authResult.user.id,
         firstName: input.firstName,
         lastName: input.lastName,
         email,
@@ -201,7 +260,7 @@ export async function POST(req: Request) {
     }
 
     if (isFormRequest) {
-      const redirectUrl = data.session
+      const redirectUrl = authResult.session
         ? new URL(safeRedirectTo, req.url)
         : new URL(`/login/familles?registered=1&redirectTo=${encodeURIComponent(safeRedirectTo)}`, req.url);
       return NextResponse.redirect(redirectUrl, { status: 303 });
@@ -210,11 +269,11 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ok: true,
       user: {
-        id: data.user.id,
-        email: data.user.email,
+        id: authResult.user.id,
+        email: authResult.user.email,
         name
       },
-      requiresEmailConfirmation: !data.session
+      requiresEmailConfirmation: !authResult.session
     });
   } catch (error) {
     if (error instanceof z.ZodError) {

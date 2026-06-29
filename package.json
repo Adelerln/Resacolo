@@ -5,6 +5,7 @@
     "dev": "next dev",
     "build": "next build",
     "check:schema-columns": "node scripts/check-schema-columns.mjs",
+    "check:user-login-events": "node scripts/verify-user-login-events.mjs",
     "check:seo": "node scripts/check-seo.mjs",
     "check:media": "node scripts/check-critical-media.mjs",
     "ci:seo": "npm run build && npm run check:seo",

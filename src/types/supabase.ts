@@ -2791,6 +2791,69 @@ export type Database = {
           },
         ]
       }
+      user_login_events: {
+        Row: {
+          app_role: string
+          collectivity_ids: string[]
+          created_at: string
+          email: string | null
+          error_code: string | null
+          id: string
+          ip_address: string | null
+          login_mode: string | null
+          login_path: string | null
+          membership_roles: Json
+          metadata: Json
+          organizer_ids: string[]
+          outcome: string
+          redirect_to: string | null
+          source: string
+          staff_roles: string[]
+          user_agent: string | null
+          user_id: string | null
+        }
+        Insert: {
+          app_role: string
+          collectivity_ids?: string[]
+          created_at?: string
+          email?: string | null
+          error_code?: string | null
+          id?: string
+          ip_address?: string | null
+          login_mode?: string | null
+          login_path?: string | null
+          membership_roles?: Json
+          metadata?: Json
+          organizer_ids?: string[]
+          outcome: string
+          redirect_to?: string | null
+          source?: string
+          staff_roles?: string[]
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          app_role?: string
+          collectivity_ids?: string[]
+          created_at?: string
+          email?: string | null
+          error_code?: string | null
+          id?: string
+          ip_address?: string | null
+          login_mode?: string | null
+          login_path?: string | null
+          membership_roles?: Json
+          metadata?: Json
+          organizer_ids?: string[]
+          outcome?: string
+          redirect_to?: string | null
+          source?: string
+          staff_roles?: string[]
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       organizer_admin_overview: {
@@ -2828,6 +2891,22 @@ export type Database = {
           source_url: string | null
           title: string
         }[]
+      }
+      log_user_login_event: {
+        Args: {
+          p_email?: string
+          p_error_code?: string
+          p_ip_address?: string
+          p_login_mode?: string
+          p_login_path?: string
+          p_metadata?: Json
+          p_outcome?: string
+          p_redirect_to?: string
+          p_source?: string
+          p_user_agent?: string
+          p_user_id?: string
+        }
+        Returns: string
       }
       next_invoice_number: { Args: { p_year: number }; Returns: number }
       purge_old_chatbot_data: { Args: { retention_days?: number }; Returns: number }

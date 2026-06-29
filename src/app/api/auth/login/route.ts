@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { z } from 'zod';
+import { logUserLoginEvent } from '@/lib/auth/login-events.server';
 import { getHomePathForRole, resolveRoleContextForUserId, type AppRole } from '@/lib/auth/roles';
 import type { Database } from '@/types/supabase';
 
@@ -201,6 +202,7 @@ export async function POST(req: Request) {
   let loginPath = '/login';
   let redirectTo: string | undefined;
   let loginMode: 'family' | 'pro' | undefined;
+  let attemptEmail: string | undefined;
 
   try {
     const contentType = req.headers.get('content-type') ?? '';
@@ -211,8 +213,18 @@ export async function POST(req: Request) {
     loginPath = sanitizeLoginPath(getOptionalField(data, 'loginPath'));
     redirectTo = getOptionalField(data, 'redirectTo');
     loginMode = getOptionalField(data, 'loginMode') === 'pro' ? 'pro' : getOptionalField(data, 'loginMode') === 'family' ? 'family' : undefined;
+    attemptEmail = getOptionalField(data, 'email');
     const parsed = loginSchema.safeParse(data);
     if (!parsed.success) {
+      await logUserLoginEvent({
+        req,
+        email: attemptEmail,
+        outcome: 'failure',
+        errorCode: 'invalid-input',
+        loginMode,
+        loginPath,
+        redirectTo
+      });
       if (expectsJson) {
         return NextResponse.json({ error: 'Invalid input' }, { status: 400 });
       }
@@ -242,6 +254,15 @@ export async function POST(req: Request) {
     if (signInError || !signInData.user) {
       const errorCode = classifySignInErrorCode(signInError);
       const signInDebug = formatSignInErrorDetail(signInError);
+      await logUserLoginEvent({
+        req,
+        email: input.email,
+        outcome: 'failure',
+        errorCode,
+        loginMode: input.loginMode,
+        loginPath,
+        redirectTo: input.redirectTo
+      });
       if (expectsJson) {
         if (errorCode === 'email-not-confirmed') {
           return NextResponse.json({ error: 'Email not confirmed', code: errorCode }, { status: 403 });
@@ -267,6 +288,16 @@ export async function POST(req: Request) {
     if (!isRoleAllowedForLoginMode(role, input.loginMode)) {
       await supabase.auth.signOut();
       const errorCode = input.loginMode === 'pro' ? 'wrong-login-space-pro' : 'wrong-login-space-family';
+      await logUserLoginEvent({
+        req,
+        userId: signInData.user.id,
+        email: signInData.user.email ?? input.email,
+        outcome: 'failure',
+        errorCode,
+        loginMode: input.loginMode,
+        loginPath,
+        redirectTo: input.redirectTo
+      });
       if (expectsJson) {
         return NextResponse.json({ error: 'Login mode mismatch', code: errorCode }, { status: 403 });
       }
@@ -289,11 +320,30 @@ export async function POST(req: Request) {
         ? requestedRedirect
         : defaultRedirect;
 
+    await logUserLoginEvent({
+      req,
+      userId: signInData.user.id,
+      email: signInData.user.email ?? input.email,
+      outcome: 'success',
+      loginMode: input.loginMode,
+      loginPath,
+      redirectTo: redirectPath
+    });
+
     return NextResponse.redirect(new URL(redirectPath, req.url), { status: 303 });
   } catch (error) {
     console.error('[auth/login] unexpected error:', error);
     const errorCode = classifyLoginError(error);
     const detail = error instanceof Error ? error.message : String(error ?? '');
+    await logUserLoginEvent({
+      req,
+      email: attemptEmail,
+      outcome: 'failure',
+      errorCode,
+      loginMode,
+      loginPath,
+      redirectTo
+    });
     if (expectsJson) {
       return NextResponse.json({ error: 'Authentication error', code: errorCode }, { status: 500 });
     }

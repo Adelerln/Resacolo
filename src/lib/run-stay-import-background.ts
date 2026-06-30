@@ -425,6 +425,7 @@ async function runColosBonheurFallback(params: {
   const beforePricedTransportCount = countPricedTransportVariants(params.baseTransportVariants);
   const candidates = discoverColosFallbackCandidates(params.html, params.pageUrl);
   const attempts: Array<Record<string, unknown>> = [];
+  let hasSuccessfulStaticFetch = false;
 
   let mergedSessions = params.baseSessions;
   let mergedTransportVariants = [...params.baseTransportVariants];
@@ -434,6 +435,7 @@ async function runColosBonheurFallback(params: {
   for (const candidate of candidates) {
     try {
       const fetched = await fetchHtml(candidate.url);
+      hasSuccessfulStaticFetch = true;
       const extracted = extractStayData(fetched.html, fetched.finalUrl);
       const paginatedData = await fetchPaginatedDepartureTableData(fetched.html, fetched.finalUrl).catch(
         () => null
@@ -497,7 +499,8 @@ async function runColosBonheurFallback(params: {
     params.includePricing && countPricedTransportVariants(mergedTransportVariants) === 0;
   const priorityUrl = candidates[0]?.url ?? null;
 
-  if ((sessionsStillMissing || transportStillMissing) && priorityUrl) {
+  // Keep the static fetch as a hard prerequisite before any dynamic browser rendering.
+  if ((sessionsStillMissing || transportStillMissing) && priorityUrl && hasSuccessfulStaticFetch) {
     const snapshot = await withTimeout(
       renderStayPageWithPlaywright(priorityUrl, {
         collectImages: false,
@@ -550,6 +553,16 @@ async function runColosBonheurFallback(params: {
         browser_engine: snapshot.browserEngine
       });
     }
+  } else if ((sessionsStillMissing || transportStillMissing) && priorityUrl && !hasSuccessfulStaticFetch) {
+    attempts.push({
+      stage: 'playwright',
+      candidate_url: priorityUrl,
+      success: false,
+      error: 'skipped-fetch-required',
+      sessions_found: 0,
+      transport_variants_found: 0,
+      priced_transport_variants_found: 0
+    });
   }
 
   const afterSessionCount = countUsableSessions(mergedSessions);

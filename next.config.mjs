@@ -6,10 +6,22 @@ const supabaseHostname = process.env.NEXT_PUBLIC_SUPABASE_URL
   : null;
 
 const projectRoot = path.dirname(fileURLToPath(import.meta.url));
-const playwrightRuntimeIncludes = [
-  './node_modules/@sparticuz/chromium/**/*',
-  './node_modules/playwright-core/**/*'
+const sparticuzChromiumBinIncludes = [
+  'node_modules/@sparticuz/chromium/bin/**',
+  'node_modules/@sparticuz/chromium/build/**',
+  'node_modules/@sparticuz/chromium/package.json'
 ];
+const playwrightRuntimeIncludes = [
+  ...sparticuzChromiumBinIncludes,
+  'node_modules/playwright-core/**',
+  'node_modules/playwright-core/browsers.json'
+];
+const stayImportRouteTracing = {
+  '/api/import-stay': playwrightRuntimeIncludes,
+  '/api/import-stay/route': playwrightRuntimeIncludes,
+  '/api/stay-drafts/[id]/run-import': playwrightRuntimeIncludes,
+  '/api/stay-drafts/[id]/run-import/route': playwrightRuntimeIncludes
+};
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -20,10 +32,7 @@ const nextConfig = {
   serverExternalPackages: ['@sparticuz/chromium', 'playwright-core'],
   output: 'standalone',
   outputFileTracingRoot: projectRoot,
-  outputFileTracingIncludes: {
-    '/api/import-stay': playwrightRuntimeIncludes,
-    '/api/stay-drafts/[id]/run-import': playwrightRuntimeIncludes
-  },
+  outputFileTracingIncludes: stayImportRouteTracing,
   images: {
     remotePatterns: [
       {

@@ -9,6 +9,7 @@ import {
 } from '@/lib/stay-draft-import';
 import { draftSessionStableKey } from '@/lib/draft-session-keys';
 import { existsSync } from 'node:fs';
+import path from 'node:path';
 
 type PageWaitUntil = 'load' | 'domcontentloaded';
 
@@ -89,7 +90,7 @@ interface BrowserType {
 
 type ServerlessChromiumRuntime = {
   args?: string[];
-  executablePath?: () => Promise<string>;
+  executablePath?: (input?: string) => Promise<string>;
   headless?: boolean | 'shell';
 };
 
@@ -1961,7 +1962,7 @@ type PlaywrightRuntime = {
   source: 'playwright' | 'playwright-core';
   chromiumArgs?: string[];
   chromiumHeadless?: boolean;
-  chromiumExecutablePathResolver?: (() => Promise<string>) | null;
+  chromiumExecutablePathResolver?: ((input?: string) => Promise<string>) | null;
 };
 
 type BrowserRuntimeAvailability = {
@@ -1989,6 +1990,44 @@ function useServerlessChromiumRuntime() {
   return process.env.VERCEL === '1' || process.env.VERCEL_ENV === 'production' || process.env.VERCEL_ENV === 'preview';
 }
 
+function sparticuzChromiumBinCandidates(): string[] {
+  const cwd = process.cwd();
+  return [
+    path.join(cwd, 'node_modules/@sparticuz/chromium/bin'),
+    path.join(cwd, '.next/server/node_modules/@sparticuz/chromium/bin'),
+    path.join(cwd, '.next/standalone/node_modules/@sparticuz/chromium/bin')
+  ];
+}
+
+async function resolveSparticuzChromiumExecutablePath(
+  chromiumExecutablePath: (input?: string) => Promise<string>
+): Promise<string | null> {
+  for (const binPath of sparticuzChromiumBinCandidates()) {
+    if (!existsSync(binPath)) continue;
+    try {
+      const resolved = await chromiumExecutablePath(binPath);
+      if (typeof resolved === 'string' && resolved.trim().length > 0) {
+        return resolved.trim();
+      }
+    } catch (error) {
+      console.warn('[playwright-import] sparticuz bin candidate failed', {
+        binPath,
+        error: error instanceof Error ? error.message : 'unknown-error'
+      });
+    }
+  }
+
+  try {
+    const resolved = await chromiumExecutablePath();
+    return typeof resolved === 'string' && resolved.trim().length > 0 ? resolved.trim() : null;
+  } catch (error) {
+    console.warn('[playwright-import] sparticuz executablePath failed', {
+      error: error instanceof Error ? error.message : 'unknown-error'
+    });
+    return null;
+  }
+}
+
 function resolveExecutablePath(browserType: BrowserType, engine: BrowserEngineName): string | null {
   const envPath = browserExecutableEnvVar(engine);
   if (envPath) return envPath;
@@ -2011,12 +2050,7 @@ async function resolveExecutablePathAsync(
   const envPath = browserExecutableEnvVar(engine);
   if (envPath) return envPath;
   if (engine === 'chromium' && runtime.chromiumExecutablePathResolver) {
-    try {
-      const path = await runtime.chromiumExecutablePathResolver();
-      return typeof path === 'string' && path.trim().length > 0 ? path.trim() : null;
-    } catch {
-      return null;
-    }
+    return resolveSparticuzChromiumExecutablePath(runtime.chromiumExecutablePathResolver);
   }
   return resolveExecutablePath(browserType, engine);
 }

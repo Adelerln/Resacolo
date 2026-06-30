@@ -33,7 +33,19 @@ function applyFrenchNbspBeforePunctuation(value: string) {
   return value.replace(/ ([!?;:])/g, '&nbsp;$1');
 }
 
-const ORGANIZER_DURATION_META_PATTERN = /<!--\s*resacolo:duration:(\d*):(\d*)\s*-->/i;
+const ORGANIZER_DURATION_META_PATTERN = /<!--\s*resacolo:duration:(\d*):(\d*)\s*-->/gi;
+const ORGANIZER_PAYMENT_AIDS_META_PATTERN = /<!--\s*resacolo:payment-aids:([a-z_,\s-]*)\s*-->/gi;
+
+function stripOrganizerDescriptionMeta(value?: string | null) {
+  return (value ?? '')
+    .replace(ORGANIZER_DURATION_META_PATTERN, '')
+    .replace(ORGANIZER_PAYMENT_AIDS_META_PATTERN, '')
+    .trim();
+}
+
+export function extractOrganizerPresentationHtmlForEditor(value?: string | null) {
+  return sanitizeOrganizerRichText(stripOrganizerDescriptionMeta(value) || null);
+}
 
 export function convertPlainTextToRichTextHtml(value: string) {
   const paragraphs = value
@@ -82,7 +94,7 @@ export function extractOrganizerRichTextPlainText(value?: string | null) {
 
 export function extractOrganizerDurationMeta(value?: string | null) {
   const raw = value ?? '';
-  const match = raw.match(ORGANIZER_DURATION_META_PATTERN);
+  const match = raw.match(/<!--\s*resacolo:duration:(\d*):(\d*)\s*-->/i);
   const parseValue = (input?: string) => {
     if (!input) return null;
     const parsed = Number(input);
@@ -90,7 +102,7 @@ export function extractOrganizerDurationMeta(value?: string | null) {
   };
 
   return {
-    description: raw.replace(ORGANIZER_DURATION_META_PATTERN, '').trim() || null,
+    description: stripOrganizerDescriptionMeta(raw) || null,
     stayDurationMinDays: parseValue(match?.[1]),
     stayDurationMaxDays: parseValue(match?.[2])
   };
@@ -101,7 +113,7 @@ export function embedOrganizerDurationMeta(
   stayDurationMinDays: number | null,
   stayDurationMaxDays: number | null
 ) {
-  const cleanedDescription = (description ?? '').replace(ORGANIZER_DURATION_META_PATTERN, '').trim();
+  const cleanedDescription = stripOrganizerDescriptionMeta(description);
 
   if (stayDurationMinDays == null && stayDurationMaxDays == null) {
     return cleanedDescription || null;

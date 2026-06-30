@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import DraftReferenceCopyField from '@/components/organisme/DraftReferenceCopyField';
 
 type AccommodationOption = { id: string; label: string };
@@ -30,6 +30,25 @@ type ImportProgressState = {
 };
 type ImportAction = 'created' | 'existing' | 'restarted';
 type ExistingDraftContext = 'visible' | 'validated' | 'published';
+
+async function requestStayImportRun(draftId: string, organizerId: string) {
+  const response = await fetch(
+    `/api/stay-drafts/${draftId}/run-import?organizerId=${encodeURIComponent(organizerId)}`,
+    {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json'
+      },
+      credentials: 'same-origin',
+      cache: 'no-store'
+    }
+  );
+
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(payload?.error ?? "Impossible de lancer l'import du brouillon.");
+  }
+}
 
 /**
  * Lancement AJAX vers `/api/import-stay` avec suivi visuel local pendant l’attente
@@ -68,6 +87,7 @@ export default function ImportStayPrefillForm({
   );
   const [importAction, setImportAction] = useState<ImportAction>(initialImportAction ?? 'created');
   const [existingDraftContext, setExistingDraftContext] = useState<ExistingDraftContext | null>(null);
+  const importKickoffRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!hasServerHydratedImportState || !initialImportAction) {
@@ -101,12 +121,14 @@ export default function ImportStayPrefillForm({
             headers: {
               Accept: 'application/json'
             },
+            credentials: 'same-origin',
             cache: 'no-store'
           }
         );
 
         const payload = (await response.json().catch(() => null)) as
           | {
+              error?: string;
               importProgress?: {
                 step?: string;
                 label?: string;
@@ -117,7 +139,22 @@ export default function ImportStayPrefillForm({
             }
           | null;
 
-        if (!response.ok || !payload?.importProgress || cancelled) {
+        if (cancelled) return;
+
+        if (response.status === 401) {
+          setImportProgress({
+            step: 'failed',
+            label: 'Session expirée',
+            percent: 100,
+            completed: true,
+            error:
+              payload?.error ??
+              'Votre session a expiré. Reconnectez-vous puis relancez l’import.'
+          });
+          return;
+        }
+
+        if (!response.ok || !payload?.importProgress) {
           return;
         }
 
@@ -147,6 +184,36 @@ export default function ImportStayPrefillForm({
     };
   }, [createdDraftId, importAction, importProgress?.completed, organizerId]);
 
+  useEffect(() => {
+    if (!createdDraftId || importAction === 'existing') return;
+    if (importProgress?.completed) return;
+    const step = importProgress?.step ?? 'created';
+    if (step !== 'created' && step !== 'failed') return;
+    if (importKickoffRef.current === createdDraftId) return;
+
+    importKickoffRef.current = createdDraftId;
+    void requestStayImportRun(createdDraftId, organizerId).catch((error) => {
+      importKickoffRef.current = null;
+      const message = error instanceof Error ? error.message : "Impossible de lancer l'import.";
+      setImportProgress((current) =>
+        current
+          ? {
+              ...current,
+              completed: true,
+              error: message,
+              label: 'Import interrompu'
+            }
+          : current
+      );
+    });
+  }, [
+    createdDraftId,
+    importAction,
+    importProgress?.completed,
+    importProgress?.step,
+    organizerId
+  ]);
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = event.currentTarget;
@@ -159,6 +226,7 @@ export default function ImportStayPrefillForm({
     setImportProgress(null);
     setImportAction('created');
     setExistingDraftContext(null);
+    importKickoffRef.current = null;
     setPending(true);
 
     try {
@@ -167,6 +235,7 @@ export default function ImportStayPrefillForm({
         headers: {
           Accept: 'application/json'
         },
+        credentials: 'same-origin',
         body: new FormData(form)
       });
 

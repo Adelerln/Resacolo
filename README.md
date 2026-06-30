@@ -46,6 +46,21 @@ SMTP_PASS=pass
 SMTP_FROM=chatbot@resacolo.com
 ```
 
+URL canonique du site (SEO, sitemap, métadonnées) :
+
+```
+NEXT_PUBLIC_SITE_URL=https://resacolo.com
+```
+
+Redirections de domaine Vercel (optionnel, à activer uniquement quand `resacolo.com` est servi par Vercel) :
+
+```
+ENABLE_CANONICAL_HOST_REDIRECTS=1
+CANONICAL_HOST=resacolo.com
+```
+
+Voir `docs/vercel-domains-runbook.md` pour la bascule DNS / domaines.
+
 ## Synchronisation des séjours
 
 - La page `/sejours` appelle `getStays()` côté serveur, qui

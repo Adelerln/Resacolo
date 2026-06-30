@@ -6,6 +6,7 @@ import { WebVitalsReporter } from '@/components/perf/WebVitalsReporter';
 import { SiteShell } from '@/components/layout/SiteShell';
 import { getCurrentUser } from '@/lib/auth/session';
 import { readFamilyCseAffiliation, readPublicSitePartnerBranding } from '@/lib/account-profile/server';
+import { SITE_URL } from '@/lib/seo';
 import type { PublicSitePartnerBranding } from '@/types/partner-branding';
 
 const raleway = localFont({
@@ -32,7 +33,7 @@ export const metadata: Metadata = {
   title: 'Resacolo | Plateforme des colonies de vacances',
   description:
     'Découvrez toutes les colonies de vacances proposées par les membres de Resacolo et trouvez le séjour idéal pour chaque enfant.',
-  metadataBase: new URL('https://resacolo.com'),
+  metadataBase: new URL(SITE_URL),
   icons: {
     icon: '/image/footer/gouttes.png',
     shortcut: '/image/footer/gouttes.png',

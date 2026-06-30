@@ -7,7 +7,16 @@ import {
   getHomePathForRole,
   resolveRoleContextForUserId
 } from '@/lib/auth/roles';
+import { resolveCanonicalHostRedirect } from '@/lib/site-host';
 import type { Database } from '@/types/supabase';
+
+const PROTECTED_PATH_PREFIXES = [
+  '/admin',
+  '/organisme',
+  '/partenaire',
+  '/mnemos',
+  '/back-office'
+] as const;
 
 function buildRedirectTo(req: NextRequest, pathname: string) {
   const url = new URL(pathname, req.url);
@@ -19,6 +28,22 @@ function buildLoginRedirect(req: NextRequest) {
   const loginUrl = new URL('/login', req.url);
   loginUrl.searchParams.set('redirectTo', redirectTo);
   return loginUrl;
+}
+
+function maybeRedirectToCanonicalHost(req: NextRequest) {
+  const canonicalHost = resolveCanonicalHostRedirect(req.headers.get('host'));
+  if (!canonicalHost) return null;
+
+  const redirectUrl = req.nextUrl.clone();
+  redirectUrl.protocol = 'https:';
+  redirectUrl.host = canonicalHost;
+  return NextResponse.redirect(redirectUrl, 308);
+}
+
+function isProtectedPath(pathname: string) {
+  return PROTECTED_PATH_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
+  );
 }
 
 function getMiddlewareServiceClient() {
@@ -36,8 +61,17 @@ function getMiddlewareServiceClient() {
 }
 
 export async function middleware(req: NextRequest) {
+  const canonicalRedirect = maybeRedirectToCanonicalHost(req);
+  if (canonicalRedirect) {
+    return canonicalRedirect;
+  }
+
   if (req.nextUrl.pathname.startsWith('/back-office')) {
     return NextResponse.redirect(buildRedirectTo(req, '/organisme'));
+  }
+
+  if (!isProtectedPath(req.nextUrl.pathname)) {
+    return NextResponse.next();
   }
 
   const res = NextResponse.next();
@@ -60,11 +94,6 @@ export async function middleware(req: NextRequest) {
 
 export const config = {
   matcher: [
-    '/admin/:path*',
-    '/organisme/:path*',
-    '/partenaire/:path*',
-    '/mnemos/:path*',
-    '/back-office/:path*',
-    '/back-office'
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|ttf|woff|woff2)$).*)'
   ]
 };

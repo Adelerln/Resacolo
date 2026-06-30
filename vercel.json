@@ -1,0 +1,16 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "redirects": [
+    {
+      "source": "/:path*",
+      "has": [
+        {
+          "type": "host",
+          "value": "www.resacolo.com"
+        }
+      ],
+      "destination": "https://resacolo.com/:path*",
+      "statusCode": 308
+    }
+  ]
+}

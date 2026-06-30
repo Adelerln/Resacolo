@@ -59,13 +59,21 @@ export default function OrganizerProfileFormEnhancer({
         'input, textarea, select'
       )
     ).filter((field) => {
-      if (field.type === 'submit' || field.type === 'button') return false;
-      if (field.type === 'hidden') return field.dataset.trackDirty === 'true';
+      if (field instanceof HTMLInputElement && (field.type === 'submit' || field.type === 'button')) {
+        return false;
+      }
+      if (field instanceof HTMLTextAreaElement && field.hidden) {
+        return field.dataset.trackDirty === 'true';
+      }
+      if (field instanceof HTMLInputElement && field.type === 'hidden') {
+        return field.dataset.trackDirty === 'true';
+      }
       return true;
     });
     const visualFields = trackedFields.filter(
       (field): field is HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement =>
-        !(field instanceof HTMLInputElement && field.type === 'hidden')
+        !(field instanceof HTMLInputElement && field.type === 'hidden') &&
+        !(field instanceof HTMLTextAreaElement && field.hidden)
     );
 
     const initialValues = new Map(trackedFields.map((field) => [field, normalizeValue(field)]));
@@ -76,7 +84,10 @@ export default function OrganizerProfileFormEnhancer({
         markFieldDirty(field, normalizeValue(field) !== initialValues.get(field));
       }
       for (const field of trackedFields) {
-        if (!(field instanceof HTMLInputElement) || field.type !== 'hidden') continue;
+        const isHiddenTrackedField =
+          (field instanceof HTMLInputElement && field.type === 'hidden') ||
+          (field instanceof HTMLTextAreaElement && field.hidden);
+        if (!isHiddenTrackedField) continue;
         const targetId = field.dataset.dirtyTarget;
         if (!targetId) continue;
         const target = document.getElementById(targetId);

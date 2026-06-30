@@ -16,6 +16,7 @@ import {
 import {
   embedOrganizerDurationMeta,
   extractOrganizerDurationMeta,
+  extractOrganizerPresentationHtmlForEditor,
   sanitizeOrganizerRichText
 } from '@/lib/organizer-rich-text';
 import { syncOrganizerProfileCompletenessPercent } from '@/lib/organizer-profile-completeness';
@@ -199,6 +200,10 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
 
   async function updateProfile(formData: FormData) {
     'use server';
+    await requireOrganizerPageAccess({
+      requestedOrganizerId: currentOrganizerId,
+      requiredSection: 'organizer-profile'
+    });
     const supabase = getServerSupabaseClient();
     const name = String(formData.get('name') ?? '').trim();
     const contactEmail = String(formData.get('contact_email') ?? '').trim();
@@ -375,6 +380,7 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
         key={organizer.id}
         id="organizer-profile-form"
         action={updateProfile}
+        encType="multipart/form-data"
         className="space-y-4"
       >
         <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
@@ -476,9 +482,7 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
             <OrganizerRichTextEditor
               name="description"
               label="Texte de présentation"
-              initialValue={sanitizeOrganizerRichText(
-                extractOrganizerPaymentAidsMeta(organizer.description ?? '').description ?? ''
-              )}
+              initialValue={extractOrganizerPresentationHtmlForEditor(organizer.description)}
             />
           </div>
           <div className="mt-4 grid gap-4 md:grid-cols-2">

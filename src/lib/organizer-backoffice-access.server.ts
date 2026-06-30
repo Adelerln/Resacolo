@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { redirect } from 'next/navigation';
+import { getApiSession } from '@/lib/auth/api';
 import { getCurrentUser, type SessionPayload } from '@/lib/auth/session';
 import {
   canAccessOrganizerSection,
@@ -131,7 +132,7 @@ export async function requireOrganizerApiAccess(options?: {
 > {
   const requiredSection = options?.requiredSection;
   const requestedOrganizerId = normalizeRequestedOrganizerId(options?.requestedOrganizerId);
-  const session = await getCurrentUser();
+  const session = await getApiSession();
   if (!session) {
     return { ok: false, status: 401, error: 'Authentification requise.' };
   }

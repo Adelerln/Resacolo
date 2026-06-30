@@ -29,6 +29,7 @@ import { normalizeStayAges } from '@/lib/stay-ages';
 import { writeDraftDestinationFields } from '@/lib/stay-draft-destination';
 import { resolveStayDestination } from '@/lib/stay-destination-resolver';
 import { tryCanonicalizeStaySourceUrl } from '@/lib/stay-source-url-canonical';
+import { isStayImportAlreadyRunning } from '@/lib/stay-import-progress';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { normalizeStayTitle } from '@/lib/stay-title';
 import type { Json } from '@/types/supabase';
@@ -1053,12 +1054,15 @@ async function mergeRawPayloadError(
     row?.raw_payload && typeof row.raw_payload === 'object' && !Array.isArray(row.raw_payload)
       ? { ...(row.raw_payload as Record<string, unknown>) }
       : {};
-  await supabase
+  const { error } = await supabase
     .from('stay_drafts')
     .update({
       raw_payload: { ...base, ...patch } as Json
     })
     .eq('id', draftId);
+  if (error) {
+    console.error('[import-stay] raw_payload merge failed', { draftId, message: error.message });
+  }
 }
 
 async function mergeRawPayloadPatch(
@@ -1084,6 +1088,17 @@ export async function runStayImportInBackground(params: {
   const supabase = getServerSupabaseClient();
 
   try {
+    const { data: existingRow } = await supabase
+      .from('stay_drafts')
+      .select('raw_payload')
+      .eq('id', draftId)
+      .maybeSingle();
+
+    if (isStayImportAlreadyRunning(existingRow?.raw_payload)) {
+      console.info('[import-stay] import déjà en cours, abandon', { draftId });
+      return;
+    }
+
     await mergeRawPayloadPatch(draftId, {
       import_progress: buildImportProgress('fetching')
     });

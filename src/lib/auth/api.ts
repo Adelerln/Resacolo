@@ -36,7 +36,7 @@ function buildApiSessionPayload(
   };
 }
 
-async function getApiSession(): Promise<SessionPayload | null> {
+export async function getApiSession(): Promise<SessionPayload | null> {
   const cookieStore = await cookies();
   const cookieAccess = (() => cookieStore) as unknown as typeof cookies;
   const supabase = createRouteHandlerClient<Database>({

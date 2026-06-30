@@ -1,15 +1,13 @@
-import { after } from 'next/server';
 import { NextResponse } from 'next/server';
 import { requireOrganizerApiAccess } from '@/lib/organizer-backoffice-access.server';
 import { withOrganizerQuery } from '@/lib/organizers.server';
-import { runStayImportInBackground } from '@/lib/run-stay-import-background';
 import { canonicalizeStaySourceUrl, tryCanonicalizeStaySourceUrl } from '@/lib/stay-source-url-canonical';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import type { Json } from '@/types/supabase';
 
 export const runtime = 'nodejs';
-/** Vercel : le travail lourd continue via `after()` après la redirection ; garder une marge pour Playwright + Thalie. */
-export const maxDuration = 300;
+/** L'import lourd est lancé par le client via POST /api/stay-drafts/[id]/run-import (after() est peu fiable sur Vercel). */
+export const maxDuration = 60;
 type ImportAction = 'created' | 'existing' | 'restarted';
 type ExistingDraftContext = 'visible' | 'validated' | 'published';
 
@@ -171,6 +169,7 @@ function shouldRefreshExistingDraftImport(existingDraft: ImportableDraftRow, inc
   reason:
     | 'failed_status'
     | 'already_pending'
+    | 'stale_pending_import'
     | 'missing_session_data'
     | 'session_data_present'
     | 'pricing_not_requested'
@@ -200,6 +199,22 @@ function shouldRefreshExistingDraftImport(existingDraft: ImportableDraftRow, inc
   }
 
   if (status === 'pending') {
+    const progress = toObject(toObject(existingDraft.raw_payload).import_progress);
+    const step = String(progress.step ?? 'created').trim().toLowerCase();
+    const completed = Boolean(progress.completed);
+    const isStaleImport = !completed && (step === 'created' || step === 'failed' || step.length === 0);
+
+    if (isStaleImport) {
+      return {
+        shouldRefresh: true,
+        reason: 'stale_pending_import',
+        currentPricedTransportCount,
+        recoveredPricedTransportCount,
+        currentDatedSessionCount,
+        previousIncludePricing
+      };
+    }
+
     return {
       shouldRefresh: false,
       reason: 'already_pending',
@@ -671,21 +686,6 @@ export async function POST(req: Request) {
       });
     }
 
-    const shouldLaunchBackgroundImport = existingHandling.importAction === 'restarted';
-    if (shouldLaunchBackgroundImport) {
-      const draftColumns = new Set(Object.keys(existingHandling.draft));
-      after(() => {
-        void runStayImportInBackground({
-          draftId: existingHandling.draft.id,
-          sourceUrl,
-          selectedOrganizerId,
-          selectedAccommodation,
-          includePricing,
-          draftColumnKeys: Array.from(draftColumns)
-        });
-      });
-    }
-
     if (requestExpectsJson(req)) {
       return NextResponse.json({
         success: true,
@@ -824,21 +824,6 @@ export async function POST(req: Request) {
       });
     }
 
-    const shouldLaunchBackgroundImport = conflictHandling.importAction === 'restarted';
-    if (shouldLaunchBackgroundImport) {
-      const draftColumns = new Set(Object.keys(conflictHandling.draft));
-      after(() => {
-        void runStayImportInBackground({
-          draftId: conflictHandling.draft.id,
-          sourceUrl,
-          selectedOrganizerId,
-          selectedAccommodation,
-          includePricing,
-          draftColumnKeys: Array.from(draftColumns)
-        });
-      });
-    }
-
     if (requestExpectsJson(req)) {
       return NextResponse.json({
         success: true,
@@ -852,21 +837,6 @@ export async function POST(req: Request) {
     return redirectToOrganizerStayCreation(req, selectedOrganizerId, {
       prefill: conflictHandling.importAction,
       draftId: conflictHandling.draft.id
-    });
-  }
-
-  const shouldLaunchBackgroundImport = true;
-  if (shouldLaunchBackgroundImport) {
-    const draftColumns = new Set(Object.keys(targetDraft));
-    after(() => {
-      void runStayImportInBackground({
-        draftId: targetDraft.id,
-        sourceUrl,
-        selectedOrganizerId,
-        selectedAccommodation,
-        includePricing,
-        draftColumnKeys: Array.from(draftColumns)
-      });
     });
   }
 

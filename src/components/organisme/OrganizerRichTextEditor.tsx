@@ -22,7 +22,8 @@ export default function OrganizerRichTextEditor({
 }: OrganizerRichTextEditorProps) {
   const initialSanitizedValue = sanitizeOrganizerRichText(initialValue);
   const editorRef = useRef<HTMLDivElement | null>(null);
-  const hiddenInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const hiddenInputRef = useRef<HTMLInputElement | null>(null);
+  const [htmlValue, setHtmlValue] = useState(initialSanitizedValue);
   const [activeCommands, setActiveCommands] = useState<Record<string, boolean>>({
     bold: false,
     italic: false,
@@ -31,11 +32,10 @@ export default function OrganizerRichTextEditor({
 
   const syncFromEditor = useCallback(() => {
     const nextHtml = sanitizeOrganizerRichText(editorRef.current?.innerHTML ?? '');
-    if (hiddenInputRef.current && hiddenInputRef.current.value !== nextHtml) {
-      hiddenInputRef.current.value = nextHtml;
-      hiddenInputRef.current.dispatchEvent(new Event('input', { bubbles: true }));
-      hiddenInputRef.current.dispatchEvent(new Event('change', { bubbles: true }));
-    }
+    setHtmlValue((current) => {
+      if (current === nextHtml) return current;
+      return nextHtml;
+    });
     setActiveCommands({
       bold: document.queryCommandState('bold'),
       italic: document.queryCommandState('italic'),
@@ -48,9 +48,7 @@ export default function OrganizerRichTextEditor({
     if (editorRef.current && editorRef.current.innerHTML !== nextHtml) {
       editorRef.current.innerHTML = nextHtml;
     }
-    if (hiddenInputRef.current && hiddenInputRef.current.value !== nextHtml) {
-      hiddenInputRef.current.value = nextHtml;
-    }
+    setHtmlValue(nextHtml);
   }, [initialSanitizedValue]);
 
   useEffect(() => {
@@ -61,9 +59,18 @@ export default function OrganizerRichTextEditor({
       syncFromEditor();
     };
 
+    const handleFormData = (event: Event) => {
+      if (!(event instanceof FormDataEvent)) return;
+      event.formData.set(name, sanitizeOrganizerRichText(editorRef.current?.innerHTML ?? htmlValue));
+    };
+
     form.addEventListener('submit', handleSubmit, true);
-    return () => form.removeEventListener('submit', handleSubmit, true);
-  }, [syncFromEditor]);
+    form.addEventListener('formdata', handleFormData);
+    return () => {
+      form.removeEventListener('submit', handleSubmit, true);
+      form.removeEventListener('formdata', handleFormData);
+    };
+  }, [htmlValue, name, syncFromEditor]);
 
   function applyCommand(command: (typeof TOOLBAR_ACTIONS)[number]['command']) {
     editorRef.current?.focus();
@@ -106,16 +113,16 @@ export default function OrganizerRichTextEditor({
           className="min-h-[220px] w-full rounded-b-lg bg-slate-100 px-3 py-3 text-sm font-normal leading-6 text-slate-700 outline-none"
         />
       </div>
-      <textarea
+      <input
         ref={hiddenInputRef}
         name={name}
-        defaultValue={initialSanitizedValue}
+        type="hidden"
+        value={htmlValue}
         data-track-dirty="true"
         data-dirty-target={`${name}-editor`}
-        hidden
-        readOnly
         aria-hidden="true"
         tabIndex={-1}
+        onChange={() => undefined}
       />
     </div>
   );

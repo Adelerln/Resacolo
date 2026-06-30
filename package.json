@@ -3,7 +3,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "node scripts/check-playwright-runtime.mjs && next build",
     "check:schema-columns": "node scripts/check-schema-columns.mjs",
     "check:user-login-events": "node scripts/verify-user-login-events.mjs",
     "check:seo": "node scripts/check-seo.mjs",
@@ -14,7 +14,7 @@
     "start": "next start",
     "lint": "eslint .",
     "seed": "node prisma/seed.js",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate && node scripts/install-playwright-chromium.mjs"
   },
   "dependencies": {
     "@prisma/client": "^5.20.0",

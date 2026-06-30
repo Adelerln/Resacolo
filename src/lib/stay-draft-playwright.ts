@@ -8,6 +8,7 @@ import {
   type ThalieSessionBaseline
 } from '@/lib/stay-draft-import';
 import { draftSessionStableKey } from '@/lib/draft-session-keys';
+import { existsSync } from 'node:fs';
 
 type PageWaitUntil = 'load' | 'domcontentloaded';
 
@@ -82,7 +83,8 @@ interface Browser {
 }
 
 interface BrowserType {
-  launch(options: { headless: boolean; slowMo: number }): Promise<Browser>;
+  launch(options: Record<string, unknown>): Promise<Browser>;
+  executablePath?: () => string;
 }
 
 const PLAYWRIGHT_TIMEOUT_MS = 15_000;
@@ -110,6 +112,13 @@ function playwrightImportSlowMo(): number {
 }
 
 type BrowserEngineName = 'chromium' | 'firefox' | 'webkit';
+
+export type BrowserRuntimeAvailabilityStatus =
+  | 'available'
+  | 'unavailable_module'
+  | 'unavailable_executable'
+  | 'launch_failed'
+  | 'navigation_blocked';
 
 export type DynamicStayPageSnapshot = {
   html: string;
@@ -1809,12 +1818,14 @@ async function snapshotWithEngine(
   playwright: Record<BrowserEngineName, BrowserType>,
   browserEngine: BrowserEngineName,
   sourceUrl: string,
-  options: PlaywrightSnapshotOptions
+  options: PlaywrightSnapshotOptions,
+  executablePath?: string | null
 ): Promise<DynamicStayPageSnapshot | null> {
   const launcher = playwright[browserEngine];
   const browser = await launcher.launch({
     headless: playwrightImportHeadless(),
-    slowMo: playwrightImportSlowMo()
+    slowMo: playwrightImportSlowMo(),
+    ...(executablePath ? { executablePath } : {})
   });
 
   let context: Awaited<ReturnType<Browser['newContext']>> | null = null;
@@ -1937,6 +1948,60 @@ type PlaywrightRuntime = {
   webkit: BrowserType;
 };
 
+type BrowserRuntimeAvailability = {
+  status: BrowserRuntimeAvailabilityStatus;
+  browserEngine: BrowserEngineName | null;
+  executablePath: string | null;
+  error: string | null;
+};
+
+export type BrowserRenderResult = {
+  status: BrowserRuntimeAvailabilityStatus;
+  snapshot: DynamicStayPageSnapshot | null;
+  browserEngine: BrowserEngineName | null;
+  executablePath: string | null;
+  error: string | null;
+};
+
+function browserExecutableEnvVar(engine: BrowserEngineName): string | null {
+  if (engine === 'chromium') return process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH?.trim() ?? null;
+  if (engine === 'firefox') return process.env.PLAYWRIGHT_FIREFOX_EXECUTABLE_PATH?.trim() ?? null;
+  return process.env.PLAYWRIGHT_WEBKIT_EXECUTABLE_PATH?.trim() ?? null;
+}
+
+function resolveExecutablePath(browserType: BrowserType, engine: BrowserEngineName): string | null {
+  const envPath = browserExecutableEnvVar(engine);
+  if (envPath) return envPath;
+  if (typeof browserType.executablePath === 'function') {
+    try {
+      const path = browserType.executablePath();
+      return typeof path === 'string' && path.trim().length > 0 ? path.trim() : null;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+function classifyBrowserLaunchFailure(error: unknown): BrowserRuntimeAvailabilityStatus {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  if (
+    /Executable doesn't exist|browserType\.launch: Executable|Failed to launch|spawn .*ENOENT|executable/i.test(
+      message
+    )
+  ) {
+    return 'unavailable_executable';
+  }
+  if (
+    /ERR_HTTP_RESPONSE_CODE_FAILURE|ERR_BLOCKED_BY_RESPONSE|ERR_CONNECTION|ERR_NAME_NOT_RESOLVED|Navigation timeout|net::/i.test(
+      message
+    )
+  ) {
+    return 'navigation_blocked';
+  }
+  return 'launch_failed';
+}
+
 async function loadPlaywrightRuntime(): Promise<PlaywrightRuntime | null> {
   try {
     const dynamicImport = new Function('moduleName', 'return import(moduleName);') as (
@@ -1955,6 +2020,38 @@ async function loadPlaywrightRuntime(): Promise<PlaywrightRuntime | null> {
   }
 }
 
+export async function getBrowserRuntimeAvailability(): Promise<BrowserRuntimeAvailability> {
+  const runtime = await loadPlaywrightRuntime();
+  if (!runtime) {
+    return {
+      status: 'unavailable_module',
+      browserEngine: null,
+      executablePath: null,
+      error: 'playwright-module-unavailable'
+    };
+  }
+
+  const candidates: BrowserEngineName[] = ['chromium', 'firefox', 'webkit'];
+  for (const engine of candidates) {
+    const executablePath = resolveExecutablePath(runtime[engine], engine);
+    if (executablePath && existsSync(executablePath)) {
+      return {
+        status: 'available',
+        browserEngine: engine,
+        executablePath,
+        error: null
+      };
+    }
+  }
+
+  return {
+    status: 'unavailable_executable',
+    browserEngine: 'chromium',
+    executablePath: resolveExecutablePath(runtime.chromium, 'chromium'),
+    error: 'playwright-executable-missing'
+  };
+}
+
 /**
  * Rend la page séjour dans un navigateur réel pour images carrousel, vidéos et transport dynamique.
  *
@@ -1971,25 +2068,60 @@ export async function renderStayPageWithPlaywright(
   sourceUrl: string,
   options: PlaywrightSnapshotOptions = {}
 ): Promise<DynamicStayPageSnapshot | null> {
+  const result = await renderStayPageWithPlaywrightDetailed(sourceUrl, options);
+  return result.snapshot;
+}
+
+export async function renderStayPageWithPlaywrightDetailed(
+  sourceUrl: string,
+  options: PlaywrightSnapshotOptions = {}
+): Promise<BrowserRenderResult> {
   const snapshotOptions: Required<PlaywrightSnapshotOptions> = {
     collectImages: options.collectImages ?? true,
     collectTransport: options.collectTransport ?? false,
     collectVideos: options.collectVideos ?? true
   };
+  const availability = await getBrowserRuntimeAvailability();
+  if (availability.status !== 'available') {
+    return {
+      status: availability.status,
+      snapshot: null,
+      browserEngine: availability.browserEngine,
+      executablePath: availability.executablePath,
+      error: availability.error
+    };
+  }
+
   const runtime = await loadPlaywrightRuntime();
   if (!runtime) {
-    return null;
+    return {
+      status: 'unavailable_module',
+      snapshot: null,
+      browserEngine: null,
+      executablePath: null,
+      error: 'playwright-module-unavailable'
+    };
   }
+
   const { chromium, firefox, webkit } = runtime;
 
-  const engines: BrowserEngineName[] = ['chromium', 'firefox', 'webkit'];
+  const engines = Array.from(
+    new Set<BrowserEngineName>([availability.browserEngine ?? 'chromium', 'chromium', 'firefox', 'webkit'])
+  );
+  let lastFailureStatus: BrowserRuntimeAvailabilityStatus = 'launch_failed';
+  let lastFailureMessage: string | null = null;
   for (const engine of engines) {
     try {
+      const executablePath =
+        engine === availability.browserEngine
+          ? availability.executablePath
+          : resolveExecutablePath(runtime[engine], engine);
       const snapshot = await snapshotWithEngine(
         { chromium, firefox, webkit },
         engine,
         sourceUrl,
-        snapshotOptions
+        snapshotOptions,
+        executablePath
       );
       const hasUsefulSessions =
         (snapshot?.ceslSessionsFromPlaywright.length ?? 0) > 0 ||
@@ -2013,17 +2145,37 @@ export async function renderStayPageWithPlaywright(
           snapshot.tableSessionsFromPlaywright.length > 0 ||
           snapshot.tableDepartureRowCount > 0)
       ) {
-        return snapshot;
+        return {
+          status: 'available',
+          snapshot,
+          browserEngine: engine,
+          executablePath,
+          error: null
+        };
       }
+      lastFailureStatus = 'navigation_blocked';
+      lastFailureMessage = 'browser_render_empty';
     } catch (error) {
+      lastFailureStatus = classifyBrowserLaunchFailure(error);
+      lastFailureMessage = error instanceof Error ? error.message : 'unknown-error';
       console.warn('[playwright-import] engine failed', {
         engine,
         sourceUrl,
-        error: error instanceof Error ? error.message : 'unknown-error'
+        error: lastFailureMessage
       });
       continue;
     }
   }
 
-  return null;
+  return {
+    status: lastFailureStatus,
+    snapshot: null,
+    browserEngine: availability.browserEngine,
+    executablePath: availability.executablePath,
+    error: lastFailureMessage
+  };
 }
+
+export const __testables__ = {
+  classifyBrowserLaunchFailure
+};

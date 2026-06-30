@@ -23,9 +23,11 @@ import {
 import { load } from 'cheerio';
 import {
   renderStayPageWithPlaywright,
+  renderStayPageWithPlaywrightDetailed,
   shouldUsePlaywrightForDynamicImages,
   shouldUsePlaywrightForDynamicSessions,
-  shouldUsePlaywrightForDynamicTransport
+  shouldUsePlaywrightForDynamicTransport,
+  type BrowserRenderResult
 } from '@/lib/stay-draft-playwright';
 import { normalizeStayAges } from '@/lib/stay-ages';
 import { writeDraftDestinationFields } from '@/lib/stay-draft-destination';
@@ -44,10 +46,65 @@ function envTruthy(value: string | undefined): boolean {
 
 const PLAYWRIGHT_RENDER_BUDGET_MS = 20_000;
 
-function isFetch403Error(error: unknown): boolean {
+function getFetchBlockedStatus(error: unknown): number | null {
   const message = error instanceof Error ? error.message : String(error ?? '');
-  return /HTTP 403\b/.test(message);
+  const match = message.match(/HTTP\s+(\d{3})\b/i);
+  if (!match) return null;
+  const status = Number(match[1]);
+  return [401, 403, 429].includes(status) ? status : null;
 }
+
+function isFetchBlockedError(error: unknown): boolean {
+  return getFetchBlockedStatus(error) !== null;
+}
+
+function looksLikeBotChallenge(html: string | null | undefined): boolean {
+  const value = String(html ?? '').slice(0, 12_000).toLowerCase();
+  if (!value) return false;
+  return [
+    'attention required',
+    'just a moment',
+    'cf-browser-verification',
+    'captcha',
+    'access denied',
+    '/cdn-cgi/challenge-platform/',
+    'verify you are human'
+  ].some((pattern) => value.includes(pattern));
+}
+
+function shouldUseBrowserFallbackAfterFetch(html: string): boolean {
+  const trimmed = html.trim();
+  if (!trimmed) return true;
+  if (trimmed.length < 200) return true;
+  return looksLikeBotChallenge(trimmed);
+}
+
+function buildBrowserFallbackErrorMessage(params: {
+  fetchStatus: number | null;
+  browserRuntimeStatus: string | null;
+  fallbackError: string | null;
+}): string {
+  const fetchPrefix = params.fetchStatus
+    ? `Le site source bloque le fetch serveur (HTTP ${params.fetchStatus}).`
+    : 'Le site source bloque le fetch serveur.';
+  if (params.browserRuntimeStatus === 'unavailable_module' || params.browserRuntimeStatus === 'unavailable_executable') {
+    return `${fetchPrefix} Le fallback navigateur n’est pas disponible en production.`;
+  }
+  if (params.browserRuntimeStatus === 'navigation_blocked') {
+    return `${fetchPrefix} Le site source bloque aussi le navigateur.`;
+  }
+  if (params.fallbackError === 'browser_render_empty') {
+    return `${fetchPrefix} Le navigateur a chargé une page inutilisable pour l’import.`;
+  }
+  return `${fetchPrefix} Le fallback navigateur a échoué.`;
+}
+
+export const __testables__ = {
+  getFetchBlockedStatus,
+  isFetchBlockedError,
+  shouldUseBrowserFallbackAfterFetch,
+  buildBrowserFallbackErrorMessage
+};
 
 function normalizeForCompare(value: string | null | undefined): string {
   return String(value ?? '')
@@ -517,7 +574,7 @@ async function runColosBonheurFallback(params: {
 
   // Keep the static fetch as a hard prerequisite before any dynamic browser rendering.
   if ((sessionsStillMissing || transportStillMissing) && priorityUrl && hasSuccessfulStaticFetch) {
-    const snapshot = await withTimeout(
+    const snapshot: Awaited<ReturnType<typeof renderStayPageWithPlaywright>> = await withTimeout(
       renderStayPageWithPlaywright(priorityUrl, {
         collectImages: false,
         collectTransport: transportStillMissing,
@@ -1101,6 +1158,31 @@ async function mergeRawPayloadPatch(
   await mergeRawPayloadError(draftId, patch);
 }
 
+async function mergeImportDebugPatch(
+  draftId: string,
+  patch: Record<string, unknown>
+): Promise<void> {
+  const supabase = getServerSupabaseClient();
+  const { data: row } = await supabase.from('stay_drafts').select('raw_payload').eq('id', draftId).maybeSingle();
+  const base =
+    row?.raw_payload && typeof row.raw_payload === 'object' && !Array.isArray(row.raw_payload)
+      ? { ...(row.raw_payload as Record<string, unknown>) }
+      : {};
+  const currentDebug =
+    base.import_debug && typeof base.import_debug === 'object' && !Array.isArray(base.import_debug)
+      ? { ...(base.import_debug as Record<string, unknown>) }
+      : {};
+  const { error } = await supabase
+    .from('stay_drafts')
+    .update({
+      raw_payload: { ...base, import_debug: { ...currentDebug, ...patch } } as Json
+    })
+    .eq('id', draftId);
+  if (error) {
+    console.error('[import-stay] import_debug merge failed', { draftId, message: error.message });
+  }
+}
+
 /**
  * Import lourd (fetch, Playwright, Thalie…) — à lancer via `after()` pour ne pas bloquer la réponse HTTP.
  */
@@ -1131,21 +1213,43 @@ export async function runStayImportInBackground(params: {
     await mergeRawPayloadPatch(draftId, {
       import_progress: buildImportProgress('fetching')
     });
+    await mergeImportDebugPatch(draftId, {
+      fetch_status: null,
+      fetch_final_url: null,
+      fallback_attempted: false,
+      fallback_reason: null,
+      browser_runtime_status: null,
+      browser_engine: null,
+      fallback_error: null
+    });
 
     let fetchedHtml: Awaited<ReturnType<typeof fetchHtml>>;
     try {
       fetchedHtml = await fetchHtml(sourceUrl);
+      await mergeImportDebugPatch(draftId, {
+        fetch_status: fetchedHtml.status,
+        fetch_final_url: fetchedHtml.finalUrl
+      });
     } catch (error) {
       const fetchErrorMessage =
         error instanceof Error ? error.message : 'Impossible de récupérer la page source.';
+      const blockedFetchStatus = getFetchBlockedStatus(error);
+      await mergeImportDebugPatch(draftId, {
+        fetch_status: blockedFetchStatus,
+        fetch_final_url: sourceUrl
+      });
 
-      if (isFetch403Error(error)) {
+      if (isFetchBlockedError(error)) {
         await mergeRawPayloadPatch(draftId, {
           import_progress: buildImportProgress('rendering_dynamic')
         });
+        await mergeImportDebugPatch(draftId, {
+          fallback_attempted: true,
+          fallback_reason: `fetch_http_${blockedFetchStatus ?? 'blocked'}`
+        });
 
-        const fallbackSnapshot = await withTimeout(
-          renderStayPageWithPlaywright(sourceUrl, {
+        const fallbackResult: BrowserRenderResult = await withTimeout(
+          renderStayPageWithPlaywrightDetailed(sourceUrl, {
             collectImages: true,
             collectTransport: includePricing,
             collectVideos: true
@@ -1157,19 +1261,38 @@ export async function runStayImportInBackground(params: {
             sourceUrl,
             error: playwrightError instanceof Error ? playwrightError.message : 'unknown-error'
           });
-          return null;
+          return {
+            status: 'launch_failed' as const,
+            snapshot: null,
+            browserEngine: null,
+            executablePath: null,
+            error: playwrightError instanceof Error ? playwrightError.message : 'unknown-error'
+          };
+        });
+        await mergeImportDebugPatch(draftId, {
+          browser_runtime_status: fallbackResult.status,
+          browser_engine: fallbackResult.browserEngine,
+          fallback_error: fallbackResult.error
         });
 
-        if (fallbackSnapshot?.html) {
+        if (fallbackResult.snapshot?.html) {
           fetchedHtml = {
-            html: fallbackSnapshot.html,
-            finalUrl: fallbackSnapshot.finalUrl || sourceUrl,
+            html: fallbackResult.snapshot.html,
+            finalUrl: fallbackResult.snapshot.finalUrl || sourceUrl,
             fetchedAt: new Date().toISOString(),
             contentType: 'text/html',
             status: 200
           };
+          await mergeImportDebugPatch(draftId, {
+            fetch_status: blockedFetchStatus,
+            fetch_final_url: fetchedHtml.finalUrl
+          });
         } else {
-          const combinedError = `${fetchErrorMessage} Fallback navigateur indisponible.`;
+          const combinedError = buildBrowserFallbackErrorMessage({
+            fetchStatus: blockedFetchStatus,
+            browserRuntimeStatus: fallbackResult.status,
+            fallbackError: fallbackResult.error
+          });
           if (draftColumns.has('raw_payload')) {
             await supabase
               .from('stay_drafts')
@@ -1203,6 +1326,14 @@ export async function runStayImportInBackground(params: {
       }
     }
 
+    const blockedHtmlAfterFetch = shouldUseBrowserFallbackAfterFetch(fetchedHtml.html);
+    if (blockedHtmlAfterFetch) {
+      await mergeImportDebugPatch(draftId, {
+        fallback_attempted: true,
+        fallback_reason: 'fetch_html_blocked_or_empty'
+      });
+    }
+
     await mergeRawPayloadPatch(draftId, {
       import_progress: buildImportProgress('analyzing')
     });
@@ -1226,6 +1357,7 @@ export async function runStayImportInBackground(params: {
       : false;
     const shouldTryDynamicRender =
       forcePlaywright ||
+      blockedHtmlAfterFetch ||
       needsDynamicImages ||
       needsDynamicSessions ||
       needsDynamicTransport;
@@ -1235,11 +1367,13 @@ export async function runStayImportInBackground(params: {
     });
 
     let playwrightFailureMessage: string | null = null;
-    const dynamicSnapshot = shouldTryDynamicRender
+    let dynamicRenderRuntimeStatus: string | null = null;
+    let dynamicRenderEngine: string | null = null;
+    const dynamicRenderResult: BrowserRenderResult | null = shouldTryDynamicRender
       ? await withTimeout(
-          renderStayPageWithPlaywright(fetchedHtml.finalUrl, {
+          renderStayPageWithPlaywrightDetailed(fetchedHtml.finalUrl, {
             collectImages: forcePlaywright || needsDynamicImages,
-            collectTransport: forcePlaywright || needsDynamicTransport,
+            collectTransport: forcePlaywright || blockedHtmlAfterFetch || needsDynamicTransport,
             collectVideos: true
           }),
           PLAYWRIGHT_RENDER_BUDGET_MS,
@@ -1250,9 +1384,50 @@ export async function runStayImportInBackground(params: {
             sourceUrl: fetchedHtml.finalUrl,
             error: playwrightFailureMessage
           });
-          return null;
+          return {
+            status: 'launch_failed' as const,
+            snapshot: null,
+            browserEngine: null,
+            executablePath: null,
+            error: playwrightFailureMessage
+          };
         })
       : null;
+    const dynamicSnapshot = dynamicRenderResult?.snapshot ?? null;
+    dynamicRenderRuntimeStatus = dynamicRenderResult?.status ?? null;
+    dynamicRenderEngine = dynamicRenderResult?.browserEngine ?? null;
+    playwrightFailureMessage = playwrightFailureMessage ?? dynamicRenderResult?.error ?? null;
+    if (shouldTryDynamicRender) {
+      await mergeImportDebugPatch(draftId, {
+        fallback_attempted: true,
+        fallback_reason: blockedHtmlAfterFetch
+          ? 'fetch_html_blocked_or_empty'
+          : forcePlaywright
+            ? 'forced_playwright'
+            : needsDynamicTransport
+              ? 'dynamic_transport'
+              : needsDynamicSessions
+                ? 'dynamic_sessions'
+                : needsDynamicImages
+                  ? 'dynamic_images'
+                  : 'dynamic_render',
+        browser_runtime_status: dynamicRenderRuntimeStatus,
+        browser_engine: dynamicRenderEngine,
+        fallback_error: playwrightFailureMessage
+      });
+    }
+    if (blockedHtmlAfterFetch && !dynamicSnapshot) {
+      const blockedHtmlError = buildBrowserFallbackErrorMessage({
+        fetchStatus: fetchedHtml.status,
+        browserRuntimeStatus: dynamicRenderRuntimeStatus,
+        fallbackError: playwrightFailureMessage
+      });
+      await mergeRawPayloadPatch(draftId, {
+        fetch_error: blockedHtmlError,
+        import_progress: buildImportProgress('failed', { error: blockedHtmlError })
+      });
+      return;
+    }
     const effectiveHtml = dynamicSnapshot?.html || fetchedHtml.html;
     const effectiveFinalUrl = dynamicSnapshot?.finalUrl || fetchedHtml.finalUrl;
     isZigotoursImport =

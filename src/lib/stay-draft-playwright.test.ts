@@ -26,3 +26,14 @@ test('classifyBrowserLaunchFailure falls back to launch_failed', () => {
     'launch_failed'
   );
 });
+
+test('isUsableExecutablePath accepts serverless chromium resolved path before extraction', () => {
+  assert.equal(
+    __testables__.isUsableExecutablePath(
+      { source: 'playwright-core' },
+      'chromium',
+      '/tmp/chromium-from-sparticuz'
+    ),
+    true
+  );
+});

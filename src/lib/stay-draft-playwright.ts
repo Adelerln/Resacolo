@@ -1986,8 +1986,20 @@ function browserExecutableEnvVar(engine: BrowserEngineName): string | null {
   return process.env.PLAYWRIGHT_WEBKIT_EXECUTABLE_PATH?.trim() ?? null;
 }
 
-function useServerlessChromiumRuntime() {
+function shouldUseServerlessChromiumRuntime() {
   return process.env.VERCEL === '1' || process.env.VERCEL_ENV === 'production' || process.env.VERCEL_ENV === 'preview';
+}
+
+function isUsableExecutablePath(
+  runtime: Pick<PlaywrightRuntime, 'source'>,
+  engine: BrowserEngineName,
+  executablePath: string | null
+): boolean {
+  if (!executablePath) return false;
+  if (runtime.source === 'playwright-core' && engine === 'chromium') {
+    return true;
+  }
+  return existsSync(executablePath);
 }
 
 function sparticuzChromiumBinCandidates(): string[] {
@@ -2076,7 +2088,7 @@ function classifyBrowserLaunchFailure(error: unknown): BrowserRuntimeAvailabilit
 
 async function loadPlaywrightRuntime(): Promise<PlaywrightRuntime | null> {
   try {
-    if (useServerlessChromiumRuntime()) {
+    if (shouldUseServerlessChromiumRuntime()) {
       const [playwrightCoreModule, chromiumImport] = (await Promise.all([
         import('playwright-core'),
         import('@sparticuz/chromium')
@@ -2133,7 +2145,7 @@ export async function getBrowserRuntimeAvailability(): Promise<BrowserRuntimeAva
   const candidates: BrowserEngineName[] = runtime.engines;
   for (const engine of candidates) {
     const executablePath = await resolveExecutablePathAsync(runtime, runtime[engine], engine);
-    if (executablePath && existsSync(executablePath)) {
+    if (isUsableExecutablePath(runtime, engine, executablePath)) {
       return {
         status: 'available',
         browserEngine: engine,
@@ -2285,5 +2297,6 @@ export async function renderStayPageWithPlaywrightDetailed(
 }
 
 export const __testables__ = {
-  classifyBrowserLaunchFailure
+  classifyBrowserLaunchFailure,
+  isUsableExecutablePath
 };

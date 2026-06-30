@@ -39,7 +39,12 @@ try {
   const executablePath = await resolveSparticuzExecutablePath(chromium);
   const bundledBinPath = sparticuzChromiumBinCandidates().find((candidate) => existsSync(candidate)) ?? null;
 
-  if (!playwright.chromium || !executablePath || !existsSync(executablePath)) {
+  const hasUsableExecutablePath =
+    typeof executablePath === 'string' &&
+    executablePath.trim().length > 0 &&
+    (existsSync(executablePath) || executablePath.startsWith('/tmp/'));
+
+  if (!playwright.chromium || !hasUsableExecutablePath) {
     console.error('[playwright-runtime] Chromium executable missing for production build', {
       bundledBinPath,
       executablePath

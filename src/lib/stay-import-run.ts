@@ -1,3 +1,4 @@
+import { countDatedDraftSessions } from '@/lib/stay-draft-import';
 import { runStayImportInBackground } from '@/lib/run-stay-import-background';
 import {
   isStayImportAlreadyRunning,
@@ -10,6 +11,7 @@ import { getServerSupabaseClient } from '@/lib/supabase/server';
 type StayDraftRow = Record<string, unknown> & {
   id: string;
   source_url: string | null;
+  sessions_json: unknown;
   raw_payload: unknown;
 };
 
@@ -18,7 +20,12 @@ export async function runStayImportForDraftRow(
   selectedOrganizerId: string
 ): Promise<'started' | 'already_running' | 'already_completed' | 'missing_source_url'> {
   const rawPayload = draft.raw_payload;
-  if (!shouldKickOffStayImport(rawPayload)) {
+  if (
+    !shouldKickOffStayImport(rawPayload, {
+      datedSessionCount: countDatedDraftSessions(draft.sessions_json),
+      sourceUrl: typeof draft.source_url === 'string' ? draft.source_url : null
+    })
+  ) {
     if (isStayImportAlreadyRunning(rawPayload)) {
       return 'already_running';
     }

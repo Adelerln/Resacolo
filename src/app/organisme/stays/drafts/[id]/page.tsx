@@ -7,7 +7,7 @@ import { requireOrganizerPageAccess } from '@/lib/organizer-backoffice-access.se
 import { withOrganizerQuery } from '@/lib/organizers.server';
 import { normalizeStayDraftCategories } from '@/lib/stay-categories';
 import { readDraftDestinationFields } from '@/lib/stay-draft-destination';
-import { extractVideoUrls } from '@/lib/stay-draft-import';
+import { extractVideoUrls, repairZigotoursDraftSessions } from '@/lib/stay-draft-import';
 import {
   buildDraftTransportOptionsFromVariants,
   collapseTransportDraftOptionsJson,
@@ -410,6 +410,14 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
   const ceslStructuredSessions = Array.isArray(ceslStructuredDebug.sessions)
     ? ceslStructuredDebug.sessions.filter((item): item is Record<string, unknown> => isPlainRecord(item))
     : [];
+  const zigotoursFallbackDebug = asObject(
+    (importReviewDebrief.zigotours_fallback as Json | null) ?? null
+  );
+  const zigotoursExpectedSessions = Array.isArray(zigotoursFallbackDebug.expected_sessions)
+    ? zigotoursFallbackDebug.expected_sessions.filter(
+        (item): item is Record<string, unknown> => isPlainRecord(item)
+      )
+    : [];
   const draftSessionsFromDb = asArrayOfObjects(draft.sessions_json);
   const draftTransportOptionsFromDb = collapseTransportDraftOptionsJson(
     asArrayOfObjects(draft.transport_options_json)
@@ -418,6 +426,16 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
   const shouldRepairCeslSessions =
     ceslStructuredSessions.length > 0 &&
     buildSessionSignature(draftSessionsFromDb) !== buildSessionSignature(ceslStructuredSessions);
+  const countDatedSessions = (rows: Array<Record<string, unknown>>) =>
+    rows.filter((row) => {
+      const start = String(row.start_date ?? '').trim();
+      const end = String(row.end_date ?? '').trim();
+      return start.length > 0 && end.length > 0;
+    }).length;
+  const shouldRepairZigotoursFromDebrief =
+    zigotoursExpectedSessions.length > 0 &&
+    countDatedSessions(draftSessionsFromDb) === 0 &&
+    buildSessionSignature(draftSessionsFromDb) !== buildSessionSignature(zigotoursExpectedSessions);
   const shouldRepairTransportOptions =
     recoveredTransportOptions.length > 0 &&
     countPricedTransportOptions(recoveredTransportOptions) >
@@ -432,6 +450,39 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
         raw_payload: {
           ...rawPayload,
           cesl_page_repair_applied_at: new Date().toISOString()
+        } as Json
+      })
+      .eq('id', draft.id)
+      .eq('organizer_id', selectedOrganizerId);
+  }
+
+  let zigotoursRepairedSessions: Array<Record<string, unknown>> | null = null;
+  if (shouldRepairZigotoursFromDebrief) {
+    zigotoursRepairedSessions = zigotoursExpectedSessions;
+  } else if (
+    countDatedSessions(draftSessionsFromDb) === 0 &&
+    typeof draft.source_url === 'string' &&
+    draft.source_url.toLowerCase().includes('zigotours')
+  ) {
+    const repaired = await repairZigotoursDraftSessions({
+      sourceUrl: draft.source_url,
+      html: typeof rawPayload.html === 'string' ? rawPayload.html : null,
+      currentSessions: draftSessionsFromDb
+    });
+    if (repaired?.length) {
+      zigotoursRepairedSessions = repaired.map((session) => ({ ...session }));
+    }
+  }
+
+  if (zigotoursRepairedSessions && zigotoursRepairedSessions.length > 0) {
+    await supabase
+      .from('stay_drafts')
+      .update({
+        sessions_json: zigotoursRepairedSessions as Json,
+        updated_at: new Date().toISOString(),
+        raw_payload: {
+          ...rawPayload,
+          zigotours_page_repair_applied_at: new Date().toISOString()
         } as Json
       })
       .eq('id', draft.id)
@@ -453,7 +504,11 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
       .eq('organizer_id', selectedOrganizerId);
   }
 
-  const effectiveSessionsJson = shouldRepairCeslSessions ? ceslStructuredSessions : draftSessionsFromDb;
+  const effectiveSessionsJson = shouldRepairCeslSessions
+    ? ceslStructuredSessions
+    : zigotoursRepairedSessions && zigotoursRepairedSessions.length > 0
+      ? zigotoursRepairedSessions
+      : draftSessionsFromDb;
   const effectiveTransportOptionsJson = shouldRepairTransportOptions
     ? recoveredTransportOptions
     : draftTransportOptionsFromDb;

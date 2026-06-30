@@ -36,22 +36,28 @@ export async function POST(
     );
   }
 
-  const outcome = await runStayImportForDraftRow(draft, access.context.selectedOrganizerId);
+  try {
+    const outcome = await runStayImportForDraftRow(draft, access.context.selectedOrganizerId);
 
-  if (outcome === 'missing_source_url') {
-    return NextResponse.json(
-      { error: 'URL source manquante sur le brouillon.' },
-      { status: 400 }
-    );
+    if (outcome === 'missing_source_url') {
+      return NextResponse.json(
+        { error: 'URL source manquante sur le brouillon.' },
+        { status: 400 }
+      );
+    }
+
+    if (outcome === 'already_running') {
+      return NextResponse.json({ success: true, status: 'already_running' });
+    }
+
+    if (outcome === 'already_completed') {
+      return NextResponse.json({ success: true, status: 'already_completed' });
+    }
+
+    return NextResponse.json({ success: true, status: 'started' });
+  } catch (error) {
+    console.error('[stay-drafts/run-import] unexpected error:', error);
+    const message = error instanceof Error ? error.message : 'Erreur serveur lors du lancement de l’import.';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
-
-  if (outcome === 'already_running') {
-    return NextResponse.json({ success: true, status: 'already_running' });
-  }
-
-  if (outcome === 'already_completed') {
-    return NextResponse.json({ success: true, status: 'already_completed' });
-  }
-
-  return NextResponse.json({ success: true, status: 'started' });
 }

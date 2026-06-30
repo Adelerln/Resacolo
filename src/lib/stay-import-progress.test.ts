@@ -31,3 +31,24 @@ test('shouldKickOffStayImport relaunches failed imports', () => {
     true
   );
 });
+
+test('shouldKickOffStayImport relaunches completed zigotours imports without dated sessions', () => {
+  assert.equal(
+    shouldKickOffStayImport(
+      {
+        import_progress: { step: 'completed', completed: true }
+      },
+      { datedSessionCount: 0, sourceUrl: 'https://www.zigotours.com/tarifsejour/419' }
+    ),
+    true
+  );
+  assert.equal(
+    shouldKickOffStayImport(
+      {
+        import_progress: { step: 'completed', completed: true }
+      },
+      { datedSessionCount: 2, sourceUrl: 'https://www.zigotours.com/tarifsejour/419' }
+    ),
+    false
+  );
+});

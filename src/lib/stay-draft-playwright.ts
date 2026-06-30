@@ -2042,13 +2042,10 @@ function classifyBrowserLaunchFailure(error: unknown): BrowserRuntimeAvailabilit
 
 async function loadPlaywrightRuntime(): Promise<PlaywrightRuntime | null> {
   try {
-    const dynamicImport = new Function('moduleName', 'return import(moduleName);') as (
-      moduleName: string
-    ) => Promise<unknown>;
     if (useServerlessChromiumRuntime()) {
       const [playwrightCoreModule, chromiumImport] = (await Promise.all([
-        dynamicImport('playwright-core'),
-        dynamicImport('@sparticuz/chromium')
+        import('playwright-core'),
+        import('@sparticuz/chromium')
       ])) as [Partial<PlaywrightRuntime>, { default?: ServerlessChromiumRuntime } & ServerlessChromiumRuntime];
       const chromiumModule = chromiumImport.default ?? chromiumImport;
       if (!playwrightCoreModule.chromium) {
@@ -2066,7 +2063,7 @@ async function loadPlaywrightRuntime(): Promise<PlaywrightRuntime | null> {
           typeof chromiumModule.executablePath === 'function' ? chromiumModule.executablePath : null
       };
     }
-    const runtime = (await dynamicImport('playwright')) as Partial<PlaywrightRuntime>;
+    const runtime = (await import('playwright')) as Partial<PlaywrightRuntime>;
     if (!runtime.chromium || !runtime.firefox || !runtime.webkit) {
       return null;
     }

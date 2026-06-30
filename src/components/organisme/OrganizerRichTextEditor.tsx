@@ -52,6 +52,12 @@ export default function OrganizerRichTextEditor({
   }, [initialSanitizedValue]);
 
   useEffect(() => {
+    if (!hiddenInputRef.current) return;
+    hiddenInputRef.current.dispatchEvent(new Event('input', { bubbles: true }));
+    hiddenInputRef.current.dispatchEvent(new Event('change', { bubbles: true }));
+  }, [htmlValue]);
+
+  useEffect(() => {
     const form = hiddenInputRef.current?.form;
     if (!form) return;
 

@@ -2066,7 +2066,7 @@ async function loadPlaywrightRuntime(): Promise<PlaywrightRuntime | null> {
           typeof chromiumModule.executablePath === 'function' ? chromiumModule.executablePath : null
       };
     }
-    const runtime = (await import('playwright')) as Partial<PlaywrightRuntime>;
+    const runtime = (await import('playwright')) as unknown as Partial<PlaywrightRuntime>;
     if (!runtime.chromium || !runtime.firefox || !runtime.webkit) {
       return null;
     }

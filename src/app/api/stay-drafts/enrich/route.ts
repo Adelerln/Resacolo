@@ -10,6 +10,10 @@ import {
 import { inferTransportLogisticsModeFromSignals } from '@/lib/stay-draft-content';
 import { writeDraftDestinationFields } from '@/lib/stay-draft-destination';
 import {
+  countDatedDraftSessions,
+  repairZigotoursDraftSessions
+} from '@/lib/stay-draft-import';
+import {
   buildDraftTransportOptionsFromVariants,
   type TransportVariantForDraft
 } from '@/lib/stay-draft-transport-display';
@@ -622,7 +626,14 @@ async function buildDraftUpdateFromAi(
   if ((force || !draft.ages || draft.ages.length === 0) && extracted.ages.length > 0) {
     patch.ages = extracted.ages;
   }
-  if ((force || !hasJsonValue(draft.sessions_json)) && extracted.sessions_json.length > 0) {
+  const currentDatedSessionCount = countDatedDraftSessions(draft.sessions_json);
+  const extractedDatedSessionCount = countDatedDraftSessions(extracted.sessions_json);
+  if (
+    extracted.sessions_json.length > 0 &&
+    extractedDatedSessionCount > 0 &&
+    (currentDatedSessionCount === 0 ||
+      (force && extractedDatedSessionCount >= currentDatedSessionCount))
+  ) {
     patch.sessions_json = extracted.sessions_json;
   }
   const recoveredPricedTransportCount = countPricedTransportOptions(recoveredImportedTransportOptions);
@@ -840,9 +851,46 @@ export async function POST(req: Request) {
     );
   }
 
+  let workingDraft = draft;
+  if (
+    countDatedDraftSessions(draft.sessions_json) === 0 &&
+    typeof draft.source_url === 'string' &&
+    draft.source_url.trim().length > 0
+  ) {
+    const rawPayload = asObject(draft.raw_payload);
+    const repairedSessions = await repairZigotoursDraftSessions({
+      sourceUrl: draft.source_url,
+      html: typeof rawPayload.html === 'string' ? rawPayload.html : null,
+      currentSessions: draft.sessions_json
+    });
+    if (repairedSessions?.length) {
+      const { data: repairedDraft, error: repairError } = await supabase
+        .from('stay_drafts')
+        .update({
+          sessions_json: repairedSessions as Json,
+          updated_at: new Date().toISOString(),
+          raw_payload: {
+            ...rawPayload,
+            zigotours_enrich_repair_applied_at: new Date().toISOString()
+          } as Json
+        })
+        .eq('id', draftId)
+        .eq('organizer_id', selectedOrganizerId)
+        .select('*')
+        .maybeSingle();
+      if (!repairError && repairedDraft) {
+        workingDraft = repairedDraft;
+        logInfo('zigotours sessions repaired before enrich', {
+          draftId,
+          sessionCount: repairedSessions.length
+        });
+      }
+    }
+  }
+
   let aiResult: Awaited<ReturnType<typeof enrichStayDraftWithAI>>;
   try {
-    aiResult = await enrichStayDraftWithAI(draft);
+    aiResult = await enrichStayDraftWithAI(workingDraft);
     logInfo('openai response received', {
       draftId,
       model: aiResult.model,
@@ -877,7 +925,7 @@ export async function POST(req: Request) {
     return makeErrorResponse(req, selectedOrganizerId, message, 502);
   }
 
-  const updatePayload = await buildDraftUpdateFromAi(draft, aiResult, force);
+  const updatePayload = await buildDraftUpdateFromAi(workingDraft, aiResult, force);
   logInfo('supabase payload prepared', {
     draftId,
     force,

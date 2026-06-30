@@ -2181,6 +2181,17 @@ export function parseSessionLabelToItem(label: string): DraftSessionItem | null 
     };
   }
 
+  const zigotoursRange = parseZigotoursDateRangeLabel(normalized);
+  if (zigotoursRange?.start && zigotoursRange.end) {
+    return {
+      label: normalized,
+      start_date: zigotoursRange.start,
+      end_date: zigotoursRange.end,
+      price: null,
+      availability: detectSessionAvailability(normalized) ?? 'unknown'
+    };
+  }
+
   return null;
 }
 
@@ -2199,7 +2210,13 @@ function extractStructuredSessionOptions($: CheerioAPI): DraftSessionItem[] {
   const sessions = new Map<string, DraftSessionItem>();
 
   $('select option, .ui-selectmenu-text, [role="option"]').each((_, node) => {
-    const parsed = parseSessionLabelToItem($(node).text());
+    const $node = $(node);
+    const parsed =
+      parseZigotoursDateDepartOption({
+        label: $node.text(),
+        dtDb: $node.attr('data-dtdb') ?? $node.attr('data-dtDb'),
+        dtFn: $node.attr('data-dtfn') ?? $node.attr('data-dtFn')
+      }) ?? parseSessionLabelToItem($node.text());
     if (!parsed) return;
     const key = buildSessionKey(parsed);
     if (!key || sessions.has(key)) return;
@@ -2349,6 +2366,8 @@ export function mergeDraftSessionItems(a: DraftSessionItem, b: DraftSessionItem)
   return {
     ...a,
     ...b,
+    start_date: a.start_date ?? b.start_date ?? null,
+    end_date: a.end_date ?? b.end_date ?? null,
     price,
     label,
     availability: availabilityB ?? availabilityA ?? 'unknown'
@@ -2644,7 +2663,7 @@ function parseSlashDateToIso(raw: string, preferMonthFirst: boolean): string | n
   return toIsoDate(day, month, year);
 }
 
-function parseZigotoursDateRangeLabel(value: string): { start: string | null; end: string | null } | null {
+export function parseZigotoursDateRangeLabel(value: string): { start: string | null; end: string | null } | null {
   const normalized = normalizeWhitespace(value);
   if (!normalized) return null;
   const match = normalized.match(
@@ -2655,6 +2674,65 @@ function parseZigotoursDateRangeLabel(value: string): { start: string | null; en
     start: parseFrenchDate(match[1]) ?? parseSlashDateToIso(match[1], false),
     end: parseFrenchDate(match[2]) ?? parseSlashDateToIso(match[2], false)
   };
+}
+
+export function parseZigotoursDateDepartOption(params: {
+  label: string;
+  dtDb?: string | null;
+  dtFn?: string | null;
+  price?: number | null;
+}): DraftSessionItem | null {
+  const label = normalizeWhitespace(params.label);
+  if (!label || /^dates?\s+du\s+s[eé]jour$/i.test(label)) return null;
+
+  const startFromAttr = parseSlashDateToIso(String(params.dtDb ?? ''), true);
+  const endFromAttr = parseSlashDateToIso(String(params.dtFn ?? ''), true);
+  const fromLabel = parseZigotoursDateRangeLabel(label);
+  const startDate = startFromAttr ?? fromLabel?.start ?? null;
+  const endDate = endFromAttr ?? fromLabel?.end ?? null;
+  if (!startDate || !endDate) return null;
+
+  return {
+    label,
+    start_date: startDate,
+    end_date: endDate,
+    price:
+      typeof params.price === 'number' && Number.isFinite(params.price) && params.price > 0
+        ? params.price
+        : null,
+    availability: detectSessionAvailability(label) ?? 'unknown'
+  };
+}
+
+function extractZigotoursSessionsFromDom($: CheerioAPI): DraftSessionItem[] | null {
+  const select = $('#dateDepart, select.tarifSelect#dateDepart').first();
+  if (select.length === 0) return null;
+
+  const sessions = new Map<string, DraftSessionItem>();
+  select.find('option').each((_, node) => {
+    const $node = $(node);
+    const value = normalizeWhitespace($node.attr('value') ?? '');
+    if (!value || value === '0') return;
+
+    const parsed = parseZigotoursDateDepartOption({
+      label: $node.text(),
+      dtDb: $node.attr('data-dtdb') ?? $node.attr('data-dtDb'),
+      dtFn: $node.attr('data-dtfn') ?? $node.attr('data-dtFn'),
+      price: parseAjaxDecimalAmount($node.attr('data-prix'))
+    });
+    if (!parsed) return;
+
+    const key = buildSessionKey(parsed);
+    if (!key || sessions.has(key)) return;
+    sessions.set(key, parsed);
+  });
+
+  if (sessions.size === 0) return null;
+  return Array.from(sessions.values()).sort((left, right) => {
+    const leftKey = left.start_date ?? left.end_date ?? left.label ?? '';
+    const rightKey = right.start_date ?? right.end_date ?? right.label ?? '';
+    return leftKey.localeCompare(rightKey, 'fr');
+  });
 }
 
 function parseZigotoursSessionRow(row: RawZigotoursDepartureRow): ZigotoursSessionParsedRow | null {
@@ -3173,7 +3251,11 @@ function detectZigotoursStayId($: CheerioAPI, sourceUrl: string): string | null 
     const parsed = new URL(sourceUrl);
     const inQuery = normalizeWhitespace(parsed.searchParams.get('sejour_id') ?? '');
     if (inQuery) return inQuery;
-    const fromPath = normalizeWhitespace(parsed.pathname.match(/\/tarifsejour\/(\d+)/i)?.[1] ?? '');
+    const fromPath = normalizeWhitespace(
+      parsed.pathname.match(/\/tarif[_-]?sejour\/(\d+)/i)?.[1] ??
+        parsed.pathname.match(/\/sejour\/(\d+)/i)?.[1] ??
+        ''
+    );
     if (fromPath) return fromPath;
   } catch {
     return null;
@@ -3190,6 +3272,58 @@ function detectZigotoursEndpointPath($: CheerioAPI): string {
       ''
   );
   return dynamicPath || '/getDepartDetails';
+}
+
+/** Page tarif Zigo Tours : menu dates/villes + endpoint AJAX `/getDepartDetails`. */
+export function isZigotoursTarifPage(html: string, sourceUrl: string): boolean {
+  try {
+    const host = new URL(sourceUrl).hostname.toLowerCase();
+    if (host.includes('zigotours')) return true;
+  } catch {
+    /* ignore */
+  }
+  const $ = load(html);
+  if ($('#dateDepart, #villeDepart, .urlDepart, #sejourId').length === 0) return false;
+  return Boolean(detectZigotoursStayId($, sourceUrl));
+}
+
+export function countDatedDraftSessions(sessions: unknown): number {
+  if (!Array.isArray(sessions)) return 0;
+  return sessions.filter((row) => {
+    if (!row || typeof row !== 'object') return false;
+    const record = row as Record<string, unknown>;
+    const start = String(record.start_date ?? '').trim();
+    const end = String(record.end_date ?? '').trim();
+    return start.length > 0 && end.length > 0;
+  }).length;
+}
+
+export function pickDatedDraftSessions(sessions: DraftSessionItem[] | null): DraftSessionItem[] | null {
+  if (!sessions?.length) return null;
+  const dated = sessions.filter((session) => Boolean(session.start_date && session.end_date));
+  return dated.length > 0 ? dated : sessions;
+}
+
+/** Recharge les sessions datées via l’API Zigo quand le brouillon n’en a pas. */
+export async function repairZigotoursDraftSessions(params: {
+  sourceUrl: string;
+  html?: string | null;
+  currentSessions?: unknown;
+}): Promise<DraftSessionItem[] | null> {
+  if (countDatedDraftSessions(params.currentSessions) > 0) return null;
+
+  const sourceUrl = params.sourceUrl.trim();
+  if (!sourceUrl) return null;
+
+  const html = params.html ?? '';
+  const looksLikeZigo =
+    sourceUrl.toLowerCase().includes('zigotours') || isZigotoursTarifPage(html, sourceUrl);
+  if (!looksLikeZigo) return null;
+
+  const fetchResult = await fetchZigotoursDepartureData(html, sourceUrl);
+  const repaired = pickDatedDraftSessions(fetchResult.data?.sessions ?? null);
+  if (!repaired?.length || countDatedDraftSessions(repaired) === 0) return null;
+  return repaired;
 }
 
 export async function fetchZigotoursDepartureData(
@@ -3236,9 +3370,10 @@ export async function fetchZigotoursDepartureData(
       signal: controller.signal,
       headers: {
         'user-agent':
-          'Mozilla/5.0 (compatible; ResacoloImportBot/1.0; +https://resacolo.com)',
+          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0 Safari/537.36',
         accept: 'application/json,text/plain,*/*',
         'accept-language': 'fr-FR,fr;q=0.9,en;q=0.8',
+        referer: sourceUrl,
         'x-requested-with': 'XMLHttpRequest'
       }
     });
@@ -3355,6 +3490,11 @@ function extractSessions($: CheerioAPI, visibleText: string, html: string): Draf
   const ceslSessions = extractCeslSessionsFromHtml(html);
   if (ceslSessions && ceslSessions.length > 0) {
     return ceslSessions;
+  }
+
+  const zigotoursSessions = extractZigotoursSessionsFromDom($);
+  if (zigotoursSessions && zigotoursSessions.length > 0) {
+    return zigotoursSessions;
   }
 
   const sessions: DraftSessionItem[] = [];

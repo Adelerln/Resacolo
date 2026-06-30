@@ -4,6 +4,7 @@ import {
   type DraftTransportVariant,
   detectSessionAvailability,
   parseSessionLabelToItem,
+  parseZigotoursDateDepartOption,
   type ThalieSessionBaseline
 } from '@/lib/stay-draft-import';
 import { draftSessionStableKey } from '@/lib/draft-session-keys';
@@ -121,6 +122,8 @@ export type DynamicStayPageSnapshot = {
   transportDetected: boolean;
   /** Sessions CESL : une ligne par option « Période de séjour », prix lu sur `.tarif-1` (tarif public) après changement de période. */
   ceslSessionsFromPlaywright: DraftSessionItem[];
+  /** Sessions Zigo Tours : options du menu `#dateDepart` (dates de séjour). */
+  zigotoursSessionsFromPlaywright: DraftSessionItem[];
   /** Sessions et transports issus d'un tableau de départs paginé (`#tableSejour`). */
   tableSessionsFromPlaywright: DraftSessionItem[];
   tableTransportOptionsFromPlaywright: Array<Record<string, unknown>>;
@@ -424,6 +427,63 @@ function normalizeDynamicTransportLabel(value: string | null | undefined): strin
   return normalized;
 }
 
+function isZigotoursDateDepartSelectContext(context: string): boolean {
+  const key = simplifyForMatch(context);
+  if (!key) return false;
+  return /\bdatedepart\b/.test(key) || (/\btarifselect\b/.test(key) && /\bdate/.test(key));
+}
+
+function isDateRangeTransportLabel(label: string): boolean {
+  return /\d{1,2}\/\d{1,2}\/\d{4}\s+au\s+\d{1,2}\/\d{1,2}\/\d{4}/i.test(normalizeWhitespace(label));
+}
+
+async function collectZigotoursDynamicSessions(page: Page): Promise<DraftSessionItem[]> {
+  const dateDepart = page.locator('#dateDepart, select.tarifSelect#dateDepart').first();
+  if ((await dateDepart.count().catch(() => 0)) === 0) return [];
+
+  await page
+    .waitForFunction(
+      () => document.querySelectorAll('#dateDepart option, select.tarifSelect#dateDepart option').length > 1,
+      { timeout: 15_000 }
+    )
+    .catch(() => null);
+
+  const rawOptions = await dateDepart.evaluate((element: HTMLSelectElement) => {
+    const normalize = (value: string | null | undefined) => (value ?? '').replace(/\s+/g, ' ').trim();
+    return Array.from(element.options).map((option) => ({
+      value: normalize(option.value),
+      label: normalize(option.textContent),
+      dtDb: normalize(option.getAttribute('data-dtdb') ?? option.getAttribute('data-dtDb')),
+      dtFn: normalize(option.getAttribute('data-dtfn') ?? option.getAttribute('data-dtFn')),
+      price: normalize(option.getAttribute('data-prix'))
+    }));
+  });
+
+  const sessions: DraftSessionItem[] = [];
+  const seen = new Set<string>();
+  for (const option of rawOptions) {
+    if (!option.value || option.value === '0') continue;
+    const parsed = parseZigotoursDateDepartOption({
+      label: option.label,
+      dtDb: option.dtDb,
+      dtFn: option.dtFn,
+      price: Number.isFinite(Number(option.price)) ? Number(option.price) : null
+    });
+    if (!parsed?.start_date || !parsed.end_date) continue;
+    const key = `${parsed.start_date}|${parsed.end_date}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    sessions.push(parsed);
+  }
+
+  return sessions.sort((left, right) =>
+    `${left.start_date ?? ''}|${left.end_date ?? ''}`.localeCompare(
+      `${right.start_date ?? ''}|${right.end_date ?? ''}`,
+      'fr'
+    )
+  );
+}
+
 async function readDynamicTransportSelects(page: Page): Promise<DynamicTransportSelect[]> {
   const raw = await page.locator('select').evaluateAll((elements: Element[]) => {
     const normalize = (value: string | null | undefined) => (value ?? '').replace(/\s+/g, ' ').trim();
@@ -460,9 +520,12 @@ async function readDynamicTransportSelects(page: Page): Promise<DynamicTransport
       ...candidate,
       direction: detectDynamicTransportDirection(candidate.context)
     }))
+    .filter((candidate) => !isZigotoursDateDepartSelectContext(candidate.context))
     .filter(
       (candidate): candidate is DynamicTransportSelect =>
-        Boolean(candidate.direction) && candidate.options.length > 1
+        Boolean(candidate.direction) &&
+        candidate.options.length > 1 &&
+        !candidate.options.every((option) => isDateRangeTransportLabel(option.label))
     );
 }
 
@@ -1419,12 +1482,16 @@ export function shouldUsePlaywrightForDynamicImages(html: string, extractedImage
 }
 
 export function shouldUsePlaywrightForDynamicSessions(html: string): boolean {
-  return /(?:id|class)=["'][^"']*tableSejour|listeDepartsAjax|dataTables_wrapper|spanPrixSejour/i.test(html);
+  return /(?:id|class)=["'][^"']*tableSejour|listeDepartsAjax|dataTables_wrapper|spanPrixSejour|id=["']dateDepart|id=["']villeDepart/i.test(
+    html
+  );
 }
 
 export function shouldUsePlaywrightForDynamicTransport(html: string): boolean {
   return (
     /sejour[_-]?villedepart/i.test(html) ||
+    /id=["']villeDepart/i.test(html) ||
+    /id=["']dateDepart/i.test(html) ||
     /ui-selectmenu/i.test(html) ||
     /sejour-tarif/i.test(html) ||
     /tarif transport a\/r/i.test(html) ||
@@ -1771,6 +1838,7 @@ async function snapshotWithEngine(
       await page.waitForTimeout(500);
     }
 
+    const zigotoursSessionsFromPlaywright = await collectZigotoursDynamicSessions(page);
     const transportResult = options.collectTransport
       ? await collectDynamicTransportVariants(page)
       : { transportVariants: [], transportPriceDebug: [], transportDetected: false };
@@ -1810,6 +1878,7 @@ async function snapshotWithEngine(
         transportVariantCount: transportResult.transportVariants.length,
         transportDetected: transportResult.transportDetected,
         ceslSessionCount: ceslSessionsFromPlaywright.length,
+        zigotoursSessionCount: zigotoursSessionsFromPlaywright.length,
         departureTableRowCount: departureTableResult?.rowCount ?? 0,
         departureTableSessionCount: departureTableResult?.sessions.length ?? 0
       });
@@ -1833,6 +1902,7 @@ async function snapshotWithEngine(
         transportResult.transportDetected ||
         (departureTableResult?.transportVariants.length ?? 0) > 0,
       ceslSessionsFromPlaywright,
+      zigotoursSessionsFromPlaywright,
       tableSessionsFromPlaywright: departureTableResult?.sessions ?? [],
       tableTransportOptionsFromPlaywright: departureTableResult?.transportOptions ?? [],
       tableDepartureRowCount: departureTableResult?.rowCount ?? 0,
@@ -1921,19 +1991,25 @@ export async function renderStayPageWithPlaywright(
         sourceUrl,
         snapshotOptions
       );
+      const hasUsefulSessions =
+        (snapshot?.ceslSessionsFromPlaywright.length ?? 0) > 0 ||
+        (snapshot?.zigotoursSessionsFromPlaywright.length ?? 0) > 0 ||
+        (snapshot?.tableSessionsFromPlaywright.length ?? 0) > 0;
       const hasUsefulTransport =
         !snapshotOptions.collectTransport ||
         (snapshot?.transportVariants.length ?? 0) > 0 ||
         (snapshot?.tableTransportOptionsFromPlaywright.length ?? 0) > 0 ||
-        (snapshot?.tableSessionsFromPlaywright.length ?? 0) > 0;
+        snapshot?.transportDetected === true;
       if (
         snapshot &&
-        hasUsefulTransport &&
+        (hasUsefulTransport || hasUsefulSessions) &&
         (snapshot.html.length > 0 ||
           snapshot.imageUrls.length > 0 ||
           snapshot.videoUrls.length > 0 ||
           snapshot.transportVariants.length > 0 ||
           snapshot.transportDetected ||
+          snapshot.ceslSessionsFromPlaywright.length > 0 ||
+          snapshot.zigotoursSessionsFromPlaywright.length > 0 ||
           snapshot.tableSessionsFromPlaywright.length > 0 ||
           snapshot.tableDepartureRowCount > 0)
       ) {

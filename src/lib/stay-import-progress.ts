@@ -27,9 +27,17 @@ export function readStayImportProgress(rawPayload: unknown) {
   };
 }
 
-export function shouldKickOffStayImport(rawPayload: unknown) {
+export function shouldKickOffStayImport(
+  rawPayload: unknown,
+  options?: { datedSessionCount?: number; sourceUrl?: string | null }
+) {
   const progress = readStayImportProgress(rawPayload);
   if (progress.completed && progress.step === 'completed') {
+    const sourceUrl = String(options?.sourceUrl ?? '').toLowerCase();
+    const isZigotoursSource = sourceUrl.includes('zigotours');
+    if (isZigotoursSource && (options?.datedSessionCount ?? 0) === 0) {
+      return true;
+    }
     return false;
   }
   return progress.step === 'created' || progress.step === 'failed' || !progress.step;

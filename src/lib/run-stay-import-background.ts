@@ -1,5 +1,6 @@
 import {
   buildStaySessionMergeKey,
+  countDatedDraftSessions,
   extractCeslStructuredBookingData,
   fetchPaginatedDepartureTableData,
   fetchZigotoursDepartureData,
@@ -9,6 +10,7 @@ import {
   extractTransportVariants,
   extractVideoUrls,
   fetchHtml,
+  isZigotoursTarifPage,
   buildDraftTransportOptionsFromVariants,
   mergeDraftSessionItems,
   mergeThalieSessionBaselinesIntoSessions,
@@ -201,6 +203,15 @@ function countDatedSessions(
   sessions: ReturnType<typeof extractStayData>['sessionsJson']
 ): number {
   return (sessions ?? []).filter((row) => Boolean(row.start_date && row.end_date)).length;
+}
+
+function pickDatedSessionsOrAll(
+  sessions: ReturnType<typeof extractStayData>['sessionsJson']
+): ReturnType<typeof extractStayData>['sessionsJson'] {
+  const rows = sessions ?? [];
+  if (rows.length === 0) return null;
+  const dated = rows.filter((row) => Boolean(row.start_date && row.end_date));
+  return dated.length > 0 ? dated : rows;
 }
 
 function buildSessionQualitySignature(
@@ -1205,10 +1216,11 @@ export async function runStayImportInBackground(params: {
     }
     const isThalieImport = Boolean(sourceHost?.includes('thalie.eu'));
     const isColosBonheurImport = Boolean(sourceHost?.includes('colosdubonheur.fr'));
-    const isZigotoursImport = Boolean(sourceHost?.includes('zigotours.com'));
+    let isZigotoursImport = isZigotoursTarifPage(fetchedHtml.html, fetchedHtml.finalUrl);
     const forcePlaywright = envTruthy(process.env.IMPORT_STAY_FORCE_PLAYWRIGHT);
     const needsDynamicImages = shouldUsePlaywrightForDynamicImages(fetchedHtml.html, extracted.images.length);
-    const needsDynamicSessions = shouldUsePlaywrightForDynamicSessions(fetchedHtml.html);
+    const needsDynamicSessions =
+      isZigotoursImport || shouldUsePlaywrightForDynamicSessions(fetchedHtml.html);
     const needsDynamicTransport = includePricing
       ? shouldUsePlaywrightForDynamicTransport(fetchedHtml.html)
       : false;
@@ -1243,6 +1255,8 @@ export async function runStayImportInBackground(params: {
       : null;
     const effectiveHtml = dynamicSnapshot?.html || fetchedHtml.html;
     const effectiveFinalUrl = dynamicSnapshot?.finalUrl || fetchedHtml.finalUrl;
+    isZigotoursImport =
+      isZigotoursImport || isZigotoursTarifPage(effectiveHtml, effectiveFinalUrl);
 
     await mergeRawPayloadPatch(draftId, {
       import_progress: buildImportProgress('pricing')
@@ -1276,8 +1290,12 @@ export async function runStayImportInBackground(params: {
       mergedStaticAndDomSessions,
       dynamicSnapshot?.ceslSessionsFromPlaywright ?? null
     );
-    const mergedWithPlaywrightTableSessions = mergeExtractedSessions(
+    const mergedWithZigotoursPlaywrightSessions = mergeExtractedSessions(
       mergedWithCeslPlaywrightSessions,
+      dynamicSnapshot?.zigotoursSessionsFromPlaywright ?? null
+    );
+    const mergedWithPlaywrightTableSessions = mergeExtractedSessions(
+      mergedWithZigotoursPlaywrightSessions,
       dynamicSnapshot?.tableSessionsFromPlaywright ?? null
     );
     const mergedWithAjaxDepartureTableSessions = mergeExtractedSessions(
@@ -1395,50 +1413,60 @@ export async function runStayImportInBackground(params: {
     let zigotoursFallbackDebrief: Record<string, unknown> | null = null;
     let zigotoursTransportOptionsOverride: Array<Record<string, unknown>> | null = null;
     if (isZigotoursImport) {
-      const sessionsMissing = countUsableSessions(extractedForDraft.sessionsJson) === 0;
-      const datedSessionsMissing = countDatedSessions(extractedForDraft.sessionsJson) === 0;
-      const transportMissing = includePricing && countPricedTransportVariants(transportVariants) === 0;
-      if (sessionsMissing || datedSessionsMissing || transportMissing) {
-        const fallbackResult = await runZigotoursFallback({
-          html: effectiveHtml,
-          pageUrl: effectiveFinalUrl,
-          includePricing,
-          baseSessions: extractedForDraft.sessionsJson,
-          baseTransportVariants: transportVariants
-        });
-        const improvedSessions = Boolean(
-          (fallbackResult.debrief.improved as Record<string, unknown>)?.sessions
-        );
-        const improvedTransport = Boolean(
-          (fallbackResult.debrief.improved as Record<string, unknown>)?.transport
-        );
+      const beforeDatedSessionCount = countDatedSessions(extractedForDraft.sessionsJson);
+      const fallbackResult = await runZigotoursFallback({
+        html: effectiveHtml,
+        pageUrl: effectiveFinalUrl,
+        includePricing,
+        baseSessions: extractedForDraft.sessionsJson,
+        baseTransportVariants: transportVariants
+      });
+      const afterDatedSessionCount = countDatedSessions(fallbackResult.sessions);
+      const improvedTransport = Boolean(
+        (fallbackResult.debrief.improved as Record<string, unknown>)?.transport
+      );
 
-        if (improvedSessions) {
-          extractedForDraft = {
-            ...extractedForDraft,
-            sessionsJson: fallbackResult.sessions
-          };
-        }
-        if (improvedTransport) {
-          transportVariants = fallbackResult.transportVariants;
-          transportPriceDebug = [...transportPriceDebug, ...fallbackResult.transportPriceDebug];
-        }
-        if ((fallbackResult.transportOptionsOverride?.length ?? 0) > 0) {
-          zigotoursTransportOptionsOverride = fallbackResult.transportOptionsOverride;
-        }
-        zigotoursFallbackDebrief = fallbackResult.debrief;
-      } else {
-        zigotoursFallbackDebrief = {
-          enabled: true,
-          triggered: false,
-          reason: 'base-import-already-had-dated-sessions-and-transport-pricing',
-          before: {
-            sessions_count: countUsableSessions(extractedForDraft.sessionsJson),
-            dated_sessions_count: countDatedSessions(extractedForDraft.sessionsJson),
-            priced_transport_count: countPricedTransportVariants(transportVariants)
-          }
+      if (afterDatedSessionCount > 0) {
+        extractedForDraft = {
+          ...extractedForDraft,
+          sessionsJson: pickDatedSessionsOrAll(fallbackResult.sessions)
+        };
+      } else if (afterDatedSessionCount > beforeDatedSessionCount) {
+        extractedForDraft = {
+          ...extractedForDraft,
+          sessionsJson: fallbackResult.sessions
         };
       }
+      if (improvedTransport) {
+        transportVariants = fallbackResult.transportVariants;
+        transportPriceDebug = [...transportPriceDebug, ...fallbackResult.transportPriceDebug];
+      }
+      if ((fallbackResult.transportOptionsOverride?.length ?? 0) > 0) {
+        zigotoursTransportOptionsOverride = fallbackResult.transportOptionsOverride;
+      }
+      zigotoursFallbackDebrief = {
+        ...fallbackResult.debrief,
+        triggered: true,
+        applied_dated_sessions: afterDatedSessionCount > 0,
+        expected_sessions:
+          afterDatedSessionCount > 0
+            ? (pickDatedSessionsOrAll(fallbackResult.sessions) ?? []).map((session) => ({
+                label: session.label,
+                start_date: session.start_date,
+                end_date: session.end_date,
+                price: session.price,
+                availability: session.availability
+              }))
+            : [],
+        reason:
+          afterDatedSessionCount > 0
+            ? 'zigotours-dated-sessions-applied'
+            : afterDatedSessionCount > beforeDatedSessionCount
+              ? 'zigotours-enrichment-applied'
+              : improvedTransport
+                ? 'zigotours-transport-only'
+                : 'zigotours-enrichment-no-improvement'
+      };
     }
 
     let colosFallbackDebrief: Record<string, unknown> | null = null;
@@ -1812,6 +1840,29 @@ export async function runStayImportInBackground(params: {
             storedSessionCount: currentSessions.length,
             storedMatchesExpected:
               buildSessionSignature(currentSessions) === buildSessionSignature(expectedSessions)
+          });
+        }
+      }
+
+      if (isZigotoursImport && countDatedSessions(extractedForDraft.sessionsJson) > 0) {
+        const expectedSessions = pickDatedSessionsOrAll(extractedForDraft.sessionsJson) as Array<
+          Record<string, unknown>
+        >;
+        const criticalUpdateError = await updateDraftCriticalJsonFields(draftId, {
+          sessions_json: expectedSessions
+        });
+        if (criticalUpdateError) {
+          console.error('[import-stay] Zigo critical JSON update failed', {
+            draftId,
+            error: criticalUpdateError.message
+          });
+          await mergeRawPayloadPatch(draftId, {
+            zigotours_structured_repair_failed_at: new Date().toISOString(),
+            zigotours_structured_repair_error: criticalUpdateError.message
+          });
+        } else {
+          await mergeRawPayloadPatch(draftId, {
+            zigotours_structured_repair_applied_at: new Date().toISOString()
           });
         }
       }

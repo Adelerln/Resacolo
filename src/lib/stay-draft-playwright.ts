@@ -2046,7 +2046,10 @@ async function loadPlaywrightRuntime(): Promise<PlaywrightRuntime | null> {
       const [playwrightCoreModule, chromiumImport] = (await Promise.all([
         import('playwright-core'),
         import('@sparticuz/chromium')
-      ])) as [Partial<PlaywrightRuntime>, { default?: ServerlessChromiumRuntime } & ServerlessChromiumRuntime];
+      ])) as unknown as [
+        Partial<PlaywrightRuntime>,
+        { default?: ServerlessChromiumRuntime } & ServerlessChromiumRuntime
+      ];
       const chromiumModule = chromiumImport.default ?? chromiumImport;
       if (!playwrightCoreModule.chromium) {
         return null;

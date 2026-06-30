@@ -85,6 +85,7 @@ interface Browser {
 
 interface BrowserType {
   launch(options: Record<string, unknown>): Promise<Browser>;
+  connect(wsEndpoint: string, options?: { timeout?: number }): Promise<Browser>;
   executablePath?: () => string;
 }
 
@@ -126,6 +127,8 @@ export type BrowserRuntimeAvailabilityStatus =
   | 'unavailable_executable'
   | 'launch_failed'
   | 'navigation_blocked';
+
+export type BrowserRenderProvider = 'local' | 'remote';
 
 export type DynamicStayPageSnapshot = {
   html: string;
@@ -1821,25 +1824,12 @@ async function createContext(browser: Browser): Promise<BrowserContext> {
   });
 }
 
-async function snapshotWithEngine(
-  runtime: PlaywrightRuntime,
+async function snapshotWithBrowser(
+  browser: Browser,
   browserEngine: BrowserEngineName,
   sourceUrl: string,
-  options: PlaywrightSnapshotOptions,
-  executablePath?: string | null
+  options: PlaywrightSnapshotOptions
 ): Promise<DynamicStayPageSnapshot | null> {
-  const launcher = runtime[browserEngine];
-  const browser = await launcher.launch({
-    headless: runtime.source === 'playwright-core' ? (runtime.chromiumHeadless ?? true) : playwrightImportHeadless(),
-    slowMo: playwrightImportSlowMo(),
-    ...(runtime.source === 'playwright-core' && browserEngine === 'chromium'
-      ? {
-          args: runtime.chromiumArgs ?? []
-        }
-      : {}),
-    ...(executablePath ? { executablePath } : {})
-  });
-
   let context: Awaited<ReturnType<Browser['newContext']>> | null = null;
   const traceDir = process.env.PLAYWRIGHT_TRACE_DIR?.trim() ?? '';
   let tracingStarted = false;
@@ -1954,6 +1944,27 @@ async function snapshotWithEngine(
   }
 }
 
+async function snapshotWithEngine(
+  runtime: PlaywrightRuntime,
+  browserEngine: BrowserEngineName,
+  sourceUrl: string,
+  options: PlaywrightSnapshotOptions,
+  executablePath?: string | null
+): Promise<DynamicStayPageSnapshot | null> {
+  const launcher = runtime[browserEngine];
+  const browser = await launcher.launch({
+    headless: runtime.source === 'playwright-core' ? (runtime.chromiumHeadless ?? true) : playwrightImportHeadless(),
+    slowMo: playwrightImportSlowMo(),
+    ...(runtime.source === 'playwright-core' && browserEngine === 'chromium'
+      ? {
+          args: runtime.chromiumArgs ?? []
+        }
+      : {}),
+    ...(executablePath ? { executablePath } : {})
+  });
+  return snapshotWithBrowser(browser, browserEngine, sourceUrl, options);
+}
+
 type PlaywrightRuntime = {
   chromium: BrowserType;
   firefox: BrowserType;
@@ -1978,7 +1989,55 @@ export type BrowserRenderResult = {
   browserEngine: BrowserEngineName | null;
   executablePath: string | null;
   error: string | null;
+  provider: BrowserRenderProvider | null;
+  providerAttempts: Array<{
+    provider: BrowserRenderProvider;
+    status: BrowserRuntimeAvailabilityStatus;
+    error: string | null;
+  }>;
 };
+
+function isProductionLikeEnvironment(env = process.env): boolean {
+  return env.VERCEL === '1' || env.VERCEL_ENV === 'production' || env.VERCEL_ENV === 'preview';
+}
+
+function buildRemotePlaywrightEndpoint(env = process.env): string | null {
+  const rawEndpoint = env.PLAYWRIGHT_REMOTE_WS_ENDPOINT?.trim() ?? '';
+  if (!rawEndpoint) return null;
+
+  try {
+    const url = new URL(rawEndpoint);
+    const token = env.PLAYWRIGHT_REMOTE_TOKEN?.trim() ?? '';
+    if (token && !url.searchParams.has('token')) {
+      url.searchParams.set('token', token);
+    }
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+function resolvePlaywrightProviderOrder(env = process.env): BrowserRenderProvider[] {
+  const configured = (env.PLAYWRIGHT_PROVIDER?.trim().toLowerCase() ?? 'auto') as
+    | 'auto'
+    | 'local'
+    | 'remote';
+  const remoteEndpoint = buildRemotePlaywrightEndpoint(env);
+
+  if (configured === 'local') {
+    return remoteEndpoint ? ['local', 'remote'] : ['local'];
+  }
+
+  if (configured === 'remote') {
+    return remoteEndpoint ? ['remote', 'local'] : ['local'];
+  }
+
+  if (isProductionLikeEnvironment(env)) {
+    return remoteEndpoint ? ['remote', 'local'] : ['local'];
+  }
+
+  return remoteEndpoint ? ['local', 'remote'] : ['local'];
+}
 
 function browserExecutableEnvVar(engine: BrowserEngineName): string | null {
   if (engine === 'chromium') return process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH?.trim() ?? null;
@@ -1987,7 +2046,7 @@ function browserExecutableEnvVar(engine: BrowserEngineName): string | null {
 }
 
 function shouldUseServerlessChromiumRuntime() {
-  return process.env.VERCEL === '1' || process.env.VERCEL_ENV === 'production' || process.env.VERCEL_ENV === 'preview';
+  return isProductionLikeEnvironment();
 }
 
 function isUsableExecutablePath(
@@ -2183,7 +2242,7 @@ export async function renderStayPageWithPlaywright(
   return result.snapshot;
 }
 
-export async function renderStayPageWithPlaywrightDetailed(
+async function renderStayPageWithLocalPlaywrightDetailed(
   sourceUrl: string,
   options: PlaywrightSnapshotOptions = {}
 ): Promise<BrowserRenderResult> {
@@ -2199,7 +2258,15 @@ export async function renderStayPageWithPlaywrightDetailed(
       snapshot: null,
       browserEngine: availability.browserEngine,
       executablePath: availability.executablePath,
-      error: availability.error
+      error: availability.error,
+      provider: 'local',
+      providerAttempts: [
+        {
+          provider: 'local',
+          status: availability.status,
+          error: availability.error
+        }
+      ]
     };
   }
 
@@ -2210,7 +2277,15 @@ export async function renderStayPageWithPlaywrightDetailed(
       snapshot: null,
       browserEngine: null,
       executablePath: null,
-      error: 'playwright-module-unavailable'
+      error: 'playwright-module-unavailable',
+      provider: 'local',
+      providerAttempts: [
+        {
+          provider: 'local',
+          status: 'unavailable_module',
+          error: 'playwright-module-unavailable'
+        }
+      ]
     };
   }
 
@@ -2270,7 +2345,15 @@ export async function renderStayPageWithPlaywrightDetailed(
           snapshot,
           browserEngine: engine,
           executablePath,
-          error: null
+          error: null,
+          provider: 'local',
+          providerAttempts: [
+            {
+              provider: 'local',
+              status: 'available',
+              error: null
+            }
+          ]
         };
       }
       lastFailureStatus = 'navigation_blocked';
@@ -2292,11 +2375,183 @@ export async function renderStayPageWithPlaywrightDetailed(
     snapshot: null,
     browserEngine: availability.browserEngine,
     executablePath: availability.executablePath,
-    error: lastFailureMessage
+    error: lastFailureMessage,
+    provider: 'local',
+    providerAttempts: [
+      {
+        provider: 'local',
+        status: lastFailureStatus,
+        error: lastFailureMessage
+      }
+    ]
+  };
+}
+
+async function renderStayPageWithRemotePlaywrightDetailed(
+  sourceUrl: string,
+  options: PlaywrightSnapshotOptions = {}
+): Promise<BrowserRenderResult> {
+  const endpoint = buildRemotePlaywrightEndpoint();
+  if (!endpoint) {
+    return {
+      status: 'unavailable_module',
+      snapshot: null,
+      browserEngine: 'chromium',
+      executablePath: null,
+      error: 'playwright-remote-endpoint-missing',
+      provider: 'remote',
+      providerAttempts: [
+        {
+          provider: 'remote',
+          status: 'unavailable_module',
+          error: 'playwright-remote-endpoint-missing'
+        }
+      ]
+    };
+  }
+
+  const snapshotOptions: Required<PlaywrightSnapshotOptions> = {
+    collectImages: options.collectImages ?? true,
+    collectTransport: options.collectTransport ?? false,
+    collectVideos: options.collectVideos ?? true
+  };
+
+  try {
+    const playwrightCoreModule = (await import('playwright-core')) as unknown as Partial<PlaywrightRuntime>;
+    if (!playwrightCoreModule.chromium) {
+      return {
+        status: 'unavailable_module',
+        snapshot: null,
+        browserEngine: 'chromium',
+        executablePath: endpoint,
+        error: 'playwright-core-missing-chromium',
+        provider: 'remote',
+        providerAttempts: [
+          {
+            provider: 'remote',
+            status: 'unavailable_module',
+            error: 'playwright-core-missing-chromium'
+          }
+        ]
+      };
+    }
+
+    const browser = await playwrightCoreModule.chromium.connect(endpoint, { timeout: PLAYWRIGHT_TIMEOUT_MS });
+    const snapshot = await snapshotWithBrowser(browser, 'chromium', sourceUrl, snapshotOptions);
+    const hasUsefulSessions =
+      (snapshot?.ceslSessionsFromPlaywright.length ?? 0) > 0 ||
+      (snapshot?.zigotoursSessionsFromPlaywright.length ?? 0) > 0 ||
+      (snapshot?.tableSessionsFromPlaywright.length ?? 0) > 0;
+    const hasUsefulTransport =
+      !snapshotOptions.collectTransport ||
+      (snapshot?.transportVariants.length ?? 0) > 0 ||
+      (snapshot?.tableTransportOptionsFromPlaywright.length ?? 0) > 0 ||
+      snapshot?.transportDetected === true;
+
+    if (
+      snapshot &&
+      (hasUsefulTransport || hasUsefulSessions) &&
+      (snapshot.html.length > 0 ||
+        snapshot.imageUrls.length > 0 ||
+        snapshot.videoUrls.length > 0 ||
+        snapshot.transportVariants.length > 0 ||
+        snapshot.transportDetected ||
+        snapshot.ceslSessionsFromPlaywright.length > 0 ||
+        snapshot.zigotoursSessionsFromPlaywright.length > 0 ||
+        snapshot.tableSessionsFromPlaywright.length > 0 ||
+        snapshot.tableDepartureRowCount > 0)
+    ) {
+      return {
+        status: 'available',
+        snapshot,
+        browserEngine: 'chromium',
+        executablePath: endpoint,
+        error: null,
+        provider: 'remote',
+        providerAttempts: [
+          {
+            provider: 'remote',
+            status: 'available',
+            error: null
+          }
+        ]
+      };
+    }
+
+    return {
+      status: 'navigation_blocked',
+      snapshot: null,
+      browserEngine: 'chromium',
+      executablePath: endpoint,
+      error: 'browser_render_empty',
+      provider: 'remote',
+      providerAttempts: [
+        {
+          provider: 'remote',
+          status: 'navigation_blocked',
+          error: 'browser_render_empty'
+        }
+      ]
+    };
+  } catch (error) {
+    const status = classifyBrowserLaunchFailure(error);
+    const message = error instanceof Error ? error.message : 'unknown-error';
+    return {
+      status,
+      snapshot: null,
+      browserEngine: 'chromium',
+      executablePath: endpoint,
+      error: message,
+      provider: 'remote',
+      providerAttempts: [
+        {
+          provider: 'remote',
+          status,
+          error: message
+        }
+      ]
+    };
+  }
+}
+
+export async function renderStayPageWithPlaywrightDetailed(
+  sourceUrl: string,
+  options: PlaywrightSnapshotOptions = {}
+): Promise<BrowserRenderResult> {
+  const providerOrder = resolvePlaywrightProviderOrder();
+  const attempts: BrowserRenderResult['providerAttempts'] = [];
+  let lastResult: BrowserRenderResult | null = null;
+
+  for (const provider of providerOrder) {
+    const result =
+      provider === 'remote'
+        ? await renderStayPageWithRemotePlaywrightDetailed(sourceUrl, options)
+        : await renderStayPageWithLocalPlaywrightDetailed(sourceUrl, options);
+
+    attempts.push(...result.providerAttempts);
+    if (result.snapshot) {
+      return {
+        ...result,
+        providerAttempts: attempts
+      };
+    }
+    lastResult = result;
+  }
+
+  return {
+    status: lastResult?.status ?? 'launch_failed',
+    snapshot: null,
+    browserEngine: lastResult?.browserEngine ?? null,
+    executablePath: lastResult?.executablePath ?? null,
+    error: lastResult?.error ?? 'playwright-provider-exhausted',
+    provider: lastResult?.provider ?? null,
+    providerAttempts: attempts
   };
 }
 
 export const __testables__ = {
   classifyBrowserLaunchFailure,
-  isUsableExecutablePath
+  isUsableExecutablePath,
+  buildRemotePlaywrightEndpoint,
+  resolvePlaywrightProviderOrder
 };

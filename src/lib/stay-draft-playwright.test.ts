@@ -37,3 +37,24 @@ test('isUsableExecutablePath accepts serverless chromium resolved path before ex
     true
   );
 });
+
+test('resolvePlaywrightProviderOrder prefers remote in production auto mode when configured', () => {
+  assert.deepEqual(
+    __testables__.resolvePlaywrightProviderOrder({
+      PLAYWRIGHT_PROVIDER: 'auto',
+      PLAYWRIGHT_REMOTE_WS_ENDPOINT: 'wss://browserless.example.com/chromium/playwright',
+      VERCEL_ENV: 'production'
+    } as unknown as NodeJS.ProcessEnv),
+    ['remote', 'local']
+  );
+});
+
+test('resolvePlaywrightProviderOrder prefers local in dev auto mode', () => {
+  assert.deepEqual(
+    __testables__.resolvePlaywrightProviderOrder({
+      PLAYWRIGHT_PROVIDER: 'auto',
+      PLAYWRIGHT_REMOTE_WS_ENDPOINT: 'wss://browserless.example.com/chromium/playwright'
+    } as unknown as NodeJS.ProcessEnv),
+    ['local', 'remote']
+  );
+});

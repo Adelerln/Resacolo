@@ -5,10 +5,24 @@
       "memory": 1024,
       "maxDuration": 300
     },
+    "app/api/internal/stay-import-worker/route.ts": {
+      "memory": 1024,
+      "maxDuration": 300
+    },
+    "app/api/cron/stay-import-worker/route.ts": {
+      "memory": 1024,
+      "maxDuration": 300
+    },
     "app/api/import-stay/route.ts": {
       "maxDuration": 60
     }
   },
+  "crons": [
+    {
+      "path": "/api/cron/stay-import-worker",
+      "schedule": "*/2 * * * *"
+    }
+  ],
   "redirects": [
     {
       "source": "/:path*",

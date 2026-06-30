@@ -29,7 +29,6 @@ const nextConfig = {
     NEXT_PUBLIC_VERCEL_ENV: process.env.VERCEL_ENV ?? ''
   },
   transpilePackages: ['framer-motion'],
-  serverExternalPackages: ['@sparticuz/chromium', 'playwright-core'],
   output: 'standalone',
   outputFileTracingRoot: projectRoot,
   outputFileTracingIncludes: stayImportRouteTracing,

@@ -343,6 +343,9 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
   }
 
   const rawPayload = asObject(draft.raw_payload);
+  const importProgress = asObject((rawPayload.import_progress as Json | null) ?? null);
+  const importProgressStep = normalizeString(String(importProgress.step ?? ''));
+  const importProgressLabel = normalizeString(String(importProgress.label ?? ''));
 
   const importErrorMessage =
     typeof rawPayload.fetch_error === 'string' && rawPayload.fetch_error.trim()
@@ -362,6 +365,7 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
   const pollWhilePending =
     !manualDraft &&
     (draft.status ?? '').toLowerCase() === 'pending' &&
+    importProgressStep !== 'queued' &&
     !importErrorMessage &&
     !hasImportedTitle;
 
@@ -602,6 +606,8 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
 
       <DraftImportStatusBanner
         pollWhilePending={pollWhilePending}
+        importProgressStep={importProgressStep}
+        importProgressLabel={importProgressLabel}
         importErrorMessage={importErrorMessage}
         importWarningMessage={importWarningMessage}
       />

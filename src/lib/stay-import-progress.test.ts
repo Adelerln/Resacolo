@@ -23,6 +23,15 @@ test('isStayImportAlreadyRunning detects fetching step', () => {
   );
 });
 
+test('isStayImportAlreadyRunning ignores queued step', () => {
+  assert.equal(
+    isStayImportAlreadyRunning({
+      import_progress: { step: 'queued', completed: false }
+    }),
+    false
+  );
+});
+
 test('shouldKickOffStayImport relaunches failed imports', () => {
   assert.equal(
     shouldKickOffStayImport({

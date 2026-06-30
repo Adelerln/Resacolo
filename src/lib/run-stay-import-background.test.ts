@@ -26,19 +26,21 @@ test('buildBrowserFallbackErrorMessage distinguishes runtime cases', () => {
   assert.equal(
     __testables__.buildBrowserFallbackErrorMessage({
       fetchStatus: 403,
+      browserProvider: 'local',
       browserRuntimeStatus: 'unavailable_executable',
       browserExecutablePath: '/tmp/chromium',
       fallbackError: null
     }),
-    'Le site source bloque le fetch serveur (HTTP 403). Le fallback navigateur n’est pas disponible en production. [runtime=unavailable_executable] [executable=/tmp/chromium]'
+    'Le site source bloque le fetch serveur (HTTP 403). Le fallback navigateur n’est pas disponible en production. [provider=local] [runtime=unavailable_executable] [executable=/tmp/chromium]'
   );
   assert.equal(
     __testables__.buildBrowserFallbackErrorMessage({
       fetchStatus: 403,
+      browserProvider: 'remote',
       browserRuntimeStatus: 'navigation_blocked',
       browserExecutablePath: null,
       fallbackError: null
     }),
-    'Le site source bloque le fetch serveur (HTTP 403). Le site source bloque aussi le navigateur. [runtime=navigation_blocked]'
+    'Le site source bloque le fetch serveur (HTTP 403). Le site source bloque aussi le navigateur. [provider=remote] [runtime=navigation_blocked]'
   );
 });

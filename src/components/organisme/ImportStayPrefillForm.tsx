@@ -48,6 +48,8 @@ async function requestStayImportRun(draftId: string, organizerId: string) {
     const payload = (await response.json().catch(() => null)) as { error?: string } | null;
     throw new Error(payload?.error ?? "Impossible de lancer l'import du brouillon.");
   }
+
+  return (await response.json().catch(() => null)) as { status?: string } | null;
 }
 
 /**
@@ -192,20 +194,35 @@ export default function ImportStayPrefillForm({
     if (importKickoffRef.current === createdDraftId) return;
 
     importKickoffRef.current = createdDraftId;
-    void requestStayImportRun(createdDraftId, organizerId).catch((error) => {
-      importKickoffRef.current = null;
-      const message = error instanceof Error ? error.message : "Impossible de lancer l'import.";
-      setImportProgress((current) =>
-        current
-          ? {
-              ...current,
-              completed: true,
-              error: message,
-              label: 'Import interrompu'
-            }
-          : current
-      );
-    });
+    void requestStayImportRun(createdDraftId, organizerId)
+      .then((payload) => {
+        if (payload?.status === 'started') {
+          setImportProgress((current) =>
+            current
+              ? {
+                  ...current,
+                  step: 'queued',
+                  label: 'En file d’attente',
+                  percent: 10
+                }
+              : current
+          );
+        }
+      })
+      .catch((error) => {
+        importKickoffRef.current = null;
+        const message = error instanceof Error ? error.message : "Impossible de lancer l'import.";
+        setImportProgress((current) =>
+          current
+            ? {
+                ...current,
+                completed: true,
+                error: message,
+                label: 'Import interrompu'
+              }
+            : current
+        );
+      });
   }, [
     createdDraftId,
     importAction,

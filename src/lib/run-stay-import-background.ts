@@ -81,6 +81,7 @@ function shouldUseBrowserFallbackAfterFetch(html: string): boolean {
 
 function buildBrowserFallbackErrorMessage(params: {
   fetchStatus: number | null;
+  browserProvider: string | null;
   browserRuntimeStatus: string | null;
   browserExecutablePath: string | null;
   fallbackError: string | null;
@@ -88,21 +89,22 @@ function buildBrowserFallbackErrorMessage(params: {
   const fetchPrefix = params.fetchStatus
     ? `Le site source bloque le fetch serveur (HTTP ${params.fetchStatus}).`
     : 'Le site source bloque le fetch serveur.';
+  const providerSuffix = params.browserProvider ? ` [provider=${params.browserProvider}]` : '';
   const runtimeSuffix = params.browserRuntimeStatus ? ` [runtime=${params.browserRuntimeStatus}]` : '';
   const executableSuffix = params.browserExecutablePath
     ? ` [executable=${params.browserExecutablePath}]`
     : '';
   const fallbackDetail = params.fallbackError ? ` Détail: ${params.fallbackError.slice(0, 240)}.` : '';
   if (params.browserRuntimeStatus === 'unavailable_module' || params.browserRuntimeStatus === 'unavailable_executable') {
-    return `${fetchPrefix} Le fallback navigateur n’est pas disponible en production.${runtimeSuffix}${executableSuffix}${fallbackDetail}`;
+    return `${fetchPrefix} Le fallback navigateur n’est pas disponible en production.${providerSuffix}${runtimeSuffix}${executableSuffix}${fallbackDetail}`;
   }
   if (params.browserRuntimeStatus === 'navigation_blocked') {
-    return `${fetchPrefix} Le site source bloque aussi le navigateur.${runtimeSuffix}${fallbackDetail}`;
+    return `${fetchPrefix} Le site source bloque aussi le navigateur.${providerSuffix}${runtimeSuffix}${fallbackDetail}`;
   }
   if (params.fallbackError === 'browser_render_empty') {
-    return `${fetchPrefix} Le navigateur a chargé une page inutilisable pour l’import.${runtimeSuffix}`;
+    return `${fetchPrefix} Le navigateur a chargé une page inutilisable pour l’import.${providerSuffix}${runtimeSuffix}`;
   }
-  return `${fetchPrefix} Le fallback navigateur a échoué.${runtimeSuffix}${fallbackDetail}`;
+  return `${fetchPrefix} Le fallback navigateur a échoué.${providerSuffix}${runtimeSuffix}${fallbackDetail}`;
 }
 
 export const __testables__ = {
@@ -763,6 +765,7 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMes
 
 type ImportProgressStep =
   | 'created'
+  | 'queued'
   | 'fetching'
   | 'analyzing'
   | 'rendering_dynamic'
@@ -772,7 +775,10 @@ type ImportProgressStep =
   | 'completed'
   | 'failed';
 
-function buildImportProgress(step: ImportProgressStep, extra?: { error?: string | null }) {
+export function buildImportProgress(
+  step: ImportProgressStep,
+  extra?: { error?: string | null; label?: string | null }
+) {
   const updatedAt = new Date().toISOString();
 
   switch (step) {
@@ -781,6 +787,15 @@ function buildImportProgress(step: ImportProgressStep, extra?: { error?: string 
         step,
         label: 'Brouillon créé',
         percent: 5,
+        completed: false,
+        updated_at: updatedAt,
+        error: null
+      };
+    case 'queued':
+      return {
+        step,
+        label: extra?.label?.trim() || 'En file d’attente',
+        percent: 10,
         completed: false,
         updated_at: updatedAt,
         error: null
@@ -1199,9 +1214,19 @@ export async function runStayImportInBackground(params: {
   selectedAccommodation: { id: string; name: string } | null;
   includePricing: boolean;
   draftColumnKeys: string[];
+  jobId?: string | null;
+  jobAttemptCount?: number | null;
 }): Promise<void> {
   const draftColumns = new Set(params.draftColumnKeys);
-  const { draftId, sourceUrl, selectedOrganizerId, selectedAccommodation, includePricing } = params;
+  const {
+    draftId,
+    sourceUrl,
+    selectedOrganizerId,
+    selectedAccommodation,
+    includePricing,
+    jobId,
+    jobAttemptCount
+  } = params;
   const supabase = getServerSupabaseClient();
 
   try {
@@ -1220,10 +1245,14 @@ export async function runStayImportInBackground(params: {
       import_progress: buildImportProgress('fetching')
     });
     await mergeImportDebugPatch(draftId, {
+      job_id: jobId ?? null,
+      attempt_count: typeof jobAttemptCount === 'number' ? jobAttemptCount : 0,
       fetch_status: null,
       fetch_final_url: null,
       fallback_attempted: false,
       fallback_reason: null,
+      provider_selected: null,
+      provider_attempts: [],
       browser_runtime_status: null,
       browser_engine: null,
       browser_executable_path: null,
@@ -1273,10 +1302,14 @@ export async function runStayImportInBackground(params: {
             snapshot: null,
             browserEngine: null,
             executablePath: null,
-            error: playwrightError instanceof Error ? playwrightError.message : 'unknown-error'
+            error: playwrightError instanceof Error ? playwrightError.message : 'unknown-error',
+            provider: null,
+            providerAttempts: []
           };
         });
         await mergeImportDebugPatch(draftId, {
+          provider_selected: fallbackResult.provider,
+          provider_attempts: fallbackResult.providerAttempts,
           browser_runtime_status: fallbackResult.status,
           browser_engine: fallbackResult.browserEngine,
           browser_executable_path: fallbackResult.executablePath,
@@ -1298,6 +1331,7 @@ export async function runStayImportInBackground(params: {
         } else {
           const combinedError = buildBrowserFallbackErrorMessage({
             fetchStatus: blockedFetchStatus,
+            browserProvider: fallbackResult.provider,
             browserRuntimeStatus: fallbackResult.status,
             browserExecutablePath: fallbackResult.executablePath,
             fallbackError: fallbackResult.error
@@ -1398,7 +1432,9 @@ export async function runStayImportInBackground(params: {
             snapshot: null,
             browserEngine: null,
             executablePath: null,
-            error: playwrightFailureMessage
+            error: playwrightFailureMessage,
+            provider: null,
+            providerAttempts: []
           };
         })
       : null;
@@ -1420,6 +1456,8 @@ export async function runStayImportInBackground(params: {
                 : needsDynamicImages
                   ? 'dynamic_images'
                   : 'dynamic_render',
+        provider_selected: dynamicRenderResult?.provider ?? null,
+        provider_attempts: dynamicRenderResult?.providerAttempts ?? [],
         browser_runtime_status: dynamicRenderRuntimeStatus,
         browser_engine: dynamicRenderEngine,
         browser_executable_path: dynamicRenderResult?.executablePath ?? null,
@@ -1429,6 +1467,7 @@ export async function runStayImportInBackground(params: {
     if (blockedHtmlAfterFetch && !dynamicSnapshot) {
       const blockedHtmlError = buildBrowserFallbackErrorMessage({
         fetchStatus: fetchedHtml.status,
+        browserProvider: dynamicRenderResult?.provider ?? null,
         browserRuntimeStatus: dynamicRenderRuntimeStatus,
         browserExecutablePath: dynamicRenderResult?.executablePath ?? null,
         fallbackError: playwrightFailureMessage

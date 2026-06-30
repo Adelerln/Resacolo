@@ -46,7 +46,12 @@ export function shouldKickOffStayImport(
 export function isStayImportAlreadyRunning(rawPayload: unknown) {
   const progress = readStayImportProgress(rawPayload);
   if (progress.completed) return false;
-  return progress.step !== 'created' && progress.step !== 'failed' && Boolean(progress.step);
+  return (
+    progress.step !== 'created' &&
+    progress.step !== 'queued' &&
+    progress.step !== 'failed' &&
+    Boolean(progress.step)
+  );
 }
 
 export function readStayImportIncludePricing(rawPayload: unknown) {

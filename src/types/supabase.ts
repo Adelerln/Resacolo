@@ -2543,6 +2543,79 @@ export type Database = {
           },
         ]
       }
+      stay_import_jobs: {
+        Row: {
+          attempt_count: number
+          created_at: string
+          draft_id: string
+          id: string
+          include_pricing: boolean
+          last_error: string | null
+          lock_token: string | null
+          locked_at: string | null
+          next_run_at: string
+          organizer_id: string
+          selected_accommodation_id: string | null
+          source_url: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          attempt_count?: number
+          created_at?: string
+          draft_id: string
+          id?: string
+          include_pricing?: boolean
+          last_error?: string | null
+          lock_token?: string | null
+          locked_at?: string | null
+          next_run_at?: string
+          organizer_id: string
+          selected_accommodation_id?: string | null
+          source_url: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          attempt_count?: number
+          created_at?: string
+          draft_id?: string
+          id?: string
+          include_pricing?: boolean
+          last_error?: string | null
+          lock_token?: string | null
+          locked_at?: string | null
+          next_run_at?: string
+          organizer_id?: string
+          selected_accommodation_id?: string | null
+          source_url?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stay_import_jobs_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "stay_drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stay_import_jobs_organizer_id_fkey"
+            columns: ["organizer_id"]
+            isOneToOne: false
+            referencedRelation: "organizers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stay_import_jobs_selected_accommodation_id_fkey"
+            columns: ["selected_accommodation_id"]
+            isOneToOne: false
+            referencedRelation: "accommodations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       stays: {
         Row: {
           ages: number[]
@@ -2876,6 +2949,25 @@ export type Database = {
     }
     Functions: {
       cron_archive_finished_stays: { Args: never; Returns: undefined }
+      claim_next_stay_import_job: {
+        Args: { p_lock_token: string }
+        Returns: {
+          attempt_count: number
+          created_at: string
+          draft_id: string
+          id: string
+          include_pricing: boolean
+          last_error: string | null
+          lock_token: string | null
+          locked_at: string | null
+          next_run_at: string
+          organizer_id: string
+          selected_accommodation_id: string | null
+          source_url: string
+          status: string
+          updated_at: string
+        }[]
+      }
       cron_complete_sessions: { Args: never; Returns: undefined }
       cron_expire_holds: { Args: never; Returns: undefined }
       match_rag_chunks: {

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireOrganizerApiAccess } from '@/lib/organizer-backoffice-access.server';
+import { triggerStayImportWorker } from '@/lib/stay-import-jobs';
 import { runStayImportForDraftRow } from '@/lib/stay-import-run';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 
@@ -54,6 +55,7 @@ export async function POST(
       return NextResponse.json({ success: true, status: 'already_completed' });
     }
 
+    void triggerStayImportWorker(req.url);
     return NextResponse.json({ success: true, status: 'started' });
   } catch (error) {
     console.error('[stay-drafts/run-import] unexpected error:', error);

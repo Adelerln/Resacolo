@@ -16,6 +16,7 @@ type OrganizersMarqueeProps = {
 export function OrganizersMarquee({ embedded = false }: OrganizersMarqueeProps) {
   const [logos, setLogos] = useState<OrganizerLogo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
   const trackRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -42,9 +43,16 @@ export function OrganizersMarquee({ embedded = false }: OrganizersMarqueeProps) 
     };
   }, []);
 
-  const shouldAnimate = logos.length > 0;
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const syncPreference = () => setPrefersReducedMotion(mediaQuery.matches);
+    syncPreference();
+    mediaQuery.addEventListener('change', syncPreference);
+    return () => mediaQuery.removeEventListener('change', syncPreference);
+  }, []);
 
-  // Défilement continu, fluide, façon bandeau
+  const shouldAnimate = logos.length > 0 && !prefersReducedMotion;
+
   useEffect(() => {
     if (!shouldAnimate) return;
     const track = trackRef.current;
@@ -52,13 +60,25 @@ export function OrganizersMarquee({ embedded = false }: OrganizersMarqueeProps) 
 
     let frameId: number;
     let offset = 0;
-    const speed = 0.4; // pixels par frame (~24px/s à 60fps)
+    let lastTimestamp = 0;
+    const speed = 22;
 
-    const loop = () => {
+    const loop = (timestamp: number) => {
       const firstGroup = track.firstElementChild as HTMLDivElement | null;
       if (!firstGroup) return;
 
-      offset -= speed;
+      if (document.hidden) {
+        frameId = window.requestAnimationFrame(loop);
+        return;
+      }
+
+      if (lastTimestamp === 0) {
+        lastTimestamp = timestamp;
+      }
+
+      const delta = Math.min(timestamp - lastTimestamp, 32);
+      lastTimestamp = timestamp;
+      offset -= (speed * delta) / 1000;
       if (Math.abs(offset) >= firstGroup.offsetWidth) {
         offset = 0;
       }

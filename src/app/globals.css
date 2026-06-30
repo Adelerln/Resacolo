@@ -409,6 +409,21 @@ button,
     box-shadow var(--flow-medium) var(--flow-ease);
 }
 
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 /* Layout utilities */
 .section-container {
   @apply mx-auto max-w-6xl px-4 sm:px-6 lg:px-8;

@@ -82,21 +82,27 @@ function shouldUseBrowserFallbackAfterFetch(html: string): boolean {
 function buildBrowserFallbackErrorMessage(params: {
   fetchStatus: number | null;
   browserRuntimeStatus: string | null;
+  browserExecutablePath: string | null;
   fallbackError: string | null;
 }): string {
   const fetchPrefix = params.fetchStatus
     ? `Le site source bloque le fetch serveur (HTTP ${params.fetchStatus}).`
     : 'Le site source bloque le fetch serveur.';
+  const runtimeSuffix = params.browserRuntimeStatus ? ` [runtime=${params.browserRuntimeStatus}]` : '';
+  const executableSuffix = params.browserExecutablePath
+    ? ` [executable=${params.browserExecutablePath}]`
+    : '';
+  const fallbackDetail = params.fallbackError ? ` Détail: ${params.fallbackError.slice(0, 240)}.` : '';
   if (params.browserRuntimeStatus === 'unavailable_module' || params.browserRuntimeStatus === 'unavailable_executable') {
-    return `${fetchPrefix} Le fallback navigateur n’est pas disponible en production.`;
+    return `${fetchPrefix} Le fallback navigateur n’est pas disponible en production.${runtimeSuffix}${executableSuffix}${fallbackDetail}`;
   }
   if (params.browserRuntimeStatus === 'navigation_blocked') {
-    return `${fetchPrefix} Le site source bloque aussi le navigateur.`;
+    return `${fetchPrefix} Le site source bloque aussi le navigateur.${runtimeSuffix}${fallbackDetail}`;
   }
   if (params.fallbackError === 'browser_render_empty') {
-    return `${fetchPrefix} Le navigateur a chargé une page inutilisable pour l’import.`;
+    return `${fetchPrefix} Le navigateur a chargé une page inutilisable pour l’import.${runtimeSuffix}`;
   }
-  return `${fetchPrefix} Le fallback navigateur a échoué.`;
+  return `${fetchPrefix} Le fallback navigateur a échoué.${runtimeSuffix}${fallbackDetail}`;
 }
 
 export const __testables__ = {
@@ -1220,6 +1226,7 @@ export async function runStayImportInBackground(params: {
       fallback_reason: null,
       browser_runtime_status: null,
       browser_engine: null,
+      browser_executable_path: null,
       fallback_error: null
     });
 
@@ -1272,6 +1279,7 @@ export async function runStayImportInBackground(params: {
         await mergeImportDebugPatch(draftId, {
           browser_runtime_status: fallbackResult.status,
           browser_engine: fallbackResult.browserEngine,
+          browser_executable_path: fallbackResult.executablePath,
           fallback_error: fallbackResult.error
         });
 
@@ -1291,6 +1299,7 @@ export async function runStayImportInBackground(params: {
           const combinedError = buildBrowserFallbackErrorMessage({
             fetchStatus: blockedFetchStatus,
             browserRuntimeStatus: fallbackResult.status,
+            browserExecutablePath: fallbackResult.executablePath,
             fallbackError: fallbackResult.error
           });
           if (draftColumns.has('raw_payload')) {
@@ -1413,6 +1422,7 @@ export async function runStayImportInBackground(params: {
                   : 'dynamic_render',
         browser_runtime_status: dynamicRenderRuntimeStatus,
         browser_engine: dynamicRenderEngine,
+        browser_executable_path: dynamicRenderResult?.executablePath ?? null,
         fallback_error: playwrightFailureMessage
       });
     }
@@ -1420,6 +1430,7 @@ export async function runStayImportInBackground(params: {
       const blockedHtmlError = buildBrowserFallbackErrorMessage({
         fetchStatus: fetchedHtml.status,
         browserRuntimeStatus: dynamicRenderRuntimeStatus,
+        browserExecutablePath: dynamicRenderResult?.executablePath ?? null,
         fallbackError: playwrightFailureMessage
       });
       await mergeRawPayloadPatch(draftId, {

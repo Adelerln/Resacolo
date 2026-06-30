@@ -42,6 +42,11 @@ function envTruthy(value: string | undefined): boolean {
 
 const PLAYWRIGHT_RENDER_BUDGET_MS = 20_000;
 
+function isFetch403Error(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  return /HTTP 403\b/.test(message);
+}
+
 function normalizeForCompare(value: string | null | undefined): string {
   return String(value ?? '')
     .normalize('NFD')
@@ -1123,20 +1128,68 @@ export async function runStayImportInBackground(params: {
       const fetchErrorMessage =
         error instanceof Error ? error.message : 'Impossible de récupérer la page source.';
 
-      if (draftColumns.has('raw_payload')) {
-        await supabase
-          .from('stay_drafts')
-          .update({
-            raw_payload: {
-              source_url: sourceUrl,
-              fetch_error: fetchErrorMessage,
-              fetched_at: new Date().toISOString(),
-              import_progress: buildImportProgress('failed', { error: fetchErrorMessage })
-            }
-          })
-          .eq('id', draftId);
+      if (isFetch403Error(error)) {
+        await mergeRawPayloadPatch(draftId, {
+          import_progress: buildImportProgress('rendering_dynamic')
+        });
+
+        const fallbackSnapshot = await withTimeout(
+          renderStayPageWithPlaywright(sourceUrl, {
+            collectImages: true,
+            collectTransport: includePricing,
+            collectVideos: true
+          }),
+          PLAYWRIGHT_RENDER_BUDGET_MS,
+          'playwright-render-timeout'
+        ).catch((playwrightError) => {
+          console.warn('[import-stay] Playwright fallback after 403 failed', {
+            sourceUrl,
+            error: playwrightError instanceof Error ? playwrightError.message : 'unknown-error'
+          });
+          return null;
+        });
+
+        if (fallbackSnapshot?.html) {
+          fetchedHtml = {
+            html: fallbackSnapshot.html,
+            finalUrl: fallbackSnapshot.finalUrl || sourceUrl,
+            fetchedAt: new Date().toISOString(),
+            contentType: 'text/html',
+            status: 200
+          };
+        } else {
+          const combinedError = `${fetchErrorMessage} Fallback navigateur indisponible.`;
+          if (draftColumns.has('raw_payload')) {
+            await supabase
+              .from('stay_drafts')
+              .update({
+                raw_payload: {
+                  source_url: sourceUrl,
+                  fetch_error: combinedError,
+                  fetched_at: new Date().toISOString(),
+                  import_progress: buildImportProgress('failed', { error: combinedError })
+                }
+              })
+              .eq('id', draftId);
+          }
+          return;
+        }
+      } else {
+        if (draftColumns.has('raw_payload')) {
+          await supabase
+            .from('stay_drafts')
+            .update({
+              raw_payload: {
+                source_url: sourceUrl,
+                fetch_error: fetchErrorMessage,
+                fetched_at: new Date().toISOString(),
+                import_progress: buildImportProgress('failed', { error: fetchErrorMessage })
+              }
+            })
+            .eq('id', draftId);
+        }
+        return;
       }
-      return;
     }
 
     await mergeRawPayloadPatch(draftId, {

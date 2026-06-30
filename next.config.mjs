@@ -1,6 +1,15 @@
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 const supabaseHostname = process.env.NEXT_PUBLIC_SUPABASE_URL
   ? new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).hostname
   : null;
+
+const projectRoot = path.dirname(fileURLToPath(import.meta.url));
+const playwrightRuntimeIncludes = [
+  './node_modules/@sparticuz/chromium/**/*',
+  './node_modules/playwright-core/**/*'
+];
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -8,7 +17,13 @@ const nextConfig = {
     NEXT_PUBLIC_VERCEL_ENV: process.env.VERCEL_ENV ?? ''
   },
   transpilePackages: ['framer-motion'],
+  serverExternalPackages: ['@sparticuz/chromium', 'playwright-core'],
   output: 'standalone',
+  outputFileTracingRoot: projectRoot,
+  outputFileTracingIncludes: {
+    '/api/import-stay': playwrightRuntimeIncludes,
+    '/api/stay-drafts/[id]/run-import': playwrightRuntimeIncludes
+  },
   images: {
     remotePatterns: [
       {
@@ -76,6 +91,9 @@ const nextConfig = {
   experimental: {
     serverActions: {
       bodySizeLimit: '10mb'
+    },
+    turbopack: {
+      root: projectRoot
     }
   }
 };

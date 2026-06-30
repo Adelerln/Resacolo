@@ -87,6 +87,12 @@ interface BrowserType {
   executablePath?: () => string;
 }
 
+type ServerlessChromiumRuntime = {
+  args?: string[];
+  executablePath?: () => Promise<string>;
+  headless?: boolean | 'shell';
+};
+
 const PLAYWRIGHT_TIMEOUT_MS = 15_000;
 const PLAYWRIGHT_SCROLL_STEPS = 5;
 const PLAYWRIGHT_MAX_CAROUSEL_CLICKS = 5;
@@ -1815,16 +1821,21 @@ async function createContext(browser: Browser): Promise<BrowserContext> {
 }
 
 async function snapshotWithEngine(
-  playwright: Record<BrowserEngineName, BrowserType>,
+  runtime: PlaywrightRuntime,
   browserEngine: BrowserEngineName,
   sourceUrl: string,
   options: PlaywrightSnapshotOptions,
   executablePath?: string | null
 ): Promise<DynamicStayPageSnapshot | null> {
-  const launcher = playwright[browserEngine];
+  const launcher = runtime[browserEngine];
   const browser = await launcher.launch({
-    headless: playwrightImportHeadless(),
+    headless: runtime.source === 'playwright-core' ? (runtime.chromiumHeadless ?? true) : playwrightImportHeadless(),
     slowMo: playwrightImportSlowMo(),
+    ...(runtime.source === 'playwright-core' && browserEngine === 'chromium'
+      ? {
+          args: runtime.chromiumArgs ?? []
+        }
+      : {}),
     ...(executablePath ? { executablePath } : {})
   });
 
@@ -1946,6 +1957,11 @@ type PlaywrightRuntime = {
   chromium: BrowserType;
   firefox: BrowserType;
   webkit: BrowserType;
+  engines: BrowserEngineName[];
+  source: 'playwright' | 'playwright-core';
+  chromiumArgs?: string[];
+  chromiumHeadless?: boolean;
+  chromiumExecutablePathResolver?: (() => Promise<string>) | null;
 };
 
 type BrowserRuntimeAvailability = {
@@ -1969,6 +1985,10 @@ function browserExecutableEnvVar(engine: BrowserEngineName): string | null {
   return process.env.PLAYWRIGHT_WEBKIT_EXECUTABLE_PATH?.trim() ?? null;
 }
 
+function useServerlessChromiumRuntime() {
+  return process.env.VERCEL === '1' || process.env.VERCEL_ENV === 'production' || process.env.VERCEL_ENV === 'preview';
+}
+
 function resolveExecutablePath(browserType: BrowserType, engine: BrowserEngineName): string | null {
   const envPath = browserExecutableEnvVar(engine);
   if (envPath) return envPath;
@@ -1981,6 +2001,24 @@ function resolveExecutablePath(browserType: BrowserType, engine: BrowserEngineNa
     }
   }
   return null;
+}
+
+async function resolveExecutablePathAsync(
+  runtime: PlaywrightRuntime,
+  browserType: BrowserType,
+  engine: BrowserEngineName
+): Promise<string | null> {
+  const envPath = browserExecutableEnvVar(engine);
+  if (envPath) return envPath;
+  if (engine === 'chromium' && runtime.chromiumExecutablePathResolver) {
+    try {
+      const path = await runtime.chromiumExecutablePathResolver();
+      return typeof path === 'string' && path.trim().length > 0 ? path.trim() : null;
+    } catch {
+      return null;
+    }
+  }
+  return resolveExecutablePath(browserType, engine);
 }
 
 function classifyBrowserLaunchFailure(error: unknown): BrowserRuntimeAvailabilityStatus {
@@ -2007,11 +2045,38 @@ async function loadPlaywrightRuntime(): Promise<PlaywrightRuntime | null> {
     const dynamicImport = new Function('moduleName', 'return import(moduleName);') as (
       moduleName: string
     ) => Promise<unknown>;
+    if (useServerlessChromiumRuntime()) {
+      const [playwrightCoreModule, chromiumImport] = (await Promise.all([
+        dynamicImport('playwright-core'),
+        dynamicImport('@sparticuz/chromium')
+      ])) as [Partial<PlaywrightRuntime>, { default?: ServerlessChromiumRuntime } & ServerlessChromiumRuntime];
+      const chromiumModule = chromiumImport.default ?? chromiumImport;
+      if (!playwrightCoreModule.chromium) {
+        return null;
+      }
+      return {
+        chromium: playwrightCoreModule.chromium,
+        firefox: playwrightCoreModule.firefox ?? playwrightCoreModule.chromium,
+        webkit: playwrightCoreModule.webkit ?? playwrightCoreModule.chromium,
+        engines: ['chromium'],
+        source: 'playwright-core',
+        chromiumArgs: Array.isArray(chromiumModule.args) ? chromiumModule.args : [],
+        chromiumHeadless: chromiumModule.headless !== false,
+        chromiumExecutablePathResolver:
+          typeof chromiumModule.executablePath === 'function' ? chromiumModule.executablePath : null
+      };
+    }
     const runtime = (await dynamicImport('playwright')) as Partial<PlaywrightRuntime>;
     if (!runtime.chromium || !runtime.firefox || !runtime.webkit) {
       return null;
     }
-    return runtime as PlaywrightRuntime;
+    return {
+      chromium: runtime.chromium,
+      firefox: runtime.firefox,
+      webkit: runtime.webkit,
+      engines: ['chromium', 'firefox', 'webkit'],
+      source: 'playwright'
+    };
   } catch (error) {
     console.warn('[playwright-import] package not available', {
       error: error instanceof Error ? error.message : 'unknown-error'
@@ -2031,9 +2096,9 @@ export async function getBrowserRuntimeAvailability(): Promise<BrowserRuntimeAva
     };
   }
 
-  const candidates: BrowserEngineName[] = ['chromium', 'firefox', 'webkit'];
+  const candidates: BrowserEngineName[] = runtime.engines;
   for (const engine of candidates) {
-    const executablePath = resolveExecutablePath(runtime[engine], engine);
+    const executablePath = await resolveExecutablePathAsync(runtime, runtime[engine], engine);
     if (executablePath && existsSync(executablePath)) {
       return {
         status: 'available',
@@ -2047,7 +2112,7 @@ export async function getBrowserRuntimeAvailability(): Promise<BrowserRuntimeAva
   return {
     status: 'unavailable_executable',
     browserEngine: 'chromium',
-    executablePath: resolveExecutablePath(runtime.chromium, 'chromium'),
+    executablePath: await resolveExecutablePathAsync(runtime, runtime.chromium, 'chromium'),
     error: 'playwright-executable-missing'
   };
 }
@@ -2106,7 +2171,7 @@ export async function renderStayPageWithPlaywrightDetailed(
   const { chromium, firefox, webkit } = runtime;
 
   const engines = Array.from(
-    new Set<BrowserEngineName>([availability.browserEngine ?? 'chromium', 'chromium', 'firefox', 'webkit'])
+    new Set<BrowserEngineName>([availability.browserEngine ?? 'chromium', ...runtime.engines])
   );
   let lastFailureStatus: BrowserRuntimeAvailabilityStatus = 'launch_failed';
   let lastFailureMessage: string | null = null;
@@ -2115,9 +2180,18 @@ export async function renderStayPageWithPlaywrightDetailed(
       const executablePath =
         engine === availability.browserEngine
           ? availability.executablePath
-          : resolveExecutablePath(runtime[engine], engine);
+          : await resolveExecutablePathAsync(runtime, runtime[engine], engine);
       const snapshot = await snapshotWithEngine(
-        { chromium, firefox, webkit },
+        {
+          chromium,
+          firefox,
+          webkit,
+          engines: runtime.engines,
+          source: runtime.source,
+          chromiumArgs: runtime.chromiumArgs,
+          chromiumHeadless: runtime.chromiumHeadless,
+          chromiumExecutablePathResolver: runtime.chromiumExecutablePathResolver
+        },
         engine,
         sourceUrl,
         snapshotOptions,

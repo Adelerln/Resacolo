@@ -1,19 +1,19 @@
 import { existsSync } from 'node:fs';
 
-const shouldEnforceRuntime = process.env.VERCEL === '1' || process.env.VERCEL_ENV === 'production';
+const shouldEnforceRuntime =
+  process.env.VERCEL === '1' || process.env.VERCEL_ENV === 'production' || process.env.VERCEL_ENV === 'preview';
 
 if (!shouldEnforceRuntime) {
   process.exit(0);
 }
 
 try {
-  const playwright = await import('playwright');
+  const [playwright, chromiumModule] = await Promise.all([import('playwright-core'), import('@sparticuz/chromium')]);
+  const chromium = chromiumModule.default ?? chromiumModule;
   const executablePath =
-    typeof playwright.chromium?.executablePath === 'function'
-      ? playwright.chromium.executablePath()
-      : null;
+    typeof chromium.executablePath === 'function' ? await chromium.executablePath() : null;
 
-  if (!executablePath || !existsSync(executablePath)) {
+  if (!playwright.chromium || !executablePath || !existsSync(executablePath)) {
     console.error('[playwright-runtime] Chromium executable missing for production build');
     process.exit(1);
   }

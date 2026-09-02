@@ -15,7 +15,7 @@ export default async function MesReservationsPage() {
   const session = await getCurrentUser();
 
   if (!session) {
-    redirect('/login/familles');
+    redirect('/login?mode=family&redirectTo=/mon-compte/reservations');
   }
 
   if (session.role !== 'CLIENT') {

@@ -50,10 +50,12 @@ function isDropdownItem(
 
 export function MainNavigation({
   initialBranding,
-  initialHidePartnerMarketingLinks
+  initialHidePartnerMarketingLinks,
+  isAuthenticated = false
 }: {
   initialBranding: PublicSitePartnerBranding;
   initialHidePartnerMarketingLinks: boolean;
+  isAuthenticated?: boolean;
 }) {
   const pathname = usePathname();
   return (
@@ -62,6 +64,7 @@ export function MainNavigation({
       pathname={pathname}
       branding={initialBranding}
       hidePartnerMarketingLinks={initialHidePartnerMarketingLinks}
+      isAuthenticated={isAuthenticated}
     />
   );
 }
@@ -69,17 +72,24 @@ export function MainNavigation({
 function MainNavigationContent({
   pathname,
   branding,
-  hidePartnerMarketingLinks
+  hidePartnerMarketingLinks,
+  isAuthenticated
 }: {
   pathname: string;
   branding: PublicSitePartnerBranding;
   hidePartnerMarketingLinks: boolean;
+  isAuthenticated: boolean;
 }) {
   const { count: cartCount } = useCart();
   const { favoriteIdsArray } = useFavorites();
   const [open, setOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownCloseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Navigation document complète : évite le soft-nav Next qui casse sur la chaîne /mon-compte → login. */
+  const accountHref = isAuthenticated
+    ? '/mon-compte'
+    : '/login?mode=family&redirectTo=%2Fmon-compte';
+  const accountLabel = isAuthenticated ? 'Mon compte' : 'Se connecter';
 
   const openDropdown = () => {
     if (dropdownCloseTimeoutRef.current) {
@@ -262,12 +272,11 @@ function MainNavigationContent({
 
         <div className="flex shrink-0 items-center gap-2 sm:gap-3 xl:justify-self-end">
           <div className="hidden items-center gap-3 xl:flex 2xl:gap-4">
-            <Link
-              href="/mon-compte"
-              prefetch={false}
+            <a
+              href={accountHref}
               className={headerIconButtonClass}
-              aria-label="Mon compte"
-              title="Mon compte"
+              aria-label={accountLabel}
+              title={accountLabel}
             >
               {useBrandedHeaderIcons ? (
                 <User className={headerIconClass} strokeWidth={2.25} aria-hidden />
@@ -280,7 +289,7 @@ function MainNavigationContent({
                   className="h-4 w-4 object-contain"
                 />
               )}
-            </Link>
+            </a>
             <Link
               href="/account/favorites"
               className={clsx(headerIconButtonClass, 'relative')}
@@ -404,15 +413,14 @@ function MainNavigationContent({
               })}
               <li className="mt-2 border-t border-slate-100 pt-4">
                 <div className="flex items-center gap-2">
-                  <Link
-                    href="/mon-compte"
-                    prefetch={false}
+                  <a
+                    href={accountHref}
                     onClick={close}
-                    title="Mon compte"
+                    title={accountLabel}
                     className="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
                   >
-                    Mon compte
-                  </Link>
+                    {accountLabel}
+                  </a>
                   <Link
                     href="/account/favorites"
                     onClick={close}

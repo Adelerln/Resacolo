@@ -17,7 +17,7 @@ export default async function MonComptePage() {
   const session = await getCurrentUser();
 
   if (!session) {
-    redirect('/login/familles');
+    redirect('/login?mode=family&redirectTo=/mon-compte');
   }
 
   if (session.role !== 'CLIENT') {

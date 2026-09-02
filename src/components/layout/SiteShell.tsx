@@ -18,11 +18,13 @@ const LazyPublicChatbotWidget = dynamic(
 export function SiteShell({
   children,
   initialBranding,
-  initialHidePartnerMarketingLinks
+  initialHidePartnerMarketingLinks,
+  isAuthenticated = false
 }: {
   children: React.ReactNode;
   initialBranding: PublicSitePartnerBranding;
   initialHidePartnerMarketingLinks: boolean;
+  isAuthenticated?: boolean;
 }) {
   const pathname = usePathname();
   const [isMobileViewport, setIsMobileViewport] = useState(false);
@@ -44,6 +46,7 @@ export function SiteShell({
     pathname === '/forbidden';
   const disablePageTransition =
     pathname.startsWith('/login') ||
+    pathname.startsWith('/mon-compte') ||
     pathname.startsWith('/checkout') ||
     isMobileViewport;
   const showPartnerHero = pathname === '/';
@@ -60,6 +63,7 @@ export function SiteShell({
         <MainNavigation
           initialBranding={initialBranding}
           initialHidePartnerMarketingLinks={initialHidePartnerMarketingLinks}
+          isAuthenticated={isAuthenticated}
         />
         {showPartnerHero ? <PartnerHeroBanner branding={initialBranding} /> : null}
         <main className="main-footer-gouttes-clearance min-h-0 flex-1">

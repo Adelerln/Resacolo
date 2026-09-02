@@ -60,6 +60,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           <SiteShell
             initialBranding={initialBranding}
             initialHidePartnerMarketingLinks={initialHidePartnerMarketingLinks}
+            isAuthenticated={Boolean(session)}
           >
             {children}
           </SiteShell>

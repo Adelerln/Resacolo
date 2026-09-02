@@ -16,7 +16,7 @@ export function PageTransition({ children }: { children: ReactNode }) {
 
   return (
     <>
-      <AnimatePresence mode="wait" initial={false}>
+      <AnimatePresence initial={false}>
         <motion.div
           key={pathname}
           initial={{ opacity: 0.985, y: 4 }}
@@ -28,7 +28,7 @@ export function PageTransition({ children }: { children: ReactNode }) {
         </motion.div>
       </AnimatePresence>
 
-      <AnimatePresence mode="wait" initial={false}>
+      <AnimatePresence initial={false}>
         <motion.div
           key={`wipe-${pathname}`}
           initial={{ opacity: 0.08 }}

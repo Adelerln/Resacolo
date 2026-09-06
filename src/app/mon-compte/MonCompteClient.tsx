@@ -105,6 +105,7 @@ export default function MonCompteClient({
   const [profile, setProfile] = useState<FamilyProfile>(initialProfile);
   const [reservationList, setReservationList] = useState<FamilyReservation[]>(reservations);
   const [cseAffiliation, setCseAffiliation] = useState<FamilyCseAffiliation | null>(initialCseAffiliation);
+  const [isLoadingAccountData, setIsLoadingAccountData] = useState(true);
   const [cseCodeInput, setCseCodeInput] = useState(initialCseAffiliation?.code ?? initialProfile.cseOrganization ?? '');
   const [cseSubmitError, setCseSubmitError] = useState<string | null>(null);
   const [cseSubmitSuccess, setCseSubmitSuccess] = useState<string | null>(null);
@@ -125,6 +126,7 @@ export default function MonCompteClient({
 
   useEffect(() => {
     let cancelled = false;
+    setIsLoadingAccountData(true);
     fetchFamilyProfileSnapshot()
       .then((snapshot) => {
         if (cancelled) return;
@@ -135,6 +137,9 @@ export default function MonCompteClient({
       })
       .catch(() => {
         // Keep server-rendered profile as fallback.
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingAccountData(false);
       });
     return () => {
       cancelled = true;
@@ -323,6 +328,11 @@ export default function MonCompteClient({
         {profileLoadError ? (
           <p className="mt-6 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
             {profileLoadError}
+          </p>
+        ) : null}
+        {isLoadingAccountData ? (
+          <p className="mt-6 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 shadow-sm">
+            Chargement de votre profil et de vos réservations…
           </p>
         ) : null}
 

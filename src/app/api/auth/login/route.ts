@@ -320,7 +320,8 @@ export async function POST(req: Request) {
         ? requestedRedirect
         : defaultRedirect;
 
-    await logUserLoginEvent({
+    // Ne pas bloquer la redirection sur le journal (évite timeout / 1er échec ressenti).
+    void logUserLoginEvent({
       req,
       userId: signInData.user.id,
       email: signInData.user.email ?? input.email,
@@ -330,7 +331,22 @@ export async function POST(req: Request) {
       redirectTo: redirectPath
     });
 
-    return NextResponse.redirect(new URL(redirectPath, req.url), { status: 303 });
+    // Copier explicitement les cookies auth sur la réponse 303.
+    // Sans ça, le 1er hit /mon-compte arrive parfois sans session (cookies
+    // écrits via cookies() mais absents du NextResponse.redirect).
+    const redirectResponse = NextResponse.redirect(new URL(redirectPath, req.url), { status: 303 });
+    redirectResponse.headers.set('Cache-Control', 'no-store');
+    for (const cookie of cookieStore.getAll()) {
+      const name = cookie.name;
+      if (
+        name.includes('sb-') ||
+        name.includes('supabase') ||
+        name.startsWith('resacolo_')
+      ) {
+        redirectResponse.cookies.set(name, cookie.value);
+      }
+    }
+    return redirectResponse;
   } catch (error) {
     console.error('[auth/login] unexpected error:', error);
     const errorCode = classifyLoginError(error);

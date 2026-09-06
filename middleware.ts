@@ -70,15 +70,17 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(buildRedirectTo(req, '/organisme'));
   }
 
-  if (!isProtectedPath(req.nextUrl.pathname)) {
-    return NextResponse.next();
-  }
-
+  // Toujours rafraîchir la session Supabase (cookies) — y compris /login et /mon-compte.
+  // Sans ça, la 1re navigation juste après connexion échoue souvent (cookies non propagés).
   const res = NextResponse.next();
   const supabase = createMiddlewareClient<Database>({ req, res });
   const {
     data: { user }
   } = await supabase.auth.getUser();
+
+  if (!isProtectedPath(req.nextUrl.pathname)) {
+    return res;
+  }
 
   if (!user) {
     return NextResponse.redirect(buildLoginRedirect(req));

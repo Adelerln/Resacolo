@@ -1,10 +1,6 @@
 import { redirect } from 'next/navigation';
 import { getCurrentUser } from '@/lib/auth/session';
-import { getFamilyProfileSnapshot } from '@/lib/account-profile/server';
-import { getFavoriteStayIdsForUserId } from '@/lib/favorites.server';
-import { getStaysByIds } from '@/lib/stays';
-import type { FamilyProfileSnapshot } from '@/types/family-profile';
-import type { Stay } from '@/types/stay';
+import type { FamilyProfile } from '@/types/family-profile';
 import MonCompteClient from './MonCompteClient';
 
 export const metadata = {
@@ -12,19 +8,15 @@ export const metadata = {
 };
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+/** Cold start Vercel après login — éviter FUNCTION_INVOCATION_TIMEOUT. */
+export const maxDuration = 30;
 
-export default async function MonComptePage() {
-  const session = await getCurrentUser();
-
-  if (!session) {
-    redirect('/login?mode=family&redirectTo=/mon-compte');
-  }
-
-  if (session.role !== 'CLIENT') {
-    redirect('/login?mode=family&forceLogin=1');
-  }
-
-  const fallbackProfile = {
+function buildFallbackProfile(session: {
+  userId: string;
+  name?: string | null;
+  email?: string | null;
+}): FamilyProfile {
+  return {
     userId: session.userId,
     billingFirstName: session.name?.split(' ')[0] ?? '',
     billingLastName: session.name?.split(' ').slice(1).join(' ') ?? '',
@@ -43,11 +35,11 @@ export default async function MonComptePage() {
     billingCountry: 'France',
     cseOrganization: '',
     vacafNumber: '',
-    paymentMode: 'FULL' as const,
-    parent1Status: 'pere' as const,
+    paymentMode: 'FULL',
+    parent1Status: 'pere',
     parent1StatusOther: '',
     parent2Name: '',
-    parent2Status: 'pere' as const,
+    parent2Status: 'pere',
     parent2StatusOther: '',
     parent2Phone: '',
     parent2Email: '',
@@ -60,48 +52,28 @@ export default async function MonComptePage() {
     createdAt: null,
     updatedAt: null
   };
+}
 
-  let snapshot: FamilyProfileSnapshot = {
-    profile: fallbackProfile,
-    reservations: [],
-    cseAffiliation: null
-  };
-  let profileLoadError: string | null = null;
-  let favoriteStays: Stay[] = [];
+export default async function MonComptePage() {
+  const session = await getCurrentUser();
 
-  const favoriteIdsPromise = getFavoriteStayIdsForUserId(session.userId).catch(() => [] as string[]);
-
-  try {
-    snapshot = await getFamilyProfileSnapshot({
-      userId: session.userId,
-      sessionName: session.name,
-      sessionEmail: session.email
-    });
-  } catch (error) {
-    profileLoadError = error instanceof Error ? error.message : 'Impossible de charger le profil famille.';
-    snapshot = {
-      profile: fallbackProfile,
-      reservations: [],
-      cseAffiliation: null
-    };
+  if (!session) {
+    redirect('/login?mode=family&redirectTo=/mon-compte');
   }
 
-  try {
-    const favoriteIds = await favoriteIdsPromise;
-    if (favoriteIds.length > 0) {
-      favoriteStays = await getStaysByIds(favoriteIds);
-    }
-  } catch {
-    favoriteStays = [];
+  if (session.role !== 'CLIENT') {
+    redirect('/login?mode=family&forceLogin=1');
   }
 
+  // Profil / réservations / CSE : chargés côté client via /api/account/profile
+  // pour que le premier rendu après login soit immédiat (pas de cold-start DB).
   return (
     <MonCompteClient
-      initialProfile={snapshot.profile}
-      reservations={snapshot.reservations}
-      initialCseAffiliation={snapshot.cseAffiliation}
-      favoriteStays={favoriteStays}
-      profileLoadError={profileLoadError}
+      initialProfile={buildFallbackProfile(session)}
+      reservations={[]}
+      initialCseAffiliation={null}
+      favoriteStays={[]}
+      profileLoadError={null}
     />
   );
 }

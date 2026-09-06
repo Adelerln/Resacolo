@@ -112,10 +112,20 @@ export function FavoritesProvider({ children }: { children: ReactNode }) {
   return <FavoritesContext.Provider value={value}>{children}</FavoritesContext.Provider>;
 }
 
+const EMPTY_FAVORITES: FavoritesContextValue = {
+  favoriteIds: new Set(),
+  favoriteIdsArray: [],
+  isLoaded: false,
+  isAuthenticated: false,
+  isPending: () => false,
+  isFavorite: () => false,
+  toggleFavorite: async () => ({ ok: false, isAuthenticated: false }),
+  refreshFavorites: async () => undefined
+};
+
 export function useFavorites() {
   const context = useContext(FavoritesContext);
-  if (!context) {
-    throw new Error('useFavorites must be used within FavoritesProvider');
-  }
-  return context;
+  // Évite un crash « This page couldn't load » si le provider n'est pas encore monté
+  // (navigation juste après login / soft navigation RSC).
+  return context ?? EMPTY_FAVORITES;
 }

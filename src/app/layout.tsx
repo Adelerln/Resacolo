@@ -41,16 +41,33 @@ export const metadata: Metadata = {
   }
 };
 
+async function loadClientShellExtras(userId: string) {
+  const [branding, cse] = await Promise.all([
+    readPublicSitePartnerBranding(userId).catch(() => null),
+    readFamilyCseAffiliation(userId).catch(() => null)
+  ]);
+  return {
+    branding,
+    hidePartnerMarketingLinks: Boolean(cse)
+  };
+}
+
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const session = await getCurrentUser().catch(() => null);
-  const initialBranding: PublicSitePartnerBranding =
-    session?.userId && session.role === 'CLIENT'
-      ? await readPublicSitePartnerBranding(session.userId).catch(() => null)
-      : null;
-  const initialHidePartnerMarketingLinks =
-    session?.userId && session.role === 'CLIENT'
-      ? Boolean(await readFamilyCseAffiliation(session.userId).catch(() => null))
-      : false;
+
+  // Ne pas bloquer le 1er paint post-login sur le branding CSE (cold start).
+  let initialBranding: PublicSitePartnerBranding = null;
+  let initialHidePartnerMarketingLinks = false;
+  if (session?.userId && session.role === 'CLIENT') {
+    const extras = await Promise.race([
+      loadClientShellExtras(session.userId),
+      new Promise<{ branding: null; hidePartnerMarketingLinks: false }>((resolve) => {
+        setTimeout(() => resolve({ branding: null, hidePartnerMarketingLinks: false }), 700);
+      })
+    ]);
+    initialBranding = extras.branding;
+    initialHidePartnerMarketingLinks = extras.hidePartnerMarketingLinks;
+  }
 
   return (
     <html lang="fr" className="bg-slate-50 text-slate-900" data-scroll-behavior="smooth">

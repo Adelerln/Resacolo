@@ -1,11 +1,12 @@
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { getCurrentUser } from '@/lib/auth/session';
+import { resolveCheckoutClientUserId } from '@/lib/checkout/clientIdentity';
 import { evaluatePartnerCatalogEligibility, simulatePartnerAid } from '@/lib/partner-catalog-rules';
-import { normalizePartnerCatalogRules } from '@/lib/partner-catalog-rules';
 import {
   parseStoredFamilyQuotient,
+  resolveCatalogRulesForCseAid,
   resolveClientQfForAidSimulation,
-  withCatalogQfScaleAidMode
+  resolveManualFinanceRequiresQuote
 } from '@/lib/partner-client-qf';
 import { computePartnerDiscountedPrice } from '@/lib/stay-partner-pricing';
 import { computePartnerFinanceDisplay, normalizePartnerFinanceMode } from '@/lib/partner-offers';
@@ -158,31 +159,57 @@ type CheckoutCseContext = {
   qfValue: number | null;
 };
 
-async function readCheckoutCseContextForCurrentUser(): Promise<CheckoutCseContext | null> {
+async function resolvePricingClientUserId() {
   const session = await getCurrentUser();
-  if (!session?.userId) return null;
+  if (session?.userId) return session.userId;
+  return resolveCheckoutClientUserId();
+}
+
+async function readCheckoutCseContextForCurrentUser(): Promise<CheckoutCseContext | null> {
+  const clientUserId = await resolvePricingClientUserId();
+  if (!clientUserId) return null;
   const supabase = getServerSupabaseClient();
   const { data: client } = await supabase
     .from('clients')
     .select('collectivity_id,family_quotient,family_quotient_expires_on')
-    .eq('user_id', session.userId)
+    .eq('user_id', clientUserId)
     .maybeSingle();
   if (!client?.collectivity_id) return null;
 
-  const { data: collectivity, error: collectivityError } = await supabase
+  let collectivityQuery = await supabase
     .from('collectivities')
-    .select('catalog_rules_published,finance_mode')
+    .select('catalog_rules_published,catalog_rules_draft,finance_mode')
     .eq('id', client.collectivity_id)
     .maybeSingle();
-  if (collectivityError && isMissingColumnError(collectivityError, 'catalog_rules_published')) {
+
+  if (
+    collectivityQuery.error &&
+    isMissingColumnError(collectivityQuery.error, 'catalog_rules_draft')
+  ) {
+    collectivityQuery = await supabase
+      .from('collectivities')
+      .select('catalog_rules_published,finance_mode')
+      .eq('id', client.collectivity_id)
+      .maybeSingle();
+  }
+
+  if (
+    collectivityQuery.error &&
+    isMissingColumnError(collectivityQuery.error, 'catalog_rules_published')
+  ) {
     return null;
   }
-  if (!collectivity?.catalog_rules_published) return null;
+
+  const collectivity = collectivityQuery.data;
+  if (!collectivity) return null;
   if (normalizePartnerFinanceMode(collectivity.finance_mode) !== 'MANUAL') return null;
 
-  const rules = withCatalogQfScaleAidMode(
-    normalizePartnerCatalogRules(collectivity.catalog_rules_published)
-  );
+  const rules = resolveCatalogRulesForCseAid({
+    published: collectivity.catalog_rules_published,
+    draft: 'catalog_rules_draft' in collectivity ? collectivity.catalog_rules_draft : null
+  });
+  if (!rules) return null;
+
   const familyQuotient = parseStoredFamilyQuotient(client.family_quotient);
   const familyQuotientExpiresOn = client.family_quotient_expires_on?.trim()
     ? client.family_quotient_expires_on.trim().slice(0, 10)
@@ -199,13 +226,13 @@ async function readCheckoutCseContextForCurrentUser(): Promise<CheckoutCseContex
 }
 
 async function readCheckoutPartnerFinanceForCurrentUser() {
-  const session = await getCurrentUser();
-  if (!session?.userId) return null;
+  const clientUserId = await resolvePricingClientUserId();
+  if (!clientUserId) return null;
   const supabase = getServerSupabaseClient();
   const { data: client } = await supabase
     .from('clients')
     .select('collectivity_id')
-    .eq('user_id', session.userId)
+    .eq('user_id', clientUserId)
     .maybeSingle();
 
   if (!client?.collectivity_id) return null;
@@ -512,6 +539,26 @@ export async function repriceCart(items: CartItem[]): Promise<CheckoutPricing> {
         }
       }
 
+      const hasAppliedCseAid = cseAidCents > 0;
+      const manualQuoteResolved = !resolveManualFinanceRequiresQuote({
+        cseRules,
+        qfValue,
+        cseAidCents
+      });
+      const financePartnerContributionCents = hasAppliedCseAid
+        ? cseAidCents
+        : manualQuoteResolved && financeDisplay?.requiresQuote
+          ? 0
+          : (financeDisplay?.partnerCents ?? null);
+      const financeFamilyPayableCents = hasAppliedCseAid
+        ? familyCentsAfterAid
+        : manualQuoteResolved && financeDisplay?.requiresQuote
+          ? totalPriceCents
+          : (financeDisplay?.familyCents ?? null);
+      const financeRequiresQuote = manualQuoteResolved
+        ? false
+        : (financeDisplay?.requiresQuote ?? false);
+
       return {
         cartItemId: cartItem.id,
         stayTitle: stay.title,
@@ -533,11 +580,11 @@ export async function repriceCart(items: CartItem[]): Promise<CheckoutPricing> {
         extraOptionId: cartItem.selection.extraOptionId,
         extraOptionLabel,
         financeMode: financeDisplay?.mode ?? null,
-        financePartnerContributionCents: financeDisplay?.partnerCents ?? null,
-        financeFamilyPayableCents: financeDisplay?.familyCents ?? null,
+        financePartnerContributionCents,
+        financeFamilyPayableCents,
         financePercentValue: partnerFinance?.finance_percent_value ?? null,
         financeFixedCents: partnerFinance?.finance_fixed_cents ?? null,
-        financeRequiresQuote: financeDisplay?.requiresQuote ?? false,
+        financeRequiresQuote,
         cseAidCents,
         familyCentsAfterAid,
         cseEligible,

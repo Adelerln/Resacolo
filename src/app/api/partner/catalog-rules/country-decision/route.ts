@@ -4,8 +4,7 @@ import { canAccessPartnerSection, getPartnerAccessRoleFromSession } from '@/lib/
 import { requireApiAuth } from '@/lib/auth/api';
 import {
   getDefaultPartnerCatalogRules,
-  normalizePartnerCatalogRules,
-  parseAndValidatePartnerCatalogRules
+  normalizePartnerCatalogRules
 } from '@/lib/partner-catalog-rules';
 import { applyCountryDecision } from '@/lib/partner-catalog-countries';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
@@ -57,22 +56,16 @@ export async function POST(req: Request) {
   const currentRules = normalizePartnerCatalogRules(
     data?.catalog_rules_draft ?? getDefaultPartnerCatalogRules()
   );
-  const nextRules = applyCountryDecision(currentRules, country, decision);
-
-  let validated;
-  try {
-    validated = parseAndValidatePartnerCatalogRules(nextRules);
-  } catch (error) {
-    return NextResponse.json(
-      { errors: [error instanceof Error ? error.message : 'RULES_INVALID'] },
-      { status: 400 }
-    );
-  }
+  // Country decisions only touch blockingRules — do not require financing fields
+  // (e.g. PERCENT rate) to be complete before allowing/excluding a country.
+  const nextRules = normalizePartnerCatalogRules(
+    applyCountryDecision(currentRules, country, decision)
+  );
 
   const { error: updateError } = await supabase
     .from('collectivities')
     .update({
-      catalog_rules_draft: validated,
+      catalog_rules_draft: nextRules,
       updated_at: new Date().toISOString()
     })
     .eq('id', session.tenantId);
@@ -94,7 +87,7 @@ export async function POST(req: Request) {
     data: {
       country,
       decision,
-      draft: validated
+      draft: nextRules
     },
     errors: []
   });

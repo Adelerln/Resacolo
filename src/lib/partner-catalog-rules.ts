@@ -1,4 +1,8 @@
 import { z } from 'zod';
+import {
+  clampPartnerFinancePercent,
+  normalizePartnerFinanceMode
+} from '@/lib/partner-offers';
 import type { PartnerCatalogRules, EligibilityResult, AidSimulationResult, QfScaleRow } from '@/types/partner-catalog-rules';
 
 const qfRowSchema = z.object({
@@ -168,6 +172,14 @@ export function normalizePartnerCatalogRules(value: unknown): PartnerCatalogRule
     merged.financialRules.minFamilyRemainderPercent = null;
   }
 
+  // A filled QF scale is the source of aid rates — do not keep a stale top-level
+  // PERCENT mode without percentValue (that triggers a false catalogue warning).
+  if (Array.isArray(merged.qfScale) && merged.qfScale.length > 0) {
+    merged.financialRules.aidMode = 'QF_SCALE';
+    merged.financialRules.percentValue = null;
+    merged.financialRules.fixedCents = null;
+  }
+
   return merged;
 }
 
@@ -211,7 +223,68 @@ function validateQfScaleRows(rows: QfScaleRow[]) {
   }
 }
 
-export function parseAndValidatePartnerCatalogRules(value: unknown): PartnerCatalogRules {
+/**
+ * When financing is configured on /partenaire/financement (not MANUAL),
+ * mirror those settings into catalog financialRules so validation and
+ * catalogue simulations use the same % / forfait as the partner set.
+ */
+export function applyCollectivityFinanceToCatalogRules(
+  rules: PartnerCatalogRules,
+  finance: {
+    finance_mode?: string | null;
+    finance_percent_value?: number | null;
+    finance_fixed_cents?: number | null;
+  }
+): PartnerCatalogRules {
+  const mode = normalizePartnerFinanceMode(finance.finance_mode);
+  if (mode === 'MANUAL') {
+    return normalizePartnerCatalogRules(rules);
+  }
+
+  const next = normalizePartnerCatalogRules(rules);
+  switch (mode) {
+    case 'PERCENT': {
+      const raw = finance.finance_percent_value;
+      next.financialRules.aidMode = 'PERCENT';
+      next.financialRules.percentValue =
+        raw != null && Number.isFinite(Number(raw)) ? clampPartnerFinancePercent(Number(raw)) : null;
+      next.financialRules.fixedCents = null;
+      next.qfScale = [];
+      break;
+    }
+    case 'FIXED': {
+      const raw = finance.finance_fixed_cents;
+      next.financialRules.aidMode = 'FIXED';
+      next.financialRules.fixedCents =
+        raw != null && Number.isFinite(Number(raw)) ? Math.max(0, Math.round(Number(raw))) : null;
+      next.financialRules.percentValue = null;
+      next.qfScale = [];
+      break;
+    }
+    case 'NONE': {
+      next.financialRules.aidMode = 'PERCENT';
+      next.financialRules.percentValue = 0;
+      next.financialRules.fixedCents = null;
+      next.qfScale = [];
+      break;
+    }
+    case 'TOTAL':
+    default: {
+      next.financialRules.aidMode = 'PERCENT';
+      next.financialRules.percentValue = 100;
+      next.financialRules.fixedCents = null;
+      next.qfScale = [];
+      break;
+    }
+  }
+
+  return next;
+}
+
+export function parseAndValidatePartnerCatalogRules(
+  value: unknown,
+  options?: { skipFlatAidRateRequirement?: boolean }
+): PartnerCatalogRules {
   const normalized = normalizePartnerCatalogRules(value);
   const parsed = partnerCatalogRulesSchema.parse(normalized);
 
@@ -228,11 +301,15 @@ export function parseAndValidatePartnerCatalogRules(value: unknown): PartnerCata
   if (parsed.financialRules.qfMin != null && parsed.financialRules.qfMax != null && parsed.financialRules.qfMin > parsed.financialRules.qfMax) {
     throw new Error('Le QF minimum ne peut pas dépasser le QF maximum.');
   }
-  if (parsed.financialRules.aidMode === 'PERCENT' && parsed.financialRules.percentValue == null) {
-    throw new Error("Le type d'aide Pourcentage nécessite un taux.");
-  }
-  if (parsed.financialRules.aidMode === 'FIXED' && parsed.financialRules.fixedCents == null) {
-    throw new Error("Le type d'aide Forfait nécessite un montant fixe.");
+  // Top-level PERCENT/FIXED rates are irrelevant when a QF scale defines the aid.
+  // Manual catalogue financing has no flat % field — rates live in the QF scale.
+  if (parsed.qfScale.length === 0 && !options?.skipFlatAidRateRequirement) {
+    if (parsed.financialRules.aidMode === 'PERCENT' && parsed.financialRules.percentValue == null) {
+      throw new Error("Le type d'aide Pourcentage nécessite un taux.");
+    }
+    if (parsed.financialRules.aidMode === 'FIXED' && parsed.financialRules.fixedCents == null) {
+      throw new Error("Le type d'aide Forfait nécessite un montant fixe.");
+    }
   }
 
   if (parsed.financialRules.aidMode === 'QF_SCALE' && parsed.qfScale.length === 0) {
@@ -405,22 +482,23 @@ export function simulatePartnerAid(input: {
   let aidCents = 0;
   let appliedMode: AidSimulationResult['appliedMode'] = input.rules.financialRules.aidMode;
   const financial = input.rules.financialRules;
+  let selectedQfRow: QfScaleRow | null = null;
 
   if (financial.aidMode === 'PERCENT') {
     aidCents = Math.round((totalCents * (financial.percentValue ?? 0)) / 100);
   } else if (financial.aidMode === 'FIXED') {
     aidCents = financial.fixedCents ?? 0;
   } else {
-    const row = selectQfRow(input.rules.qfScale, input.qfValue);
-    if (!row) {
+    selectedQfRow = selectQfRow(input.rules.qfScale, input.qfValue);
+    if (!selectedQfRow) {
       warnings.push('Aucune tranche QF correspondante trouvée.');
       aidCents = 0;
-    } else if (row.aidMode === 'PERCENT') {
+    } else if (selectedQfRow.aidMode === 'PERCENT') {
       appliedMode = 'QF_ROW_PERCENT';
-      aidCents = Math.round((totalCents * (row.percentValue ?? 0)) / 100);
+      aidCents = Math.round((totalCents * (selectedQfRow.percentValue ?? 0)) / 100);
     } else {
       appliedMode = 'QF_ROW_FIXED';
-      aidCents = row.fixedCents ?? 0;
+      aidCents = selectedQfRow.fixedCents ?? 0;
     }
   }
 
@@ -469,13 +547,13 @@ export function simulatePartnerAid(input: {
 
   const appliedSummaryBase =
     appliedMode === 'PERCENT'
-      ? `${financial.percentValue ?? 0}%`
+      ? `${financial.percentValue ?? 0} %`
       : appliedMode === 'FIXED'
         ? `${Math.round((financial.fixedCents ?? 0) / 100)}€`
         : appliedMode === 'QF_ROW_PERCENT'
-          ? 'Barème QF (%)'
+          ? `${selectedQfRow?.percentValue ?? 0} % · barème QF`
           : appliedMode === 'QF_ROW_FIXED'
-            ? 'Barème QF (€)'
+            ? `${Math.round((selectedQfRow?.fixedCents ?? 0) / 100)}€ · barème QF`
             : 'Barème QF';
   const appliedSummary = appliedCapLabels.length > 0
     ? `${appliedSummaryBase} · ${appliedCapLabels.join(' · ')}`

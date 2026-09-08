@@ -1665,17 +1665,19 @@ async function readReservations(
         totalCents
       });
       const onlinePaidCents = successfulPaidCentsByOrder.get(order.id) ?? 0;
+      const externalPaidCents = Math.max(0, order.external_paid_cents ?? 0);
+      const clientPaidCents = onlinePaidCents + externalPaidCents;
       const remainingBalanceCents = computeOrderRemainingBalanceCents({
         totalCents: financeSplit.clientCents,
         externalAidCents: order.external_aid_cents ?? 0,
-        externalPaidCents: order.external_paid_cents ?? 0,
+        externalPaidCents,
         onlinePaidCents
       });
       const effectiveOrderStatus = reconcileOrderStatusWithBalance({
         status: order.status,
         remainingBalanceCents,
         onlinePaidCents,
-        externalPaidCents: order.external_paid_cents ?? 0
+        externalPaidCents
       });
 
       const extraEntries = itemsForOrder.flatMap((item) => extrasByOrderItemId.get(item.id) ?? []);
@@ -1819,7 +1821,7 @@ async function readReservations(
           status: order.status,
           remainingBalanceCents,
           onlinePaidCents,
-          externalPaidCents: order.external_paid_cents ?? 0
+          externalPaidCents
         }),
         sessionStartDate: session?.start_date ?? null,
         sessionEndDate: session?.end_date ?? null,
@@ -1829,6 +1831,7 @@ async function readReservations(
         paymentMode,
         paymentModeLabel: PAYMENT_MODE_LABELS[paymentMode],
         remainingBalanceCents,
+        clientPaidCents,
         partnerDiscountLine: buildPartnerDiscountLine({
           itemsForOrder,
           publicPriceBySessionId,
@@ -1863,8 +1866,7 @@ async function readReservations(
         hasSuccessfulPayment:
           effectiveOrderStatus === 'PAID' ||
           effectiveOrderStatus === 'PARTIALLY_PAID' ||
-          onlinePaidCents > 0 ||
-          (order.external_paid_cents ?? 0) > 0,
+          clientPaidCents > 0,
         partnerAdjustmentMessage: partnerFinanceMessage.message,
         partnerAdjustmentUpdatedAt: partnerFinanceMessage.updatedAt
       } satisfies FamilyReservation;

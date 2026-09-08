@@ -41,7 +41,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
   const supabase = getServerSupabaseClient();
   const { data: order, error: orderError } = await supabase
     .from('orders')
-    .select('id,client_user_id,status')
+    .select('id,client_user_id,status,external_paid_cents')
     .eq('id', orderId)
     .eq('client_user_id', ownerUserId)
     .maybeSingle();
@@ -59,6 +59,26 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
     );
   }
 
+  const { data: payments, error: paymentsError } = await supabase
+    .from('payments')
+    .select('amount_cents,status')
+    .eq('order_id', orderId);
+
+  if (paymentsError) {
+    return NextResponse.json({ error: 'Impossible de vérifier le paiement.' }, { status: 500 });
+  }
+
+  const onlinePaidCents = (payments ?? [])
+    .filter((payment) => payment.status === 'SUCCEEDED')
+    .reduce((sum, payment) => sum + (payment.amount_cents ?? 0), 0);
+  const clientPaidCents = onlinePaidCents + Math.max(0, order.external_paid_cents ?? 0);
+  if (clientPaidCents <= 0) {
+    return NextResponse.json(
+      { error: 'La facture n’est disponible qu’après un paiement.' },
+      { status: 409 }
+    );
+  }
+
   try {
     const invoice = await ensureClientTravelInvoiceForOrder(orderId);
     const signedUrl = await createSignedMnemosInvoicePdfUrl(supabase, invoice.pdfPath);
@@ -67,9 +87,9 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
     }
     return NextResponse.redirect(signedUrl, { status: 302 });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Impossible de générer la facture.' },
-      { status: 500 }
-    );
+    const message = error instanceof Error ? error.message : 'Impossible de générer la facture.';
+    const unpaid =
+      message.includes('après un paiement') || message.includes('pas disponible');
+    return NextResponse.json({ error: message }, { status: unpaid ? 409 : 500 });
   }
 }

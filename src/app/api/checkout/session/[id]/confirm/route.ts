@@ -1,15 +1,18 @@
 import { NextResponse } from 'next/server';
 import { checkoutManualConfirmBodySchema } from '@/lib/checkout/schemas';
 import { getApiErrorMessage } from '@/lib/checkout/api';
-import { getMoneticoMode } from '@/lib/checkout/monetico';
+import { getActivePaymentProviderMode, getPaymentProvider } from '@/lib/checkout/payment-provider';
 import { markOrderPaid } from '@/lib/checkout/payment';
 
 export const runtime = 'nodejs';
 
 export async function POST(req: Request) {
   try {
-    if (getMoneticoMode() === 'live') {
-      return NextResponse.json({ error: 'Confirmation manuelle indisponible en mode Monetico live.' }, { status: 400 });
+    if (getActivePaymentProviderMode() === 'live') {
+      return NextResponse.json(
+        { error: 'Confirmation manuelle indisponible en mode paiement live.' },
+        { status: 400 }
+      );
     }
 
     const body = checkoutManualConfirmBodySchema.parse(await req.json());
@@ -19,13 +22,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Paiement de confirmation invalide.' }, { status: 400 });
     }
 
+    const provider = getPaymentProvider() === 'axepta' ? 'AXEPTA_MOCK' : 'MONETICO_MOCK';
+
     const results = await Promise.all(
       payments.map((payment) =>
         markOrderPaid({
           orderId: payment.orderId,
           paymentId: payment.paymentId,
           providerPayload: {
-            provider: 'MONETICO_MOCK',
+            provider,
             confirmedAt: new Date().toISOString()
           },
           paymentStatus: 'SUCCEEDED'

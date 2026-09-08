@@ -703,8 +703,23 @@ export default function CheckoutRecapitulatifPage() {
                       {group.pricing.financeRequiresQuote ? (
                         <div className="space-y-4">
                           <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                            Aucun paiement n&apos;est demandé à ce stade pour {group.organizerName}. Vous êtes en train d&apos;envoyer une demande de devis à votre partenaire.
-                            Vous pouvez toutefois préciser ici si vous comptez mobiliser VACAF, ANCV papier ou ANCV Connect.
+                            Aucun paiement n&apos;est demandé à ce stade pour {group.organizerName}. Vous êtes
+                            en train d&apos;envoyer une demande de devis à votre partenaire.
+                            {group.hasAidSelectionOptions ? (
+                              <>
+                                {' '}
+                                Vous pouvez toutefois préciser ici si vous comptez mobiliser{' '}
+                                {[
+                                  group.settings?.isVacafApproved ? 'VACAF' : null,
+                                  group.settings?.acceptsAncvPaper ? 'ANCV papier' : null,
+                                  group.settings?.acceptsAncvConnect ? 'ANCV Connect' : null
+                                ]
+                                  .filter(Boolean)
+                                  .join(', ')
+                                  .replace(/, ([^,]+)$/, ' ou $1')}
+                                .
+                              </>
+                            ) : null}
                           </div>
                           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                             {group.displayedPaymentModes.map((mode) => {

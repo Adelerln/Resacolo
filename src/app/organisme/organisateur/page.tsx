@@ -380,7 +380,6 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
         key={organizer.id}
         id="organizer-profile-form"
         action={updateProfile}
-        encType="multipart/form-data"
         className="space-y-4"
       >
         <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">

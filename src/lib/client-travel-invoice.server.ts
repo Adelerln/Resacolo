@@ -303,6 +303,10 @@ export async function ensureClientTravelInvoiceForOrder(orderId: string) {
   const supabase = getServerSupabaseClient();
   const model = await buildClientTravelInvoiceModel(orderId);
 
+  if (model.paidCents <= 0) {
+    throw new Error('La facture n’est disponible qu’après un paiement du client.');
+  }
+
   const { data: existingInvoice } = await supabase
     .from('invoices')
     .select('id,number,year,pdf_url,issued_at,status,total_cents')

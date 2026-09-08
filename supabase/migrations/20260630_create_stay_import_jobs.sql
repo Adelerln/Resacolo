@@ -1,3 +1,6 @@
+-- File d'import de séjours (OpenAI / URL)
+-- À exécuter dans Supabase → SQL Editor si la table est absente.
+
 create extension if not exists pgcrypto;
 
 create table if not exists public.stay_import_jobs (
@@ -29,6 +32,7 @@ create index if not exists stay_import_jobs_status_next_run_idx
 create or replace function public.claim_next_stay_import_job(p_lock_token text)
 returns setof public.stay_import_jobs
 language plpgsql
+set search_path = public, pg_temp
 as $$
 declare
   claimed public.stay_import_jobs%rowtype;
@@ -60,4 +64,12 @@ begin
 end;
 $$;
 
-grant execute on function public.claim_next_stay_import_job(text) to anon, authenticated, service_role;
+alter table public.stay_import_jobs enable row level security;
+alter table public.stay_import_jobs force row level security;
+revoke all on table public.stay_import_jobs from anon, authenticated;
+grant all on table public.stay_import_jobs to service_role;
+
+revoke all on function public.claim_next_stay_import_job(text) from public, anon, authenticated;
+grant execute on function public.claim_next_stay_import_job(text) to service_role;
+
+notify pgrst, 'reload schema';

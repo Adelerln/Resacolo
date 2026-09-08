@@ -112,7 +112,9 @@ export default function CheckoutBatchConfirmationPage() {
                 <p>
                   Statut :{' '}
                   <span className="font-semibold text-slate-900">
-                    {formatCheckoutConfirmationOrderStatus(order.status)}
+                    {formatCheckoutConfirmationOrderStatus(order.status, {
+                      remainingBalanceCents: order.remainingBalanceCents
+                    })}
                   </span>
                 </p>
                 {order.paymentModeLabel ? (

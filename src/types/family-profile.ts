@@ -70,6 +70,8 @@ export type FamilyReservation = {
   paymentMode: CheckoutContact['paymentMode'];
   paymentModeLabel: string;
   remainingBalanceCents: number;
+  /** Montant effectivement réglé par le client (en ligne + hors ligne), hors aides. */
+  clientPaidCents: number;
   partnerDiscountLine: string | null;
   partnerCoverageLine: string | null;
   transportLine: string | null;

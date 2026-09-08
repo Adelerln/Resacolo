@@ -159,19 +159,28 @@ export async function detachFamilyCseAffiliation() {
   });
 }
 
-export async function createOrderBalancePaymentIntent(orderId: string) {
+export async function createOrderBalancePaymentIntent(
+  orderId: string,
+  options?: { amountCents?: number | null; amountEuros?: number | string | null }
+) {
   return fetchJson<{
     orderId: string;
     paymentId: string;
     amountCents: number;
+    remainingBalanceCents?: number;
     currency: string;
     monetico: {
+      provider?: 'monetico' | 'axepta';
       mode: 'mock' | 'live';
       paymentUrl: string;
-      formMethod: 'POST';
+      formMethod: 'POST' | 'GET';
       formFields: Record<string, string>;
     };
   }>(`/api/orders/${orderId}/balance-payment-intent`, {
-    method: 'POST'
+    method: 'POST',
+    body: JSON.stringify({
+      amountCents: options?.amountCents ?? null,
+      amountEuros: options?.amountEuros ?? null
+    })
   });
 }

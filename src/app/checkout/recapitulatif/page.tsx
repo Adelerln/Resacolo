@@ -1,6 +1,6 @@
 'use client';
 
-import { Check } from 'lucide-react';
+import { Check, CreditCard } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -101,6 +101,10 @@ function parseAncvConnectAmount(value: string) {
 
 function buildGroupPricingSummary(pricingItems: CheckoutPricing['items']) {
   const financeRequiresQuote = pricingItems.some((item) => item.financeRequiresQuote);
+  const cseTotalAidCents = pricingItems.reduce((sum, item) => sum + Math.max(0, item.cseAidCents ?? 0), 0);
+  const cseLabel =
+    pricingItems.map((item) => item.cseLabel?.trim()).find((label) => Boolean(label && label !== 'Non éligible CSE')) ??
+    null;
   return {
     totalCents: pricingItems.reduce((sum, item) => sum + item.totalPriceCents, 0),
     financeRequiresQuote,
@@ -110,7 +114,9 @@ function buildGroupPricingSummary(pricingItems: CheckoutPricing['items']) {
     ),
     financeFamilyPayableTotalCents: financeRequiresQuote
       ? null
-      : pricingItems.reduce((sum, item) => sum + Math.max(0, item.financeFamilyPayableCents ?? item.totalPriceCents), 0)
+      : pricingItems.reduce((sum, item) => sum + Math.max(0, item.financeFamilyPayableCents ?? item.totalPriceCents), 0),
+    cseTotalAidCents,
+    cseLabel
   };
 }
 
@@ -123,7 +129,9 @@ export default function CheckoutRecapitulatifPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [paymentSubmitError, setPaymentSubmitError] = useState<string | null>(null);
   const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
+  const [showTermsHint, setShowTermsHint] = useState(false);
   const [organizerCgvUrls, setOrganizerCgvUrls] = useState<Record<string, string>>({});
+  const [organizerHasCgv, setOrganizerHasCgv] = useState<Record<string, boolean>>({});
   const [organizerCheckoutSettingsById, setOrganizerCheckoutSettingsById] = useState<Record<string, OrganizerCheckoutSettings>>({});
   const [hasCseAffiliation, setHasCseAffiliation] = useState<boolean | null>(null);
   const [wantsVacafAidByOrganizer, setWantsVacafAidByOrganizer] = useState<Record<string, boolean>>({});
@@ -275,6 +283,7 @@ export default function CheckoutRecapitulatifPage() {
     async function loadOrganizerContext() {
       if (organizerIds.length === 0) {
         setOrganizerCgvUrls({});
+        setOrganizerHasCgv({});
         setOrganizerCheckoutSettingsById({});
         return;
       }
@@ -284,12 +293,24 @@ export default function CheckoutRecapitulatifPage() {
           organizerIds.map(async (organizerId) => {
             try {
               const response = await fetch(`/api/organizers/${organizerId}/cgv-url`, { cache: 'no-store' });
-              if (!response.ok) return [organizerId, '/cgv-organisateur'] as const;
-              const data = (await response.json()) as { url?: unknown };
-              const url = typeof data.url === 'string' && data.url.trim() ? data.url.trim() : '/cgv-organisateur';
-              return [organizerId, url] as const;
+              if (!response.ok) {
+                return [organizerId, { url: null as string | null, hasUploadedCgv: false }] as const;
+              }
+              const data = (await response.json()) as {
+                url?: unknown;
+                downloadPath?: unknown;
+                hasUploadedCgv?: unknown;
+              };
+              const hasUploadedCgv = Boolean(data.hasUploadedCgv);
+              const downloadPath =
+                typeof data.downloadPath === 'string' && data.downloadPath.trim()
+                  ? data.downloadPath.trim()
+                  : null;
+              const signedUrl = typeof data.url === 'string' && data.url.trim() ? data.url.trim() : null;
+              const url = hasUploadedCgv ? downloadPath || signedUrl : null;
+              return [organizerId, { url, hasUploadedCgv }] as const;
             } catch {
-              return [organizerId, '/cgv-organisateur'] as const;
+              return [organizerId, { url: null as string | null, hasUploadedCgv: false }] as const;
             }
           })
         ),
@@ -331,7 +352,14 @@ export default function CheckoutRecapitulatifPage() {
       ]);
 
       if (cancelled) return;
-      setOrganizerCgvUrls(Object.fromEntries(cgvEntries));
+      const nextCgvUrls: Record<string, string> = {};
+      const nextHasCgv: Record<string, boolean> = {};
+      for (const [organizerId, value] of cgvEntries) {
+        nextHasCgv[organizerId] = value.hasUploadedCgv;
+        if (value.url) nextCgvUrls[organizerId] = value.url;
+      }
+      setOrganizerCgvUrls(nextCgvUrls);
+      setOrganizerHasCgv(nextHasCgv);
       setOrganizerCheckoutSettingsById(Object.fromEntries(settingsEntries));
     }
 
@@ -656,7 +684,8 @@ export default function CheckoutRecapitulatifPage() {
             <div className="space-y-4">
               {organizerGroups.map((group) => {
                 const wantsVacafAid = Boolean(wantsVacafAidByOrganizer[group.organizerId]);
-                const groupCgvUrl = organizerCgvUrls[group.organizerId] ?? '/cgv-organisateur';
+                const groupCgvUrl = organizerCgvUrls[group.organizerId] ?? null;
+                const groupHasCgv = Boolean(organizerHasCgv[group.organizerId] && groupCgvUrl);
                 const groupFamilyPayableCents =
                   group.pricing.financeFamilyPayableTotalCents ?? group.pricing.totalCents;
                 const currencyFormatter = new Intl.NumberFormat('fr-FR', {
@@ -703,8 +732,23 @@ export default function CheckoutRecapitulatifPage() {
                       {group.pricing.financeRequiresQuote ? (
                         <div className="space-y-4">
                           <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                            Aucun paiement n&apos;est demandé à ce stade pour {group.organizerName}. Vous êtes en train d&apos;envoyer une demande de devis à votre partenaire.
-                            Vous pouvez toutefois préciser ici si vous comptez mobiliser VACAF, ANCV papier ou ANCV Connect.
+                            Aucun paiement n&apos;est demandé à ce stade pour {group.organizerName}. Vous êtes
+                            en train d&apos;envoyer une demande de devis à votre partenaire.
+                            {group.hasAidSelectionOptions ? (
+                              <>
+                                {' '}
+                                Vous pouvez toutefois préciser ici si vous comptez mobiliser{' '}
+                                {[
+                                  group.settings?.isVacafApproved ? 'VACAF' : null,
+                                  group.settings?.acceptsAncvPaper ? 'ANCV papier' : null,
+                                  group.settings?.acceptsAncvConnect ? 'ANCV Connect' : null
+                                ]
+                                  .filter(Boolean)
+                                  .join(', ')
+                                  .replace(/, ([^,]+)$/, ' ou $1')}
+                                .
+                              </>
+                            ) : null}
                           </div>
                           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                             {group.displayedPaymentModes.map((mode) => {
@@ -995,17 +1039,36 @@ export default function CheckoutRecapitulatifPage() {
                           {currencyFormatter.format(group.pricing.financePartnerContributionTotalCents / 100)} sur cette commande.
                         </div>
                       ) : null}
+                      {group.pricing.cseTotalAidCents > 0 ? (
+                        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+                          Votre CSE prend en charge {currencyFormatter.format(group.pricing.cseTotalAidCents / 100)}
+                          {group.pricing.cseLabel ? ` (${group.pricing.cseLabel})` : ''} sur cette commande.
+                          {typeof group.pricing.financeFamilyPayableTotalCents === 'number' ? (
+                            <>
+                              {' '}
+                              Reste à régler :{' '}
+                              {currencyFormatter.format(group.pricing.financeFamilyPayableTotalCents / 100)}.
+                            </>
+                          ) : null}
+                        </div>
+                      ) : null}
 
                       <p className="text-xs leading-relaxed text-slate-500">
                         Conditions de vente de {group.organizerName} :{' '}
-                        <Link
-                          href={groupCgvUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="font-medium text-brand-500 underline"
-                        >
-                          consulter les CGV
-                        </Link>
+                        {groupHasCgv && groupCgvUrl ? (
+                          <a
+                            href={groupCgvUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-medium text-brand-500 underline"
+                          >
+                            télécharger les CGV (PDF)
+                          </a>
+                        ) : (
+                          <span className="font-medium text-amber-700">
+                            PDF non déposé par l&apos;organisateur
+                          </span>
+                        )}
                         .
                       </p>
                     </div>
@@ -1038,19 +1101,27 @@ export default function CheckoutRecapitulatifPage() {
                 />
                 <span>
                   J&apos;ai lu et j&apos;accepte les conditions générales des organisateurs concernés :{' '}
-                  {organizerGroups.map((group, index) => (
-                    <span key={group.organizerId}>
-                      {index > 0 ? ', ' : null}
-                      <Link
-                        href={organizerCgvUrls[group.organizerId] ?? '/cgv-organisateur'}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-brand-500"
-                      >
-                        {group.organizerName}
-                      </Link>
-                    </span>
-                  ))}{' '}
+                  {organizerGroups.map((group, index) => {
+                    const cgvUrl = organizerCgvUrls[group.organizerId] ?? null;
+                    const hasCgv = Boolean(organizerHasCgv[group.organizerId] && cgvUrl);
+                    return (
+                      <span key={group.organizerId}>
+                        {index > 0 ? ', ' : null}
+                        {hasCgv && cgvUrl ? (
+                          <a
+                            href={cgvUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-brand-500 underline"
+                          >
+                            {group.organizerName}
+                          </a>
+                        ) : (
+                          <span className="text-slate-700">{group.organizerName}</span>
+                        )}
+                      </span>
+                    );
+                  })}{' '}
                   *
                 </span>
               </label>
@@ -1079,7 +1150,14 @@ export default function CheckoutRecapitulatifPage() {
               ) : pricing.financePartnerContributionTotalCents != null && pricing.financePartnerContributionTotalCents > 0 ? (
                 <>
                   <div className="flex items-center justify-between font-semibold text-emerald-700">
-                    <span>Prise en charge partenaire</span>
+                    <span>
+                      {(pricing.cseTotalAidCents ?? 0) > 0
+                        ? 'Prise en charge CSE'
+                        : 'Prise en charge partenaire'}
+                      {(pricing.cseTotalAidCents ?? 0) > 0 && pricing.items.some((item) => item.cseLabel)
+                        ? ` (${pricing.items.find((item) => item.cseLabel && item.cseLabel !== 'Non éligible CSE')?.cseLabel})`
+                        : ''}
+                    </span>
                     <span>- {new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format((pricing.financePartnerContributionTotalCents ?? 0) / 100)}</span>
                   </div>
                   <div className="flex items-center justify-between text-base font-bold text-slate-900">
@@ -1100,28 +1178,69 @@ export default function CheckoutRecapitulatifPage() {
           <Link href="/checkout/informations" className="btn btn-secondary btn-md">
             Retour aux informations
           </Link>
-          <button
-            type="button"
-            onClick={() => void handleContinueToPayment()}
-            className="btn btn-primary btn-md"
-            disabled={
-              !pricing ||
-              isLoading ||
-              Boolean(errorMessage) ||
-              isSubmittingPayment ||
-              !contact.acceptsTerms
-            }
+          <div
+            className="relative inline-flex w-full sm:w-auto"
+            onMouseEnter={() => {
+              if (!contact.acceptsTerms) setShowTermsHint(true);
+            }}
+            onMouseLeave={() => setShowTermsHint(false)}
+            onFocusCapture={() => {
+              if (!contact.acceptsTerms) setShowTermsHint(true);
+            }}
+            onBlurCapture={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                setShowTermsHint(false);
+              }
+            }}
           >
-            {isSubmittingPayment
-              ? 'Validation...'
-              : paymentRequiresOnlineStep
-                ? 'Continuer vers paiement'
-                : financeRequiresQuote
-                  ? 'Envoyer ma demande de devis'
-                  : isPartnerTotalCoverage
-                    ? 'Valider la réservation'
-                    : 'Valider la commande'}
-          </button>
+            {showTermsHint && !contact.acceptsTerms ? (
+              <div
+                role="tooltip"
+                className="pointer-events-none absolute bottom-[calc(100%+0.5rem)] left-1/2 z-20 w-max max-w-[min(18rem,calc(100vw-2rem))] -translate-x-1/2 rounded-lg bg-slate-900 px-3 py-2 text-center text-xs font-medium text-white shadow-lg"
+              >
+                Veuillez accepter les Conditions Générales de l&apos;Organisateur
+                <span
+                  aria-hidden
+                  className="absolute left-1/2 top-full -translate-x-1/2 border-4 border-transparent border-t-slate-900"
+                />
+              </div>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => void handleContinueToPayment()}
+              className={`btn btn-primary btn-md inline-flex w-full items-center justify-center gap-2 sm:w-auto ${
+                !contact.acceptsTerms ? 'pointer-events-none' : ''
+              }`}
+              disabled={
+                !pricing ||
+                isLoading ||
+                Boolean(errorMessage) ||
+                isSubmittingPayment ||
+                !contact.acceptsTerms
+              }
+              aria-describedby={!contact.acceptsTerms ? 'checkout-terms-hint' : undefined}
+            >
+              {isSubmittingPayment ? (
+                'Validation...'
+              ) : paymentRequiresOnlineStep ? (
+                <>
+                  <CreditCard className="h-4 w-4 shrink-0" aria-hidden />
+                  Continuer vers paiement
+                </>
+              ) : financeRequiresQuote ? (
+                'Envoyer ma demande de devis'
+              ) : isPartnerTotalCoverage ? (
+                'Valider la réservation'
+              ) : (
+                'Valider la commande'
+              )}
+            </button>
+            {!contact.acceptsTerms ? (
+              <span id="checkout-terms-hint" className="sr-only">
+                Veuillez accepter les Conditions Générales de l&apos;Organisateur
+              </span>
+            ) : null}
+          </div>
         </div>
       </div>
     </CheckoutFrame>

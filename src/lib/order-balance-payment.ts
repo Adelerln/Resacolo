@@ -1,8 +1,12 @@
 import { getServerSupabaseClient } from '@/lib/supabase/server';
-import { buildMoneticoLivePayload, getMoneticoMode, type MoneticoPayload } from '@/lib/checkout/monetico';
+import {
+  createCheckoutPspPayload,
+  toLegacyMoneticoResponseShape
+} from '@/lib/checkout/payment-provider';
 import { computeRemainingBalanceCents } from '@/lib/order-workflow';
 import { computePartnerContributionSnapshotCents } from '@/lib/partner-offers';
 import type { Json, Database } from '@/types/supabase';
+import type { MoneticoPayload } from '@/lib/checkout/monetico';
 
 const BALANCE_PAYMENT_KIND = 'BALANCE';
 
@@ -40,7 +44,7 @@ function createMoneticoMockTransactionId(checkoutId: string, paymentId: string) 
   return `MONE-${checkoutPart}-${paymentPart}-${Date.now()}`;
 }
 
-function buildBalanceMoneticoPayload(input: {
+async function buildBalancePspPayload(input: {
   checkoutId: string;
   orderId: string;
   paymentId: string;
@@ -49,30 +53,9 @@ function buildBalanceMoneticoPayload(input: {
   amountCents: number;
   currency: string;
   customerEmail: string;
-}): MoneticoPayload {
-  if (getMoneticoMode() === 'live') {
-    return buildMoneticoLivePayload({
-      reference: input.reference,
-      transactionId: input.transactionId,
-      amountCents: input.amountCents,
-      currency: input.currency,
-      customerEmail: input.customerEmail,
-      orderId: input.orderId,
-      checkoutId: input.checkoutId,
-      paymentId: input.paymentId,
-      returnPath: `/checkout/confirmation/${input.orderId}`
-    });
-  }
-
-  return {
-    mode: 'mock',
-    reference: input.reference,
-    transactionId: input.transactionId,
-    paymentUrl: `/mon-compte/reservations/${input.orderId}/paiement`,
-    testMode: true,
-    formMethod: 'POST',
-    formFields: {}
-  };
+}): Promise<MoneticoPayload & { provider?: string; payId?: string | null; transId?: string }> {
+  const payload = await createCheckoutPspPayload(input);
+  return toLegacyMoneticoResponseShape(payload);
 }
 
 export function isBalancePaymentPayload(rawPayload: Json | null | undefined) {
@@ -160,7 +143,12 @@ export async function computeOrderClientBalance(orderId: string) {
   };
 }
 
-export async function prepareOrderBalancePayment(input: { orderId: string; clientUserId: string }) {
+export async function prepareOrderBalancePayment(input: {
+  orderId: string;
+  clientUserId: string;
+  /** Optional custom amount in cents. Defaults to the full remaining balance. */
+  amountCents?: number | null;
+}) {
   const supabase = getServerSupabaseClient();
   const balance = await computeOrderClientBalance(input.orderId);
 
@@ -173,6 +161,18 @@ export async function prepareOrderBalancePayment(input: { orderId: string; clien
   if (balance.remainingBalanceCents <= 0) {
     throw new Error('Aucun solde restant à régler pour cette commande.');
   }
+
+  const requestedAmountCents =
+    input.amountCents == null ? balance.remainingBalanceCents : Math.round(Number(input.amountCents));
+  if (!Number.isFinite(requestedAmountCents) || requestedAmountCents <= 0) {
+    throw new Error('Le montant à régler est invalide.');
+  }
+  if (requestedAmountCents > balance.remainingBalanceCents) {
+    throw new Error(
+      `Le montant ne peut pas dépasser le solde restant (${(balance.remainingBalanceCents / 100).toFixed(2)} €).`
+    );
+  }
+  const amountCents = requestedAmountCents;
 
   const checkoutId = `balance-${input.orderId}`;
   const { data: existingPending } = await supabase
@@ -190,30 +190,48 @@ export async function prepareOrderBalancePayment(input: { orderId: string; clien
     const transactionId =
       reusable.monetico_transaction_id || createMoneticoMockTransactionId(checkoutId, reusable.id);
 
-    await supabase
-      .from('payments')
-      .update({
-        amount_cents: balance.remainingBalanceCents,
-        monetico_reference: reference,
-        monetico_transaction_id: transactionId
-      })
-      .eq('id', reusable.id);
-
-    const monetico = buildBalanceMoneticoPayload({
+    const monetico = await buildBalancePspPayload({
       checkoutId,
       orderId: input.orderId,
       paymentId: reusable.id,
       reference,
       transactionId,
-      amountCents: balance.remainingBalanceCents,
+      amountCents,
       currency: balance.currency,
       customerEmail: balance.customerEmail
     });
+    const providerTransactionId =
+      (monetico as { transId?: string }).transId || monetico.transactionId || transactionId;
+
+    await supabase
+      .from('payments')
+      .update({
+        amount_cents: amountCents,
+        monetico_reference: monetico.reference || reference,
+        monetico_transaction_id: providerTransactionId,
+        raw_payload: {
+          ...asJsonRecord(reusable.raw_payload),
+          paymentKind: BALANCE_PAYMENT_KIND,
+          checkoutId,
+          contact: { email: balance.customerEmail },
+          monetico,
+          axepta:
+            (monetico as { provider?: string }).provider === 'axepta'
+              ? {
+                  provider: 'axepta',
+                  transId: providerTransactionId,
+                  payId: (monetico as { payId?: string | null }).payId ?? null
+                }
+              : null
+        }
+      })
+      .eq('id', reusable.id);
 
     return {
       orderId: input.orderId,
       paymentId: reusable.id,
-      amountCents: balance.remainingBalanceCents,
+      amountCents,
+      remainingBalanceCents: balance.remainingBalanceCents,
       currency: balance.currency,
       monetico
     };
@@ -224,7 +242,7 @@ export async function prepareOrderBalancePayment(input: { orderId: string; clien
     .from('payments')
     .insert({
       order_id: input.orderId,
-      amount_cents: balance.remainingBalanceCents,
+      amount_cents: amountCents,
       currency: balance.currency,
       status: 'PENDING',
       monetico_reference: reference,
@@ -242,26 +260,37 @@ export async function prepareOrderBalancePayment(input: { orderId: string; clien
   }
 
   const transactionId = createMoneticoMockTransactionId(checkoutId, payment.id);
-  const monetico = buildBalanceMoneticoPayload({
+  const monetico = await buildBalancePspPayload({
     checkoutId,
     orderId: input.orderId,
     paymentId: payment.id,
     reference,
     transactionId,
-    amountCents: balance.remainingBalanceCents,
+    amountCents,
     currency: balance.currency,
     customerEmail: balance.customerEmail
   });
+  const providerTransactionId =
+    (monetico as { transId?: string }).transId || monetico.transactionId || transactionId;
 
   await supabase
     .from('payments')
     .update({
-      monetico_transaction_id: transactionId,
+      monetico_transaction_id: providerTransactionId,
+      monetico_reference: monetico.reference || reference,
       raw_payload: {
         paymentKind: BALANCE_PAYMENT_KIND,
         checkoutId,
         contact: { email: balance.customerEmail },
-        monetico
+        monetico,
+        axepta:
+          (monetico as { provider?: string }).provider === 'axepta'
+            ? {
+                provider: 'axepta',
+                transId: providerTransactionId,
+                payId: (monetico as { payId?: string | null }).payId ?? null
+              }
+            : null
       }
     })
     .eq('id', payment.id);
@@ -269,7 +298,8 @@ export async function prepareOrderBalancePayment(input: { orderId: string; clien
   return {
     orderId: input.orderId,
     paymentId: payment.id,
-    amountCents: balance.remainingBalanceCents,
+    amountCents,
+    remainingBalanceCents: balance.remainingBalanceCents,
     currency: balance.currency,
     monetico
   };

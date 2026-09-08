@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   Circle,
   FileText,
+  GripVertical,
   Images,
   Package,
   Percent,
@@ -438,6 +439,9 @@ export default function StayDraftReviewForm({
   const [imageUrls, setImageUrls] = useState<string[]>(() =>
     normalizeImportedImageUrlList(initialPayload.images)
   );
+  const [draggingImageIndex, setDraggingImageIndex] = useState<number | null>(null);
+  const [dragOverImageIndex, setDragOverImageIndex] = useState<number | null>(null);
+  const imageDragMovedRef = useRef(false);
   const [videoEntries, setVideoEntries] = useState<DraftVideoEntry[]>(() =>
     buildInitialDraftVideoEntries({
       video_urls: initialPayload.video_urls,
@@ -788,6 +792,45 @@ export default function StayDraftReviewForm({
         return imagePreviewUrls.length <= 1 ? null : current % (imagePreviewUrls.length - 1);
       }
       if (current > index) return current - 1;
+      return current;
+    });
+  }
+
+  function reorderImagePreview(fromPreviewIndex: number, toPreviewIndex: number) {
+    if (fromPreviewIndex === toPreviewIndex) return;
+    if (
+      fromPreviewIndex < 0 ||
+      toPreviewIndex < 0 ||
+      fromPreviewIndex >= imagePreviewUrls.length ||
+      toPreviewIndex >= imagePreviewUrls.length
+    ) {
+      return;
+    }
+
+    setImageUrls((current) => {
+      const httpIndices: number[] = [];
+      current.forEach((url, index) => {
+        if (/^https?:\/\//i.test(url) && httpIndices.length < 24) {
+          httpIndices.push(index);
+        }
+      });
+      const fromIndex = httpIndices[fromPreviewIndex];
+      const toIndex = httpIndices[toPreviewIndex];
+      if (fromIndex == null || toIndex == null) return current;
+      const next = [...current];
+      const [moved] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, moved);
+      return next;
+    });
+
+    setLightboxIndex((current) => {
+      if (current === null) return current;
+      if (current === fromPreviewIndex) return toPreviewIndex;
+      if (fromPreviewIndex < toPreviewIndex) {
+        if (current > fromPreviewIndex && current <= toPreviewIndex) return current - 1;
+      } else if (current >= toPreviewIndex && current < fromPreviewIndex) {
+        return current + 1;
+      }
       return current;
     });
   }
@@ -2842,31 +2885,136 @@ export default function StayDraftReviewForm({
           </button>
           <p className="text-sm font-medium text-slate-700">Images du séjour</p>
           <p className="text-xs text-slate-500">
-            Cliquez sur une vignette pour l&apos;agrandir. Ajoutez une URL avec le bouton d&apos;ajout.
+            Attrapez une vignette et glissez-la pour changer l&apos;ordre. La première image est la
+            couverture. Cliquez sans glisser pour agrandir. Ajoutez une URL avec le bouton d&apos;ajout.
           </p>
           {imagePreviewUrls.length === 0 ? (
             <p className="text-sm text-slate-500">Aucune image — utilisez le bouton rond pour coller une URL https.</p>
           ) : (
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-              {imagePreviewUrls.map((url, index) => (
-                <div key={`${url}-${index}`} className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setLightboxIndex(index)}
-                    className="block w-full overflow-hidden rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-orange-400"
+              {imagePreviewUrls.map((url, index) => {
+                const isDragging = draggingImageIndex === index;
+                const isDropTarget =
+                  dragOverImageIndex === index &&
+                  draggingImageIndex !== null &&
+                  draggingImageIndex !== index;
+
+                return (
+                  <div
+                    key={`${url}-${index}`}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Image ${index + 1}${index === 0 ? ' (couverture)' : ''}. Glisser pour réordonner, cliquer pour agrandir.`}
+                    className={cn(
+                      'group relative cursor-grab touch-manipulation select-none overflow-hidden rounded-lg border bg-white active:cursor-grabbing',
+                      isDragging && 'opacity-40 ring-2 ring-orange-400',
+                      isDropTarget && 'border-orange-500 ring-2 ring-orange-300',
+                      !isDragging && !isDropTarget && 'border-slate-200 hover:border-slate-300'
+                    )}
+                    draggable
+                    onDragStart={(event) => {
+                      imageDragMovedRef.current = false;
+                      setDraggingImageIndex(index);
+                      setDragOverImageIndex(index);
+                      event.dataTransfer.effectAllowed = 'move';
+                      event.dataTransfer.setData('text/plain', String(index));
+                      // Améliore le feedback navigateur (Firefox / Safari).
+                      if (event.currentTarget instanceof HTMLElement) {
+                        event.dataTransfer.setDragImage(event.currentTarget, 40, 40);
+                      }
+                    }}
+                    onDrag={(event) => {
+                      if (event.clientX !== 0 || event.clientY !== 0) {
+                        imageDragMovedRef.current = true;
+                      }
+                    }}
+                    onDragEnd={() => {
+                      setDraggingImageIndex(null);
+                      setDragOverImageIndex(null);
+                      window.setTimeout(() => {
+                        imageDragMovedRef.current = false;
+                      }, 0);
+                    }}
+                    onDragEnter={(event) => {
+                      event.preventDefault();
+                      if (draggingImageIndex !== null && draggingImageIndex !== index) {
+                        setDragOverImageIndex(index);
+                      }
+                    }}
+                    onDragOver={(event) => {
+                      event.preventDefault();
+                      event.dataTransfer.dropEffect = 'move';
+                      if (draggingImageIndex !== null && draggingImageIndex !== index) {
+                        setDragOverImageIndex(index);
+                      }
+                    }}
+                    onDragLeave={(event) => {
+                      const related = event.relatedTarget;
+                      if (
+                        related instanceof Node &&
+                        event.currentTarget.contains(related)
+                      ) {
+                        return;
+                      }
+                      if (dragOverImageIndex === index) {
+                        setDragOverImageIndex(null);
+                      }
+                    }}
+                    onDrop={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      const raw =
+                        event.dataTransfer.getData('text/plain') ||
+                        (draggingImageIndex !== null ? String(draggingImageIndex) : '');
+                      const fromIndex = Number.parseInt(raw, 10);
+                      if (Number.isFinite(fromIndex)) {
+                        reorderImagePreview(fromIndex, index);
+                      }
+                      setDraggingImageIndex(null);
+                      setDragOverImageIndex(null);
+                    }}
+                    onClick={() => {
+                      if (imageDragMovedRef.current) return;
+                      setLightboxIndex(index);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        setLightboxIndex(index);
+                      }
+                    }}
                   >
-                    <img src={url} alt="" className="h-28 w-full object-cover" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => removeImageAt(index)}
-                    className="absolute right-1 top-1 inline-flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white shadow hover:bg-black/75"
-                    aria-label="Retirer cette image"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-              ))}
+                    {index === 0 ? (
+                      <span className="pointer-events-none absolute left-1 top-1 z-10 rounded bg-orange-500 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white shadow">
+                        Couverture
+                      </span>
+                    ) : null}
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex items-center justify-center gap-1 bg-gradient-to-t from-black/55 to-transparent px-2 pb-1.5 pt-6 text-white opacity-90 transition group-hover:opacity-100">
+                      <GripVertical className="h-4 w-4" aria-hidden />
+                      <span className="text-[10px] font-medium uppercase tracking-wide">Glisser</span>
+                    </div>
+                    <img
+                      src={url}
+                      alt=""
+                      className="pointer-events-none h-28 w-full object-cover"
+                      draggable={false}
+                    />
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        removeImageAt(index);
+                      }}
+                      onMouseDown={(event) => event.stopPropagation()}
+                      onPointerDown={(event) => event.stopPropagation()}
+                      className="absolute right-1 top-1 z-20 inline-flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white shadow hover:bg-black/75"
+                      aria-label="Retirer cette image"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useParams, useSearchParams } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, Mail } from 'lucide-react';
 import { CheckoutFrame } from '@/components/checkout/CheckoutFrame';
@@ -34,6 +34,7 @@ type OrderStatusResponse = {
 export default function CheckoutConfirmationPage() {
   const params = useParams<{ orderId: string }>();
   const searchParams = useSearchParams();
+  const router = useRouter();
   const orderId = String(params.orderId ?? '');
   const mode = searchParams.get('mode');
   const { clearCart } = useCart();
@@ -67,6 +68,7 @@ export default function CheckoutConfirmationPage() {
       paymentStatus: order?.paymentStatus ?? null,
       requestKind,
       paidAt: order?.paidAt ?? null,
+      remainingBalanceCents: order?.remainingBalanceCents ?? 0,
       isCvPaperMode,
       isDeferredMode,
       isVacafRequest,
@@ -252,6 +254,38 @@ export default function CheckoutConfirmationPage() {
     () => (order ? formatOrderReservationCode(order.orderId) : null),
     [order]
   );
+  const isPaymentFailureView =
+    mode === 'axepta-failed' ||
+    mode === 'monetico-failed' ||
+    order?.status === 'CANCELLED' ||
+    order?.paymentStatus === 'FAILED';
+
+  useEffect(() => {
+    if (!isPaymentFailureView || isLoading) return;
+    const target = new URL('/checkout/paiement', window.location.origin);
+    target.searchParams.set('failed', '1');
+    if (orderId) target.searchParams.set('orderId', orderId);
+    router.replace(target.pathname + target.search);
+  }, [isLoading, isPaymentFailureView, orderId, router]);
+
+  if (isPaymentFailureView) {
+    return (
+      <CheckoutFrame
+        step="paiement"
+        title="Paiement"
+        subtitle="Redirection vers la relance du paiement…"
+      >
+        <p className="text-sm text-slate-600">
+          Le paiement n&apos;a pas abouti. Aucune réservation n&apos;est validée. Redirection en cours…
+        </p>
+        <div className="mt-4">
+          <Link href="/checkout/paiement?failed=1" className="btn btn-primary btn-md">
+            Relancer le paiement
+          </Link>
+        </div>
+      </CheckoutFrame>
+    );
+  }
 
   return (
     <CheckoutFrame
@@ -271,7 +305,9 @@ export default function CheckoutConfirmationPage() {
             <p className="text-sm text-slate-600">
               Code réservation : <span className="font-semibold text-slate-900">{reservationCode}</span>
             </p>
-            {order.organizerContactEmail ? (
+            {order.organizerContactEmail &&
+            order.status !== 'CANCELLED' &&
+            order.paymentStatus !== 'FAILED' ? (
               <a
                 href={`mailto:${encodeURIComponent(order.organizerContactEmail)}?subject=${encodeURIComponent(
                   `Réservation ${reservationCode} - Contact famille`
@@ -290,7 +326,9 @@ export default function CheckoutConfirmationPage() {
               Statut :{' '}
               <span className="font-semibold text-slate-900">
                 {formatCheckoutConfirmationOrderStatus(order.status, {
-                  isPartnerTotalCoverage: isPartnerTotalMode
+                  isPartnerTotalCoverage: isPartnerTotalMode,
+                  paymentStatus: order.paymentStatus,
+                  remainingBalanceCents: order.remainingBalanceCents
                 })}
               </span>
             </p>
@@ -315,6 +353,8 @@ export default function CheckoutConfirmationPage() {
               {isPartnerTotalMode ? 'Réservation validée' : 'Paiement validé'} le{' '}
               {new Date(order.paidAt).toLocaleString('fr-FR')}.
             </p>
+          ) : order.paymentStatus === 'SUCCEEDED' && order.remainingBalanceCents > 0 ? (
+            <p className="text-sm text-emerald-700">Acompte validé. Solde à régler depuis votre espace client.</p>
           ) : confirmationContext.followUpMessage ? (
             confirmationContext.followUpMessage.tone === 'success' ? (
               <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2.5">
@@ -336,6 +376,9 @@ export default function CheckoutConfirmationPage() {
           ) : null}
           {mode === 'monetico-mock' ? (
             <p className="text-xs text-slate-500">Mode de test local : paiement Monetico mock simulé.</p>
+          ) : null}
+          {mode === 'axepta-mock' ? (
+            <p className="text-xs text-slate-500">Mode de test local : paiement Axepta mock simulé (pas d’appel API BNP).</p>
           ) : null}
           {mode === 'dev-bypass' ||
           mode === 'dev-bypass-cv-paper' ||

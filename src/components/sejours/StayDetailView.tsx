@@ -109,7 +109,7 @@ function formatSessionLabel(session: StaySessionOption) {
   const status = session.status === 'FULL' ? ' (COMPLET)' : '';
   const price =
     session.familyCentsAfterAid != null && session.cseEligible
-      ? ` · ${formatPrice(session.familyCentsAfterAid / 100)} (après CSE)`
+      ? ` · ${formatPrice(session.familyCentsAfterAid / 100)}`
       : session.partnerDiscountedPrice != null
         ? ` · ${formatPrice(session.partnerDiscountedPrice)}`
         : session.price != null
@@ -700,6 +700,12 @@ export function StayDetailView({
     estimatedAfterCse < estimatedAfterPartnerDiscount
       ? Math.round((estimatedAfterPartnerDiscount - estimatedAfterCse) * 100) / 100
       : null;
+  const hasResolvedCseQfPricing =
+    cseAidAmount != null ||
+    (selectedSession?.cseEligible === true && selectedSession.familyCentsAfterAid != null) ||
+    availableSessions.some(
+      (sessionItem) => sessionItem.cseEligible === true && sessionItem.familyCentsAfterAid != null
+    );
   const hasStartedSelection = Boolean(
     selectedSessionId ||
       selectedTransportId ||
@@ -1522,11 +1528,11 @@ export function StayDetailView({
                   </div>
                 ) : null}
                 {cseAidAmount != null ? (
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <span className="inline-flex items-center rounded-full bg-sky-100 px-2.5 py-1 text-xs font-bold text-sky-800">
+                  <div className="mt-2 flex items-start gap-2">
+                    <span className="inline-flex shrink-0 items-center rounded-full bg-sky-100 px-2.5 py-1 text-xs font-bold text-sky-800">
                       CSE
                     </span>
-                    <span className="text-sm font-semibold text-sky-800">
+                    <span className="min-w-0 text-sm font-semibold text-sky-800">
                       Prise en charge CSE : -{formatPrice(cseAidAmount)}
                       {selectedSession?.cseLabel ? (
                         <span className="font-normal text-sky-700"> · {selectedSession.cseLabel}</span>
@@ -1534,11 +1540,11 @@ export function StayDetailView({
                     </span>
                   </div>
                 ) : null}
-                {normalizedFinanceMode === 'MANUAL' ? (
+                {normalizedFinanceMode === 'MANUAL' && !hasResolvedCseQfPricing ? (
                   <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900">
                     Le prix affiché n&apos;est pas encore définitif. Votre réservation sera transmise au partenaire comme une demande de devis.
                   </div>
-                ) : partnerFinanceDisplay ? (
+                ) : partnerFinanceDisplay && normalizedFinanceMode !== 'MANUAL' ? (
                   <div className="mt-3 space-y-1 text-sm">
                     {partnerFinanceDisplay.partnerCents != null && partnerFinanceDisplay.partnerCents > 0 ? (
                       <p className="font-semibold text-emerald-700">

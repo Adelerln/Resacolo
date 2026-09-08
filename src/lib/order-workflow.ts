@@ -210,10 +210,20 @@ export function formatOrderReservationCode(orderId: string) {
 
 export function formatCheckoutConfirmationOrderStatus(
   status: OrderStatus | string | null | undefined,
-  options?: { isPartnerTotalCoverage?: boolean }
+  options?: {
+    isPartnerTotalCoverage?: boolean;
+    paymentStatus?: string | null;
+    remainingBalanceCents?: number | null;
+  }
 ) {
   if (options?.isPartnerTotalCoverage) {
     return 'Prise en charge totale';
+  }
+  if (
+    options?.paymentStatus === 'SUCCEEDED' &&
+    Math.max(0, Math.round(options.remainingBalanceCents ?? 0)) > 0
+  ) {
+    return 'Acompte validé';
   }
   return orderStatusLabel(status);
 }
@@ -379,6 +389,7 @@ export function resolveCheckoutConfirmationFollowUpMessage(input: {
   requestKind?: OrderRequestKind | string | null;
   paymentRawPayload?: Record<string, unknown> | null;
   paidAt: string | null;
+  remainingBalanceCents?: number | null;
   isCvPaperMode?: boolean;
   isDeferredMode?: boolean;
   isVacafRequest?: boolean;
@@ -386,7 +397,19 @@ export function resolveCheckoutConfirmationFollowUpMessage(input: {
   isPartnerManualQuoteMode?: boolean;
   isPartnerTotalMode?: boolean;
 }): CheckoutConfirmationFollowUpMessage | null {
-  if (input.paidAt) return null;
+  const remainingBalanceCents = Math.max(0, Math.round(input.remainingBalanceCents ?? 0));
+  const hasSucceededOnlinePayment = input.paymentStatus === 'SUCCEEDED';
+
+  // Acompte / paiement partiel CB : le solde se règle depuis l'espace client.
+  if (hasSucceededOnlinePayment && remainingBalanceCents > 0) {
+    return {
+      tone: 'neutral',
+      message:
+        'Votre paiement en ligne a bien été enregistré. La suite du règlement pourra être effectuée depuis votre espace client.'
+    };
+  }
+
+  if (input.paidAt || (hasSucceededOnlinePayment && remainingBalanceCents <= 0)) return null;
 
   const effectiveRequestKind = inferOrderRequestKind({
     requestKind: input.requestKind,
@@ -436,7 +459,9 @@ export function resolveCheckoutConfirmationFollowUpMessage(input: {
     };
   }
 
-  if (context.orderStatus === 'REQUESTED') {
+  // REQUESTED sans paiement CB réussi = vrai flux hors ligne / devis / etc.
+  // Ne pas confondre avec un acompte mappé en REQUESTED faute d'enum PARTIALLY_PAID.
+  if (context.orderStatus === 'REQUESTED' && !hasSucceededOnlinePayment) {
     return {
       tone: 'warning',
       message:

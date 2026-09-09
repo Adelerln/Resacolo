@@ -12,7 +12,11 @@ import {
 } from '@/types/checkout';
 import type { Json, Database } from '@/types/supabase';
 import { CheckoutValidationError, repriceCart } from '@/lib/checkout/pricing';
-import { buildMoneticoLivePayload, getMoneticoMode, type MoneticoPayload } from '@/lib/checkout/monetico';
+import { type MoneticoPayload } from '@/lib/checkout/monetico';
+import {
+  createCheckoutPspPayload,
+  toLegacyMoneticoResponseShape
+} from '@/lib/checkout/payment-provider';
 import { readOrganizerCheckoutSettings } from '@/lib/organizer-checkout-settings';
 import {
   computeImmediatePaymentAmountCents,
@@ -208,7 +212,7 @@ function createMoneticoBatchReference(checkoutId: string) {
   return `BATCH-${checkoutId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 18).toUpperCase()}`.slice(0, 24);
 }
 
-function createMoneticoPayload(input: {
+async function createProviderPayload(input: {
   checkoutId: string;
   orderId: string;
   paymentId: string;
@@ -217,30 +221,12 @@ function createMoneticoPayload(input: {
   amountCents: number;
   currency: string;
   customerEmail: string;
-}): MoneticoPayload {
-  if (getMoneticoMode() === 'live') {
-    return buildMoneticoLivePayload({
-      reference: input.reference,
-      transactionId: input.transactionId,
-      amountCents: input.amountCents,
-      currency: input.currency,
-      customerEmail: input.customerEmail,
-      orderId: input.orderId,
-      checkoutId: input.checkoutId,
-      paymentId: input.paymentId,
-      returnPath: `/checkout/confirmation/${input.orderId}`
-    });
-  }
-
-  return {
-    mode: 'mock',
-    reference: input.reference,
-    transactionId: input.transactionId,
-    paymentUrl: `/checkout/paiement?checkoutId=${encodeURIComponent(input.checkoutId)}`,
-    testMode: true,
-    formMethod: 'POST',
-    formFields: {}
-  };
+  billingFirstName?: string | null;
+  billingLastName?: string | null;
+  merchantCustomerId?: string | null;
+}): Promise<MoneticoPayload & { provider?: string; payId?: string | null; transId?: string }> {
+  const payload = await createCheckoutPspPayload(input);
+  return toLegacyMoneticoResponseShape(payload);
 }
 
 function buildEffectiveContactForOrganizer(
@@ -316,13 +302,91 @@ function isInvalidOrderStatusEnumError(error: { message?: string | null; code?: 
   return message.includes('invalid input value for enum order_status');
 }
 
+/**
+ * Statuses available before workflow v2 (`PENDING_PAYMENT` / `PARTIALLY_PAID`).
+ * Used when the remote enum has not received the migration yet.
+ */
 function resolveLegacyOrderStatus(input: {
   requestKind: ReturnType<typeof resolveOrderRequestKind>;
   financeFamilyPayableTotalCents: number | null | undefined;
 }) {
   if (input.requestKind) return 'REQUESTED' as const;
   if ((input.financeFamilyPayableTotalCents ?? 0) === 0) return 'PAID' as const;
-  return 'PENDING_PAYMENT' as const;
+  // Pre-PENDING_PAYMENT DBs treated unpaid online checkout as REQUESTED.
+  return 'REQUESTED' as const;
+}
+
+function mapStatusForPreWorkflowV2Enum(
+  status: Database['public']['Enums']['order_status']
+): Database['public']['Enums']['order_status'] {
+  if (status === 'PENDING_PAYMENT') return 'REQUESTED';
+  if (status === 'PARTIALLY_PAID') return 'REQUESTED';
+  if (status === 'TRANSFERRED') return 'CONFIRMED';
+  return status;
+}
+
+async function updateOrderAfterPayment(input: {
+  orderId: string;
+  nextStatus: Database['public']['Enums']['order_status'];
+  paidAt: string;
+}) {
+  const supabase = getServerSupabaseClient();
+  const attempts: Array<{
+    status: Database['public']['Enums']['order_status'];
+    payload: Record<string, string | null>;
+  }> = [
+    {
+      status: input.nextStatus,
+      payload: {
+        status: input.nextStatus,
+        paid_at: input.nextStatus === 'PAID' ? input.paidAt : null,
+        partially_paid_at: input.nextStatus === 'PARTIALLY_PAID' ? input.paidAt : null
+      }
+    }
+  ];
+
+  const compatibleStatus = mapStatusForPreWorkflowV2Enum(input.nextStatus);
+  if (compatibleStatus !== input.nextStatus) {
+    attempts.push({
+      status: compatibleStatus,
+      payload: {
+        status: compatibleStatus,
+        paid_at: compatibleStatus === 'PAID' ? input.paidAt : input.nextStatus === 'PAID' ? input.paidAt : null,
+        partially_paid_at: null
+      }
+    });
+  }
+
+  // Without partially_paid_at column (pre workflow-v2).
+  attempts.push({
+    status: compatibleStatus,
+    payload: {
+      status: compatibleStatus,
+      paid_at:
+        input.nextStatus === 'PAID' || compatibleStatus === 'PAID' ? input.paidAt : null
+    }
+  });
+
+  let lastError: { message?: string | null } | null = null;
+  for (const attempt of attempts) {
+    const { error } = await supabase.from('orders').update(attempt.payload).eq('id', input.orderId);
+    if (!error) {
+      return attempt.status;
+    }
+    lastError = error;
+    const canRetry =
+      isInvalidOrderStatusEnumError(error) ||
+      isMissingAnyColumnError(error, ['partially_paid_at', 'external_aid_cents', 'external_paid_cents']);
+    if (!canRetry) {
+      console.error('checkout: mise à jour orders après paiement échouée', error);
+      throw new Error(`Impossible de mettre à jour la commande: ${error.message}`);
+    }
+  }
+
+  console.error('checkout: mise à jour orders après paiement échouée', lastError);
+  throw new Error(
+    `Impossible de mettre à jour la commande: ${lastError?.message ?? 'erreur inconnue'}`
+  );
 }
 
 async function readCollectivityFinance(collectivityId: string) {
@@ -362,7 +426,7 @@ async function readCollectivityFinance(collectivityId: string) {
 async function snapshotCollectivityContributions(input: {
   collectivityId: string;
   approvedAt: string;
-  orderItems: Array<{ id: string; totalCents: number }>;
+  orderItems: Array<{ id: string; totalCents: number; partnerAidCents?: number | null }>;
 }) {
   const collectivity = await readCollectivityFinance(input.collectivityId);
   if (!collectivity || input.orderItems.length === 0) return;
@@ -380,6 +444,29 @@ async function snapshotCollectivityContributions(input: {
         mode: 'PERCENT' as const,
         fixed_cents: null,
         percent_value: percentValue,
+        cap_cents: null,
+        status: 'APPROVED' as const,
+        approved_at: input.approvedAt,
+        approved_by_user_id: null,
+        updated_at: now
+      })),
+      { onConflict: 'order_item_id' }
+    );
+
+    if (error) {
+      throw new Error(`Impossible de figer la prise en charge CSE : ${error.message}`);
+    }
+    return;
+  }
+
+  if (mode === 'MANUAL') {
+    const { error } = await supabase.from('collectivity_contributions').upsert(
+      input.orderItems.map((item) => ({
+        collectivity_id: input.collectivityId,
+        order_item_id: item.id,
+        mode: 'FIXED' as const,
+        fixed_cents: Math.max(0, Math.round(item.partnerAidCents ?? 0)),
+        percent_value: null,
         cap_cents: null,
         status: 'APPROVED' as const,
         approved_at: input.approvedAt,
@@ -475,12 +562,41 @@ async function insertOrderWithCompatibilityFallback(input: {
     return order;
   }
 
+  // Enum not migrated yet (PENDING_PAYMENT missing): retry full payload with a compatible status.
+  if (isInvalidOrderStatusEnumError(error)) {
+    const compatibleStatus = mapStatusForPreWorkflowV2Enum(input.initialStatus);
+    if (compatibleStatus !== input.initialStatus) {
+      const { data: compatibleOrder, error: compatibleError } = await supabase
+        .from('orders')
+        .insert({
+          ...fullInsertPayload,
+          status: compatibleStatus,
+          requested_at:
+            compatibleStatus === 'REQUESTED' || input.initialStatus === 'PENDING_PAYMENT'
+              ? input.requestedAt
+              : fullInsertPayload.requested_at
+        })
+        .select('id')
+        .single();
+
+      if (!compatibleError && compatibleOrder) {
+        return compatibleOrder;
+      }
+
+      if (compatibleError && !isMissingAnyColumnError(compatibleError, [...ORDER_WORKFLOW_COLUMNS])) {
+        console.error('checkout: insertion orders (statut compatible) échouée', compatibleError);
+        throw new Error(`Impossible de créer la commande: ${compatibleError.message}`);
+      }
+    }
+  }
+
   const shouldRetryLegacyInsert =
     isMissingAnyColumnError(error, [...ORDER_WORKFLOW_COLUMNS]) || isInvalidOrderStatusEnumError(error);
 
   if (!shouldRetryLegacyInsert) {
     if (error) {
       console.error('checkout: insertion orders échouée', error);
+      throw new Error(`Impossible de créer la commande: ${error.message}`);
     }
     throw new Error('Impossible de créer la commande.');
   }
@@ -505,6 +621,7 @@ async function insertOrderWithCompatibilityFallback(input: {
   if (legacyError || !legacyOrder) {
     if (legacyError) {
       console.error('checkout: insertion legacy orders échouée', legacyError);
+      throw new Error(`Impossible de créer la commande: ${legacyError.message}`);
     }
     throw new Error('Impossible de créer la commande.');
   }
@@ -557,7 +674,7 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
     const transactionId =
       existingRows.find((row) => row.monetico_transaction_id)?.monetico_transaction_id ||
       createMoneticoMockTransactionId(input.checkoutId, primaryOnlineRow.id);
-    const moneticoPayload = createMoneticoPayload({
+    const moneticoPayload = await createProviderPayload({
       checkoutId: input.checkoutId,
       orderId: primaryOnlineRow.order_id,
       paymentId: primaryOnlineRow.id,
@@ -565,14 +682,20 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
       transactionId,
       amountCents: onlineRows.reduce((sum, row) => sum + Math.max(0, row.amount_cents ?? 0), 0),
       currency: pricing.currency,
-      customerEmail: input.contact.email
+      customerEmail: input.contact.email,
+      billingFirstName: input.contact.billingFirstName,
+      billingLastName: input.contact.billingLastName,
+      merchantCustomerId: clientUserId
     });
+
+    const providerTransactionId =
+      (moneticoPayload as { transId?: string }).transId || moneticoPayload.transactionId || transactionId;
 
     await supabase
       .from('payments')
       .update({
-        monetico_transaction_id: transactionId,
-        monetico_reference: reference
+        monetico_transaction_id: providerTransactionId,
+        monetico_reference: moneticoPayload.reference || reference
       })
       .in('id', existingRows.map((row) => row.id));
 
@@ -675,7 +798,11 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
     });
 
     const orderItemIds: string[] = [];
-    const orderItemsForCollectivitySnapshot: Array<{ id: string; totalCents: number }> = [];
+    const orderItemsForCollectivitySnapshot: Array<{
+      id: string;
+      totalCents: number;
+      partnerAidCents?: number | null;
+    }> = [];
     const orderItemSnapshots: Array<{ orderItemId: string; transportDisplayLine: string | null }> = [];
     const organizerParticipants: CheckoutParticipant[] = [];
 
@@ -718,7 +845,8 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
       orderItemIds.push(orderItem.id);
       orderItemsForCollectivitySnapshot.push({
         id: orderItem.id,
-        totalCents: pricedItem.totalPriceCents
+        totalCents: pricedItem.totalPriceCents,
+        partnerAidCents: pricedItem.cseAidCents ?? pricedItem.financePartnerContributionCents ?? 0
       });
       orderItemSnapshots.push({
         orderItemId: orderItem.id,
@@ -841,7 +969,7 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
       ? createMoneticoBatchReference(input.checkoutId)
       : createMoneticoReference(input.checkoutId, primaryGroup.orderId);
   const transactionId = createMoneticoMockTransactionId(input.checkoutId, primaryOnlineGroup.paymentId);
-  const moneticoPayload = createMoneticoPayload({
+  const moneticoPayload = await createProviderPayload({
     checkoutId: input.checkoutId,
     orderId: primaryOnlineGroup.orderId,
     paymentId: primaryOnlineGroup.paymentId,
@@ -849,8 +977,13 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
     transactionId,
     amountCents: onlineGroups.reduce((sum, group) => sum + group.immediatePaymentAmountCents, 0),
     currency: pricing.currency,
-    customerEmail: input.contact.email
+    customerEmail: input.contact.email,
+    billingFirstName: input.contact.billingFirstName,
+    billingLastName: input.contact.billingLastName,
+    merchantCustomerId: clientUserId
   });
+  const providerTransactionId =
+    (moneticoPayload as { transId?: string }).transId || moneticoPayload.transactionId || transactionId;
   const allOrderIds = groupResults.map((group) => group.orderId);
   const allPaymentIds = groupResults.map((group) => group.paymentId);
 
@@ -859,14 +992,22 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
     const { error: paymentUpdateError } = await supabase
       .from('payments')
       .update({
-        monetico_reference: shouldAttachMonetico ? reference : null,
-        monetico_transaction_id: shouldAttachMonetico ? transactionId : null,
+        monetico_reference: shouldAttachMonetico ? moneticoPayload.reference || reference : null,
+        monetico_transaction_id: shouldAttachMonetico ? providerTransactionId : null,
         raw_payload: {
           ...group.paymentRawPayload,
           batchOrderIds: allOrderIds,
           batchPaymentIds: allPaymentIds,
           isBatch: groupResults.length > 1,
-          monetico: shouldAttachMonetico ? moneticoPayload : null
+          monetico: shouldAttachMonetico ? moneticoPayload : null,
+          axepta:
+            shouldAttachMonetico && (moneticoPayload as { provider?: string }).provider === 'axepta'
+              ? {
+                  provider: 'axepta',
+                  transId: providerTransactionId,
+                  payId: (moneticoPayload as { payId?: string | null }).payId ?? null
+                }
+              : null
         }
       })
       .eq('id', group.paymentId);
@@ -941,7 +1082,8 @@ export async function markOrderPaid(input: {
     .eq('order_id', input.orderId);
 
   if (paymentError) {
-    throw new Error('Impossible de mettre à jour le paiement.');
+    console.error('checkout: mise à jour payments échouée', paymentError);
+    throw new Error(`Impossible de mettre à jour le paiement: ${paymentError.message}`);
   }
 
   const paidAt = new Date().toISOString();
@@ -1007,18 +1149,11 @@ export async function markOrderPaid(input: {
     externalPaidCents: orderRow?.external_paid_cents ?? 0,
     onlinePaidCents
   });
-  const { error: orderError } = await supabase
-    .from('orders')
-    .update({
-      status: nextStatus,
-      paid_at: nextStatus === 'PAID' ? paidAt : null,
-      partially_paid_at: nextStatus === 'PARTIALLY_PAID' ? paidAt : null
-    })
-    .eq('id', input.orderId);
-
-  if (orderError) {
-    throw new Error('Impossible de mettre à jour la commande.');
-  }
+  const appliedStatus = await updateOrderAfterPayment({
+    orderId: input.orderId,
+    nextStatus,
+    paidAt
+  });
   if (orderItemIds.length > 0) {
     const { error: holdsError } = await supabase
       .from('session_holds')
@@ -1031,7 +1166,7 @@ export async function markOrderPaid(input: {
     }
   }
 
-  if (nextStatus === 'PAID') {
+  if (appliedStatus === 'PAID' || nextStatus === 'PAID') {
     const { recordCommissionFeesOnOrderPaid } = await import('@/lib/resacolo-fee-ledger.server');
     await recordCommissionFeesOnOrderPaid(supabase, input.orderId, paidAt);
     try {
@@ -1044,8 +1179,8 @@ export async function markOrderPaid(input: {
 
   return {
     orderId: input.orderId,
-    status: nextStatus,
-    paidAt: nextStatus === 'PAID' ? paidAt : null
+    status: appliedStatus,
+    paidAt: nextStatus === 'PAID' || appliedStatus === 'PAID' ? paidAt : null
   };
 }
 

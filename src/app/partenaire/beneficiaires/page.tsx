@@ -101,6 +101,9 @@ export default async function BeneficiairesPage({
     }
 
     revalidatePath('/partenaire/beneficiaires');
+    revalidatePath('/partenaire/reservations');
+    revalidatePath('/mon-compte');
+    revalidatePath('/mon-compte/reservations');
     redirect('/partenaire/beneficiaires?saved=1');
   }
 

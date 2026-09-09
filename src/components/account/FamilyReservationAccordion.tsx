@@ -52,7 +52,11 @@ function canContactOrganizer(reservation: FamilyReservation) {
 }
 
 function canDownloadInvoice(reservation: FamilyReservation) {
-  return reservation.orderStatus !== 'CART' && reservation.orderStatus !== 'CANCELLED';
+  return (
+    reservation.orderStatus !== 'CART' &&
+    reservation.orderStatus !== 'CANCELLED' &&
+    reservation.clientPaidCents > 0
+  );
 }
 
 export default function FamilyReservationAccordion({

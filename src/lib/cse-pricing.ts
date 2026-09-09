@@ -2,14 +2,13 @@ import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { normalizePartnerFinanceMode } from '@/lib/partner-offers';
 import {
   evaluatePartnerCatalogEligibility,
-  normalizePartnerCatalogRules,
   simulatePartnerAid
 } from '@/lib/partner-catalog-rules';
 import {
   isFamilyQuotientCurrent,
   parseStoredFamilyQuotient,
-  resolveClientQfForAidSimulation,
-  withCatalogQfScaleAidMode
+  resolveCatalogRulesForCseAid,
+  resolveClientQfForAidSimulation
 } from '@/lib/partner-client-qf';
 import { isMissingColumnError } from '@/lib/supabase-schema-errors';
 import type { PartnerCatalogRules } from '@/types/partner-catalog-rules';
@@ -51,6 +50,44 @@ function sessionDurationDays(startDate: string, endDate: string) {
   );
 }
 
+async function loadCollectivityCatalogRules(collectivityId: string) {
+  const supabase = getServerSupabaseClient();
+  let collectivityQuery = await supabase
+    .from('collectivities')
+    .select('catalog_rules_published,catalog_rules_draft,finance_mode')
+    .eq('id', collectivityId)
+    .maybeSingle();
+
+  if (
+    collectivityQuery.error &&
+    isMissingColumnError(collectivityQuery.error, 'catalog_rules_draft')
+  ) {
+    collectivityQuery = await supabase
+      .from('collectivities')
+      .select('catalog_rules_published,finance_mode')
+      .eq('id', collectivityId)
+      .maybeSingle();
+  }
+
+  if (
+    collectivityQuery.error &&
+    isMissingColumnError(collectivityQuery.error, 'catalog_rules_published')
+  ) {
+    return null;
+  }
+
+  const collectivity = collectivityQuery.data;
+  if (!collectivity) return null;
+  if (normalizePartnerFinanceMode(collectivity.finance_mode) !== 'MANUAL') return null;
+
+  const rules = resolveCatalogRulesForCseAid({
+    published: collectivity.catalog_rules_published,
+    draft: 'catalog_rules_draft' in collectivity ? collectivity.catalog_rules_draft : null
+  });
+  if (!rules) return null;
+  return rules;
+}
+
 export async function readUserCsePricingContext(userId: string): Promise<UserCsePricingContext | null> {
   const supabase = getServerSupabaseClient();
   const { data: client, error: clientError } = await supabase
@@ -69,26 +106,13 @@ export async function readUserCsePricingContext(userId: string): Promise<UserCse
   const collectivityId = client?.collectivity_id ?? null;
   if (!collectivityId) return null;
 
-  const { data: collectivity, error: collectivityError } = await supabase
-    .from('collectivities')
-    .select('catalog_rules_published,finance_mode')
-    .eq('id', collectivityId)
-    .maybeSingle();
-
-  if (collectivityError && isMissingColumnError(collectivityError, 'catalog_rules_published')) {
-    return null;
-  }
-
-  if (!collectivity?.catalog_rules_published) return null;
-  if (normalizePartnerFinanceMode(collectivity.finance_mode) !== 'MANUAL') return null;
+  const rules = await loadCollectivityCatalogRules(collectivityId);
+  if (!rules) return null;
 
   const familyQuotient = parseStoredFamilyQuotient(client?.family_quotient);
   const familyQuotientExpiresOn = client?.family_quotient_expires_on?.trim()
     ? client.family_quotient_expires_on.trim().slice(0, 10)
     : null;
-  const rules = withCatalogQfScaleAidMode(
-    normalizePartnerCatalogRules(collectivity.catalog_rules_published)
-  );
 
   return {
     rules,
@@ -114,18 +138,8 @@ async function readUserCsePricingContextWithoutQf(userId: string): Promise<UserC
   const collectivityId = client?.collectivity_id ?? null;
   if (!collectivityId) return null;
 
-  const { data: collectivity } = await supabase
-    .from('collectivities')
-    .select('catalog_rules_published,finance_mode')
-    .eq('id', collectivityId)
-    .maybeSingle();
-
-  if (!collectivity?.catalog_rules_published) return null;
-  if (normalizePartnerFinanceMode(collectivity.finance_mode) !== 'MANUAL') return null;
-
-  const rules = withCatalogQfScaleAidMode(
-    normalizePartnerCatalogRules(collectivity.catalog_rules_published)
-  );
+  const rules = await loadCollectivityCatalogRules(collectivityId);
+  if (!rules) return null;
 
   return {
     rules,

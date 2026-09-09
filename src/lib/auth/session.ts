@@ -1,5 +1,6 @@
 import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
+import { cache } from 'react';
 import type { Database } from '@/types/supabase';
 import {
   resolveRoleContextForUserId,
@@ -50,7 +51,8 @@ function buildSessionPayload(
   };
 }
 
-export async function getCurrentUser(): Promise<SessionPayload | null> {
+/** Déduplique layout + page (ex. /mon-compte juste après login). */
+export const getCurrentUser = cache(async (): Promise<SessionPayload | null> => {
   const cookieStore = await cookies();
   const cookieAccess = (() => cookieStore) as unknown as typeof cookies;
   const supabase = createServerComponentClient<Database>({
@@ -67,7 +69,7 @@ export async function getCurrentUser(): Promise<SessionPayload | null> {
 
   const roleContext = await resolveRoleContextForUserId(user.id);
   return buildSessionPayload(user, roleContext);
-}
+});
 
 export async function getCurrentUserRole(): Promise<AppRole> {
   const session = await getCurrentUser();

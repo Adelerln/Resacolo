@@ -64,6 +64,15 @@ function getFinanceSummary(
   if (!priced?.financeMode) return null;
 
   const mode = normalizePartnerFinanceMode(priced.financeMode);
+  const cseAidCents = priced.cseAidCents ?? 0;
+  if (cseAidCents > 0) {
+    const partnerLabel = partnerCollectivityName?.trim() || 'votre CSE';
+    const aidLabel = priced.cseLabel?.trim() || formatEuroFromCents(cseAidCents);
+    return `Prise en charge de ${partnerLabel} : ${aidLabel} · Reste à régler : ${formatEuroFromCents(
+      priced.familyCentsAfterAid ?? priced.financeFamilyPayableCents ?? priced.totalPriceCents
+    )}`;
+  }
+
   if (mode === 'MANUAL' || priced.financeRequiresQuote) {
     return 'Demande de devis : le montant final sera confirmé par votre partenaire.';
   }

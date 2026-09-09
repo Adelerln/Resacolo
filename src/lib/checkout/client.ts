@@ -10,13 +10,16 @@ export type CheckoutPaymentIntentResponse = {
   confirmationPath: string;
   pricing: CheckoutPricing;
   monetico: {
+    provider?: 'monetico' | 'axepta';
     mode: 'mock' | 'live';
     reference: string;
     transactionId: string;
     paymentUrl: string;
     testMode: boolean;
-    formMethod: 'POST';
+    formMethod: 'POST' | 'GET';
     formFields: Record<string, string>;
+    payId?: string | null;
+    transId?: string;
   };
 };
 

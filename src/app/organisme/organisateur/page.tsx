@@ -232,6 +232,32 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
     const logoFile = formData.get('logo');
     const projectFile = formData.get('education_project');
     const cgvFile = formData.get('cgv_file');
+    const existingCgvPath = await findOrganizerCgvPath(supabase, currentOrganizerId);
+    const hasNewCgvFile = cgvFile instanceof File && cgvFile.size > 0;
+    if (hasNewCgvFile) {
+      const extension = String((cgvFile as File).name.split('.').pop() ?? '').toLowerCase();
+      const mime = String((cgvFile as File).type || '').toLowerCase();
+      if (extension !== 'pdf' && mime !== 'application/pdf') {
+        redirect(
+          withOrganizerQuery(
+            '/organisme/organisateur?error=' +
+              encodeURIComponent('Les CGV doivent être un fichier PDF.'),
+            currentOrganizerId
+          )
+        );
+      }
+    }
+    if (!existingCgvPath && !hasNewCgvFile) {
+      redirect(
+        withOrganizerQuery(
+          '/organisme/organisateur?error=' +
+            encodeURIComponent(
+              'Les CGV PDF sont obligatoires : téléversez le document depuis votre fiche organisateur.'
+            ),
+          currentOrganizerId
+        )
+      );
+    }
 
     const foundedYear = foundedYearRaw ? Number(foundedYearRaw) : null;
     const ageMin = ageMinRaw ? Number(ageMinRaw) : null;
@@ -380,7 +406,6 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
         key={organizer.id}
         id="organizer-profile-form"
         action={updateProfile}
-        encType="multipart/form-data"
         className="space-y-4"
       >
         <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
@@ -536,29 +561,34 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
               )}
             </label>
             <label className="block text-sm font-medium text-slate-700">
-              CGV organisateur (PDF)
+              CGV organisateur (PDF) *
               <p className="mt-1 text-xs font-normal leading-relaxed text-slate-500">
-                Téléversez ici les conditions générales de vente propres à votre organisme. Ce document sera
-                téléchargeable par les familles au moment du récapitulatif de commande. Il deviendra obligatoire
-                avant la mise en ligne finale sur la plateforme, mais il n&apos;est pas bloquant à ce stade.
+                Document obligatoire. Les familles le téléchargeront au récapitulatif de commande avant d&apos;accepter
+                vos conditions générales.
               </p>
               <input
                 name="cgv_file"
                 type="file"
-                accept="application/pdf"
+                accept="application/pdf,.pdf"
                 className="organizer-input bg-slate-50"
+                required={!hasCgv}
               />
               {hasCgv ? (
                 <div className="mt-2 space-y-1">
                   <div className="text-xs text-slate-500">CGV déjà chargées</div>
                   {cgvUrl ? (
-                    <a className="block text-sm font-medium text-brand-600" href={cgvUrl}>
+                    <a className="block text-sm font-medium text-brand-600" href={cgvUrl} target="_blank" rel="noopener noreferrer">
                       Télécharger les CGV actuelles
                     </a>
                   ) : null}
+                  <p className="text-xs text-slate-500">
+                    Vous pouvez remplacer le fichier en en sélectionnant un nouveau ci-dessus.
+                  </p>
                 </div>
               ) : (
-                <p className="mt-2 text-xs text-slate-500">Aucun fichier CGV chargé pour le moment.</p>
+                <p className="mt-2 text-xs font-medium text-amber-700">
+                  Aucun fichier CGV chargé : ajoutez un PDF pour pouvoir enregistrer la fiche.
+                </p>
               )}
             </label>
           </div>

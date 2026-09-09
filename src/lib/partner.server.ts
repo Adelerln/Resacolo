@@ -409,6 +409,16 @@ export async function updatePartnerBeneficiaryFamilyQuotient(input: {
     }
     throw new Error(`Impossible d'enregistrer le QF : ${updateError.message}`);
   }
+
+  const { recalculateOpenOrdersAfterBeneficiaryQfUpdate } = await import(
+    '@/lib/partner-qf-order-recalc.server'
+  );
+  await recalculateOpenOrdersAfterBeneficiaryQfUpdate({
+    collectivityId: input.collectivityId,
+    beneficiaryUserId: input.beneficiaryUserId,
+    familyQuotient: input.familyQuotient,
+    familyQuotientExpiresOn: input.familyQuotientExpiresOn
+  });
 }
 
 export async function listPartnerBeneficiaryUserIds(collectivityId: string, excludedUserId?: string | null) {

@@ -11,6 +11,7 @@ import PartnerAppliedCatalogSection, {
 } from '@/components/partner/PartnerAppliedCatalogSection';
 import { buildCatalogCountryOptions, listSiteStayCountryLabels, syncKnownSiteCountriesWithRules } from '@/lib/partner-catalog-countries';
 import {
+  applyCollectivityFinanceToCatalogRules,
   evaluatePartnerCatalogEligibility,
   countEligiblePartnerCatalogSessions,
   getDefaultPartnerCatalogRules,
@@ -134,24 +135,39 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
       collectivity.catalog_rules_draft ?? getDefaultPartnerCatalogRules()
     );
     if (normalizePartnerFinanceMode(collectivity.finance_mode) !== 'MANUAL') {
-      parsedRules.financialRules = existingRules.financialRules;
-      parsedRules.qfScale = existingRules.qfScale;
-    } else {
-      parsedRules.financialRules = {
-        ...parsedRules.financialRules,
-        aidMode: existingRules.financialRules.aidMode,
-        percentValue: existingRules.financialRules.percentValue,
-        fixedCents: existingRules.financialRules.fixedCents
-      };
+      // Eligibility form has no financing fields: keep existing caps/QF filters,
+      // and mirror aid mode + rate from /partenaire/financement.
+      Object.assign(
+        parsedRules,
+        applyCollectivityFinanceToCatalogRules(
+          {
+            ...parsedRules,
+            financialRules: {
+              ...existingRules.financialRules,
+              ...parsedRules.financialRules
+            },
+            qfScale: existingRules.qfScale
+          },
+          {
+            finance_mode: collectivity.finance_mode,
+            finance_percent_value: collectivity.finance_percent_value,
+            finance_fixed_cents: collectivity.finance_fixed_cents
+          }
+        )
+      );
     }
+    // MANUAL: keep form-parsed aidMode / QF scale (do not clobber with stale draft percent).
     const rules: PartnerCatalogRules = syncKnownSiteCountriesWithRules(
       normalizePartnerCatalogRules(parsedRules),
       siteCountries
     );
     const now = new Date().toISOString();
+    const isManualFinance = normalizePartnerFinanceMode(collectivity.finance_mode) === 'MANUAL';
     let validatedRules: PartnerCatalogRules | null = null;
     try {
-      validatedRules = parseAndValidatePartnerCatalogRules(rules);
+      validatedRules = parseAndValidatePartnerCatalogRules(rules, {
+        skipFlatAidRateRequirement: isManualFinance
+      });
     } catch {
       validatedRules = null;
     }
@@ -197,10 +213,18 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
   ]);
 
   const draftRules = syncKnownSiteCountriesWithRules(
-    normalizePartnerCatalogRules(collectivity.catalog_rules_draft ?? getDefaultPartnerCatalogRules()),
+    applyCollectivityFinanceToCatalogRules(
+      normalizePartnerCatalogRules(collectivity.catalog_rules_draft ?? getDefaultPartnerCatalogRules()),
+      {
+        finance_mode: collectivity.finance_mode,
+        finance_percent_value: collectivity.finance_percent_value,
+        finance_fixed_cents: collectivity.finance_fixed_cents
+      }
+    ),
     siteCountries
   );
   draftRules.blockingRules.transportIncludedRequired = false;
+  const financeMode = normalizePartnerFinanceMode(collectivity.finance_mode);
   const runtimeAidModeParam = String(params?.am ?? '').trim();
   const runtimeAidPercentParam = String(params?.ap ?? '').trim();
   if (runtimeAidModeParam === 'PERCENT' || runtimeAidModeParam === 'FIXED' || runtimeAidModeParam === 'QF_SCALE') {
@@ -214,7 +238,9 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
   }
   const draftValidationWarning = (() => {
     try {
-      parseAndValidatePartnerCatalogRules(draftRules);
+      parseAndValidatePartnerCatalogRules(draftRules, {
+        skipFlatAidRateRequirement: financeMode === 'MANUAL'
+      });
       return null;
     } catch (error) {
       return error instanceof Error ? error.message : 'Configuration incomplète';
@@ -251,7 +277,6 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
       ])
     ).values()
   );
-  const financeMode = normalizePartnerFinanceMode(collectivity.finance_mode);
   const allCountryOptions = buildCatalogCountryOptions(siteCountries, draftRules);
   const catalogSnapshot = buildCatalogSnapshot(rawCatalogRows);
 

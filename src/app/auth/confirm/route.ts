@@ -25,15 +25,29 @@ export async function GET(req: Request) {
   const requestUrl = new URL(req.url);
   const tokenHash = requestUrl.searchParams.get('token_hash');
   const type = requestUrl.searchParams.get('type');
+  const code = requestUrl.searchParams.get('code');
   const next = sanitizeRelativePath(requestUrl.searchParams.get('next'), '/confirmation-mail');
+
+  const cookieStore = await cookies();
+  const cookieAccess = (() => cookieStore) as unknown as typeof cookies;
+  const supabase = createRouteHandlerClient<Database>({ cookies: cookieAccess });
+
+  if (code) {
+    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    if (error) {
+      return NextResponse.redirect(buildConfirmationUrl(req, 'error'), { status: 303 });
+    }
+    const successUrl = new URL(next, req.url);
+    if (!successUrl.searchParams.has('status')) {
+      successUrl.searchParams.set('status', 'success');
+    }
+    return NextResponse.redirect(successUrl, { status: 303 });
+  }
 
   if (!tokenHash || !type || !ALLOWED_TYPES.includes(type as EmailOtpType)) {
     return NextResponse.redirect(buildConfirmationUrl(req, 'error'), { status: 303 });
   }
 
-  const cookieStore = await cookies();
-  const cookieAccess = (() => cookieStore) as unknown as typeof cookies;
-  const supabase = createRouteHandlerClient<Database>({ cookies: cookieAccess });
   const { error } = await supabase.auth.verifyOtp({
     token_hash: tokenHash,
     type: type as EmailOtpType

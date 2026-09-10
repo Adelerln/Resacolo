@@ -12,7 +12,7 @@ export function getApiErrorMessage(error: unknown) {
   }
 
   if (error instanceof Error) {
-    return error.message;
+    return error.message || 'Une erreur est survenue.';
   }
 
   if (typeof error === 'string' && error.trim().length > 0) {

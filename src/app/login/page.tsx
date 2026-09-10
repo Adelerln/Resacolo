@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getCurrentUser } from '@/lib/auth/session';
+import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton';
 import { PasswordInput } from '@/components/auth/PasswordInput';
 
 type LoginMode = 'family' | 'pro';
@@ -21,6 +22,8 @@ function mapLoginErrorMessageProduction(code: string | undefined) {
       return 'Veuillez vérifier les informations saisies.';
     case 'supabase':
       return 'Connexion momentanément indisponible. Réessayez dans quelques instants.';
+    case 'oauth-failed':
+      return 'Connexion Google impossible. Réessayez ou utilisez votre e-mail et mot de passe.';
     case 'server':
       return 'Une erreur est survenue lors de la connexion. Réessayez dans quelques instants.';
     default:
@@ -76,6 +79,7 @@ export default async function LoginPage({
     mode?: string;
     registered?: string;
     reset?: string;
+    magicSent?: string;
     forceLogin?: string;
     errorDetail?: string;
     errorStatus?: string;
@@ -93,6 +97,7 @@ export default async function LoginPage({
     mode,
     registered,
     reset,
+    magicSent,
     forceLogin,
     errorDetail,
     errorStatus,
@@ -103,7 +108,7 @@ export default async function LoginPage({
   const shouldBypassSessionRedirect = forceLogin === '1';
   const safeRedirectTo = sanitizeRelativePath(
     redirectTo,
-    effectiveMode === 'family' ? '/mon-compte' : '/admin'
+    effectiveMode === 'family' ? '/mon-compte' : '/organisme'
   );
   const loginError = mapLoginErrorMessage(error);
 
@@ -184,13 +189,69 @@ export default async function LoginPage({
             Mot de passe mis à jour. Vous pouvez maintenant vous connecter.
           </div>
         ) : null}
+        {magicSent === '1' ? (
+          <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+            Si un compte existe avec cet e-mail, un lien de connexion vient d’être envoyé. Vérifiez votre boîte mail.
+          </div>
+        ) : null}
 
         {loginError ? (
           <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 whitespace-pre-wrap">
             {loginError}
           </div>
         ) : null}
-        <form className="mt-6 space-y-4" action="/api/auth/login" method="post">
+
+        {effectiveMode === 'family' ? (
+          <div className="mt-6 space-y-3">
+            <GoogleSignInButton redirectTo={safeRedirectTo} loginMode="family" />
+            <div className="flex items-center gap-3">
+              <div className="h-px flex-1 bg-slate-200" />
+              <span className="text-xs font-medium uppercase tracking-wide text-slate-400">ou</span>
+              <div className="h-px flex-1 bg-slate-200" />
+            </div>
+          </div>
+        ) : null}
+
+        <form
+          className={`${effectiveMode === 'family' ? 'mt-3' : 'mt-6'} space-y-3`}
+          action="/api/auth/magic-link"
+          method="post"
+        >
+          <input type="hidden" name="redirectTo" value={safeRedirectTo} />
+          <input type="hidden" name="returnPath" value="/login" />
+          <input type="hidden" name="loginMode" value={effectiveMode} />
+          <p className="text-sm font-medium text-slate-800">Connexion sans mot de passe</p>
+          <p className="text-xs text-slate-500">
+            Recevez un lien magique par e-mail pour vous connecter en un clic.
+          </p>
+          <label className="block text-sm font-medium text-slate-700">
+            Email
+            <input
+              name="email"
+              type="email"
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+              required
+            />
+          </label>
+          <button
+            type="submit"
+            className={`w-full rounded-lg border px-4 py-2 text-sm font-semibold ${
+              effectiveMode === 'family'
+                ? 'border-[#FA8500] text-[#FA8500] hover:bg-orange-50'
+                : 'border-[var(--color-primary)] text-[var(--color-primary)] hover:bg-sky-50'
+            }`}
+          >
+            Recevoir un lien de connexion
+          </button>
+        </form>
+
+        <div className="my-5 flex items-center gap-3">
+          <div className="h-px flex-1 bg-slate-200" />
+          <span className="text-xs font-medium uppercase tracking-wide text-slate-400">ou avec mot de passe</span>
+          <div className="h-px flex-1 bg-slate-200" />
+        </div>
+
+        <form className="space-y-4" action="/api/auth/login" method="post">
           <input type="hidden" name="redirectTo" value={safeRedirectTo} />
           <input type="hidden" name="loginPath" value="/login" />
           <input type="hidden" name="loginMode" value={effectiveMode} />

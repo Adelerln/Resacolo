@@ -32,22 +32,33 @@ export default function ResetPasswordPage() {
     const refreshToken = hashParams.get('refresh_token');
     const type = hashParams.get('type');
 
-    if (!accessToken || !refreshToken || type !== 'recovery') {
-      setRecoveryState('invalid-link');
-      return;
-    }
-
-    supabase.auth
-      .setSession({ access_token: accessToken, refresh_token: refreshToken })
-      .then(({ error: sessionError }) => {
+    async function bootstrap() {
+      if (accessToken && refreshToken && type === 'recovery') {
+        const { error: sessionError } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken
+        });
         if (sessionError) {
           setRecoveryState('invalid-link');
           return;
         }
         setRecoveryState('ready');
         window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
-      })
-      .catch(() => setRecoveryState('invalid-link'));
+        return;
+      }
+
+      // Lien PKCE via /auth/callback?flow=recovery → session déjà en cookies.
+      const {
+        data: { user }
+      } = await supabase.auth.getUser();
+      if (user) {
+        setRecoveryState('ready');
+        return;
+      }
+      setRecoveryState('invalid-link');
+    }
+
+    bootstrap().catch(() => setRecoveryState('invalid-link'));
   }, []);
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -145,11 +156,13 @@ export default function ResetPasswordPage() {
           </form>
         ) : null}
 
-        <Link href="/login/mot-de-passe-oublie" className="mt-4 inline-flex w-full items-center justify-center rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+        <Link
+          href="/login/mot-de-passe-oublie"
+          className="mt-4 inline-flex w-full items-center justify-center rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+        >
           Demander un nouveau lien
         </Link>
       </div>
     </div>
   );
 }
-

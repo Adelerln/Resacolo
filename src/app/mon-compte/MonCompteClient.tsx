@@ -19,6 +19,7 @@ import { useRouter } from 'next/navigation';
 import { formatMoneyCentsFr } from '@/lib/format-money-fr';
 import { orderStatusBadgeClassName } from '@/lib/order-workflow';
 import { useFavorites } from '@/components/favorites/FavoritesProvider';
+import { AccountSecurityPanel } from '@/components/auth/AccountSecurityPanel';
 import {
   createFamilyChild,
   deleteFamilyChild,
@@ -317,6 +318,10 @@ export default function MonCompteClient({
               <Settings className="h-4 w-4" />
               Mes informations
             </Link>
+            <Link href="/compte/securite" className="btn btn-secondary btn-sm">
+              <ShieldCheck className="h-4 w-4" />
+              Sécurité
+            </Link>
             <form action="/api/auth/logout" method="post">
               <input type="hidden" name="redirectTo" value="/login/familles" />
               <button type="submit" className="btn btn-primary btn-sm">
@@ -335,6 +340,10 @@ export default function MonCompteClient({
             Chargement de votre profil et de vos réservations…
           </p>
         ) : null}
+
+        <div className="mt-10">
+          <AccountSecurityPanel currentEmail={profile.email || ''} />
+        </div>
 
         <section className="mt-10 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="font-display text-lg font-semibold text-slate-900">Informations du compte</h2>

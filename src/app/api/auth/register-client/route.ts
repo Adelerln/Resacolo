@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { isPasswordPolicyValid, PASSWORD_POLICY_MESSAGE } from '@/lib/auth/password-policy';
 import { upsertFamilyProfileFromRegistration } from '@/lib/account-profile/server';
 import { getApiErrorMessage } from '@/lib/checkout/api';
+import { buildEmailConfirmRedirectUrl } from '@/lib/auth/urls';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import type { Database } from '@/types/supabase';
 
@@ -20,25 +21,49 @@ function joinNameParts(firstName: string, lastName: string) {
   return [firstName.trim(), lastName.trim()].filter(Boolean).join(' ').trim();
 }
 
-function isDevEmailConfirmationFailure(error: { message?: string | null } | null | undefined) {
-  if (process.env.NODE_ENV === 'production') return false;
-  const message = String(error?.message ?? '').toLowerCase();
-  return message.includes('error sending confirmation email');
+function humanizeAuthError(error: unknown) {
+  const raw =
+    typeof error === 'string'
+      ? error.trim()
+      : getApiErrorMessage(error);
+
+  const normalized = raw.replace(/\s+/g, ' ').trim();
+  if (
+    !normalized ||
+    normalized === '{}' ||
+    normalized === '[]' ||
+    normalized === '[object Object]' ||
+    normalized === 'undefined' ||
+    normalized === 'null'
+  ) {
+    return 'Impossible de créer le compte pour le moment. Réessayez dans quelques instants.';
+  }
+  return normalized.slice(0, 300);
 }
 
-async function createConfirmedDevUserAndSession(input: {
+function isEmailDeliveryError(error: { message?: string | null } | null | undefined) {
+  const message = String(error?.message ?? '').toLowerCase();
+  return (
+    message.includes('error sending') ||
+    message.includes('confirmation email') ||
+    message.includes('smtp') ||
+    message.includes('rate limit') ||
+    message.includes('error sending confirmation email')
+  );
+}
+
+async function createUserViaAdmin(input: {
   email: string;
   password: string;
   firstName: string;
   lastName: string;
   name: string;
-  supabase: ReturnType<typeof createRouteHandlerClient<Database>>;
 }) {
   const adminSupabase = getServerSupabaseClient();
-  const { data: created, error: createError } = await adminSupabase.auth.admin.createUser({
+  const { data, error } = await adminSupabase.auth.admin.createUser({
     email: input.email,
     password: input.password,
-    email_confirm: true,
+    email_confirm: false,
     user_metadata: {
       first_name: input.firstName,
       last_name: input.lastName,
@@ -47,23 +72,24 @@ async function createConfirmedDevUserAndSession(input: {
     }
   });
 
-  if (createError || !created.user?.id) {
-    throw createError ?? new Error('Impossible de créer le compte en local.');
+  if (error || !data.user?.id) {
+    throw error ?? new Error('Impossible de créer le compte.');
   }
 
-  const { data: signedIn, error: signInError } = await input.supabase.auth.signInWithPassword({
+  return data.user;
+}
+
+async function sendSignupConfirmationEmail(input: {
+  email: string;
+  emailRedirectTo: string;
+  supabase: ReturnType<typeof createRouteHandlerClient<Database>>;
+}) {
+  const { error } = await input.supabase.auth.resend({
+    type: 'signup',
     email: input.email,
-    password: input.password
+    options: { emailRedirectTo: input.emailRedirectTo }
   });
-
-  if (signInError) {
-    throw signInError;
-  }
-
-  return {
-    user: created.user,
-    session: signedIn.session
-  };
+  return error;
 }
 
 const registerClientFullSchema = z
@@ -95,45 +121,43 @@ const registerClientFullSchema = z
     redirectTo: trimmedString().optional()
   })
   .superRefine((data, ctx) => {
-  const hasParent2 =
-    Boolean(data.parent2FirstName) ||
-    Boolean(data.parent2LastName) ||
-    Boolean(data.parent2Phone) ||
-    Boolean(data.parent2Email) ||
-    Boolean(data.parent2Status) ||
-    Boolean(data.parent2StatusOther);
+    const hasParent2 =
+      Boolean(data.parent2FirstName) ||
+      Boolean(data.parent2LastName) ||
+      Boolean(data.parent2Phone) ||
+      Boolean(data.parent2Email) ||
+      Boolean(data.parent2Status) ||
+      Boolean(data.parent2StatusOther);
 
-  if (!hasParent2) {
-    return;
-  }
+    if (!hasParent2) {
+      return;
+    }
 
-  if (!data.parent2LastName) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['parent2LastName'],
-      message: 'Nom du parent 2 requis.'
-    });
-  }
+    if (!data.parent2LastName) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['parent2LastName'],
+        message: 'Nom du parent 2 requis.'
+      });
+    }
 
-  if (!data.parent2FirstName) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['parent2FirstName'],
-      message: 'Prénom du parent 2 requis.'
-    });
-  }
+    if (!data.parent2FirstName) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['parent2FirstName'],
+        message: 'Prénom du parent 2 requis.'
+      });
+    }
 
-  if (data.parent2Status === 'autre' && !data.parent2StatusOther) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['parent2StatusOther'],
-      message: 'Précisez le statut du parent 2.'
-    });
-  }
+    if (data.parent2Status === 'autre' && !data.parent2StatusOther) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['parent2StatusOther'],
+        message: 'Précisez le statut du parent 2.'
+      });
+    }
   });
 
-// Inscription "light" (checkout) : on ne demande que les identifiants.
-// Les infos de contact peuvent être complétées ensuite (checkout / préférences).
 const registerClientCheckoutSchema = z.object({
   firstName: trimmedStringMin(2, 'Prénom requis.'),
   lastName: trimmedStringMin(2, 'Nom requis.'),
@@ -158,9 +182,16 @@ export async function POST(req: Request) {
     return trimmed;
   }
 
-  function redirectFormError(errorMessage: string, redirectTo: string) {
+  function redirectFormError(errorMessage: unknown, redirectTo: string) {
     const url = new URL('/login/familles/creer-compte', req.url);
-    url.searchParams.set('error', errorMessage);
+    url.searchParams.set('error', humanizeAuthError(errorMessage));
+    url.searchParams.set('redirectTo', redirectTo);
+    return NextResponse.redirect(url, { status: 303 });
+  }
+
+  function redirectEmailVerification(email: string, redirectTo: string) {
+    const url = new URL('/login/familles/verifier-email', req.url);
+    url.searchParams.set('email', email);
     url.searchParams.set('redirectTo', redirectTo);
     return NextResponse.redirect(url, { status: 303 });
   }
@@ -188,15 +219,23 @@ export async function POST(req: Request) {
     safeRedirectTo = sanitizeRelativePath(input.redirectTo, '/mon-compte');
     const email = input.email.toLowerCase();
     const name = `${input.firstName} ${input.lastName}`.trim();
+    const emailRedirectTo = buildEmailConfirmRedirectUrl(req);
+
     const cookieStore = await cookies();
     const cookieAccess = (() => cookieStore) as unknown as typeof cookies;
     const supabase = createRouteHandlerClient<Database>({
       cookies: cookieAccess
     });
-    const { data, error } = await supabase.auth.signUp({
+
+    let userId: string | null = null;
+    let hasSession = false;
+    let emailSendWarning: string | null = null;
+
+    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
       email,
       password: input.password,
       options: {
+        emailRedirectTo,
         data: {
           first_name: input.firstName,
           last_name: input.lastName,
@@ -206,28 +245,60 @@ export async function POST(req: Request) {
       }
     });
 
-    const authResult =
-      isDevEmailConfirmationFailure(error)
-        ? await createConfirmedDevUserAndSession({
+    if (signUpError) {
+      console.error('[register-client] signUp error', {
+        message: signUpError.message,
+        status: (signUpError as { status?: number }).status,
+        code: (signUpError as { code?: string }).code,
+        name: signUpError.name
+      });
+      if (isEmailDeliveryError(signUpError)) {
+        console.warn('[register-client] signUp email delivery failed, fallback admin create', signUpError.message);
+        try {
+          const adminUser = await createUserViaAdmin({
             email,
             password: input.password,
             firstName: input.firstName,
             lastName: input.lastName,
-            name,
-            supabase
-          })
-        : data;
-
-    if ((error && !isDevEmailConfirmationFailure(error)) || !authResult?.user?.id) {
-      const isExistingAccount = error?.message?.toLowerCase().includes('already registered');
-      const message =
-        isExistingAccount
+            name
+          });
+          userId = adminUser.id;
+          const resendError = await sendSignupConfirmationEmail({ email, emailRedirectTo, supabase });
+          if (resendError) {
+            console.warn('[register-client] resend after admin create failed', resendError.message);
+            emailSendWarning = resendError.message;
+          }
+        } catch (fallbackError) {
+          const message = humanizeAuthError(fallbackError);
+          if (isFormRequest) return redirectFormError(message, safeRedirectTo);
+          return NextResponse.json({ error: message }, { status: 500 });
+        }
+      } else {
+        const isExistingAccount = String(signUpError.message ?? '')
+          .toLowerCase()
+          .includes('already registered');
+        const message = isExistingAccount
           ? 'Un compte existe déjà avec cette adresse email.'
-          : error?.message ?? 'Impossible de créer le compte.';
-      if (isFormRequest) {
-        return redirectFormError(message, safeRedirectTo);
+          : humanizeAuthError(signUpError);
+        if (isFormRequest) return redirectFormError(message, safeRedirectTo);
+        return NextResponse.json({ error: message }, { status: isExistingAccount ? 409 : 500 });
       }
-      return NextResponse.json({ error: message }, { status: isExistingAccount ? 409 : 500 });
+    } else {
+      // Compte déjà existant (réponse « soft » Supabase).
+      if (signUpData.user && (signUpData.user.identities?.length ?? 0) === 0) {
+        const message = 'Un compte existe déjà avec cette adresse email.';
+        if (isFormRequest) return redirectFormError(message, safeRedirectTo);
+        return NextResponse.json({ error: message }, { status: 409 });
+      }
+
+      userId = signUpData.user?.id ?? null;
+      hasSession = Boolean(signUpData.session);
+    }
+
+    if (!userId) {
+      const message = 'Impossible de créer le compte.';
+      if (isFormRequest) return redirectFormError(message, safeRedirectTo);
+      return NextResponse.json({ error: message }, { status: 500 });
     }
 
     try {
@@ -236,7 +307,7 @@ export async function POST(req: Request) {
         : '';
 
       await upsertFamilyProfileFromRegistration({
-        userId: authResult.user.id,
+        userId,
         firstName: input.firstName,
         lastName: input.lastName,
         email,
@@ -253,27 +324,22 @@ export async function POST(req: Request) {
         parent2Email: fullInput?.parent2Email ?? ''
       });
     } catch (profileError) {
-      if (isFormRequest) {
-        return redirectFormError(getApiErrorMessage(profileError), safeRedirectTo);
-      }
-      return NextResponse.json({ error: getApiErrorMessage(profileError) }, { status: 500 });
+      // Ne bloque pas la confirmation e-mail : le profil pourra être complété plus tard.
+      console.error('[register-client] profile upsert failed', humanizeAuthError(profileError));
     }
 
     if (isFormRequest) {
-      const redirectUrl = authResult.session
-        ? new URL(safeRedirectTo, req.url)
-        : new URL(`/login/familles?registered=1&redirectTo=${encodeURIComponent(safeRedirectTo)}`, req.url);
-      return NextResponse.redirect(redirectUrl, { status: 303 });
+      if (hasSession) {
+        return NextResponse.redirect(new URL(safeRedirectTo, req.url), { status: 303 });
+      }
+      return redirectEmailVerification(email, safeRedirectTo);
     }
 
     return NextResponse.json({
       ok: true,
-      user: {
-        id: authResult.user.id,
-        email: authResult.user.email,
-        name
-      },
-      requiresEmailConfirmation: !authResult.session
+      user: { id: userId, email, name },
+      requiresEmailConfirmation: !hasSession,
+      emailSendWarning
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -284,8 +350,8 @@ export async function POST(req: Request) {
     }
     console.error('[register-client]', error);
     if (isFormRequest) {
-      return redirectFormError(getApiErrorMessage(error), safeRedirectTo);
+      return redirectFormError(humanizeAuthError(error), safeRedirectTo);
     }
-    return NextResponse.json({ error: getApiErrorMessage(error) }, { status: 500 });
+    return NextResponse.json({ error: humanizeAuthError(error) }, { status: 500 });
   }
 }

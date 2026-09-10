@@ -51,6 +51,7 @@ export async function POST(req: Request) {
       );
     }
 
+    const email = parsed.data.email.trim().toLowerCase();
     const cookieStore = await cookies();
     const cookieAccess = (() => cookieStore) as unknown as typeof cookies;
     const supabase = createRouteHandlerClient<Database>({ cookies: cookieAccess });
@@ -61,17 +62,24 @@ export async function POST(req: Request) {
       flow: 'login'
     });
 
-    const { error } = await supabase.auth.signInWithOtp({
-      email: parsed.data.email.trim().toLowerCase(),
-      options: {
-        emailRedirectTo,
-        shouldCreateUser: false
-      }
-    });
+    try {
+      const otpPromise = supabase.auth.signInWithOtp({
+        email,
+        options: {
+          emailRedirectTo,
+          shouldCreateUser: false
+        }
+      });
+      const timeoutPromise = new Promise<{ error: { message: string } }>((resolve) => {
+        setTimeout(() => resolve({ error: { message: 'magic-link timeout' } }), 8000);
+      });
+      const { error } = await Promise.race([otpPromise, timeoutPromise]);
 
-    // Toujours réponse générique (évite l'énumération de comptes).
-    if (error && !error.message.toLowerCase().includes('signups not allowed')) {
-      console.warn('[auth/magic-link]', error.message);
+      if (error && !error.message.toLowerCase().includes('signups not allowed')) {
+        console.warn('[auth/magic-link]', error.message);
+      }
+    } catch (error) {
+      console.warn('[auth/magic-link] unexpected', error);
     }
 
     if (expectsJson) {
@@ -85,7 +93,8 @@ export async function POST(req: Request) {
       buildRedirect(req, returnPath, {
         magicSent: '1',
         mode: loginMode,
-        redirectTo: next
+        redirectTo: next,
+        email
       }),
       { status: 303 }
     );

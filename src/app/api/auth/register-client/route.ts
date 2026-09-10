@@ -1,6 +1,6 @@
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
-import { NextResponse } from 'next/server';
+import { after, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { isPasswordPolicyValid, PASSWORD_POLICY_MESSAGE } from '@/lib/auth/password-policy';
 import { upsertFamilyProfileFromRegistration } from '@/lib/account-profile/server';
@@ -8,8 +8,10 @@ import { getApiErrorMessage } from '@/lib/checkout/api';
 import { buildEmailConfirmRedirectUrl } from '@/lib/auth/urls';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import type { Database } from '@/types/supabase';
+import type { User } from '@supabase/supabase-js';
 
 export const runtime = 'nodejs';
+export const maxDuration = 60;
 
 const stringFromUnknown = z.preprocess((value) => (value == null ? '' : value), z.string());
 const trimmedString = () => stringFromUnknown.pipe(z.string().trim());
@@ -22,11 +24,7 @@ function joinNameParts(firstName: string, lastName: string) {
 }
 
 function humanizeAuthError(error: unknown) {
-  const raw =
-    typeof error === 'string'
-      ? error.trim()
-      : getApiErrorMessage(error);
-
+  const raw = typeof error === 'string' ? error.trim() : getApiErrorMessage(error);
   const normalized = raw.replace(/\s+/g, ' ').trim();
   if (
     !normalized ||
@@ -41,15 +39,32 @@ function humanizeAuthError(error: unknown) {
   return normalized.slice(0, 300);
 }
 
-function isEmailDeliveryError(error: { message?: string | null } | null | undefined) {
-  const message = String(error?.message ?? '').toLowerCase();
-  return (
-    message.includes('error sending') ||
-    message.includes('confirmation email') ||
-    message.includes('smtp') ||
-    message.includes('rate limit') ||
-    message.includes('error sending confirmation email')
-  );
+/** Opt-in only. Never auto-confirm by NODE_ENV — even localhost must validate e-mail. */
+function shouldAutoConfirmEmail() {
+  return process.env.AUTH_AUTO_CONFIRM_EMAIL === '1';
+}
+
+async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error(`${label} timeout after ${ms}ms`)), ms);
+      })
+    ]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
+
+function buildSignupMetadata(input: { firstName: string; lastName: string; name: string }) {
+  return {
+    first_name: input.firstName,
+    last_name: input.lastName,
+    full_name: input.name,
+    name: input.name
+  };
 }
 
 async function createUserViaAdmin(input: {
@@ -58,18 +73,14 @@ async function createUserViaAdmin(input: {
   firstName: string;
   lastName: string;
   name: string;
-}) {
+  emailConfirm: boolean;
+}): Promise<User> {
   const adminSupabase = getServerSupabaseClient();
   const { data, error } = await adminSupabase.auth.admin.createUser({
     email: input.email,
     password: input.password,
-    email_confirm: false,
-    user_metadata: {
-      first_name: input.firstName,
-      last_name: input.lastName,
-      full_name: input.name,
-      name: input.name
-    }
+    email_confirm: input.emailConfirm,
+    user_metadata: buildSignupMetadata(input)
   });
 
   if (error || !data.user?.id) {
@@ -79,17 +90,110 @@ async function createUserViaAdmin(input: {
   return data.user;
 }
 
-async function sendSignupConfirmationEmail(input: {
+async function findAuthUserByEmail(email: string): Promise<User | null> {
+  const adminSupabase = getServerSupabaseClient();
+  const normalized = email.toLowerCase();
+  for (let page = 1; page <= 10; page += 1) {
+    const { data, error } = await adminSupabase.auth.admin.listUsers({ page, perPage: 200 });
+    if (error) {
+      console.warn('[register-client] listUsers failed:', error.message);
+      return null;
+    }
+    const match = data.users.find((user) => user.email?.toLowerCase() === normalized) ?? null;
+    if (match) return match;
+    if (data.users.length < 200) break;
+  }
+  return null;
+}
+
+function isExistingUserError(error: unknown) {
+  const raw = humanizeAuthError(error).toLowerCase();
+  return (
+    raw.includes('already') ||
+    raw.includes('registered') ||
+    raw.includes('exists') ||
+    raw.includes('duplicate')
+  );
+}
+
+async function trySendSignupConfirmation(input: {
+  email: string;
+  emailRedirectTo: string;
+  supabase: ReturnType<typeof createRouteHandlerClient<Database>>;
+  timeoutMs?: number;
+}) {
+  const timeoutMs = input.timeoutMs ?? 45000;
+  try {
+    const { error } = await withTimeout(
+      input.supabase.auth.resend({
+        type: 'signup',
+        email: input.email,
+        options: { emailRedirectTo: input.emailRedirectTo }
+      }),
+      timeoutMs,
+      'signup-resend'
+    );
+    if (error) {
+      console.warn('[register-client] confirmation email not sent:', error.message);
+      return error.message;
+    }
+    console.info('[register-client] confirmation email requested for', input.email);
+    return null;
+  } catch (error) {
+    console.warn('[register-client] confirmation email timed out/failed:', humanizeAuthError(error));
+    return humanizeAuthError(error);
+  }
+}
+
+/**
+ * Creates an unconfirmed user quickly. Email is sent in the background so the
+ * HTTP response is not blocked by slow Supabase SMTP (often 15–40s).
+ */
+async function createUnconfirmedUser(input: {
+  email: string;
+  password: string;
+  firstName: string;
+  lastName: string;
+  name: string;
+}): Promise<User> {
+  try {
+    return await createUserViaAdmin({
+      email: input.email,
+      password: input.password,
+      firstName: input.firstName,
+      lastName: input.lastName,
+      name: input.name,
+      emailConfirm: false
+    });
+  } catch (createError) {
+    if (isExistingUserError(createError)) {
+      const existing = await findAuthUserByEmail(input.email);
+      if (existing?.email_confirmed_at) {
+        throw new Error('Un compte existe déjà avec cette adresse email.');
+      }
+      if (!existing) {
+        throw new Error('Un compte existe déjà avec cette adresse email.');
+      }
+      return existing;
+    }
+    throw createError;
+  }
+}
+
+function scheduleConfirmationEmail(input: {
   email: string;
   emailRedirectTo: string;
   supabase: ReturnType<typeof createRouteHandlerClient<Database>>;
 }) {
-  const { error } = await input.supabase.auth.resend({
-    type: 'signup',
-    email: input.email,
-    options: { emailRedirectTo: input.emailRedirectTo }
+  after(async () => {
+    const warning = await trySendSignupConfirmation({
+      ...input,
+      timeoutMs: 45000
+    });
+    if (warning) {
+      console.warn('[register-client] background confirmation email warning:', warning);
+    }
   });
-  return error;
 }
 
 const registerClientFullSchema = z
@@ -149,6 +253,14 @@ const registerClientFullSchema = z
       });
     }
 
+    if (!data.parent2Status) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['parent2Status'],
+        message: 'Statut du parent 2 requis.'
+      });
+    }
+
     if (data.parent2Status === 'autre' && !data.parent2StatusOther) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -189,10 +301,13 @@ export async function POST(req: Request) {
     return NextResponse.redirect(url, { status: 303 });
   }
 
-  function redirectEmailVerification(email: string, redirectTo: string) {
+  function redirectEmailVerification(email: string, redirectTo: string, warning?: string | null) {
     const url = new URL('/login/familles/verifier-email', req.url);
     url.searchParams.set('email', email);
     url.searchParams.set('redirectTo', redirectTo);
+    if (warning) {
+      url.searchParams.set('mailWarning', '1');
+    }
     return NextResponse.redirect(url, { status: 303 });
   }
 
@@ -220,6 +335,7 @@ export async function POST(req: Request) {
     const email = input.email.toLowerCase();
     const name = `${input.firstName} ${input.lastName}`.trim();
     const emailRedirectTo = buildEmailConfirmRedirectUrl(req);
+    const autoConfirm = shouldAutoConfirmEmail();
 
     const cookieStore = await cookies();
     const cookieAccess = (() => cookieStore) as unknown as typeof cookies;
@@ -227,78 +343,45 @@ export async function POST(req: Request) {
       cookies: cookieAccess
     });
 
-    let userId: string | null = null;
-    let hasSession = false;
-    let emailSendWarning: string | null = null;
-
-    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-      email,
-      password: input.password,
-      options: {
-        emailRedirectTo,
-        data: {
-          first_name: input.firstName,
-          last_name: input.lastName,
-          full_name: name,
-          name
-        }
-      }
-    });
-
-    if (signUpError) {
-      console.error('[register-client] signUp error', {
-        message: signUpError.message,
-        status: (signUpError as { status?: number }).status,
-        code: (signUpError as { code?: string }).code,
-        name: signUpError.name
-      });
-      if (isEmailDeliveryError(signUpError)) {
-        console.warn('[register-client] signUp email delivery failed, fallback admin create', signUpError.message);
-        try {
-          const adminUser = await createUserViaAdmin({
-            email,
-            password: input.password,
-            firstName: input.firstName,
-            lastName: input.lastName,
-            name
-          });
-          userId = adminUser.id;
-          const resendError = await sendSignupConfirmationEmail({ email, emailRedirectTo, supabase });
-          if (resendError) {
-            console.warn('[register-client] resend after admin create failed', resendError.message);
-            emailSendWarning = resendError.message;
-          }
-        } catch (fallbackError) {
-          const message = humanizeAuthError(fallbackError);
-          if (isFormRequest) return redirectFormError(message, safeRedirectTo);
-          return NextResponse.json({ error: message }, { status: 500 });
-        }
+    let user: User;
+    try {
+      if (autoConfirm) {
+        // Opt-in only (AUTH_AUTO_CONFIRM_EMAIL=1): skip SMTP and confirm immediately.
+        user = await createUserViaAdmin({
+          email,
+          password: input.password,
+          firstName: input.firstName,
+          lastName: input.lastName,
+          name,
+          emailConfirm: true
+        });
       } else {
-        const isExistingAccount = String(signUpError.message ?? '')
-          .toLowerCase()
-          .includes('already registered');
-        const message = isExistingAccount
-          ? 'Un compte existe déjà avec cette adresse email.'
-          : humanizeAuthError(signUpError);
-        if (isFormRequest) return redirectFormError(message, safeRedirectTo);
-        return NextResponse.json({ error: message }, { status: isExistingAccount ? 409 : 500 });
+        user = await createUnconfirmedUser({
+          email,
+          password: input.password,
+          firstName: input.firstName,
+          lastName: input.lastName,
+          name
+        });
+        // SMTP Supabase est souvent lent (15–40s) : ne pas bloquer la réponse HTTP.
+        scheduleConfirmationEmail({
+          email,
+          emailRedirectTo,
+          supabase
+        });
       }
-    } else {
-      // Compte déjà existant (réponse « soft » Supabase).
-      if (signUpData.user && (signUpData.user.identities?.length ?? 0) === 0) {
-        const message = 'Un compte existe déjà avec cette adresse email.';
-        if (isFormRequest) return redirectFormError(message, safeRedirectTo);
-        return NextResponse.json({ error: message }, { status: 409 });
-      }
-
-      userId = signUpData.user?.id ?? null;
-      hasSession = Boolean(signUpData.session);
-    }
-
-    if (!userId) {
-      const message = 'Impossible de créer le compte.';
+    } catch (createError) {
+      const raw = humanizeAuthError(createError).toLowerCase();
+      const isExisting =
+        raw.includes('already') ||
+        raw.includes('registered') ||
+        raw.includes('exists') ||
+        raw.includes('duplicate');
+      const message = isExisting
+        ? 'Un compte existe déjà avec cette adresse email.'
+        : humanizeAuthError(createError);
       if (isFormRequest) return redirectFormError(message, safeRedirectTo);
-      return NextResponse.json({ error: message }, { status: 500 });
+      return NextResponse.json({ error: message }, { status: isExisting ? 409 : 500 });
     }
 
     try {
@@ -307,7 +390,7 @@ export async function POST(req: Request) {
         : '';
 
       await upsertFamilyProfileFromRegistration({
-        userId,
+        userId: user.id,
         firstName: input.firstName,
         lastName: input.lastName,
         email,
@@ -324,22 +407,62 @@ export async function POST(req: Request) {
         parent2Email: fullInput?.parent2Email ?? ''
       });
     } catch (profileError) {
-      // Ne bloque pas la confirmation e-mail : le profil pourra être complété plus tard.
       console.error('[register-client] profile upsert failed', humanizeAuthError(profileError));
     }
 
-    if (isFormRequest) {
-      if (hasSession) {
-        return NextResponse.redirect(new URL(safeRedirectTo, req.url), { status: 303 });
+    if (autoConfirm) {
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password: input.password
+      });
+      if (signInError) {
+        console.warn('[register-client] auto-confirm sign-in failed', signInError.message);
+        if (isFormRequest) {
+          const url = new URL('/login/familles', req.url);
+          url.searchParams.set('registered', '1');
+          url.searchParams.set('redirectTo', safeRedirectTo);
+          return NextResponse.redirect(url, { status: 303 });
+        }
+        return NextResponse.json({
+          ok: true,
+          user: { id: user.id, email, name },
+          requiresEmailConfirmation: false
+        });
       }
+
+      if (isFormRequest) {
+        const redirectResponse = NextResponse.redirect(new URL(safeRedirectTo, req.url), {
+          status: 303
+        });
+        redirectResponse.headers.set('Cache-Control', 'no-store');
+        for (const cookie of cookieStore.getAll()) {
+          const cookieName = cookie.name;
+          if (
+            cookieName.includes('sb-') ||
+            cookieName.includes('supabase') ||
+            cookieName.startsWith('resacolo_')
+          ) {
+            redirectResponse.cookies.set(cookieName, cookie.value);
+          }
+        }
+        return redirectResponse;
+      }
+
+      return NextResponse.json({
+        ok: true,
+        user: { id: user.id, email, name },
+        requiresEmailConfirmation: false
+      });
+    }
+
+    if (isFormRequest) {
       return redirectEmailVerification(email, safeRedirectTo);
     }
 
     return NextResponse.json({
       ok: true,
-      user: { id: userId, email, name },
-      requiresEmailConfirmation: !hasSession,
-      emailSendWarning
+      user: { id: user.id, email, name },
+      requiresEmailConfirmation: true
     });
   } catch (error) {
     if (error instanceof z.ZodError) {

@@ -15,10 +15,12 @@ import { VACAF_NUMBER_MESSAGE, VACAF_NUMBER_OPTIONAL_REGEX } from '@/lib/vacaf-n
 
 export const runtime = 'nodejs';
 
+const parentStatusSchema = z.enum(['pere', 'mere', 'grand-parent', 'autre', '']);
+
 const parent2UpdateSchema = z
   .object({
     parent2Name: z.string().trim().default(''),
-    parent2Status: z.enum(['pere', 'mere', 'grand-parent', 'autre']).default('pere'),
+    parent2Status: parentStatusSchema.default(''),
     parent2StatusOther: z.string().trim().default(''),
     parent2Phone: z.string().trim().default(''),
     parent2Email: z.string().trim().default('').refine((value) => !value || /.+@.+\..+/.test(value), {
@@ -111,10 +113,23 @@ const checkoutProfileContactSchema = z
       )
       .optional()
       .default({}),
+    parent1Status: z.enum(['pere', 'mere', 'grand-parent', 'autre'], {
+      required_error: 'Statut parent 1 requis.',
+      invalid_type_error: 'Statut parent 1 requis.'
+    }),
+    parent1StatusOther: z.string().trim().optional().default(''),
     acceptsTerms: z.boolean().optional().default(false),
     acceptsPrivacy: z.boolean().optional().default(true)
   })
   .superRefine((data, ctx) => {
+    if (data.parent1Status === 'autre' && !data.parent1StatusOther.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['parent1StatusOther'],
+        message: 'Précisez le statut parent 1.'
+      });
+    }
+
     if (!data.hasSeparateBillingAddress) return;
 
     if (!data.billingAddressLine1 || data.billingAddressLine1.trim().length < 3) {
@@ -161,7 +176,10 @@ const patchSchema = z.discriminatedUnion('source', [
     source: z.literal('preferences'),
     profile: z.object({
       parent1Name: z.string().trim().min(2, 'Nom parent 1 requis.'),
-      parent1Status: z.enum(['pere', 'mere', 'grand-parent', 'autre']),
+      parent1Status: z.enum(['pere', 'mere', 'grand-parent', 'autre'], {
+        required_error: 'Statut parent 1 requis.',
+        invalid_type_error: 'Statut parent 1 requis.'
+      }),
       parent1StatusOther: z.string().trim().optional().default(''),
       parent1Email: z.string().trim().email('Email parent 1 invalide.'),
       parent1Phone: z.string().trim().min(8, 'Téléphone parent 1 invalide.'),
@@ -171,7 +189,7 @@ const patchSchema = z.discriminatedUnion('source', [
       city: z.string().trim().min(2, 'Ville requise.'),
       country: z.string().trim().optional().default('France'),
       parent2Name: z.string().trim().optional().default(''),
-      parent2Status: z.enum(['pere', 'mere', 'grand-parent', 'autre']).optional().default('pere'),
+      parent2Status: parentStatusSchema.optional().default(''),
       parent2StatusOther: z.string().trim().optional().default(''),
       parent2Phone: z.string().trim().optional().default(''),
       parent2Email: z

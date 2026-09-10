@@ -67,6 +67,8 @@ function mapFamilyProfileToCheckoutContact(profile: FamilyProfile): CheckoutCont
     ancvConnectMatricule: '',
     ancvConnectAmount: '',
     paymentMode: profile.paymentMode,
+    parent1Status: profile.parent1Status,
+    parent1StatusOther: profile.parent1StatusOther,
     acceptsTerms: false,
     acceptsPrivacy: true
   };
@@ -295,6 +297,13 @@ export default function CheckoutInformationsPage() {
     try {
       const normalizedEmail = form.email.trim().toLowerCase();
 
+      if (!form.parent1Status) {
+        throw new Error('Indiquez votre rôle (père, mère, grand-parent ou autre).');
+      }
+      if (form.parent1Status === 'autre' && !form.parent1StatusOther.trim()) {
+        throw new Error('Précisez votre statut parental.');
+      }
+
       if (isDevBypassCheckout()) {
         const email = normalizedEmail || 'dev@example.local';
         const normalizedContact: CheckoutContact = {
@@ -481,6 +490,43 @@ export default function CheckoutInformationsPage() {
                 className={INPUT_CLASS}
               />
             </label>
+            <label className={COMPACT_LABEL_CLASS}>
+              Statut *
+              <select
+                required
+                value={form.parent1Status}
+                onChange={(event) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    parent1Status: event.target.value as CheckoutContact['parent1Status'],
+                    parent1StatusOther:
+                      event.target.value === 'autre' ? prev.parent1StatusOther : ''
+                  }))
+                }
+                className={INPUT_CLASS}
+              >
+                <option value="">Sélectionner</option>
+                <option value="pere">Père</option>
+                <option value="mere">Mère</option>
+                <option value="grand-parent">Grand-parent</option>
+                <option value="autre">Autre</option>
+              </select>
+            </label>
+            {form.parent1Status === 'autre' ? (
+              <label className={COMPACT_LABEL_CLASS}>
+                Précisez le statut *
+                <input
+                  type="text"
+                  required
+                  value={form.parent1StatusOther}
+                  onChange={(event) =>
+                    setForm((prev) => ({ ...prev, parent1StatusOther: event.target.value }))
+                  }
+                  className={INPUT_CLASS}
+                  placeholder="Ex. tuteur, belle-mère…"
+                />
+              </label>
+            ) : null}
             <label className={`${COMPACT_LABEL_CLASS} md:col-span-2`}>
               Numéro et nom de rue *
               <input

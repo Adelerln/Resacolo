@@ -18,7 +18,10 @@ const STATUS_LABELS: Record<string, string> = {
   ISSUED: 'Émise',
   DRAFT: 'Brouillon',
   CANCELLED: 'Annulée',
-  PAID: 'Payée'
+  PAID: 'Payée',
+  pending: 'En attente',
+  processed: 'Traité',
+  rejected: 'Refusé'
 };
 
 const INQUIRY_TYPE_LABELS: Record<string, string> = {

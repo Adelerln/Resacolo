@@ -19,13 +19,14 @@ import { useRouter } from 'next/navigation';
 import { formatMoneyCentsFr } from '@/lib/format-money-fr';
 import { orderStatusBadgeClassName } from '@/lib/order-workflow';
 import { useFavorites } from '@/components/favorites/FavoritesProvider';
-import { AccountSecurityPanel } from '@/components/auth/AccountSecurityPanel';
 import {
   createFamilyChild,
   deleteFamilyChild,
   attachFamilyCseAffiliation,
   detachFamilyCseAffiliation,
   fetchFamilyProfileSnapshot,
+  fetchPendingAccountDeletionRequest,
+  requestAccountDeletion,
   updateFamilyChild
 } from '@/lib/account-profile/client';
 import { formatPhoneDisplay, parentStatusLabel } from '@/lib/account-preferences';
@@ -117,6 +118,16 @@ export default function MonCompteClient({
   const [childSuccess, setChildSuccess] = useState<string | null>(null);
   const [isSavingChild, setIsSavingChild] = useState(false);
   const [deletingChildId, setDeletingChildId] = useState<string | null>(null);
+  const [deletionReason, setDeletionReason] = useState('');
+  const [deletionConfirm, setDeletionConfirm] = useState(false);
+  const [deletionError, setDeletionError] = useState<string | null>(null);
+  const [deletionSuccess, setDeletionSuccess] = useState<string | null>(null);
+  const [isSubmittingDeletion, setIsSubmittingDeletion] = useState(false);
+  const [pendingDeletion, setPendingDeletion] = useState<{
+    id: string;
+    createdAt: string;
+    reason: string;
+  } | null>(null);
   const { favoriteIdsArray, isLoaded } = useFavorites();
 
   const visibleFavoriteStays = useMemo(() => {
@@ -128,13 +139,14 @@ export default function MonCompteClient({
   useEffect(() => {
     let cancelled = false;
     setIsLoadingAccountData(true);
-    fetchFamilyProfileSnapshot()
-      .then((snapshot) => {
+    Promise.all([fetchFamilyProfileSnapshot(), fetchPendingAccountDeletionRequest()])
+      .then(([snapshot, deletion]) => {
         if (cancelled) return;
         setProfile(snapshot.profile);
         setReservationList(snapshot.reservations);
         setCseAffiliation(snapshot.cseAffiliation);
         setCseCodeInput(snapshot.cseAffiliation?.code ?? snapshot.profile.cseOrganization ?? '');
+        setPendingDeletion(deletion.pending);
       })
       .catch(() => {
         // Keep server-rendered profile as fallback.
@@ -160,6 +172,7 @@ export default function MonCompteClient({
         profile.parent2Name ||
           profile.parent2Phone ||
           profile.parent2Email ||
+          profile.parent2Status ||
           profile.parent2StatusOther ||
           profile.parent2HasDifferentAddress
       ),
@@ -206,6 +219,42 @@ export default function MonCompteClient({
       setCseSubmitError(error instanceof Error ? error.message : 'Impossible de désaffilier ce compte du CSE.');
     } finally {
       setIsSubmittingCse(false);
+    }
+  }
+
+  async function handleRequestDeletion(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setDeletionError(null);
+    setDeletionSuccess(null);
+
+    if (!deletionConfirm) {
+      setDeletionError('Cochez la case de confirmation pour envoyer la demande.');
+      return;
+    }
+
+    setIsSubmittingDeletion(true);
+    try {
+      const response = await requestAccountDeletion({
+        reason: deletionReason.trim(),
+        fullName: buildProfileDisplayName(profile),
+        confirm: true
+      });
+      setPendingDeletion({
+        id: response.request.id,
+        createdAt: response.request.createdAt,
+        reason: deletionReason.trim()
+      });
+      setDeletionReason('');
+      setDeletionConfirm(false);
+      setDeletionSuccess(
+        'Votre demande de suppression a bien été enregistrée. Notre équipe la traitera sous délai légal.'
+      );
+    } catch (error) {
+      setDeletionError(
+        error instanceof Error ? error.message : 'Impossible d’envoyer la demande de suppression.'
+      );
+    } finally {
+      setIsSubmittingDeletion(false);
     }
   }
 
@@ -313,21 +362,23 @@ export default function MonCompteClient({
               </p>
             </div>
           </div>
-          <div className="flex flex-wrap gap-3">
-            <Link href="/contact/preferences" className="btn btn-secondary btn-sm">
-              <Settings className="h-4 w-4" />
-              Mes informations
-            </Link>
-            <Link href="/compte/securite" className="btn btn-secondary btn-sm">
-              <ShieldCheck className="h-4 w-4" />
-              Sécurité
-            </Link>
-            <form action="/api/auth/logout" method="post">
-              <input type="hidden" name="redirectTo" value="/login/familles" />
-              <button type="submit" className="btn btn-primary btn-sm">
-                Se déconnecter
-              </button>
-            </form>
+          <div className="flex flex-col items-stretch gap-2 sm:items-end">
+            <div className="flex flex-wrap justify-end gap-3">
+              <Link href="/contact/preferences" className="btn btn-secondary btn-sm">
+                <Settings className="h-4 w-4" />
+                Mes informations
+              </Link>
+              <Link href="/compte/securite" className="btn btn-secondary btn-sm">
+                <ShieldCheck className="h-4 w-4" />
+                Sécurité
+              </Link>
+              <form action="/api/auth/logout" method="post">
+                <input type="hidden" name="redirectTo" value="/login/familles" />
+                <button type="submit" className="btn btn-primary btn-sm">
+                  Se déconnecter
+                </button>
+              </form>
+            </div>
           </div>
         </header>
         {profileLoadError ? (
@@ -340,10 +391,6 @@ export default function MonCompteClient({
             Chargement de votre profil et de vos réservations…
           </p>
         ) : null}
-
-        <div className="mt-10">
-          <AccountSecurityPanel currentEmail={profile.email || ''} />
-        </div>
 
         <section className="mt-10 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="font-display text-lg font-semibold text-slate-900">Informations du compte</h2>
@@ -793,6 +840,80 @@ export default function MonCompteClient({
           {cseSubmitSuccess ? (
             <p className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
               {cseSubmitSuccess}
+            </p>
+          ) : null}
+        </section>
+
+        <section className="mt-8 rounded-2xl border border-rose-200 bg-white p-5 shadow-sm">
+          <div>
+            <h3 className="font-display text-base font-semibold text-slate-900">
+              Supprimer mon compte
+            </h3>
+            <p className="mt-1 text-sm text-slate-500">
+              Conformément au RGPD, vous pouvez demander la suppression de votre compte et de vos
+              données personnelles. La demande est traitée manuellement ; une réservation en cours
+              peut retarder ou limiter l’effacement.
+            </p>
+          </div>
+
+          {pendingDeletion ? (
+            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              <p className="font-semibold">Demande déjà enregistrée</p>
+              <p className="mt-1">
+                Envoyée le{' '}
+                {new Date(pendingDeletion.createdAt).toLocaleDateString('fr-FR', {
+                  day: 'numeric',
+                  month: 'long',
+                  year: 'numeric'
+                })}
+                . Notre équipe la traitera prochainement.
+              </p>
+            </div>
+          ) : (
+            <form onSubmit={handleRequestDeletion} className="mt-4 space-y-4">
+              <label className="block text-sm font-medium text-slate-700">
+                Motif (facultatif)
+                <textarea
+                  value={deletionReason}
+                  onChange={(event) => setDeletionReason(event.target.value)}
+                  rows={3}
+                  maxLength={2000}
+                  disabled={isSubmittingDeletion}
+                  className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand-300 focus:ring-2 focus:ring-brand-100"
+                  placeholder="Expliquez brièvement pourquoi vous souhaitez supprimer votre compte…"
+                />
+              </label>
+              <label className="flex items-start gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={deletionConfirm}
+                  onChange={(event) => setDeletionConfirm(event.target.checked)}
+                  disabled={isSubmittingDeletion}
+                  className="mt-1 rounded border-slate-300 text-rose-600 focus:ring-rose-200"
+                />
+                <span>
+                  Je confirme vouloir demander la suppression de mon compte Resacolo et des données
+                  associées.
+                </span>
+              </label>
+              <button
+                type="submit"
+                disabled={isSubmittingDeletion || !deletionConfirm}
+                className="btn btn-secondary btn-sm border-rose-200 text-rose-700 hover:bg-rose-50"
+              >
+                {isSubmittingDeletion ? 'Envoi…' : 'Envoyer ma demande de suppression'}
+              </button>
+            </form>
+          )}
+
+          {deletionError ? (
+            <p className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+              {deletionError}
+            </p>
+          ) : null}
+          {deletionSuccess ? (
+            <p className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+              {deletionSuccess}
             </p>
           ) : null}
         </section>

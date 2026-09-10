@@ -31,6 +31,8 @@ export type CheckoutContact = {
   ancvConnectAmount: string;
   paymentMode: CheckoutPaymentMode;
   organizerSelections?: Record<string, CheckoutOrganizerSelection>;
+  parent1Status: '' | 'pere' | 'mere' | 'grand-parent' | 'autre';
+  parent1StatusOther: string;
   acceptsTerms: boolean;
   acceptsPrivacy: boolean;
 };
@@ -120,6 +122,8 @@ export const EMPTY_CONTACT: CheckoutContact = {
   ancvConnectAmount: '',
   paymentMode: 'FULL',
   organizerSelections: {},
+  parent1Status: '',
+  parent1StatusOther: '',
   acceptsTerms: false,
   acceptsPrivacy: true
 };

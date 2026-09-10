@@ -176,11 +176,11 @@ function buildFamilyCseAffiliation(collectivity: CollectivityRow): FamilyCseAffi
   };
 }
 
-function normalizeParentStatus(value: string | null | undefined): FamilyProfile['parent2Status'] {
+function normalizeParentStatus(value: string | null | undefined): FamilyProfile['parent1Status'] {
   if (value === 'pere' || value === 'mere' || value === 'grand-parent' || value === 'autre') {
     return value;
   }
-  return 'pere';
+  return '';
 }
 
 function normalizePaymentMode(value: string | null | undefined): FamilyProfile['paymentMode'] {
@@ -315,10 +315,10 @@ function createDefaultProfile(input: {
     cseOrganization: '',
     vacafNumber: '',
     paymentMode: 'FULL',
-    parent1Status: 'pere',
+    parent1Status: '',
     parent1StatusOther: '',
     parent2Name: '',
-    parent2Status: 'pere',
+    parent2Status: '',
     parent2StatusOther: '',
     parent2Phone: '',
     parent2Email: '',
@@ -2104,8 +2104,8 @@ export async function upsertFamilyProfileFromCheckout(input: {
     cseOrganization: currentAffiliation?.code ?? normalizeCollectivityCode(input.contact.cseOrganization),
     vacafNumber: normalizeVacafNumberInput(input.contact.vacafNumber),
     paymentMode: input.contact.paymentMode,
-    parent1Status: existing.parent1Status,
-    parent1StatusOther: existing.parent1StatusOther
+    parent1Status: normalizeParentStatus(input.contact.parent1Status),
+    parent1StatusOther: normalizeText(input.contact.parent1StatusOther)
   };
 
   return upsertProfile(nextProfile);

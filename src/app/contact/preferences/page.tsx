@@ -188,7 +188,7 @@ function isParent2EffectivelyEmpty(accountInfo: ContactPrefsAccountInfo): boolea
   ) {
     return false;
   }
-  if (accountInfo.parent2Status === 'autre' && accountInfo.parent2StatusOther.trim()) return false;
+  if (accountInfo.parent2Status) return false;
   const dialDigits = extractDialCodeFromPhone(accountInfo.parent2Phone).replace(/\D/g, '');
   const allDigits = accountInfo.parent2Phone.replace(/\D/g, '');
   const national = allDigits.startsWith(dialDigits) ? allDigits.slice(dialDigits.length) : allDigits;
@@ -213,8 +213,8 @@ const EMPTY_FORM: ContactPrefsForm = {
     parent2Phone: '',
     parent1Email: '',
     parent2Email: '',
-    parent1Status: 'mere',
-    parent2Status: 'pere',
+    parent1Status: '',
+    parent2Status: '',
     parent1StatusOther: '',
     parent2StatusOther: '',
     parent2HasDifferentAddress: false,
@@ -361,7 +361,7 @@ export default function ContactPreferencesPage() {
         ...prev.accountInfo,
         parent2FirstName: '',
         parent2LastName: '',
-        parent2Status: 'pere',
+        parent2Status: '',
         parent2StatusOther: '',
         parent2Phone: '',
         parent2Email: '',
@@ -427,8 +427,16 @@ export default function ContactPreferencesPage() {
       setError("L'adresse principale est incomplète.");
       return;
     }
+    if (!form.accountInfo.parent1Status) {
+      setError('Indiquez le statut du parent 1.');
+      return;
+    }
     if (form.accountInfo.parent1Status === 'autre' && !form.accountInfo.parent1StatusOther.trim()) {
       setError('Précisez le statut du parent 1.');
+      return;
+    }
+    if (!hideParent2 && !form.accountInfo.parent2Status) {
+      setError('Indiquez le statut du parent 2.');
       return;
     }
     if (!hideParent2 && form.accountInfo.parent2Status === 'autre' && !form.accountInfo.parent2StatusOther.trim()) {
@@ -459,7 +467,7 @@ export default function ContactPreferencesPage() {
       city: form.accountInfo.city,
       country: 'France',
       parent2Name: hideParent2 ? '' : joinNameParts(form.accountInfo.parent2FirstName, form.accountInfo.parent2LastName),
-      parent2Status: hideParent2 ? 'pere' : form.accountInfo.parent2Status,
+      parent2Status: hideParent2 ? '' : form.accountInfo.parent2Status,
       parent2StatusOther: hideParent2 ? '' : form.accountInfo.parent2StatusOther,
       parent2Phone: hideParent2 ? '' : form.accountInfo.parent2Phone,
       parent2Email: hideParent2 ? '' : form.accountInfo.parent2Email,
@@ -621,7 +629,9 @@ export default function ContactPreferencesPage() {
                   className={rowControlClass('w-full')}
                   value={form.accountInfo.parent1Status}
                   onChange={(e) => updateAccountField('parent1Status', e.target.value as ParentStatus)}
+                  required
                 >
+                  <option value="">Sélectionner</option>
                   <option value="pere">Père</option>
                   <option value="mere">Mère</option>
                   <option value="grand-parent">Grand-parent</option>
@@ -719,7 +729,9 @@ export default function ContactPreferencesPage() {
                   className={rowControlClass('w-full')}
                   value={form.accountInfo.parent2Status}
                   onChange={(e) => updateAccountField('parent2Status', e.target.value as ParentStatus)}
+                  required={!hideParent2}
                 >
+                  <option value="">Sélectionner</option>
                   <option value="pere">Père</option>
                   <option value="mere">Mère</option>
                   <option value="grand-parent">Grand-parent</option>

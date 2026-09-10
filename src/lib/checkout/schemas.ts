@@ -134,6 +134,11 @@ export const checkoutContactSchema = z.object({
   ancvConnectAmount: trimmedStringFromJson,
   paymentMode: checkoutPaymentModeSchema,
   organizerSelections: z.record(z.string().trim().min(1), organizerSelectionSchema).optional().default({}),
+  parent1Status: z.enum(['pere', 'mere', 'grand-parent', 'autre'], {
+    required_error: 'Statut parent 1 requis.',
+    invalid_type_error: 'Statut parent 1 requis.'
+  }),
+  parent1StatusOther: trimmedStringFromJson,
   acceptsTerms: z.literal(true, {
     errorMap: () => ({ message: 'Vous devez accepter les CGV.' })
   }),
@@ -141,6 +146,14 @@ export const checkoutContactSchema = z.object({
     .union([z.boolean(), z.null(), z.undefined()])
     .transform((v) => (v === null || v === undefined ? true : v))
 }).superRefine((data, ctx) => {
+  if (data.parent1Status === 'autre' && !data.parent1StatusOther.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['parent1StatusOther'],
+      message: 'Précisez le statut parent 1.'
+    });
+  }
+
   if (!data.hasSeparateBillingAddress) return;
 
   if (!data.billingAddressLine1 || data.billingAddressLine1.trim().length < 3) {

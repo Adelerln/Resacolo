@@ -7,12 +7,25 @@ export const metadata = {
   title: 'Sécurité du compte | Resacolo'
 };
 
-export default async function AccountSecurityPage() {
+type SecurityAction = 'menu' | 'password' | 'email';
+
+function normalizeAction(value: string | undefined): SecurityAction {
+  if (value === 'password' || value === 'email') return value;
+  return 'menu';
+}
+
+export default async function AccountSecurityPage({
+  searchParams
+}: {
+  searchParams?: Promise<{ action?: string }>;
+}) {
   const session = await getCurrentUser();
   if (!session) {
     redirect('/login?redirectTo=/compte/securite');
   }
 
+  const params = searchParams ? await searchParams : {};
+  const action = normalizeAction(params.action);
   const backHref = getHomePathForRole(session.role);
 
   return (
@@ -24,11 +37,14 @@ export default async function AccountSecurityPage() {
           <p className="mt-1 text-sm text-slate-600">
             Connecté en tant que <span className="font-medium text-slate-800">{session.email}</span>
           </p>
-          <a href={backHref} className="mt-3 inline-flex text-sm font-semibold text-[var(--color-primary)] hover:underline">
+          <a
+            href={backHref}
+            className="mt-3 inline-flex text-sm font-semibold text-[var(--color-primary)] hover:underline"
+          >
             ← Retour à mon espace
           </a>
         </div>
-        <AccountSecurityPanel currentEmail={session.email} />
+        <AccountSecurityPanel currentEmail={session.email} action={action} />
       </div>
     </div>
   );

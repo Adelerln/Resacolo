@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import net from 'node:net';
 import tls from 'node:tls';
 import { getRagEnv } from '@/lib/rag/env';
@@ -207,10 +208,13 @@ export async function sendSmtpEmail(input: SendSmtpEmailInput) {
     await client.sendCommand(`RCPT TO:<${input.to}>`, [250, 251]);
     await client.sendCommand('DATA', [354]);
 
+    const messageId = `<${Date.now()}.${crypto.randomUUID()}@${from.includes('@') ? from.split('@')[1] : 'resacolo.com'}>`;
     const payload = [
-      `From: ${from}`,
+      `From: Resacolo <${from}>`,
       `To: ${input.to}`,
       `Subject: ${encodeSubject(input.subject)}`,
+      `Date: ${new Date().toUTCString()}`,
+      `Message-ID: ${messageId}`,
       buildMimeBody(input)
     ].join('\r\n');
 

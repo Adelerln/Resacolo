@@ -80,7 +80,7 @@ const PAYMENT_MODES: Array<{ value: CheckoutContact['paymentMode']; label: strin
   { value: 'CV_PAPER', label: 'Paiement en ANCV papier' },
   { value: 'DEFERRED', label: 'Paiement différé' }
 ];
-const QUOTE_PAYMENT_MODES = new Set<CheckoutContact['paymentMode']>(['CV_CONNECT', 'CV_PAPER', 'DEFERRED']);
+const QUOTE_PAYMENT_MODES = new Set<CheckoutContact['paymentMode']>(['CV_PAPER', 'DEFERRED']);
 
 type OrganizerCheckoutSettings = {
   acceptsAncvPaper: boolean;
@@ -90,13 +90,7 @@ type OrganizerCheckoutSettings = {
 
 function requiresOnlinePaymentStep(paymentMode: CheckoutContact['paymentMode'], isManualRequest: boolean) {
   if (isManualRequest) return false;
-  return paymentMode === 'FULL' || paymentMode === 'DEPOSIT_200';
-}
-
-function parseAncvConnectAmount(value: string) {
-  const normalized = value.replace(',', '.').trim();
-  const amount = Number(normalized);
-  return Number.isFinite(amount) ? amount : NaN;
+  return paymentMode === 'FULL' || paymentMode === 'DEPOSIT_200' || paymentMode === 'CV_CONNECT';
 }
 
 function buildGroupPricingSummary(pricingItems: CheckoutPricing['items']) {
@@ -418,31 +412,26 @@ export default function CheckoutRecapitulatifPage() {
           setPaymentSubmitError(`L'organisme « ${group.organizerName} » n'accepte pas ANCV Connect.`);
           return;
         }
-        if (!group.selection.ancvConnectMatricule.trim()) {
-          setPaymentSubmitError(`Veuillez renseigner votre matricule ANCV Connect pour « ${group.organizerName} ».`);
-          return;
+        if (group.selection.ancvConnectMatricule.trim()) {
+          const ancvMatriculeError = validateAncvConnectMatricule(group.selection.ancvConnectMatricule);
+          if (ancvMatriculeError) {
+            setPaymentSubmitError(`${group.organizerName} : ${ancvMatriculeError}`);
+            return;
+          }
         }
-        const ancvMatriculeError = validateAncvConnectMatricule(group.selection.ancvConnectMatricule);
-        if (ancvMatriculeError) {
-          setPaymentSubmitError(`${group.organizerName} : ${ancvMatriculeError}`);
-          return;
-        }
-        const ancvAmount = parseAncvConnectAmount(group.selection.ancvConnectAmount);
-        if (!Number.isFinite(ancvAmount) || ancvAmount <= 0) {
-          setPaymentSubmitError(`Veuillez renseigner un montant ANCV Connect valide pour « ${group.organizerName} ».`);
-          return;
-        }
-        const orderPayableTotalCents = resolveAncvConnectOrderPayableTotalCents(
-          group.pricing.financeFamilyPayableTotalCents,
-          group.pricing.totalCents
-        );
-        const ancvAmountError = validateAncvConnectAmountAgainstOrderTotal(
-          group.selection.ancvConnectAmount,
-          orderPayableTotalCents
-        );
-        if (ancvAmountError) {
-          setPaymentSubmitError(`${group.organizerName} : ${ancvAmountError}`);
-          return;
+        if (group.selection.ancvConnectAmount.trim()) {
+          const orderPayableTotalCents = resolveAncvConnectOrderPayableTotalCents(
+            group.pricing.financeFamilyPayableTotalCents,
+            group.pricing.totalCents
+          );
+          const ancvAmountError = validateAncvConnectAmountAgainstOrderTotal(
+            group.selection.ancvConnectAmount,
+            orderPayableTotalCents
+          );
+          if (ancvAmountError) {
+            setPaymentSubmitError(`${group.organizerName} : ${ancvAmountError}`);
+            return;
+          }
         }
       }
     }
@@ -957,62 +946,67 @@ export default function CheckoutRecapitulatifPage() {
                       ) : null}
 
                       {group.selection.paymentMode === 'CV_CONNECT' && !group.isPartnerTotalCoverage ? (
-                        <div className="grid gap-4 md:grid-cols-2">
-                          <div>
-                            <label
-                              htmlFor={`recap-ancv-matricule-${group.organizerId}`}
-                              className="block text-sm font-medium text-slate-700"
-                            >
-                              Matricule ANCV Connect *
-                            </label>
-                            <p
-                              id={`recap-ancv-matricule-hint-${group.organizerId}`}
-                              className="mt-1.5 text-sm leading-relaxed text-slate-500"
-                            >
-                              {ANCV_CONNECT_MATRICULE_HINT}
-                            </p>
-                            <input
-                              id={`recap-ancv-matricule-${group.organizerId}`}
-                              type="text"
-                              inputMode="numeric"
-                              autoComplete="off"
-                              maxLength={11}
-                              value={group.selection.ancvConnectMatricule}
-                              onChange={(event) =>
-                                patchOrganizerPaymentSelection(group.organizerId, {
-                                  ancvConnectMatricule: normalizeAncvConnectMatriculeInput(event.target.value)
-                                })
-                              }
-                              className={INPUT_CLASS}
-                              placeholder="10003377487"
-                              aria-describedby={`recap-ancv-matricule-hint-${group.organizerId}`}
-                              required
-                            />
-                          </div>
-                          <div>
-                            <label
-                              htmlFor={`recap-ancv-amount-${group.organizerId}`}
-                              className="block text-sm font-medium text-slate-700"
-                            >
-                              Montant souhaité en règlement (€) *
-                            </label>
-                            <p className="mt-1.5 text-sm leading-relaxed invisible" aria-hidden="true">
-                              {ANCV_CONNECT_MATRICULE_HINT}
-                            </p>
-                            <input
-                              id={`recap-ancv-amount-${group.organizerId}`}
-                              type="text"
-                              inputMode="decimal"
-                              value={group.selection.ancvConnectAmount}
-                              onChange={(event) =>
-                                patchOrganizerPaymentSelection(group.organizerId, {
-                                  ancvConnectAmount: event.target.value
-                                })
-                              }
-                              className={INPUT_CLASS}
-                              placeholder="Ex. : 150"
-                              required
-                            />
+                        <div className="space-y-3 rounded-xl border border-emerald-100 bg-emerald-50/60 px-4 py-3 text-sm text-slate-700">
+                          <p>
+                            Vous serez redirigé vers la page sécurisée <strong>ANCV Connect</strong> (Axepta BNP
+                            Paribas) pour régler avec vos Chèques-Vacances Connect et, si besoin, un complément
+                            carte.
+                          </p>
+                          <div className="grid gap-4 md:grid-cols-2">
+                            <div>
+                              <label
+                                htmlFor={`recap-ancv-matricule-${group.organizerId}`}
+                                className="block text-sm font-medium text-slate-700"
+                              >
+                                Matricule ANCV Connect (optionnel)
+                              </label>
+                              <p
+                                id={`recap-ancv-matricule-hint-${group.organizerId}`}
+                                className="mt-1.5 text-sm leading-relaxed text-slate-500"
+                              >
+                                {ANCV_CONNECT_MATRICULE_HINT}
+                              </p>
+                              <input
+                                id={`recap-ancv-matricule-${group.organizerId}`}
+                                type="text"
+                                inputMode="numeric"
+                                autoComplete="off"
+                                maxLength={11}
+                                value={group.selection.ancvConnectMatricule}
+                                onChange={(event) =>
+                                  patchOrganizerPaymentSelection(group.organizerId, {
+                                    ancvConnectMatricule: normalizeAncvConnectMatriculeInput(event.target.value)
+                                  })
+                                }
+                                className={INPUT_CLASS}
+                                placeholder="10003377487"
+                                aria-describedby={`recap-ancv-matricule-hint-${group.organizerId}`}
+                              />
+                            </div>
+                            <div>
+                              <label
+                                htmlFor={`recap-ancv-amount-${group.organizerId}`}
+                                className="block text-sm font-medium text-slate-700"
+                              >
+                                Montant indicatif ANCV (€) (optionnel)
+                              </label>
+                              <p className="mt-1.5 text-sm leading-relaxed text-slate-500">
+                                Le montant total à régler sera affiché sur la page de paiement.
+                              </p>
+                              <input
+                                id={`recap-ancv-amount-${group.organizerId}`}
+                                type="text"
+                                inputMode="decimal"
+                                value={group.selection.ancvConnectAmount}
+                                onChange={(event) =>
+                                  patchOrganizerPaymentSelection(group.organizerId, {
+                                    ancvConnectAmount: event.target.value
+                                  })
+                                }
+                                className={INPUT_CLASS}
+                                placeholder="Ex. : 150"
+                              />
+                            </div>
                           </div>
                         </div>
                       ) : null}

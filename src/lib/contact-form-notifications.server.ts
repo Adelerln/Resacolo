@@ -100,7 +100,8 @@ export async function notifyContactFormRecipients(input: {
 }) {
   const settings = await readContactFormNotificationSettings(input.supabase);
   if (settings.emails.length === 0) {
-    return { sent: 0, failed: 0, skipped: true as const };
+    console.warn('[contact-form-notify] skipped: no recipient emails configured');
+    return { sent: 0, failed: 0, skipped: true as const, emails: [] as string[] };
   }
 
   const contactName = [input.firstName, input.lastName].filter(Boolean).join(' ').trim() || 'Contact';
@@ -164,14 +165,125 @@ export async function notifyContactFormRecipients(input: {
     try {
       await sendSmtpEmail({ to, subject, text, html });
       sent += 1;
+      console.info('[contact-form-notify] sent', { to, inquiryId: input.inquiryId });
     } catch (error) {
       failed += 1;
       console.error('[contact-form-notify] send failed', {
         to,
+        inquiryId: input.inquiryId,
         error: error instanceof Error ? error.message : String(error)
       });
     }
   }
+
+  console.info('[contact-form-notify] done', {
+    inquiryId: input.inquiryId,
+    sent,
+    failed,
+    emails: settings.emails
+  });
+
+  return { sent, failed, skipped: false as const, emails: settings.emails };
+}
+
+export async function notifyOrganizerSupportRecipients(input: {
+  supabase: SupabaseClient<Database>;
+  supportRequestId: string;
+  organizerId: string;
+  organizerName: string;
+  subject: string;
+  body: string;
+  category?: string | null;
+  priority?: string | null;
+  requesterEmail?: string | null;
+}) {
+  const settings = await readContactFormNotificationSettings(input.supabase);
+  if (settings.emails.length === 0) {
+    console.warn('[organizer-support-notify] skipped: no recipient emails configured');
+    return { sent: 0, failed: 0, skipped: true as const, emails: [] as string[] };
+  }
+
+  const ticketUrl = `${SITE_URL}/mnemos/support/${input.supportRequestId}`;
+  const subject = `[Resacolo] Assistance organisme — ${input.organizerName}`;
+  const text = [
+    'Une nouvelle demande d’assistance technique a été ouverte depuis l’espace organisateur.',
+    '',
+    `Organisme : ${input.organizerName}`,
+    `Sujet : ${input.subject}`,
+    input.category ? `Catégorie : ${input.category}` : null,
+    input.priority ? `Priorité : ${input.priority}` : null,
+    input.requesterEmail ? `Compte : ${input.requesterEmail}` : null,
+    '',
+    'Message :',
+    input.body,
+    '',
+    `Traiter dans Mnemos : ${ticketUrl}`
+  ]
+    .filter((line) => line !== null)
+    .join('\n');
+
+  const html = `<!DOCTYPE html>
+<html lang="fr">
+<body style="margin:0;padding:0;background:#f8fafc;font-family:Arial,Helvetica,sans-serif;color:#1e293b;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;padding:24px 12px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" style="max-width:560px;background:#ffffff;border-radius:12px;border:1px solid #e2e8f0;overflow:hidden;">
+          <tr><td style="height:4px;background:#0f766e;"></td></tr>
+          <tr>
+            <td style="padding:28px 28px 8px;">
+              <p style="margin:0 0 8px;font-size:12px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#0f766e;">Mnemos · Assistance organismes</p>
+              <h1 style="margin:0 0 12px;font-size:20px;line-height:1.3;">Nouvelle demande d’assistance</h1>
+              <p style="margin:0 0 6px;font-size:14px;"><strong>Organisme :</strong> ${escapeHtml(input.organizerName)}</p>
+              <p style="margin:0 0 6px;font-size:14px;"><strong>Sujet :</strong> ${escapeHtml(input.subject)}</p>
+              ${
+                input.category
+                  ? `<p style="margin:0 0 6px;font-size:14px;"><strong>Catégorie :</strong> ${escapeHtml(input.category)}</p>`
+                  : ''
+              }
+              ${
+                input.requesterEmail
+                  ? `<p style="margin:0 0 16px;font-size:14px;"><strong>Compte :</strong> ${escapeHtml(input.requesterEmail)}</p>`
+                  : ''
+              }
+              <p style="margin:0 0 8px;font-size:14px;font-weight:700;">Message</p>
+              <p style="margin:0 0 24px;font-size:14px;line-height:1.6;white-space:pre-wrap;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;">${escapeHtml(input.body)}</p>
+              <a href="${escapeHtml(ticketUrl)}" style="display:inline-block;padding:12px 20px;background:#0f766e;color:#ffffff;text-decoration:none;border-radius:8px;font-size:14px;font-weight:600;">Ouvrir dans Mnemos</a>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:20px 28px 28px;font-size:12px;color:#94a3b8;">Visible aussi dans Mnemos → Assistance organismes.</td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+
+  let sent = 0;
+  let failed = 0;
+  for (const to of settings.emails) {
+    try {
+      await sendSmtpEmail({ to, subject, text, html });
+      sent += 1;
+      console.info('[organizer-support-notify] sent', { to, supportRequestId: input.supportRequestId });
+    } catch (error) {
+      failed += 1;
+      console.error('[organizer-support-notify] send failed', {
+        to,
+        supportRequestId: input.supportRequestId,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  }
+
+  console.info('[organizer-support-notify] done', {
+    supportRequestId: input.supportRequestId,
+    sent,
+    failed,
+    emails: settings.emails
+  });
 
   return { sent, failed, skipped: false as const, emails: settings.emails };
 }

@@ -10,7 +10,8 @@ export type OrganizerCheckoutSettings = {
   is_vacaf_approved: boolean;
 };
 
-export const CHECKOUT_MANUAL_REQUEST_PAYMENT_MODES = new Set<CheckoutContact['paymentMode']>(['CV_CONNECT']);
+/** Anciens flux « demande » (plus CV_CONNECT : TPE Limonetik). Conservé pour compat. */
+export const CHECKOUT_MANUAL_REQUEST_PAYMENT_MODES = new Set<CheckoutContact['paymentMode']>([]);
 export const CHECKOUT_OFFLINE_PAYMENT_MODES = new Set<CheckoutContact['paymentMode']>(['CV_PAPER', 'DEFERRED']);
 export const ACTIVE_ORDER_STATUSES = new Set<OrderStatus>([
   'REQUESTED',
@@ -91,10 +92,6 @@ export function resolveOrderRequestKind(
     return 'VACAF';
   }
 
-  if (contact.paymentMode === 'CV_CONNECT' && organizer.accepts_ancv_connect) {
-    return 'ANCV_CONNECT';
-  }
-
   return null;
 }
 
@@ -113,7 +110,7 @@ export function computeImmediatePaymentAmountCents(
     return Math.min(totalCents, 20_000);
   }
 
-  if (paymentMode === 'FULL') {
+  if (paymentMode === 'FULL' || paymentMode === 'CV_CONNECT') {
     return totalCents;
   }
 
@@ -255,11 +252,9 @@ export function inferOrderRequestKind(input: {
   }
 
   const contactRecord = contact as { paymentMode?: string; vacafNumber?: string };
+  // VACAF reste une demande ; CV_CONNECT est un paiement TPE (Limonetik) — ne pas inférer ANCV_CONNECT.
   if (typeof contactRecord.vacafNumber === 'string' && contactRecord.vacafNumber.trim()) {
     return 'VACAF';
-  }
-  if (contactRecord.paymentMode === 'CV_CONNECT') {
-    return 'ANCV_CONNECT';
   }
 
   return null;

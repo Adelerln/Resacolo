@@ -60,6 +60,17 @@ function getMiddlewareServiceClient() {
   });
 }
 
+function hasSupabaseAuthCookie(req: NextRequest) {
+  // Évite d’appeler Auth Auth sur chaque navigation anonyme (rate limit freemium).
+  for (const cookie of req.cookies.getAll()) {
+    const name = cookie.name;
+    if (name.includes('-auth-token') || name.startsWith('sb-')) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export async function middleware(req: NextRequest) {
   const canonicalRedirect = maybeRedirectToCanonicalHost(req);
   if (canonicalRedirect) {
@@ -70,15 +81,23 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(buildRedirectTo(req, '/organisme'));
   }
 
-  // Toujours rafraîchir la session Supabase (cookies) — y compris /login et /mon-compte.
-  // Sans ça, la 1re navigation juste après connexion échoue souvent (cookies non propagés).
+  const pathname = req.nextUrl.pathname;
+  const protectedPath = isProtectedPath(pathname);
+  const shouldTouchAuth = protectedPath || hasSupabaseAuthCookie(req);
+
+  // Rafraîchir la session seulement si cookies auth présents ou route back-office.
+  // Sur le catalogue public sans session, getUser() à chaque RSC/HMR brûle le quota Auth.
   const res = NextResponse.next();
+  if (!shouldTouchAuth) {
+    return res;
+  }
+
   const supabase = createMiddlewareClient<Database>({ req, res });
   const {
     data: { user }
   } = await supabase.auth.getUser();
 
-  if (!isProtectedPath(req.nextUrl.pathname)) {
+  if (!protectedPath) {
     return res;
   }
 
@@ -87,7 +106,7 @@ export async function middleware(req: NextRequest) {
   }
 
   const roleContext = await resolveRoleContextForUserId(user.id, getMiddlewareServiceClient());
-  if (!canAccessBackofficePath(roleContext.role, req.nextUrl.pathname)) {
+  if (!canAccessBackofficePath(roleContext.role, pathname)) {
     return NextResponse.redirect(buildRedirectTo(req, getHomePathForRole(roleContext.role)));
   }
 

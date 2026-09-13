@@ -29,8 +29,9 @@ export default async function MnemosContactNotificationsPage({
         <h1 className="text-2xl font-semibold text-white">Notifications</h1>
         <p className="mt-1 max-w-2xl text-sm text-slate-400">
           Ces adresses reçoivent un e-mail dès qu&apos;une demande arrive via le formulaire public{' '}
-          <strong className="text-slate-300">/contact</strong> (pas les formulaires devenir partenaire /
-          organisateur). Les demandes restent aussi listées dans l&apos;onglet Demandes.
+          <strong className="text-slate-300">/contact</strong> ou via{' '}
+          <strong className="text-slate-300">Assistance technique</strong> dans l&apos;espace organisateur.
+          Les demandes restent aussi listées dans Mnemos (Demandes / Assistance organismes).
         </p>
       </div>
 

@@ -204,10 +204,19 @@ export function hasAnyOnlineOrganizerSelection(
 ) {
   const selections = Object.values(normalizeOrganizerSelections(contact.organizerSelections));
   if (selections.length === 0) {
-    return contact.paymentMode === 'FULL' || contact.paymentMode === 'DEPOSIT_200';
+    return (
+      contact.paymentMode === 'FULL' ||
+      contact.paymentMode === 'DEPOSIT_200' ||
+      contact.paymentMode === 'CV_CONNECT'
+    );
   }
 
-  return selections.some((selection) => selection.paymentMode === 'FULL' || selection.paymentMode === 'DEPOSIT_200');
+  return selections.some(
+    (selection) =>
+      selection.paymentMode === 'FULL' ||
+      selection.paymentMode === 'DEPOSIT_200' ||
+      selection.paymentMode === 'CV_CONNECT'
+  );
 }
 
 export function getDefaultParticipant(cartItemId: string): CheckoutParticipant {

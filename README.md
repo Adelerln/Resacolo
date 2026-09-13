@@ -27,11 +27,23 @@ OPENAI_CHAT_MODEL=gpt-4o-mini
 OPENAI_EMBED_MODEL=text-embedding-3-small
 ```
 
-Pour le tunnel checkout/paiement, le projet utilise désormais un provider local `Monetico mock` (mode test) :
+Pour le tunnel checkout/paiement :
 
 ```
-Aucune clé de paiement requise en local.
+# Provider carte : monetico (défaut) ou axepta
+PAYMENT_PROVIDER=axepta
+AXEPTA_MODE=mock   # mock | live — mock = pas de clés requises
+# Live Axepta CB (API REST) + ANCV Connect (Limonetik limonetik.aspx) :
+# AXEPTA_MERCHANT_ID=...
+# AXEPTA_HMAC_SECRET=...   # hex ou chaîne fournie par BNP
+# AXEPTA_BLOWFISH_KEY=...  # clé Blowfish Limonetik (distincte de l’API REST)
+# AXEPTA_API_BASE_URL=https://paymentpage.axepta.bnpparibas
 ```
+
+**ANCV Connect (CV_CONNECT)** : redirection TPE Limonetik (`PayType=cvconnect`), pas une simple demande.
+En `AXEPTA_MODE=mock`, le checkout crée une commande `PENDING_PAYMENT` puis confirme le paiement en local
+(page `/checkout/paiement`, comme le mock CB). En live, POST chiffré vers `limonetik.aspx` ;
+retours : `/api/checkout/axepta/limonetik/{return,failure,notify}`.
 
 Pour le chatbot RAG public :
 

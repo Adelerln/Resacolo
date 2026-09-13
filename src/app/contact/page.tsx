@@ -67,10 +67,12 @@ export default function ContactPage() {
     const hostname = window.location.hostname;
     const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
     const isVercelPreviewHost = hostname.endsWith('.vercel.app');
-    const isProductionHost =
-      !isLocalhost && !isVercelPreviewHost && process.env.NODE_ENV === 'production' && vercelEnv !== 'preview';
+    // Vercel's production deployment may also be served from a .vercel.app hostname.
+    const isProductionDeployment =
+      vercelEnv === 'production' ||
+      (vercelEnv === '' && !isLocalhost && !isVercelPreviewHost && process.env.NODE_ENV === 'production');
 
-    if (isProductionHost) {
+    if (isProductionDeployment) {
       setSiteKey(configuredSiteKey);
       return;
     }

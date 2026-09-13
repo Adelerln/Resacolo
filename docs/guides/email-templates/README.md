@@ -2,6 +2,13 @@
 
 Copier-coller le HTML de chaque fichier dans **Authentication → Email Templates**.
 
+## Rapport stocks organisateurs (app)
+
+- Brouillon visuel : `weekly-stock-report-draft.html`
+- Envoi réel : cron `GET /api/cron/weekly-stock-report` (lundi 9h Paris, à partir du **2026-09-28**)
+- Env : `SMTP_*` + `CRON_WEEKLY_STOCK_TOKEN` (ou `CRON_SECRET`)
+- Test : `?token=...&dryRun=1` (calcule sans envoyer) ; `?token=...&force=1` pour forcer hors créneau
+
 | Template Supabase | Subject | Fichier |
 |---|---|---|
 | Confirm signup | Confirmez votre compte Resacolo | `confirm-signup.html` |

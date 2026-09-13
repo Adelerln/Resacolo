@@ -6,7 +6,12 @@ import { WebVitalsReporter } from '@/components/perf/WebVitalsReporter';
 import { SiteShell } from '@/components/layout/SiteShell';
 import { getCurrentUser } from '@/lib/auth/session';
 import { readFamilyCseAffiliation, readPublicSitePartnerBranding } from '@/lib/account-profile/server';
-import { SITE_URL } from '@/lib/seo';
+import { SITE_URL, DEFAULT_STAY_OG_IMAGE_PATH } from '@/lib/seo';
+import {
+  DEFAULT_SITE_DESCRIPTION,
+  DEFAULT_SITE_KEYWORDS,
+  DEFAULT_SITE_TITLE
+} from '@/lib/seo-meta';
 import type { PublicSitePartnerBranding } from '@/types/partner-branding';
 
 const raleway = localFont({
@@ -30,10 +35,51 @@ const baloo = localFont({
 });
 
 export const metadata: Metadata = {
-  title: 'Resacolo | Plateforme des colonies de vacances',
-  description:
-    'Découvrez toutes les colonies de vacances proposées par les membres de Resacolo et trouvez le séjour idéal pour chaque enfant.',
   metadataBase: new URL(SITE_URL),
+  title: {
+    default: DEFAULT_SITE_TITLE,
+    template: '%s | Resacolo'
+  },
+  description: DEFAULT_SITE_DESCRIPTION,
+  keywords: DEFAULT_SITE_KEYWORDS,
+  applicationName: 'Resacolo',
+  authors: [{ name: 'Resacolo' }],
+  creator: 'Resacolo',
+  publisher: 'Resacolo',
+  formatDetection: {
+    email: false,
+    address: false,
+    telephone: false
+  },
+  alternates: {
+    canonical: '/'
+  },
+  openGraph: {
+    title: DEFAULT_SITE_TITLE,
+    description: DEFAULT_SITE_DESCRIPTION,
+    url: '/',
+    siteName: 'Resacolo',
+    locale: 'fr_FR',
+    type: 'website',
+    images: [{ url: DEFAULT_STAY_OG_IMAGE_PATH, alt: 'Resacolo — colonies de vacances' }]
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: DEFAULT_SITE_TITLE,
+    description: DEFAULT_SITE_DESCRIPTION,
+    images: [DEFAULT_STAY_OG_IMAGE_PATH]
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      'max-image-preview': 'large',
+      'max-snippet': -1,
+      'max-video-preview': -1
+    }
+  },
   icons: {
     icon: '/image/footer/gouttes.png',
     shortcut: '/image/footer/gouttes.png',

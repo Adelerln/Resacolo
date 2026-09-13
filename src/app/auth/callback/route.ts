@@ -3,6 +3,7 @@ import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { logUserLoginEvent } from '@/lib/auth/login-events.server';
 import { getHomePathForRole, resolveRoleContextForUserId, type AppRole } from '@/lib/auth/roles';
+import { syncClientProfileEmailFromAuthUser } from '@/lib/auth/sync-client-email';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import type { Database } from '@/types/supabase';
 
@@ -137,6 +138,12 @@ export async function GET(req: Request) {
   }
 
   if (flow === 'recovery' || flow === 'email-change') {
+    if (flow === 'email-change') {
+      await syncClientProfileEmailFromAuthUser({
+        userId: data.user.id,
+        email: data.user.email
+      });
+    }
     const redirectResponse = NextResponse.redirect(new URL(next, req.url), { status: 303 });
     redirectResponse.headers.set('Cache-Control', 'no-store');
     for (const cookie of cookieStore.getAll()) {

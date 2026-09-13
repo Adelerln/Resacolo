@@ -3,7 +3,7 @@ import { notFound, permanentRedirect } from 'next/navigation';
 import type { Stay } from '@/types/stay';
 import { DEFAULT_STAY_OG_IMAGE_PATH, toAbsoluteUrl } from '@/lib/seo';
 import { getStays, getStayCanonicalPath, resolveStayBySlug } from '@/lib/stays';
-import { buildStaySeoKeywords, buildStaySeoMetaDescription, buildStaySeoTitle } from '@/lib/stay-seo';
+import { buildStayH1Title, buildStaySeoKeywords, buildStaySeoMetaDescription, buildStaySeoTitle, buildRelatedStayLinks } from '@/lib/stay-seo';
 import { StayDetailView } from '@/components/sejours/StayDetailView';
 import { getCurrentUser } from '@/lib/auth/session';
 import { applyCsePricingToStay, readUserCsePricingContext } from '@/lib/cse-pricing';
@@ -149,7 +149,9 @@ export async function generateMetadata({ params }: StayDetailPageProps): Promise
   const image = getStayOpenGraphImage(stay);
 
   return {
-    title,
+    title: {
+      absolute: title
+    },
     description,
     alternates: {
       canonical: canonicalPath
@@ -211,9 +213,13 @@ export default async function StayDetailPage({ params }: StayDetailPageProps) {
 
   const session = await getCurrentUser();
   const userId = session?.isClient && session.userId ? session.userId : null;
-  const [partnerPricingContext, csePricingContext] = userId
-    ? await Promise.all([readUserPartnerPricingContext(userId), readUserCsePricingContext(userId)])
-    : [null, null];
+  const [partnerPricingContext, csePricingContext, allStays] = userId
+    ? await Promise.all([
+        readUserPartnerPricingContext(userId),
+        readUserCsePricingContext(userId),
+        getStays().catch(() => [] as Stay[])
+      ])
+    : [null, null, await getStays().catch(() => [] as Stay[])];
   let stay = partnerPricingContext
     ? applyPartnerDiscountPricingToStay(resolved.stay, partnerPricingContext)
     : resolved.stay;
@@ -222,12 +228,14 @@ export default async function StayDetailPage({ params }: StayDetailPageProps) {
   }
   const productJsonLd = serializeJsonLd(buildStayProductJsonLd(stay));
   const breadcrumbJsonLd = serializeJsonLd(buildStayBreadcrumbJsonLd(stay));
+  const seoH1Title = buildStayH1Title(toStaySeoInput(stay));
+  const relatedStayLinks = buildRelatedStayLinks(stay, allStays, getStayCanonicalPath);
 
   return (
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: productJsonLd }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: breadcrumbJsonLd }} />
-      <StayDetailView stay={stay} />
+      <StayDetailView stay={stay} seoH1Title={seoH1Title} relatedStayLinks={relatedStayLinks} />
     </>
   );
 }

@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import type { LucideIcon } from 'lucide-react';
-import { BarChart3, CircleHelp, FileLock2, Mail, Scale, Shield } from 'lucide-react';
+import { BarChart3, CircleHelp, FileLock2, Mail, Scale, Shield, Tent } from 'lucide-react';
 
 type FooterHighlight = {
   title: string;
@@ -19,6 +19,7 @@ type OrganizerExperienceRange = {
 };
 
 const helpLinks: { href: string; label: string; Icon: LucideIcon }[] = [
+  { href: '/colonies-de-vacances', label: 'Colonies de vacances', Icon: Tent },
   { href: '/bien-choisir-sa-colo', label: 'Bien choisir sa colo', Icon: BarChart3 },
   { href: '/faq', label: 'FAQ', Icon: CircleHelp },
   { href: '/contact', label: 'Contact', Icon: Mail }

@@ -13,6 +13,9 @@
       "memory": 1024,
       "maxDuration": 300
     },
+    "app/api/cron/weekly-stock-report/route.ts": {
+      "maxDuration": 300
+    },
     "app/api/import-stay/route.ts": {
       "maxDuration": 60
     }
@@ -21,6 +24,14 @@
     {
       "path": "/api/cron/stay-import-worker",
       "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/cron/weekly-stock-report",
+      "schedule": "0 7 * * 1"
+    },
+    {
+      "path": "/api/cron/weekly-stock-report",
+      "schedule": "0 8 * * 1"
     }
   ],
   "redirects": [

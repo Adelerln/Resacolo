@@ -44,7 +44,10 @@ SMTP_PORT=465
 SMTP_USER=user
 SMTP_PASS=pass
 SMTP_FROM=chatbot@resacolo.com
+CRON_WEEKLY_STOCK_TOKEN=change-me
 ```
+
+Rapport stocks organisateurs (lundi 9h Paris, dès le 2026-09-28) : cron `GET /api/cron/weekly-stock-report` — test `?token=...&dryRun=1`. Voir `docs/guides/email-templates/README.md`.
 
 URL canonique du site (SEO, sitemap, métadonnées) :
 

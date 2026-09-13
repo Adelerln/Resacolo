@@ -2,16 +2,19 @@ import Image from 'next/image';
 import { OrganisateursGridWithModal } from '@/components/organisateurs/OrganisateursGridWithModal';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { slugify } from '@/lib/utils';
+import { buildPageMetadata } from '@/lib/seo-meta';
 
 const ORIGIN_GRAY = '#505050';
 
 export const revalidate = 300;
 
-export const metadata = {
-  title: 'Organisateurs | ResaColo',
+export const metadata = buildPageMetadata({
+  title: 'Organisateurs de colonies de vacances',
   description:
-    'Découvrez les organisateurs de colonies de vacances du collectif ResaColo.'
-};
+    'Découvrez les organisateurs de colonies de vacances du collectif Resacolo : projets éducatifs, âges accueillis et séjours.',
+  path: '/organisateurs',
+  keywords: ['organisateurs colonies', 'asso colo', 'organisateur séjour enfants', 'Resacolo']
+});
 
 export default async function OrganisateursPage() {
   const supabase = getServerSupabaseClient();

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import type { EmailOtpType } from '@supabase/supabase-js';
+import { syncClientProfileEmailFromAuthUser } from '@/lib/auth/sync-client-email';
 import type { Database } from '@/types/supabase';
 
 export const runtime = 'nodejs';
@@ -33,9 +34,15 @@ export async function GET(req: Request) {
   const supabase = createRouteHandlerClient<Database>({ cookies: cookieAccess });
 
   if (code) {
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code);
     if (error) {
       return NextResponse.redirect(buildConfirmationUrl(req, 'error'), { status: 303 });
+    }
+    if (data.user) {
+      await syncClientProfileEmailFromAuthUser({
+        userId: data.user.id,
+        email: data.user.email
+      });
     }
     const successUrl = new URL(next, req.url);
     if (!successUrl.searchParams.has('status')) {
@@ -48,13 +55,20 @@ export async function GET(req: Request) {
     return NextResponse.redirect(buildConfirmationUrl(req, 'error'), { status: 303 });
   }
 
-  const { error } = await supabase.auth.verifyOtp({
+  const { data, error } = await supabase.auth.verifyOtp({
     token_hash: tokenHash,
     type: type as EmailOtpType
   });
 
   if (error) {
     return NextResponse.redirect(buildConfirmationUrl(req, 'error'), { status: 303 });
+  }
+
+  if (type === 'email_change' && data.user) {
+    await syncClientProfileEmailFromAuthUser({
+      userId: data.user.id,
+      email: data.user.email
+    });
   }
 
   const successUrl = new URL(next, req.url);

@@ -435,11 +435,12 @@ export default function ContactPreferencesPage() {
       setError('Précisez le statut du parent 1.');
       return;
     }
-    if (!hideParent2 && !form.accountInfo.parent2Status) {
-      setError('Indiquez le statut du parent 2.');
-      return;
-    }
-    if (!hideParent2 && form.accountInfo.parent2Status === 'autre' && !form.accountInfo.parent2StatusOther.trim()) {
+    // Statut parent 2 optionnel (pas de parent 2 = pas besoin de statut).
+    if (
+      !hideParent2 &&
+      form.accountInfo.parent2Status === 'autre' &&
+      !form.accountInfo.parent2StatusOther.trim()
+    ) {
       setError('Précisez le statut du parent 2.');
       return;
     }
@@ -729,7 +730,6 @@ export default function ContactPreferencesPage() {
                   className={rowControlClass('w-full')}
                   value={form.accountInfo.parent2Status}
                   onChange={(e) => updateAccountField('parent2Status', e.target.value as ParentStatus)}
-                  required={!hideParent2}
                 >
                   <option value="">Sélectionner</option>
                   <option value="pere">Père</option>

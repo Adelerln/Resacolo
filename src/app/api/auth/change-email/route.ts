@@ -3,7 +3,6 @@ import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { z } from 'zod';
 import { buildAuthCallbackUrl } from '@/lib/auth/urls';
-import { getServerSupabaseClient } from '@/lib/supabase/server';
 import type { Database } from '@/types/supabase';
 
 export const runtime = 'nodejs';
@@ -52,16 +51,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
-    // Best-effort sync of profile contact email (confirmation still required on Auth side).
-    try {
-      const admin = getServerSupabaseClient();
-      await admin
-        .from('client_profiles')
-        .update({ parent1_email: nextEmail, updated_at: new Date().toISOString() })
-        .eq('user_id', user.id);
-    } catch {
-      // optional
-    }
+    // Ne pas mettre à jour client_profiles ici : l'e-mail affiché sur Mon compte
+    // doit rester l'ancien jusqu'à validation du lien de confirmation Auth.
 
     return NextResponse.json({
       ok: true,

@@ -4,11 +4,14 @@ import { getRagEnv } from '@/lib/rag/env';
 
 type SocketLike = net.Socket | tls.TLSSocket;
 
-type SendEmailInput = {
+export type SendSmtpEmailInput = {
   to: string;
   subject: string;
   text: string;
+  html?: string;
 };
+
+type SendEmailInput = SendSmtpEmailInput;
 
 class SmtpClient {
   private socket: SocketLike | null = null;
@@ -142,12 +145,49 @@ class SmtpClient {
 }
 
 function escapeForData(value: string) {
-  return value
-    .replace(/\r?\n/g, '\r\n')
-    .replace(/^\./gm, '..');
+  return value.replace(/\r?\n/g, '\r\n').replace(/^\./gm, '..');
 }
 
-export async function sendEscalationEmail(input: SendEmailInput) {
+function encodeSubject(subject: string) {
+  if (/^[\x20-\x7E]*$/.test(subject)) return subject;
+  return `=?UTF-8?B?${Buffer.from(subject, 'utf8').toString('base64')}?=`;
+}
+
+function buildMimeBody(input: SendSmtpEmailInput) {
+  const text = input.text;
+  const html = input.html?.trim();
+
+  if (!html) {
+    return [
+      'MIME-Version: 1.0',
+      'Content-Type: text/plain; charset=UTF-8',
+      'Content-Transfer-Encoding: 8bit',
+      '',
+      text
+    ].join('\r\n');
+  }
+
+  const boundary = `resacolo_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+  return [
+    'MIME-Version: 1.0',
+    `Content-Type: multipart/alternative; boundary="${boundary}"`,
+    '',
+    `--${boundary}`,
+    'Content-Type: text/plain; charset=UTF-8',
+    'Content-Transfer-Encoding: 8bit',
+    '',
+    text,
+    `--${boundary}`,
+    'Content-Type: text/html; charset=UTF-8',
+    'Content-Transfer-Encoding: 8bit',
+    '',
+    html,
+    `--${boundary}--`,
+    ''
+  ].join('\r\n');
+}
+
+export async function sendSmtpEmail(input: SendSmtpEmailInput) {
   const env = getRagEnv();
   if (!env.smtp) {
     throw new Error('SMTP non configuré.');
@@ -170,15 +210,16 @@ export async function sendEscalationEmail(input: SendEmailInput) {
     const payload = [
       `From: ${from}`,
       `To: ${input.to}`,
-      `Subject: ${input.subject}`,
-      'MIME-Version: 1.0',
-      'Content-Type: text/plain; charset=UTF-8',
-      '',
-      input.text
+      `Subject: ${encodeSubject(input.subject)}`,
+      buildMimeBody(input)
     ].join('\r\n');
 
     await client.sendCommand(`${escapeForData(payload)}\r\n.`, [250]);
   } finally {
     await client.close();
   }
+}
+
+export async function sendEscalationEmail(input: SendEmailInput) {
+  await sendSmtpEmail(input);
 }

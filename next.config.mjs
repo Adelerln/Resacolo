@@ -96,12 +96,14 @@ const nextConfig = {
         : [])
     ]
   },
+  turbopack: {
+    root: projectRoot
+  },
   experimental: {
+    // Avoid reloading the oversized persistent cache during local development.
+    turbopackFileSystemCacheForDev: false,
     serverActions: {
       bodySizeLimit: '10mb'
-    },
-    turbopack: {
-      root: projectRoot
     }
   }
 };

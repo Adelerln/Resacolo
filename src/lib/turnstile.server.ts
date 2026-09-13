@@ -38,6 +38,10 @@ async function verifyTurnstileTokenWithSecret(secret: string, token: string, rem
 
 export function isTurnstilePreviewOrDevContext(request?: Request) {
   const vercelEnv = (process.env.VERCEL_ENV ?? '').trim().toLowerCase();
+  // A production .vercel.app alias must validate with the production secret only.
+  if (vercelEnv === 'production') {
+    return false;
+  }
   if (process.env.NODE_ENV !== 'production' || vercelEnv === 'preview' || vercelEnv === 'development') {
     return true;
   }

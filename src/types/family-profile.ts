@@ -1,6 +1,7 @@
 import type { CheckoutContact, CheckoutParticipant } from '@/types/checkout';
 
-export type ParentStatus = 'pere' | 'mere' | 'grand-parent' | 'autre';
+export type ParentStatus = 'pere' | 'mere' | 'grand-parent' | 'autre' | '';
+
 
 export type FamilyProfileChildInput = {
   firstName: string;

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { z } from 'zod';
+import { buildAuthCallbackUrl } from '@/lib/auth/urls';
 import type { Database } from '@/types/supabase';
 
 export const runtime = 'nodejs';
@@ -40,7 +41,10 @@ export async function POST(req: Request) {
 
     const input = parsed.data;
     const returnPath = sanitizeRelativePath(input.returnPath);
-    const resetRedirectTo = new URL('/login/reinitialiser', req.url).toString();
+    const resetRedirectTo = buildAuthCallbackUrl(req, {
+      next: '/login/reinitialiser',
+      flow: 'recovery'
+    });
 
     const cookieStore = await cookies();
     const cookieAccess = (() => cookieStore) as unknown as typeof cookies;
@@ -69,4 +73,3 @@ export async function POST(req: Request) {
     );
   }
 }
-

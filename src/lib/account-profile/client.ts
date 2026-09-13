@@ -58,6 +58,27 @@ export async function fetchFamilyProfileSnapshot() {
   return fetchJson<FamilyProfileSnapshot>('/api/account/profile', { method: 'GET' });
 }
 
+export async function fetchPendingAccountDeletionRequest() {
+  return fetchJson<{ pending: { id: string; createdAt: string; reason: string } | null }>(
+    '/api/account/deletion-request',
+    { method: 'GET' }
+  );
+}
+
+export async function requestAccountDeletion(input: {
+  reason: string;
+  fullName?: string;
+  confirm: true;
+}) {
+  return fetchJson<{ request: { id: string; createdAt: string; status: string } }>(
+    '/api/account/deletion-request',
+    {
+      method: 'POST',
+      body: JSON.stringify(input)
+    }
+  );
+}
+
 export async function createFamilyChild(input: FamilyProfileChildInput) {
   return fetchJson<{ child: FamilyProfileChild }>('/api/account/children', {
     method: 'POST',

@@ -2,7 +2,9 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { CheckCircle2, ShieldCheck, UserRound } from 'lucide-react';
 import { getCurrentUser } from '@/lib/auth/session';
+import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton';
 import { PasswordInput } from '@/components/auth/PasswordInput';
+import { RegisterSubmitButton } from '@/components/auth/RegisterSubmitButton';
 import {
   PASSWORD_POLICY_HTML_PATTERN,
   PASSWORD_POLICY_MESSAGE,
@@ -25,6 +27,21 @@ function sanitizeRelativePath(value: string | undefined) {
   return trimmed;
 }
 
+function sanitizeDisplayedError(value: string | undefined) {
+  const trimmed = (value ?? '').trim();
+  if (
+    !trimmed ||
+    trimmed === '{}' ||
+    trimmed === '[]' ||
+    trimmed === '[object Object]' ||
+    trimmed === 'undefined' ||
+    trimmed === 'null'
+  ) {
+    return 'Impossible de créer le compte pour le moment. Réessayez dans quelques instants.';
+  }
+  return trimmed;
+}
+
 export default async function FamilyRegisterPage({
   searchParams
 }: {
@@ -37,6 +54,7 @@ export default async function FamilyRegisterPage({
   const params = searchParams ? await searchParams : {};
   const safeRedirectTo = sanitizeRelativePath(params.redirectTo);
   const loginHref = `/login/familles?redirectTo=${encodeURIComponent(safeRedirectTo)}`;
+  const displayError = params.error ? sanitizeDisplayedError(params.error) : null;
 
   const session = await getCurrentUser();
   if (session) {
@@ -106,13 +124,26 @@ export default async function FamilyRegisterPage({
           <section className="rounded-2xl border border-slate-200/90 bg-white/95 p-5 shadow-[0_14px_34px_-26px_rgba(15,23,42,0.4)] sm:p-6">
             <h2 className="font-display text-xl font-semibold text-slate-900">Informations du compte</h2>
 
-            {params.error ? (
+            {displayError ? (
               <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                {params.error}
+                {displayError}
               </p>
             ) : null}
 
-            <form className="mt-5 space-y-6" action="/api/auth/register-client" method="post">
+            <div className="mt-5 space-y-3">
+              <GoogleSignInButton
+                redirectTo={safeRedirectTo}
+                loginMode="family"
+                label="Créer un compte avec Google"
+              />
+              <div className="flex items-center gap-3">
+                <div className="h-px flex-1 bg-slate-200" />
+                <span className="text-xs font-medium uppercase tracking-wide text-slate-400">ou</span>
+                <div className="h-px flex-1 bg-slate-200" />
+              </div>
+            </div>
+
+            <form className="mt-3 space-y-6" action="/api/auth/register-client" method="post">
               <input type="hidden" name="redirectTo" value={safeRedirectTo} />
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="block text-sm font-medium text-slate-700">
@@ -232,12 +263,7 @@ export default async function FamilyRegisterPage({
                 </span>
               </label>
 
-              <button
-                type="submit"
-                className="inline-flex min-h-[46px] w-full items-center justify-center rounded-xl bg-accent-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_12px_24px_-14px_rgba(250,133,0,0.8)] transition hover:bg-accent-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-300"
-              >
-                Créer mon compte
-              </button>
+              <RegisterSubmitButton />
             </form>
           </section>
         </div>

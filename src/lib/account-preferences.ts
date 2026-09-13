@@ -1,4 +1,5 @@
-export type ParentStatus = 'pere' | 'mere' | 'grand-parent' | 'autre';
+export type ParentStatus = 'pere' | 'mere' | 'grand-parent' | 'autre' | '';
+
 
 export type AccountInfo = {
   addressLine1: string;
@@ -47,8 +48,8 @@ const DEFAULT_ACCOUNT_INFO: AccountInfo = {
   parent2Phone: '06.78.90.12.34',
   parent1Email: 'parent1@example.com',
   parent2Email: 'parent2@example.com',
-  parent1Status: 'mere',
-  parent2Status: 'pere',
+  parent1Status: '',
+  parent2Status: '',
   parent1StatusOther: '',
   parent2StatusOther: '',
   parent2HasDifferentAddress: false,
@@ -78,7 +79,7 @@ function asBoolean(value: unknown, fallback: boolean) {
 }
 
 function asParentStatus(value: unknown, fallback: ParentStatus) {
-  if (value === 'pere' || value === 'mere' || value === 'grand-parent' || value === 'autre') {
+  if (value === 'pere' || value === 'mere' || value === 'grand-parent' || value === 'autre' || value === '') {
     return value;
   }
   return fallback;
@@ -269,6 +270,7 @@ export function formatFrenchPhone(value: string) {
 }
 
 export function parentStatusLabel(status: ParentStatus, other?: string) {
+  if (!status) return 'Non renseigné';
   if (status === 'pere') return 'Père';
   if (status === 'mere') return 'Mère';
   if (status === 'grand-parent') return 'Grand-parent';

@@ -63,8 +63,6 @@ export default async function MnemosInquiryDetailPage({ params, searchParams }: 
           Enregistré.
           {sp.notify === 'mail-queued'
             ? ' E-mail de notification en cours d’envoi à l’organisateur.'
-          {isMnemosTransferredInquiry(row.source) && row.organizer_id
-            ? ' Si un nouvel organisateur a été choisi, un e-mail lui a été envoyé (adresse contact de la fiche organisme).'
             : null}
         </div>
       )}

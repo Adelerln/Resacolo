@@ -12,7 +12,7 @@ function mapLoginErrorMessageProduction(code: string | undefined) {
     case 'email-not-confirmed':
       return 'Compte non validé. Vérifiez votre boîte mail et cliquez sur le lien de confirmation.';
     case 'rate-limited':
-      return 'Trop de tentatives de connexion. Attendez quelques minutes puis réessayez.';
+      return 'Limite temporaire Supabase Auth atteinte (trop de requêtes, pas forcément des mauvais mots de passe). Attendez 5–15 minutes, évitez de recharger en boucle, puis réessayez.';
     case 'wrong-login-space-family':
       return 'Ce compte n’appartient pas à l’espace Famille. Sélectionnez l’espace Organisateur / Partenaire.';
     case 'wrong-login-space-pro':
@@ -100,8 +100,10 @@ export default async function LoginPage({
     effectiveMode === 'family' ? '/mon-compte' : '/organisme'
   );
   const loginError = mapLoginErrorMessageProduction(error);
+  // Si Auth est déjà en rate limit, ne pas rappeler getUser() sur /login (aggrave le 429).
+  const skipSessionLookup = shouldBypassSessionRedirect || error === 'rate-limited';
 
-  if (!shouldBypassSessionRedirect) {
+  if (!skipSessionLookup) {
     const session = await getCurrentUser();
     if (session) {
       if (session.role === 'MNEMOS') {

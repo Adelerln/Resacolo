@@ -1818,6 +1818,27 @@ export type Database = {
         }
         Relationships: []
       }
+      contact_form_notification_settings: {
+        Row: {
+          created_at: string
+          id: string
+          notification_emails: string[]
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          notification_emails?: string[]
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          notification_emails?: string[]
+          updated_at?: string
+        }
+        Relationships: []
+      }
       accommodation_media: {
         Row: {
           accommodation_id: string

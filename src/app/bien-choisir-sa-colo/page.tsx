@@ -3,15 +3,19 @@ import Link from 'next/link';
 import { SlotMachineVisual } from '@/components/bien-choisir/SlotMachineVisual';
 import { ChoisirSaColoLogo } from '@/components/bien-choisir/ChoisirSaColoLogo';
 
+import { buildPageMetadata } from '@/lib/seo-meta';
+
 const ORANGE = '#FA8500';
 const BLUE = '#52B0EA';
 const ORIGIN_GRAY = '#505050';
 
-export const metadata = {
-  title: 'Bien choisir sa colo | ResaColo',
+export const metadata = buildPageMetadata({
+  title: 'Bien choisir sa colonie de vacances',
   description:
-    'Conseils et ressources pour bien choisir la colonie de vacances de votre enfant. Découvrez ChoisirSaColo.fr.'
-};
+    'Conseils pour bien choisir la colonie de vacances de votre enfant : âge, période, destination et organisateur. Ressources Resacolo et ChoisirSaColo.fr.',
+  path: '/bien-choisir-sa-colo',
+  keywords: ['bien choisir sa colo', 'conseils colonie', 'choisir colonie vacances', 'séjour enfants']
+});
 
 export default function BienChoisirSaColoPage() {
   return (

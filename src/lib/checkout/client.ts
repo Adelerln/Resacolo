@@ -10,7 +10,7 @@ export type CheckoutPaymentIntentResponse = {
   confirmationPath: string;
   pricing: CheckoutPricing;
   monetico: {
-    provider?: 'monetico' | 'axepta';
+    provider?: 'monetico' | 'axepta' | 'axepta-limonetik';
     mode: 'mock' | 'live';
     reference: string;
     transactionId: string;

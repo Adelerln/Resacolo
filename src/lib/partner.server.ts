@@ -119,9 +119,7 @@ function inferPartnerRequestKind(input: {
   if (String(input.vacafNumberSnapshot ?? '').trim()) {
     return 'VACAF' as const;
   }
-  if (String(input.ancvConnectMatricule ?? '').trim()) {
-    return 'ANCV_CONNECT' as const;
-  }
+  // Matricule ANCV optionnel sur le TPE Limonetik : ne pas inférer une demande organisme.
   return inferOrderRequestKind({
     requestKind: input.requestKind,
     paymentRawPayload: input.paymentRawPayload

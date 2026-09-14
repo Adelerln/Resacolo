@@ -9,6 +9,7 @@ import {
   isInquiryStatusValue,
   isInquiryTypeValue
 } from '@/lib/inquiry-options';
+import { notifyOrganizerOfInquiryTransfer } from '@/lib/inquiry-transfer-notifications.server';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 
 export async function updateInquiry(formData: FormData) {
@@ -26,6 +27,17 @@ export async function updateInquiry(formData: FormData) {
   }
   if (inquiryType && !isInquiryTypeValue(inquiryType)) {
     redirect(`/mnemos/inquiries/${id}?err=${encodeURIComponent('Type invalide.')}`);
+  }
+
+  const supabase = getServerSupabaseClient();
+  const { data: previous } = await supabase
+    .from('inquiries')
+    .select('id, organizer_id, source, email, first_name, last_name, phone, subject, message')
+    .eq('id', id)
+    .maybeSingle();
+
+  if (!previous) {
+    redirect(`/mnemos/inquiries/${id}?err=${encodeURIComponent('Demande introuvable.')}`);
   }
 
   const patch: Record<string, unknown> = {
@@ -47,10 +59,30 @@ export async function updateInquiry(formData: FormData) {
     patch.source = INQUIRY_SOURCE_MNEMOS;
   }
 
-  const supabase = getServerSupabaseClient();
   const { error } = await supabase.from('inquiries').update(patch).eq('id', id);
   if (error) {
     redirect(`/mnemos/inquiries/${id}?err=${encodeURIComponent(error.message)}`);
+  }
+
+  const isNewTransfer =
+    Boolean(transferOrganizerId) && previous.organizer_id !== transferOrganizerId;
+
+  if (isNewTransfer) {
+    const contactName = [previous.first_name, previous.last_name].filter(Boolean).join(' ').trim();
+    try {
+      await notifyOrganizerOfInquiryTransfer({
+        supabase,
+        inquiryId: id,
+        organizerId: transferOrganizerId,
+        contactName,
+        contactEmail: previous.email,
+        contactPhone: previous.phone,
+        subject: previous.subject,
+        message: previous.message
+      });
+    } catch (notifyError) {
+      console.error('[mnemos/inquiries] transfer email skipped', notifyError);
+    }
   }
 
   revalidatePath('/mnemos/inquiries');

@@ -55,7 +55,7 @@ export default async function OrganizerLayout({ children }: { children: React.Re
           </Suspense>
           <div className="mt-auto px-6 pb-6 pt-4">
             <Link
-              href="/compte/securite"
+              href="/organisme/securite"
               className="mb-2 inline-flex w-full items-center justify-center rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 hover:border-slate-300"
             >
               Sécurité du compte

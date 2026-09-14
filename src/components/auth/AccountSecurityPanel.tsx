@@ -16,6 +16,8 @@ type AccountSecurityPanelProps = {
   currentEmail: string;
   action?: SecurityAction;
   className?: string;
+  /** Base path for security links (e.g. /organisme/securite). */
+  basePath?: string;
   backHref?: string;
 };
 
@@ -23,8 +25,10 @@ export function AccountSecurityPanel({
   currentEmail,
   action = 'menu',
   className,
-  backHref = '/compte/securite'
+  basePath = '/compte/securite',
+  backHref
 }: AccountSecurityPanelProps) {
+  const resolvedBackHref = backHref ?? basePath;
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordMessage, setPasswordMessage] = useState<string | null>(null);
@@ -93,7 +97,7 @@ export function AccountSecurityPanel({
         <p className="mt-1 text-sm text-slate-600">Que souhaitez-vous modifier ?</p>
         <div className="mt-5 grid gap-3 sm:grid-cols-2">
           <Link
-            href="/compte/securite?action=password"
+            href={`${basePath}?action=password`}
             className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-left transition hover:border-slate-300 hover:bg-white"
           >
             <KeyRound className="h-5 w-5 text-slate-500" />
@@ -103,7 +107,7 @@ export function AccountSecurityPanel({
             </span>
           </Link>
           <Link
-            href="/compte/securite?action=email"
+            href={`${basePath}?action=email`}
             className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-left transition hover:border-slate-300 hover:bg-white"
           >
             <Mail className="h-5 w-5 text-slate-500" />
@@ -119,7 +123,7 @@ export function AccountSecurityPanel({
 
   return (
     <section className={className ?? 'rounded-2xl border border-slate-200 bg-white p-6 shadow-sm'}>
-      <Link href={backHref} className="text-sm font-semibold text-[var(--color-primary)] hover:underline">
+      <Link href={resolvedBackHref} className="text-sm font-semibold text-[var(--color-primary)] hover:underline">
         ← Retour
       </Link>
 

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import { notifyContactFormRecipients } from '@/lib/contact-form-notifications.server';
 import { buildContactInquiryInsert } from '@/lib/inquiries';
 import { getRagEnv } from '@/lib/rag/env';
 import { sendSmtpEmail } from '@/lib/rag/smtp';
@@ -109,6 +110,20 @@ export async function POST(request: Request) {
         },
         { status: 502 }
       );
+    // Best-effort : la demande reste visible dans Mnemos même si l'e-mail échoue.
+    try {
+      await notifyContactFormRecipients({
+        supabase,
+        inquiryId: data.id,
+        firstName: input.firstName,
+        lastName: input.lastName,
+        email: input.email,
+        phone: input.phone,
+        recipient: input.recipient,
+        message: input.message
+      });
+    } catch (notifyError) {
+      console.error('[contact] notification email skipped', notifyError);
     }
 
     return NextResponse.json({ ok: true, inquiryId: data.id });

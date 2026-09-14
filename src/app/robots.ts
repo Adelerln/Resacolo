@@ -12,16 +12,20 @@ export default function robots(): MetadataRoute.Robots {
           '/api',
           '/back-office',
           '/checkout',
+          '/compte',
+          '/confirmation-mail',
           '/login',
           '/mnemos',
           '/mon-compte',
           '/organisme',
           '/panier',
           '/partenaire/reservations',
-          '/partenaire/catalogue'
+          '/partenaire/catalogue',
+          '/auth'
         ]
       }
     ],
-    sitemap: `${SITE_URL}/sitemap.xml`
+    sitemap: `${SITE_URL}/sitemap.xml`,
+    host: SITE_URL.replace(/^https?:\/\//, '')
   };
 }

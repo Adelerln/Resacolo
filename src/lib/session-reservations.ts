@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { ACTIVE_ORDER_STATUSES } from '@/lib/order-workflow';
+import { ACTIVE_ORDER_STATUSES, normalizeOrderStatus } from '@/lib/order-workflow';
 import type { Database } from '@/types/supabase';
 
 export async function getReservedSessionCounts(
@@ -31,7 +31,10 @@ export async function getReservedSessionCounts(
 
   const activeOrderIds = new Set(
     (orders ?? [])
-      .filter((order) => ACTIVE_ORDER_STATUSES.has(order.status))
+      .filter((order) => {
+        const status = normalizeOrderStatus(order.status);
+        return status !== null && ACTIVE_ORDER_STATUSES.has(status);
+      })
       .map((order) => order.id)
   );
 

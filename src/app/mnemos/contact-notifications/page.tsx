@@ -32,6 +32,9 @@ export default async function MnemosContactNotificationsPage({
           <strong className="text-slate-300">/contact</strong>. Les alertes partenariat / rejoindre Resacolo se
           configurent dans Admin → Demandes. Les demandes contact restent aussi listées dans l&apos;onglet
           Demandes.
+          <strong className="text-slate-300">/contact</strong> ou via{' '}
+          <strong className="text-slate-300">Assistance technique</strong> dans l&apos;espace organisateur.
+          Les demandes restent aussi listées dans Mnemos (Demandes / Assistance organismes).
         </p>
       </div>
 

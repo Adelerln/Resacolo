@@ -39,7 +39,7 @@ export default function FamilyReservationDetailsModal({ reservation }: { reserva
   const canContactOrganizer =
     Boolean(reservation.organizerContactEmail) &&
     (
-      ['PAID', 'PARTIALLY_PAID', 'PENDING_PAYMENT', 'REQUESTED', 'CONFIRMED'].includes(reservation.orderStatus) ||
+      ['PAID', 'PARTIALLY_PAID', 'PENDING_PAYMENT', 'REQUESTED'].includes(reservation.orderStatus) ||
       reservation.hasSuccessfulPayment
     );
 

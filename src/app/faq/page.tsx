@@ -1,15 +1,18 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { FaqHubClient } from '@/components/faq/FaqHubClient';
+import { buildPageMetadata } from '@/lib/seo-meta';
 
 const ORANGE = '#FA8500';
 const AVION_SRC = '/image/faq/pictos_faq/avion.png';
 
-export const metadata = {
-  title: 'FAQ | ResaColo',
+export const metadata = buildPageMetadata({
+  title: 'FAQ colonies de vacances',
   description:
-    "Questions fréquentes sur le processus d'inscription, les tarifs, les données personnelles et les annulations."
-};
+    'Questions fréquentes sur les colonies de vacances Resacolo : inscription, tarifs, aides, annulations et données personnelles.',
+  path: '/faq',
+  keywords: ['faq colo', 'questions colonie vacances', 'inscription séjour enfants']
+});
 
 export default function FaqPage() {
   return (

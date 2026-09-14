@@ -4,12 +4,22 @@ import { getStays } from '@/lib/stays';
 import { getCurrentUser } from '@/lib/auth/session';
 import { applyCsePricingToStays, readUserCsePricingContext } from '@/lib/cse-pricing';
 import { applyPartnerDiscountPricingToStays, readUserPartnerPricingContext } from '@/lib/stay-partner-pricing';
+import { buildPageMetadata } from '@/lib/seo-meta';
 
-export const metadata: Metadata = {
-  title: 'Tous nos séjours | Resacolo',
+export const metadata: Metadata = buildPageMetadata({
+  title: 'Colonies de vacances et séjours pour enfants',
   description:
-    'Consultez toutes les colonies de vacances et séjour jeunes adultes Resacolo avec filtres détaillés.'
-};
+    'Catalogue de colonies de vacances et séjours pour enfants et ados : filtrez par âge, période, destination et organisateur. Réservez sur Resacolo.',
+  path: '/sejours',
+  keywords: [
+    'colonies de vacances',
+    'séjours enfants',
+    'catalogue colo',
+    'réserver colonie',
+    'colo été',
+    'séjour ado'
+  ]
+});
 
 export const revalidate = 60;
 

@@ -22,7 +22,7 @@ type SortKey =
 type SortDirection = 'asc' | 'desc';
 type SearchParamsValue = string | string[] | undefined;
 type AdminPartnersPageProps = {
-  searchParams?: Promise<Record<string, SearchParamsValue>> | Record<string, SearchParamsValue>;
+  searchParams?: Promise<Record<string, SearchParamsValue>>;
 };
 type PartnerRow = Pick<
   CollectivityRow,
@@ -105,7 +105,7 @@ function getOfferBadgeClass(offerMode: string | null | undefined) {
 }
 
 export default async function AdminPartnersPage({ searchParams }: AdminPartnersPageProps) {
-  const resolvedSearchParams = searchParams instanceof Promise ? await searchParams : searchParams;
+  const resolvedSearchParams = await searchParams;
   const session = await requireAdminSection('partners');
   const canEditPartners = isAdminWorkspaceRole(session.role) && canMutateAdminSection(session.role, 'partners');
   const supabase = getServerSupabaseClient();

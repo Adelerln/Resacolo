@@ -23,6 +23,7 @@ import {
   extractOrganizerPresentationSummary
 } from '@/lib/organizer-rich-text';
 import { staySessionsAppearFullyBooked } from '@/lib/stay-catalog-availability';
+import { buildPageMetadata } from '@/lib/seo-meta';
 import { getStays, getStayCanonicalPath } from '@/lib/stays';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { slugify } from '@/lib/utils';
@@ -31,6 +32,40 @@ import { extractGoogleMapsEmbedSrcFromInput } from '@/lib/google-maps-iframe';
 type PageProps = { params: Promise<{ slug: string }> };
 
 export const revalidate = 300;
+
+export async function generateMetadata({ params }: PageProps) {
+  const { slug } = await params;
+  const supabase = getServerSupabaseClient();
+  const { data } = await supabase
+    .from('organizers')
+    .select('name, slug, description, hero_intro_text')
+    .eq('slug', slug)
+    .maybeSingle();
+
+  const fallback = !data ? getOrganizerBySlug(slug) : null;
+  const name = data?.name || fallback?.name;
+  if (!name) {
+    return { title: 'Organisateur introuvable | Resacolo', robots: { index: false, follow: false } };
+  }
+
+  const descriptionSource =
+    data?.hero_intro_text?.trim() ||
+    data?.description?.replace(/<[^>]+>/g, ' ').trim() ||
+    fallback?.description ||
+    `Colonies de vacances et séjours organisés par ${name}. Découvrez le catalogue sur Resacolo.`;
+
+  const description =
+    descriptionSource.length > 160
+      ? `${descriptionSource.slice(0, 157).trim()}…`
+      : descriptionSource;
+
+  return buildPageMetadata({
+    title: `Colonies de vacances ${name}`,
+    description,
+    path: `/organisateurs/${data?.slug || fallback?.slug || slug}`,
+    keywords: [`colonie ${name}`, `séjours ${name}`, 'organisateur colo', 'Resacolo']
+  });
+}
 
 const BANNER_DIR = path.join(process.cwd(), 'public/image/organisateurs/bannieres_orga');
 const LIGHT_HERO_TEXT_KEYS = new Set([

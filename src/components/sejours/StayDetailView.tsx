@@ -516,10 +516,14 @@ const VISIT_TRACKING_DEDUP_MS = 60_000;
 
 export function StayDetailView({
   stay,
-  disableGalleryFallback = false
+  disableGalleryFallback = false,
+  seoH1Title,
+  relatedStayLinks = []
 }: {
   stay: Stay;
   disableGalleryFallback?: boolean;
+  seoH1Title?: string;
+  relatedStayLinks?: Array<{ href: string; anchorText: string; title: string }>;
 }) {
   const router = useRouter();
   const { addItem } = useCart();
@@ -1005,7 +1009,7 @@ export function StayDetailView({
     categories: stay.categories,
     seo: stay.seo
   };
-  const displayH1Title = capitalizeHeadingSegments(stay.title);
+  const displayH1Title = capitalizeHeadingSegments(seoH1Title?.trim() || stay.title);
   const introText = buildStayIntroText(seoInput);
   const seoPrimaryKeyword = stay.seo?.primaryKeyword?.trim();
   const seoInternalAnchors = useMemo(
@@ -1485,6 +1489,26 @@ export function StayDetailView({
                         className="inline-flex items-center rounded-full border border-sky-200 bg-white px-4 py-2 font-semibold text-sky-900 shadow-sm transition hover:border-sky-300 hover:bg-sky-50"
                       >
                         {capitalizeFirstLetter(item.label)}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
+
+            {relatedStayLinks.length > 0 ? (
+              <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <h2 className="font-display text-lg font-semibold text-slate-900">
+                  Séjours similaires
+                </h2>
+                <ul className="mt-4 space-y-2">
+                  {relatedStayLinks.map((link) => (
+                    <li key={link.href}>
+                      <Link
+                        href={link.href}
+                        className="text-sm font-medium text-brand-700 hover:text-brand-800"
+                      >
+                        {link.anchorText || link.title}
                       </Link>
                     </li>
                   ))}

@@ -19,25 +19,7 @@ export type InquiryRow = {
   internal_notes?: string | null;
 };
 
-export function parseOrganizerIdFromRecipient(recipient: string): string | null {
-  if (!recipient.startsWith('organizer:')) return null;
-  const organizerId = recipient.slice('organizer:'.length).trim();
-  return organizerId || null;
-}
-
-export function buildContactInquirySubject(recipient: string) {
-  if (recipient.startsWith('organizer:')) {
-    return 'Contact organisateur depuis formulaire public';
-  }
-  return 'Contact assistance technique';
-}
-
-export function buildContactInquiryMessage(recipient: string, message: string) {
-  return [`Destinataire: ${recipient}`, '', message].join('\n');
-}
-
 export function buildContactInquiryInsert(input: {
-  recipient: string;
   firstName: string;
   lastName: string;
   email: string;
@@ -52,9 +34,9 @@ export function buildContactInquiryInsert(input: {
     first_name: input.firstName,
     last_name: input.lastName,
     phone: input.phone?.trim() || null,
-    subject: buildContactInquirySubject(input.recipient),
-    message: buildContactInquiryMessage(input.recipient, input.message),
-    organizer_id: parseOrganizerIdFromRecipient(input.recipient)
+    subject: 'Demande de contact depuis le formulaire public',
+    message: input.message,
+    organizer_id: null
   };
 }
 

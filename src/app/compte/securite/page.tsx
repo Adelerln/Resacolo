@@ -14,6 +14,13 @@ function normalizeAction(value: string | undefined): SecurityAction {
   return 'menu';
 }
 
+function securityPathForRole(role: string, action: SecurityAction) {
+  const query = action === 'menu' ? '' : `?action=${action}`;
+  if (role === 'ORGANISATEUR') return `/organisme/securite${query}`;
+  if (role === 'PARTENAIRE') return `/partenaire/securite${query}`;
+  return null;
+}
+
 export default async function AccountSecurityPage({
   searchParams
 }: {
@@ -26,6 +33,11 @@ export default async function AccountSecurityPage({
 
   const params = searchParams ? await searchParams : {};
   const action = normalizeAction(params.action);
+  const roleRedirect = securityPathForRole(session.role, action);
+  if (roleRedirect) {
+    redirect(roleRedirect);
+  }
+
   const backHref = getHomePathForRole(session.role);
 
   return (

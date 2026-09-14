@@ -9,7 +9,7 @@ export type MoneticoPayload = {
   transactionId: string;
   paymentUrl: string;
   testMode: boolean;
-  formMethod: 'POST';
+  formMethod: 'POST' | 'GET';
   formFields: Record<string, string>;
 };
 

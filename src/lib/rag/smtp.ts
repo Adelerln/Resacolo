@@ -1,13 +1,16 @@
+import crypto from 'node:crypto';
 import net from 'node:net';
 import tls from 'node:tls';
 import { getRagEnv } from '@/lib/rag/env';
 
 type SocketLike = net.Socket | tls.TLSSocket;
 
-type SendEmailInput = {
-  to: string;
+export type SendSmtpEmailInput = {
+  to: string | readonly string[];
   subject: string;
   text: string;
+  html?: string;
+  replyTo?: string;
 };
 
 class SmtpClient {
@@ -142,18 +145,70 @@ class SmtpClient {
 }
 
 function escapeForData(value: string) {
-  return value
-    .replace(/\r?\n/g, '\r\n')
-    .replace(/^\./gm, '..');
+  return value.replace(/\r?\n/g, '\r\n').replace(/^\./gm, '..');
 }
 
-export async function sendEscalationEmail(input: SendEmailInput) {
+function safeAddress(value: string) {
+  const address = value.trim();
+  if (!address || /[\r\n<>]/.test(address)) {
+    throw new Error('Adresse email SMTP invalide.');
+  }
+  return address;
+}
+
+function encodeSubject(subject: string) {
+  const safeSubject = subject.replace(/[\r\n]+/g, ' ');
+  if (/^[\x20-\x7E]*$/.test(safeSubject)) return safeSubject;
+  return `=?UTF-8?B?${Buffer.from(safeSubject, 'utf8').toString('base64')}?=`;
+}
+
+function buildMimeBody(input: SendSmtpEmailInput) {
+  const text = input.text;
+  const html = input.html?.trim();
+
+  if (!html) {
+    return [
+      'MIME-Version: 1.0',
+      'Content-Type: text/plain; charset=UTF-8',
+      'Content-Transfer-Encoding: 8bit',
+      '',
+      text
+    ].join('\r\n');
+  }
+
+  const boundary = `resacolo_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+  return [
+    'MIME-Version: 1.0',
+    `Content-Type: multipart/alternative; boundary="${boundary}"`,
+    '',
+    `--${boundary}`,
+    'Content-Type: text/plain; charset=UTF-8',
+    'Content-Transfer-Encoding: 8bit',
+    '',
+    text,
+    `--${boundary}`,
+    'Content-Type: text/html; charset=UTF-8',
+    'Content-Transfer-Encoding: 8bit',
+    '',
+    html,
+    `--${boundary}--`,
+    ''
+  ].join('\r\n');
+}
+
+export async function sendSmtpEmail(input: SendSmtpEmailInput) {
   const env = getRagEnv();
   if (!env.smtp) {
     throw new Error('SMTP non configuré.');
   }
 
   const { host, port, user, pass, from } = env.smtp;
+  const recipients = (typeof input.to === 'string' ? [input.to] : input.to).map(safeAddress);
+  if (recipients.length === 0) {
+    throw new Error('Aucun destinataire SMTP configuré.');
+  }
+  const sender = safeAddress(from);
+  const replyTo = input.replyTo ? safeAddress(input.replyTo) : null;
   const client = new SmtpClient(host, port);
   const localHost = 'resacolo.local';
 
@@ -163,18 +218,21 @@ export async function sendEscalationEmail(input: SendEmailInput) {
     await client.sendCommand('AUTH LOGIN', [334]);
     await client.sendCommand(Buffer.from(user).toString('base64'), [334]);
     await client.sendCommand(Buffer.from(pass).toString('base64'), [235]);
-    await client.sendCommand(`MAIL FROM:<${from}>`, [250]);
-    await client.sendCommand(`RCPT TO:<${input.to}>`, [250, 251]);
+    await client.sendCommand(`MAIL FROM:<${sender}>`, [250]);
+    for (const recipient of recipients) {
+      await client.sendCommand(`RCPT TO:<${recipient}>`, [250, 251]);
+    }
     await client.sendCommand('DATA', [354]);
 
+    const messageId = `<${Date.now()}.${crypto.randomUUID()}@${sender.includes('@') ? sender.split('@')[1] : 'resacolo.com'}>`;
     const payload = [
-      `From: ${from}`,
-      `To: ${input.to}`,
-      `Subject: ${input.subject}`,
-      'MIME-Version: 1.0',
-      'Content-Type: text/plain; charset=UTF-8',
-      '',
-      input.text
+      `From: ${sender}`,
+      `To: ${recipients.join(', ')}`,
+      ...(replyTo ? [`Reply-To: ${replyTo}`] : []),
+      `Subject: ${encodeSubject(input.subject)}`,
+      `Date: ${new Date().toUTCString()}`,
+      `Message-ID: ${messageId}`,
+      buildMimeBody(input)
     ].join('\r\n');
 
     await client.sendCommand(`${escapeForData(payload)}\r\n.`, [250]);
@@ -182,3 +240,5 @@ export async function sendEscalationEmail(input: SendEmailInput) {
     await client.close();
   }
 }
+
+export const sendEscalationEmail = sendSmtpEmail;

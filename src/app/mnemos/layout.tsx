@@ -6,6 +6,8 @@ const mnemosNav = [
   { href: '/mnemos/organizers', label: 'Organismes' },
   { href: '/mnemos/billing', label: 'Commissions' },
   { href: '/mnemos/inquiries', label: 'Demandes de renseignements' },
+  { href: '/mnemos/contact-notifications', label: 'Notifications' },
+  { href: '/mnemos/admins', label: 'Comptes admin' },
   { href: '/mnemos/support', label: 'Assistance organismes' },
   { href: '/mnemos/account-deletions', label: 'Suppressions de compte' },
   { href: '/mnemos/chatbot', label: 'Assistant en ligne' }

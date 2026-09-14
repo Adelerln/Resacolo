@@ -58,7 +58,12 @@ type PrepareCheckoutPaymentResult = {
   payments: Array<{ orderId: string; paymentId: string; organizerId: string; organizerName: string }>;
   confirmationPath: string;
   pricing: CheckoutPricing;
-  monetico: MoneticoPayload;
+  monetico: MoneticoPayload & {
+    provider?: string;
+    payId?: string | null;
+    transId?: string;
+    payType?: string;
+  };
 };
 
 type PrepareCheckoutPaymentGroupResult = {
@@ -69,6 +74,7 @@ type PrepareCheckoutPaymentGroupResult = {
   immediatePaymentAmountCents: number;
   isPartnerTotalCoverage: boolean;
   requestKind: ReturnType<typeof resolveOrderRequestKind>;
+  paymentMode: CheckoutContact['paymentMode'];
 };
 
 const HOLD_MINUTES = 30;
@@ -224,7 +230,21 @@ async function createProviderPayload(input: {
   billingFirstName?: string | null;
   billingLastName?: string | null;
   merchantCustomerId?: string | null;
-}): Promise<MoneticoPayload & { provider?: string; payId?: string | null; transId?: string }> {
+  phone?: string | null;
+  addressLine1?: string | null;
+  postalCode?: string | null;
+  city?: string | null;
+  countryCode?: string | null;
+  paymentMode?: CheckoutContact['paymentMode'] | null;
+  orderDesc?: string | null;
+}): Promise<
+  MoneticoPayload & {
+    provider?: string;
+    payId?: string | null;
+    transId?: string;
+    payType?: string;
+  }
+> {
   const payload = await createCheckoutPspPayload(input);
   return toLegacyMoneticoResponseShape(payload);
 }
@@ -321,7 +341,6 @@ function mapStatusForPreWorkflowV2Enum(
 ): Database['public']['Enums']['order_status'] {
   if (status === 'PENDING_PAYMENT') return 'REQUESTED';
   if (status === 'PARTIALLY_PAID') return 'REQUESTED';
-  if (status === 'TRANSFERRED') return 'CONFIRMED';
   return status;
 }
 
@@ -685,7 +704,14 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
       customerEmail: input.contact.email,
       billingFirstName: input.contact.billingFirstName,
       billingLastName: input.contact.billingLastName,
-      merchantCustomerId: clientUserId
+      merchantCustomerId: clientUserId,
+      phone: input.contact.phone,
+      addressLine1: input.contact.addressLine1,
+      postalCode: input.contact.postalCode,
+      city: input.contact.city,
+      countryCode: 'FR',
+      paymentMode: input.contact.paymentMode,
+      orderDesc: `Resacolo ${reference}`
     });
 
     const providerTransactionId =
@@ -769,20 +795,25 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
       }
     }
     if (effectiveContact.paymentMode === 'CV_CONNECT') {
-      const ancvMatriculeError = validateAncvConnectMatricule(effectiveContact.ancvConnectMatricule);
-      if (ancvMatriculeError) {
-        throw new CheckoutValidationError(ancvMatriculeError);
+      // Matricule / montant : optionnels (info). Le TPE Limonetik encaisse le total famille.
+      if (effectiveContact.ancvConnectMatricule.trim()) {
+        const ancvMatriculeError = validateAncvConnectMatricule(effectiveContact.ancvConnectMatricule);
+        if (ancvMatriculeError) {
+          throw new CheckoutValidationError(ancvMatriculeError);
+        }
       }
-      const orderPayableTotalCents = resolveAncvConnectOrderPayableTotalCents(
-        organizerPricing.financeFamilyPayableTotalCents ?? null,
-        organizerPricing.totalCents
-      );
-      const ancvAmountError = validateAncvConnectAmountAgainstOrderTotal(
-        effectiveContact.ancvConnectAmount,
-        orderPayableTotalCents
-      );
-      if (ancvAmountError) {
-        throw new CheckoutValidationError(ancvAmountError);
+      if (effectiveContact.ancvConnectAmount.trim()) {
+        const orderPayableTotalCents = resolveAncvConnectOrderPayableTotalCents(
+          organizerPricing.financeFamilyPayableTotalCents ?? null,
+          organizerPricing.totalCents
+        );
+        const ancvAmountError = validateAncvConnectAmountAgainstOrderTotal(
+          effectiveContact.ancvConnectAmount,
+          orderPayableTotalCents
+        );
+        if (ancvAmountError) {
+          throw new CheckoutValidationError(ancvAmountError);
+        }
       }
     }
 
@@ -953,6 +984,7 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
       immediatePaymentAmountCents,
       isPartnerTotalCoverage,
       requestKind,
+      paymentMode: effectiveContact.paymentMode,
       paymentRawPayload
     });
   }
@@ -980,12 +1012,20 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
     customerEmail: input.contact.email,
     billingFirstName: input.contact.billingFirstName,
     billingLastName: input.contact.billingLastName,
-    merchantCustomerId: clientUserId
+    merchantCustomerId: clientUserId,
+    phone: input.contact.phone,
+    addressLine1: input.contact.addressLine1,
+    postalCode: input.contact.postalCode,
+    city: input.contact.city,
+    countryCode: 'FR',
+    paymentMode: primaryOnlineGroup.paymentMode,
+    orderDesc: `Resacolo ${reference}`
   });
   const providerTransactionId =
     (moneticoPayload as { transId?: string }).transId || moneticoPayload.transactionId || transactionId;
   const allOrderIds = groupResults.map((group) => group.orderId);
   const allPaymentIds = groupResults.map((group) => group.paymentId);
+  const pspProvider = (moneticoPayload as { provider?: string }).provider;
 
   for (const group of groupResults) {
     const shouldAttachMonetico = group.immediatePaymentAmountCents > 0;
@@ -1001,13 +1041,20 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
           isBatch: groupResults.length > 1,
           monetico: shouldAttachMonetico ? moneticoPayload : null,
           axepta:
-            shouldAttachMonetico && (moneticoPayload as { provider?: string }).provider === 'axepta'
+            shouldAttachMonetico && pspProvider === 'axepta'
               ? {
                   provider: 'axepta',
                   transId: providerTransactionId,
                   payId: (moneticoPayload as { payId?: string | null }).payId ?? null
                 }
-              : null
+              : shouldAttachMonetico && pspProvider === 'axepta-limonetik'
+                ? {
+                    provider: 'axepta-limonetik',
+                    payType: 'cvconnect',
+                    transId: providerTransactionId,
+                    payId: (moneticoPayload as { payId?: string | null }).payId ?? null
+                  }
+                : null
         }
       })
       .eq('id', group.paymentId);

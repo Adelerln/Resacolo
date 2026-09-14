@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { requireAdminSection } from '@/lib/auth/require';
-import { isAdminWorkspaceRole } from '@/lib/admin-access';
+import { canMutateAdminSection, isAdminWorkspaceRole } from '@/lib/admin-access';
+import { normalizeOrderStatus } from '@/lib/order-workflow';
 import { parisDateKey } from '@/lib/paris-time';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 
@@ -14,6 +15,13 @@ type ReservationSeasonCard = {
   year: number;
   startsAt: Date;
 };
+type AdminHomeSearchParams = Record<string, string | string[] | undefined>;
+
+function getSingleSearchParam(value: string | string[] | undefined): string | null {
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) return value[0] ?? null;
+  return null;
+}
 
 const RESERVATION_SEASON_STARTS: Record<ReservationSeasonLabel, { month: number; day: number }> = {
   Hiver: { month: 1, day: 20 },
@@ -180,9 +188,16 @@ function reservationSeasonOccurrenceFromSessionDate(value: string | null | undef
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-export default async function AdminHome() {
+export default async function AdminHome({
+  searchParams
+}: {
+  searchParams?: Promise<AdminHomeSearchParams>;
+}) {
+  const resolvedSearchParams = searchParams ? await searchParams : {};
   const session = await requireAdminSection('dashboard');
   const isSalesWorkspace = isAdminWorkspaceRole(session.role) && session.role === 'ADMIN_SALES';
+  const canEditPartnerRequestRecipient =
+    isAdminWorkspaceRole(session.role) && canMutateAdminSection(session.role, 'partners');
   const supabase = getServerSupabaseClient();
 
   const [
@@ -193,7 +208,8 @@ export default async function AdminHome() {
     { data: sessionsRaw },
     { data: orderItemsRaw },
     { data: partnersRaw },
-    { data: partnerMembersRaw }
+    { data: partnerMembersRaw },
+    { data: contactSettings, error: contactSettingsError }
   ] = await Promise.all([
     isSalesWorkspace ? Promise.resolve({ data: [] as { id: string; status: string }[] }) : supabase.from('stays').select('id,status'),
     isSalesWorkspace
@@ -210,7 +226,12 @@ export default async function AdminHome() {
     isSalesWorkspace ? supabase.from('collectivities').select('id') : Promise.resolve({ data: [] as { id: string }[] }),
     isSalesWorkspace
       ? supabase.from('collectivity_members').select('collectivity_id')
-      : Promise.resolve({ data: [] as { collectivity_id: string }[] })
+      : Promise.resolve({ data: [] as { collectivity_id: string }[] }),
+    supabase
+      .from('partner_contact_settings')
+      .select('partner_request_email')
+      .eq('id', 'default')
+      .maybeSingle()
   ]);
 
   const stays = staysRaw ?? [];
@@ -236,7 +257,7 @@ export default async function AdminHome() {
 
   const requestedOrders = orders.filter((order) => order.status === 'REQUESTED').length;
   const seasonOrderIds = new Set(
-    orders.filter((order) => SEASON_ORDER_STATUSES.has(order.status)).map((order) => order.id)
+    orders.filter((order) => SEASON_ORDER_STATUSES.has(normalizeOrderStatus(order.status) ?? '')).map((order) => order.id)
   );
   const sessionStartDateById = new Map(sessions.map((session) => [session.id, session.start_date]));
   const orderIdsBySeasonYear = new Map<string, Set<string>>(
@@ -391,6 +412,62 @@ export default async function AdminHome() {
             </div>
           )}
         </div>
+      </section>
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-6" aria-labelledby="partner-request-recipient-title">
+        <h2 id="partner-request-recipient-title" className="admin-section-title">
+          Réception des demandes de partenariat
+        </h2>
+        <p className="mt-2 text-sm text-slate-600">
+          Les demandes envoyées depuis la page « Devenir partenaire » seront adressées à cet e-mail.
+        </p>
+
+        {getSingleSearchParam(resolvedSearchParams.requestEmailSaved) === '1' ? (
+          <p role="status" className="mt-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+            Adresse de réception enregistrée.
+          </p>
+        ) : null}
+        {getSingleSearchParam(resolvedSearchParams.requestEmailError) ? (
+          <p role="alert" className="mt-4 rounded-lg bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            {getSingleSearchParam(resolvedSearchParams.requestEmailError)}
+          </p>
+        ) : null}
+        {contactSettingsError ? (
+          <p role="alert" className="mt-4 rounded-lg bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            Impossible de charger l’adresse de réception. Vérifiez que la migration de la base est appliquée.
+          </p>
+        ) : null}
+
+        {canEditPartnerRequestRecipient ? (
+          <form action="/api/admin/partner-contact-settings" method="post" className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-end">
+            <div className="w-full max-w-lg">
+              <label htmlFor="partner-request-email" className="mb-2 block text-sm font-semibold text-slate-700">
+                E-mail de la personne qui reçoit les demandes
+              </label>
+              <input
+                id="partner-request-email"
+                name="partner_request_email"
+                type="email"
+                required
+                maxLength={180}
+                defaultValue={contactSettings?.partner_request_email ?? ''}
+                placeholder="prenom@exemple.fr"
+                className="min-h-[44px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-emerald-500 focus:outline-none"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={Boolean(contactSettingsError)}
+              className="min-h-[44px] rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Enregistrer
+            </button>
+          </form>
+        ) : (
+          <p className="mt-4 text-sm font-medium text-slate-700">
+            {contactSettings?.partner_request_email ?? 'Aucun destinataire configuré.'}
+          </p>
+        )}
       </section>
     </div>
   );

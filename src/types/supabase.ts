@@ -1818,6 +1818,111 @@ export type Database = {
         }
         Relationships: []
       }
+      contact_form_notification_settings: {
+        Row: {
+          created_at: string
+          id: string
+          notification_emails: string[]
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          notification_emails?: string[]
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          notification_emails?: string[]
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      admin_inbound_request_settings: {
+        Row: {
+          created_at: string
+          id: string
+          organizer_notification_email: string | null
+          partner_notification_email: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          organizer_notification_email?: string | null
+          partner_notification_email?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          organizer_notification_email?: string | null
+          partner_notification_email?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      admin_inbound_requests: {
+        Row: {
+          atout_france: string | null
+          contact_email: string
+          contact_first_name: string | null
+          contact_last_name: string | null
+          contact_phone: string | null
+          created_at: string
+          formula: string | null
+          id: string
+          kind: string
+          message: string
+          organization_name: string | null
+          raw_payload: Json
+          resolved_at: string | null
+          sdjes: string | null
+          status: string
+          updated_at: string
+          website_url: string | null
+        }
+        Insert: {
+          atout_france?: string | null
+          contact_email: string
+          contact_first_name?: string | null
+          contact_last_name?: string | null
+          contact_phone?: string | null
+          created_at?: string
+          formula?: string | null
+          id?: string
+          kind: string
+          message: string
+          organization_name?: string | null
+          raw_payload?: Json
+          resolved_at?: string | null
+          sdjes?: string | null
+          status?: string
+          updated_at?: string
+          website_url?: string | null
+        }
+        Update: {
+          atout_france?: string | null
+          contact_email?: string
+          contact_first_name?: string | null
+          contact_last_name?: string | null
+          contact_phone?: string | null
+          created_at?: string
+          formula?: string | null
+          id?: string
+          kind?: string
+          message?: string
+          organization_name?: string | null
+          raw_payload?: Json
+          resolved_at?: string | null
+          sdjes?: string | null
+          status?: string
+          updated_at?: string
+          website_url?: string | null
+        }
+        Relationships: []
+      }
       accommodation_media: {
         Row: {
           accommodation_id: string
@@ -2070,6 +2175,27 @@ export type Database = {
           stay_duration_min_days?: number | null
           stay_type_keys?: string[]
           website_url?: string | null
+        }
+        Relationships: []
+      }
+      partner_contact_settings: {
+        Row: {
+          created_at: string
+          id: string
+          partner_request_email: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          partner_request_email?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          partner_request_email?: string | null
+          updated_at?: string
         }
         Relationships: []
       }

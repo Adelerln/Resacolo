@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { parisDateKey } from '@/lib/paris-time';
 
 function formatQuotient(value: number | null) {
   if (value == null) return '—';
@@ -9,15 +10,12 @@ function formatQuotient(value: number | null) {
 
 function formatExpiresOn(value: string | null) {
   if (!value) return '—';
-  return new Date(`${value}T12:00:00`).toLocaleDateString('fr-FR');
+  return new Date(`${value}T12:00:00Z`).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' });
 }
 
 function isExpired(expiresOn: string | null) {
   if (!expiresOn) return false;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const expiry = new Date(`${expiresOn}T00:00:00`);
-  return expiry.getTime() < today.getTime();
+  return expiresOn < parisDateKey();
 }
 
 type PartnerBeneficiaryFamilyQuotientEditorProps = {

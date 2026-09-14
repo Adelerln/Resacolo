@@ -104,8 +104,8 @@ function formatPrice(price?: number | null) {
 }
 
 function formatSessionLabel(session: StaySessionOption) {
-  const start = new Date(session.startDate).toLocaleDateString('fr-FR');
-  const end = new Date(session.endDate).toLocaleDateString('fr-FR');
+  const start = new Date(session.startDate).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' });
+  const end = new Date(session.endDate).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' });
   const status = session.status === 'FULL' ? ' (COMPLET)' : '';
   const price =
     session.familyCentsAfterAid != null && session.cseEligible

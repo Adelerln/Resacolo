@@ -86,7 +86,7 @@ export default async function MnemosAccountDeletionDetailPage({ params, searchPa
           <div>
             <MnemosDt className="text-slate-500">Demandé le</MnemosDt>
             <dd className="text-slate-200">
-              {new Date(row.created_at).toLocaleString('fr-FR')}
+              {new Date(row.created_at).toLocaleString('fr-FR', { timeZone: 'Europe/Paris' })}
             </dd>
           </div>
           <div>
@@ -99,7 +99,7 @@ export default async function MnemosAccountDeletionDetailPage({ params, searchPa
             <div>
               <MnemosDt className="text-slate-500">Traité le</MnemosDt>
               <dd className="text-slate-200">
-                {new Date(row.processed_at).toLocaleString('fr-FR')}
+                {new Date(row.processed_at).toLocaleString('fr-FR', { timeZone: 'Europe/Paris' })}
                 {row.processed_by ? (
                   <span className="ml-2 font-mono text-xs text-slate-500">
                     par {row.processed_by}

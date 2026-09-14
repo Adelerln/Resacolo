@@ -8,6 +8,7 @@ import {
   resolveClientQfForAidSimulation
 } from '@/lib/partner-client-qf';
 import { normalizePartnerFinanceMode } from '@/lib/partner-offers';
+import { parisDateKey } from '@/lib/paris-time';
 import {
   computeRemainingBalanceCents,
   resolveStatusAfterRequestResolution,
@@ -27,7 +28,7 @@ function durationDays(startDate: string, endDate: string) {
 }
 
 function todayIsoDate(referenceDate = new Date()) {
-  return referenceDate.toISOString().slice(0, 10);
+  return parisDateKey(referenceDate);
 }
 
 /**

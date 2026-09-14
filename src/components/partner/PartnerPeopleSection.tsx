@@ -94,9 +94,9 @@ function displayName(row: UnifiedRow) {
 
 function displayAddedAt(row: UnifiedRow) {
   if (row.kind === 'member') {
-    return new Date(row.member.created_at).toLocaleDateString('fr-FR');
+    return new Date(row.member.created_at).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' });
   }
-  return new Date(row.contact.created_at).toLocaleDateString('fr-FR');
+  return new Date(row.contact.created_at).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' });
 }
 
 const actionButtonBaseClass =

@@ -1,6 +1,7 @@
 import 'server-only';
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { parisMidnightUtc } from '@/lib/paris-time';
 import {
   readResacoloBillingSettings,
   resolveOrganizerCommissionRatesForLedger
@@ -109,9 +110,9 @@ export async function maybeRecordPublicationFeeWhenStayPublished(
   }
 }
 
-function yearBoundsUtc(year: number) {
-  const startIso = new Date(Date.UTC(year, 0, 1, 0, 0, 0, 0)).toISOString();
-  const endIso = new Date(Date.UTC(year + 1, 0, 1, 0, 0, 0, 0)).toISOString();
+function yearBoundsParis(year: number) {
+  const startIso = parisMidnightUtc(`${year}-01-01`).toISOString();
+  const endIso = parisMidnightUtc(`${year + 1}-01-01`).toISOString();
   return { startIso, endIso };
 }
 
@@ -120,7 +121,7 @@ export async function repairMissingCommissionFeesForPaidOrders(
   supabase: SupabaseClient<Database>,
   year: number
 ): Promise<number> {
-  const { startIso, endIso } = yearBoundsUtc(year);
+  const { startIso, endIso } = yearBoundsParis(year);
   const { data: orders, error } = await supabase
     .from('orders')
     .select('id,paid_at')

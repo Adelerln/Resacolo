@@ -147,7 +147,7 @@ export default function FamilyReservationDetailsModal({ reservation }: { reserva
                     <p className="mt-1 whitespace-pre-line">{reservation.partnerAdjustmentMessage}</p>
                     {reservation.partnerAdjustmentUpdatedAt ? (
                       <p className="mt-2 text-xs text-amber-800/80">
-                        Mis à jour le {new Date(reservation.partnerAdjustmentUpdatedAt).toLocaleString('fr-FR')}
+                        Mis à jour le {new Date(reservation.partnerAdjustmentUpdatedAt).toLocaleString('fr-FR', { timeZone: 'Europe/Paris' })}
                       </p>
                     ) : null}
                   </div>

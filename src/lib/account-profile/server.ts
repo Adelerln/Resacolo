@@ -386,7 +386,7 @@ function formatDateRange(startDate: string | null | undefined, endDate: string |
   const start = new Date(startDate);
   const end = new Date(endDate);
   if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) return 'Dates à confirmer';
-  return `${start.toLocaleDateString('fr-FR')} au ${end.toLocaleDateString('fr-FR')}`;
+  return `${start.toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' })} au ${end.toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' })}`;
 }
 
 const PAYMENT_MODE_LABELS: Record<FamilyProfile['paymentMode'], string> = {

@@ -632,16 +632,16 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
             </p>
             <p>
               <span className="font-medium text-slate-700">Créé le :</span>{' '}
-              {new Date(draft.created_at).toLocaleString('fr-FR')}
+              {new Date(draft.created_at).toLocaleString('fr-FR', { timeZone: 'Europe/Paris' })}
             </p>
             <p>
               <span className="font-medium text-slate-700">Mis à jour le :</span>{' '}
-              {new Date(draft.updated_at).toLocaleString('fr-FR')}
+              {new Date(draft.updated_at).toLocaleString('fr-FR', { timeZone: 'Europe/Paris' })}
             </p>
             {draft.validated_at ? (
               <p>
                 <span className="font-medium text-slate-700">Validé le :</span>{' '}
-                {new Date(draft.validated_at).toLocaleString('fr-FR')}
+                {new Date(draft.validated_at).toLocaleString('fr-FR', { timeZone: 'Europe/Paris' })}
               </p>
             ) : null}
             {draft.validated_by_user_id ? (

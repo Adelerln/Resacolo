@@ -1640,7 +1640,7 @@ export default function StayDraftReviewForm({
             ) : null}
             {validatedAt && (
               <span className="text-xs text-slate-500">
-                Validé le {new Date(validatedAt).toLocaleString('fr-FR')}
+                Validé le {new Date(validatedAt).toLocaleString('fr-FR', { timeZone: 'Europe/Paris' })}
               </span>
             )}
             {validatedByUserId && (
@@ -1686,7 +1686,7 @@ export default function StayDraftReviewForm({
             <span className="font-semibold text-slate-700">Autosave</span>
             {autosaveStatus === 'saving' ? <span>Sauvegarde…</span> : null}
             {autosaveStatus === 'saved' && lastAutosaveAt ? (
-              <span>Enregistré à {new Date(lastAutosaveAt).toLocaleTimeString('fr-FR')}</span>
+              <span>Enregistré à {new Date(lastAutosaveAt).toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris' })}</span>
             ) : null}
             {autosaveStatus === 'error' ? (
               <span className="text-rose-700">{autosaveError ?? 'Erreur autosave'}</span>

@@ -71,7 +71,7 @@ export default async function OrganizerInquiryDetailPage({ params, searchParams 
 
       <OrganizerPageHeader
         title="Demande transférée"
-        subtitle={`Reçue le ${new Date(row.created_at).toLocaleString('fr-FR')} · ${formatMnemosInquiryType(row.inquiry_type)}`}
+        subtitle={`Reçue le ${new Date(row.created_at).toLocaleString('fr-FR', { timeZone: 'Europe/Paris' })} · ${formatMnemosInquiryType(row.inquiry_type)}`}
       />
 
       <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">

@@ -34,7 +34,7 @@ export function computeNextBillingStartDate(periods: InvoicedBillingPeriod[]): s
 export function formatBillingStartDateFr(isoDay: string): string {
   const date = new Date(`${isoDay}T12:00:00.000Z`);
   if (!Number.isFinite(date.getTime())) return isoDay;
-  return date.toLocaleDateString('fr-FR');
+  return date.toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' });
 }
 
 export function validateMnemosBillingPeriod(

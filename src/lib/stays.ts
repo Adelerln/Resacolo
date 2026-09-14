@@ -191,7 +191,7 @@ function derivePeriods(sessions: SessionRow[] | null | undefined): {
   sessions.forEach((session) => {
     const date = new Date(session.start_date);
     if (!Number.isFinite(date.getTime())) return;
-    const month = date.getMonth() + 1;
+    const month = Number(session.start_date.slice(5, 7));
     if (month === 10) {
       periodKeys.add('toussaint');
     } else if (month >= 12 || month <= 2) {

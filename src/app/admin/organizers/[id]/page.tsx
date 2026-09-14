@@ -212,7 +212,7 @@ export default async function AdminOrganizerDetailPage({ params: paramsPromise, 
           <div>
             <div className="text-xs uppercase text-slate-400">Créé le</div>
             <div className="font-medium text-slate-900">
-              {new Date(row.created_at).toLocaleDateString('fr-FR')}
+              {new Date(row.created_at).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' })}
             </div>
           </div>
         </div>

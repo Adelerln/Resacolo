@@ -3,6 +3,7 @@ import {
   PARTNER_FINANCE_MODE_LABELS
 } from '@/lib/partner-offers';
 import { FINALIZED_ORDER_STATUSES } from '@/lib/order-workflow';
+import { parisDateKey, shiftDateKey } from '@/lib/paris-time';
 import {
   findNewSiteCountries,
   listSiteStayCountryLabels
@@ -39,27 +40,9 @@ const PARTNER_STATUS_GROUPS: Array<{
   { key: 'transferred', label: 'Réservation transférée', statuses: ['TRANSFERRED'] }
 ];
 
-function startOfLocalDay(date: Date) {
-  const value = new Date(date);
-  value.setHours(0, 0, 0, 0);
-  return value;
-}
-
-function endOfLocalDay(date: Date) {
-  const value = new Date(date);
-  value.setHours(23, 59, 59, 999);
-  return value;
-}
-
-function dayKey(date: Date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
-
 function formatDateLabelFR(value: Date) {
   return new Intl.DateTimeFormat('fr-FR', {
+    timeZone: 'Europe/Paris',
     day: '2-digit',
     month: '2-digit'
   }).format(value);
@@ -128,9 +111,8 @@ export async function buildPartnerDashboardModel(input: {
   now?: Date;
 }): Promise<PartnerDashboardViewModel> {
   const now = input.now ?? new Date();
-  const minDate = startOfLocalDay(now);
-  minDate.setDate(minDate.getDate() - (DASHBOARD_WINDOW_DAYS - 1));
-  const maxDate = endOfLocalDay(now);
+  const todayKey = parisDateKey(now);
+  const minKey = shiftDateKey(todayKey, -(DASHBOARD_WINDOW_DAYS - 1));
 
   const [collectivity, beneficiaries, reservations, siteCountries] = await Promise.all([
     readPartnerCollectivity(input.collectivityId),
@@ -151,19 +133,20 @@ export async function buildPartnerDashboardModel(input: {
 
   const reservations30d = reservations.filter((reservation) => {
     const date = new Date(reservation.createdAt);
-    return Number.isFinite(date.getTime()) && date >= minDate && date <= maxDate;
+    if (!Number.isFinite(date.getTime())) return false;
+    const key = parisDateKey(date);
+    return key >= minKey && key <= todayKey;
   });
 
   const dailyReservationsMap = new Map<string, { label: string; count: number }>();
   for (let i = 0; i < DASHBOARD_WINDOW_DAYS; i += 1) {
-    const day = new Date(minDate);
-    day.setDate(minDate.getDate() + i);
-    const key = dayKey(day);
+    const key = shiftDateKey(minKey, i);
+    const day = new Date(`${key}T12:00:00Z`);
     dailyReservationsMap.set(key, { label: formatDateLabelFR(day), count: 0 });
   }
   for (const reservation of reservations30d) {
     const date = new Date(reservation.createdAt);
-    const key = dayKey(date);
+    const key = parisDateKey(date);
     const row = dailyReservationsMap.get(key);
     if (row) row.count += 1;
   }
@@ -208,7 +191,7 @@ export async function buildPartnerDashboardModel(input: {
       totalLabel: formatMoneyFromCents(stay.totalCents)
     }));
 
-  const periodLabel = `${formatDateLabelFR(minDate)} - ${formatDateLabelFR(now)} (30 jours)`;
+  const periodLabel = `${formatDateLabelFR(new Date(`${minKey}T12:00:00Z`))} - ${formatDateLabelFR(now)} (30 jours)`;
 
   return {
     partnerName: collectivity.name,

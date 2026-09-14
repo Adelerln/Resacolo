@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { requireAdminSection } from '@/lib/auth/require';
 import { isAdminWorkspaceRole } from '@/lib/admin-access';
+import { parisDateKey } from '@/lib/paris-time';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 
 const SEASON_ORDER_STATUSES = new Set(['PENDING_PAYMENT', 'PARTIALLY_PAID', 'PAID']);
@@ -120,7 +121,7 @@ function formatValidatedReservationsHelper(count: number) {
 }
 
 function utcDay(date: Date) {
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  return new Date(`${parisDateKey(date)}T00:00:00Z`);
 }
 
 function seasonStartDate(season: ReservationSeasonLabel, year: number) {

@@ -17,7 +17,7 @@ import { getServerSupabaseClient } from '@/lib/supabase/server';
 
 function formatFrDate(iso: string): string {
   try {
-    return new Date(iso).toLocaleDateString('fr-FR');
+    return new Date(iso).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' });
   } catch {
     return iso;
   }

@@ -110,9 +110,9 @@ function matchesParticipantToChild(
 
 function formatChildBirthdate(value: string) {
   if (!value.trim()) return 'Date non renseignée';
-  const date = new Date(`${value}T12:00:00`);
+  const date = new Date(`${value}T12:00:00Z`);
   if (!Number.isFinite(date.getTime())) return value;
-  return date.toLocaleDateString('fr-FR');
+  return date.toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' });
 }
 
 function formatChildOptionLabel(child: FamilyProfileChild) {

@@ -67,8 +67,8 @@ export default function PublishedStaySessionsStep({
             >
               <div>
                 <div>
-                  {new Date(sessionItem.start_date).toLocaleDateString('fr-FR')} -{' '}
-                  {new Date(sessionItem.end_date).toLocaleDateString('fr-FR')}
+                  {new Date(sessionItem.start_date).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' })} -{' '}
+                  {new Date(sessionItem.end_date).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' })}
                 </div>
                 <div className="text-xs text-slate-500">
                   {formatReservedPlacesLabel(reservedCount)}

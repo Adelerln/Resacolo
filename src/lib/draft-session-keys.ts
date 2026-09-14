@@ -34,9 +34,10 @@ export function liveSessionStableKey(
 
 /** Affiche une date ISO jour (YYYY-MM-DD) en libellé français, sans décalage fuseau. */
 function formatFrenchDayLabel(isoDay: string): string {
-  const d = new Date(`${isoDay}T12:00:00`);
+  const d = new Date(`${isoDay}T12:00:00Z`);
   if (!Number.isFinite(d.getTime())) return isoDay;
   return d.toLocaleDateString('fr-FR', {
+    timeZone: 'Europe/Paris',
     day: 'numeric',
     month: 'short',
     year: 'numeric'

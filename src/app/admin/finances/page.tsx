@@ -6,6 +6,7 @@ import {
   type FinancesGranularity
 } from '@/lib/admin-finances-report.server';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
+import { parisYear } from '@/lib/paris-time';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -29,8 +30,9 @@ export default async function AdminFinancesPage({ searchParams }: PageProps) {
   await requireRole('ADMIN');
   const sp = searchParams ? await searchParams : undefined;
   const yearRaw = sp?.annee;
-  const year = yearRaw ? Number(yearRaw) : new Date().getFullYear();
-  const safeYear = Number.isFinite(year) && year >= 2000 && year <= 2100 ? year : new Date().getFullYear();
+  const currentYear = parisYear();
+  const year = yearRaw ? Number(yearRaw) : currentYear;
+  const safeYear = Number.isFinite(year) && year >= 2000 && year <= 2100 ? year : currentYear;
   const granRaw = sp?.granularite;
   const granularity = (GRANULARITIES.some((g) => g.value === granRaw) ? granRaw : 'mois') as FinancesGranularity;
 
@@ -41,7 +43,7 @@ export default async function AdminFinancesPage({ searchParams }: PageProps) {
     granularity
   );
 
-  const yearOptions = Array.from({ length: 8 }, (_, i) => new Date().getFullYear() - 4 + i);
+  const yearOptions = Array.from({ length: 8 }, (_, i) => currentYear - 4 + i);
 
   return (
     <div className="space-y-6">

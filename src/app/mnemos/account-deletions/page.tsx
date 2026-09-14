@@ -110,7 +110,7 @@ export default async function MnemosAccountDeletionsPage({
             {(rows ?? []).map((row) => (
               <tr key={row.id} className="hover:bg-slate-900/60">
                 <td className="whitespace-nowrap px-4 py-3 text-slate-300">
-                  {new Date(row.created_at).toLocaleString('fr-FR')}
+                  {new Date(row.created_at).toLocaleString('fr-FR', { timeZone: 'Europe/Paris' })}
                 </td>
                 <td className="px-4 py-3">
                   <div className="font-medium text-slate-100">{row.full_name || '—'}</div>

@@ -298,7 +298,7 @@ export default async function MnemosOrganizerDetailPage({ params, searchParams }
                 const roleLabel =
                   ORGANIZER_ACCESS_LABELS[row.role as keyof typeof ORGANIZER_ACCESS_LABELS] ?? row.role;
                 const revokedLabel = row.revoked_at
-                  ? `Retiré le ${new Date(row.revoked_at).toLocaleString('fr-FR')}`
+                  ? `Retiré le ${new Date(row.revoked_at).toLocaleString('fr-FR', { timeZone: 'Europe/Paris' })}`
                   : 'Actif';
 
                 return (
@@ -309,7 +309,7 @@ export default async function MnemosOrganizerDetailPage({ params, searchParams }
                     <td className="px-3 py-2 font-mono text-xs text-slate-500">{row.app_user_id}</td>
                     <td className="px-3 py-2 text-slate-300">{roleLabel}</td>
                     <td className="px-3 py-2 text-xs text-slate-400">
-                      <div>Attribué le {new Date(row.granted_at ?? row.created_at).toLocaleString('fr-FR')}</div>
+                      <div>Attribué le {new Date(row.granted_at ?? row.created_at).toLocaleString('fr-FR', { timeZone: 'Europe/Paris' })}</div>
                       <div>{revokedLabel}</div>
                       {row.revoke_reason ? (
                         <div>Motif : {formatMnemosRevokeReason(row.revoke_reason) ?? row.revoke_reason}</div>
@@ -396,7 +396,7 @@ export default async function MnemosOrganizerDetailPage({ params, searchParams }
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums text-slate-200">{euros(inv.total_cents)}</td>
                     <td className="px-3 py-2 text-xs text-slate-500">
-                      {inv.issued_at ? new Date(inv.issued_at).toLocaleString('fr-FR') : '—'}
+                      {inv.issued_at ? new Date(inv.issued_at).toLocaleString('fr-FR', { timeZone: 'Europe/Paris' }) : '—'}
                     </td>
                     <td className="px-3 py-2">
                       {pdfUrl ? (
@@ -454,7 +454,7 @@ export default async function MnemosOrganizerDetailPage({ params, searchParams }
               className="flex flex-wrap items-baseline justify-between gap-2 rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2"
             >
               <span className="font-medium text-violet-200">{formatMnemosBillingEventType(ev.event_type)}</span>
-              <span className="text-xs text-slate-500">{new Date(ev.created_at).toLocaleString('fr-FR')}</span>
+              <span className="text-xs text-slate-500">{new Date(ev.created_at).toLocaleString('fr-FR', { timeZone: 'Europe/Paris' })}</span>
               {ev.invoice_id ? (
                 <span className="w-full text-xs text-slate-500">Facture : {ev.invoice_id}</span>
               ) : null}

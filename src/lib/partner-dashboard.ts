@@ -31,10 +31,10 @@ const PARTNER_STATUS_GROUPS: Array<{
   {
     key: 'pending',
     label: 'En attente de paiement famille',
-    statuses: ['PENDING_PAYMENT', 'VALIDATED', 'BOOKED']
+    statuses: ['PENDING_PAYMENT']
   },
   { key: 'partial', label: 'Paiement partiel reçu', statuses: ['PARTIALLY_PAID'] },
-  { key: 'paid', label: 'Réservation payée', statuses: ['PAID', 'CONFIRMED'] },
+  { key: 'paid', label: 'Réservation payée', statuses: ['PAID'] },
   { key: 'cancelled', label: 'Réservation annulée', statuses: ['CANCELLED'] },
   { key: 'transferred', label: 'Réservation transférée', statuses: ['TRANSFERRED'] }
 ];

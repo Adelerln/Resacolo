@@ -140,7 +140,7 @@ function partnerReservationStatusLabel(
   const hasOpenOrganizerPaperWorkflow =
     paymentMode === 'CV_PAPER' &&
     externalPaidCents <= 0 &&
-    (status === 'REQUESTED' || status === 'PENDING_PAYMENT' || status === 'VALIDATED' || status === 'BOOKED');
+    (status === 'REQUESTED' || status === 'PENDING_PAYMENT');
 
   if (status === 'REQUESTED') {
     if (requestKind === 'VACAF') return 'En attente de traitement organisme (VACAF)';
@@ -152,13 +152,13 @@ function partnerReservationStatusLabel(
     return 'En attente de paiement famille';
   }
 
-  if (status === 'PENDING_PAYMENT' || status === 'VALIDATED' || status === 'BOOKED') {
+  if (status === 'PENDING_PAYMENT') {
     if (hasOpenOrganizerPaperWorkflow) return 'En attente de traitement organisme (ANCV papier)';
     if (financeMode === 'MANUAL' && !hasContributionSnapshot) return 'En attente de traitement partenaire';
     return 'En attente de paiement famille';
   }
   if (status === 'PARTIALLY_PAID') return 'Paiement partiel reçu';
-  if (status === 'PAID' || status === 'CONFIRMED') return 'Réservation payée';
+  if (status === 'PAID') return 'Réservation payée';
   if (status === 'CANCELLED') return 'Réservation annulée';
   if (status === 'TRANSFERRED') return 'Réservation transférée';
 
@@ -192,16 +192,12 @@ function describePartnerReservationPendingActions(input: {
   const isOpenWorkflow =
     input.status === 'REQUESTED' ||
     input.status === 'PENDING_PAYMENT' ||
-    input.status === 'VALIDATED' ||
-    input.status === 'BOOKED' ||
     input.status === 'PARTIALLY_PAID';
   const organizerPaperWorkflowOpen =
     input.paymentMode === 'CV_PAPER' &&
     input.externalPaidCents <= 0 &&
     (input.status === 'REQUESTED' ||
-      input.status === 'PENDING_PAYMENT' ||
-      input.status === 'VALIDATED' ||
-      input.status === 'BOOKED');
+      input.status === 'PENDING_PAYMENT');
 
   if (financeMode === 'MANUAL' && !input.hasContributionSnapshot && isOpenWorkflow) {
     actions.push({
@@ -232,7 +228,7 @@ function describePartnerReservationPendingActions(input: {
   }
 
   if (
-    (input.status === 'PENDING_PAYMENT' || input.status === 'VALIDATED' || input.status === 'BOOKED') &&
+    input.status === 'PENDING_PAYMENT' &&
     !organizerPaperWorkflowOpen &&
     input.clientContributionCents > 0
   ) {

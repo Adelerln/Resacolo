@@ -26,13 +26,18 @@ export const FAMILY_ORDER_STATUS_LABELS = {
   PENDING_PAYMENT: 'En attente de paiement',
   PARTIALLY_PAID: 'Partiellement payée',
   PAID: 'Payée',
-  CONFIRMED: 'Payée',
   CANCELLED: 'Annulée',
   TRANSFERRED: 'Transférée',
-  VALIDATED: 'En attente de paiement',
-  BOOKED: 'En attente de paiement',
   CART: 'Panier'
 } as const satisfies Record<string, string>;
+
+/** Les anciennes valeurs restent dans l'enum PostgreSQL, mais plus dans le parcours actif. */
+export function normalizeOrderStatus(status: OrderStatus | string | null | undefined): OrderStatus | null {
+  if (!status) return null;
+  if (status === 'VALIDATED' || status === 'BOOKED') return 'PENDING_PAYMENT';
+  if (status === 'CONFIRMED') return 'PAID';
+  return status as OrderStatus;
+}
 
 /** Modes de paiement choisis au checkout (info complémentaire, pas un statut). */
 export const FAMILY_PAYMENT_MODE_LABELS: Record<CheckoutContact['paymentMode'], string> = {
@@ -135,19 +140,19 @@ export function computeRemainingBalanceCents(input: {
   );
 }
 
-/** Une commande avec solde restant ne peut pas être considérée comme payée (PAID / CONFIRMED). */
+/** Une commande avec solde restant ne peut pas être considérée comme payée. */
 export function reconcileOrderStatusWithBalance(input: {
   status: OrderStatus | string | null | undefined;
   remainingBalanceCents: number;
   onlinePaidCents?: number | null;
   externalPaidCents?: number | null;
 }): OrderStatus {
-  const status = (input.status ?? 'PENDING_PAYMENT') as OrderStatus;
+  const status = normalizeOrderStatus(input.status) ?? 'PENDING_PAYMENT';
   if (input.remainingBalanceCents <= 0) {
     return status;
   }
 
-  if (status === 'PAID' || status === 'CONFIRMED') {
+  if (status === 'PAID') {
     if ((input.onlinePaidCents ?? 0) > 0 || (input.externalPaidCents ?? 0) > 0) {
       return 'PARTIALLY_PAID';
     }
@@ -523,12 +528,13 @@ export function resolveCheckoutConfirmationSubtitle(input: {
 }
 
 export function orderStatusLabel(status: OrderStatus | string | null | undefined) {
-  if (!status) return '-';
-  return FAMILY_ORDER_STATUS_LABELS[status as keyof typeof FAMILY_ORDER_STATUS_LABELS] ?? status;
+  const normalized = normalizeOrderStatus(status);
+  if (!normalized) return '-';
+  return FAMILY_ORDER_STATUS_LABELS[normalized as keyof typeof FAMILY_ORDER_STATUS_LABELS] ?? normalized;
 }
 
 export function orderStatusBadgeClassName(status: OrderStatus | string | null | undefined) {
-  switch (status) {
+  switch (normalizeOrderStatus(status)) {
     case 'REQUESTED':
       return 'bg-amber-100 text-amber-900';
     case 'PENDING_PAYMENT':
@@ -536,15 +542,11 @@ export function orderStatusBadgeClassName(status: OrderStatus | string | null | 
     case 'PARTIALLY_PAID':
       return 'bg-indigo-100 text-indigo-900';
     case 'PAID':
-    case 'CONFIRMED':
       return 'bg-emerald-100 text-emerald-900';
     case 'CANCELLED':
       return 'bg-rose-100 text-rose-900';
     case 'TRANSFERRED':
       return 'bg-violet-100 text-violet-900';
-    case 'VALIDATED':
-    case 'BOOKED':
-      return 'bg-sky-100 text-sky-900';
     default:
       return 'bg-slate-100 text-slate-700';
   }

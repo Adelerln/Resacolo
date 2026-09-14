@@ -5,9 +5,10 @@ import { getRagEnv } from '@/lib/rag/env';
 type SocketLike = net.Socket | tls.TLSSocket;
 
 type SendEmailInput = {
-  to: string;
+  to: string | readonly string[];
   subject: string;
   text: string;
+  replyTo?: string;
 };
 
 class SmtpClient {
@@ -147,13 +148,27 @@ function escapeForData(value: string) {
     .replace(/^\./gm, '..');
 }
 
-export async function sendEscalationEmail(input: SendEmailInput) {
+function safeAddress(value: string) {
+  const address = value.trim();
+  if (!address || /[\r\n<>]/.test(address)) {
+    throw new Error('Adresse email SMTP invalide.');
+  }
+  return address;
+}
+
+export async function sendSmtpEmail(input: SendEmailInput) {
   const env = getRagEnv();
   if (!env.smtp) {
     throw new Error('SMTP non configuré.');
   }
 
   const { host, port, user, pass, from } = env.smtp;
+  const recipients = (typeof input.to === 'string' ? [input.to] : input.to).map(safeAddress);
+  if (recipients.length === 0) {
+    throw new Error('Aucun destinataire SMTP configuré.');
+  }
+  const sender = safeAddress(from);
+  const replyTo = input.replyTo ? safeAddress(input.replyTo) : null;
   const client = new SmtpClient(host, port);
   const localHost = 'resacolo.local';
 
@@ -163,14 +178,17 @@ export async function sendEscalationEmail(input: SendEmailInput) {
     await client.sendCommand('AUTH LOGIN', [334]);
     await client.sendCommand(Buffer.from(user).toString('base64'), [334]);
     await client.sendCommand(Buffer.from(pass).toString('base64'), [235]);
-    await client.sendCommand(`MAIL FROM:<${from}>`, [250]);
-    await client.sendCommand(`RCPT TO:<${input.to}>`, [250, 251]);
+    await client.sendCommand(`MAIL FROM:<${sender}>`, [250]);
+    for (const recipient of recipients) {
+      await client.sendCommand(`RCPT TO:<${recipient}>`, [250, 251]);
+    }
     await client.sendCommand('DATA', [354]);
 
     const payload = [
-      `From: ${from}`,
-      `To: ${input.to}`,
-      `Subject: ${input.subject}`,
+      `From: ${sender}`,
+      `To: ${recipients.join(', ')}`,
+      ...(replyTo ? [`Reply-To: ${replyTo}`] : []),
+      `Subject: ${input.subject.replace(/[\r\n]+/g, ' ')}`,
       'MIME-Version: 1.0',
       'Content-Type: text/plain; charset=UTF-8',
       '',
@@ -182,3 +200,5 @@ export async function sendEscalationEmail(input: SendEmailInput) {
     await client.close();
   }
 }
+
+export const sendEscalationEmail = sendSmtpEmail;

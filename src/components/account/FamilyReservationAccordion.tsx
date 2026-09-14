@@ -46,7 +46,7 @@ function canPayBalance(reservation: FamilyReservation) {
 function canContactOrganizer(reservation: FamilyReservation) {
   return (
     Boolean(reservation.organizerContactEmail) &&
-    (['PAID', 'PARTIALLY_PAID', 'PENDING_PAYMENT', 'REQUESTED', 'CONFIRMED'].includes(reservation.orderStatus) ||
+    (['PAID', 'PARTIALLY_PAID', 'PENDING_PAYMENT', 'REQUESTED'].includes(reservation.orderStatus) ||
       reservation.hasSuccessfulPayment)
   );
 }

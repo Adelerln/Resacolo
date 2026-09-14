@@ -96,11 +96,12 @@ const nextConfig = {
         : [])
     ]
   },
-  // Next 16+: turbopack is top-level (plus sous experimental).
   turbopack: {
     root: projectRoot
   },
   experimental: {
+    // Avoid reloading the oversized persistent cache during local development.
+    turbopackFileSystemCacheForDev: false,
     serverActions: {
       bodySizeLimit: '10mb'
     }

@@ -96,12 +96,13 @@ const nextConfig = {
         : [])
     ]
   },
+  // Next 16+: turbopack is top-level (plus sous experimental).
+  turbopack: {
+    root: projectRoot
+  },
   experimental: {
     serverActions: {
       bodySizeLimit: '10mb'
-    },
-    turbopack: {
-      root: projectRoot
     }
   }
 };

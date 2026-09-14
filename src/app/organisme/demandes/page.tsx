@@ -81,7 +81,7 @@ export default async function OrganizerInquiriesPage({ searchParams }: PageProps
                 return (
                   <tr key={row.id} className="hover:bg-slate-50">
                     <td className="px-4 py-3 text-slate-600">
-                      {new Date(row.created_at).toLocaleString('fr-FR')}
+                      {new Date(row.created_at).toLocaleString('fr-FR', { timeZone: 'Europe/Paris' })}
                     </td>
                     <td className="px-4 py-3">
                       <span

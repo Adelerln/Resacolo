@@ -15,7 +15,7 @@ function formatCurrencyFromCents(value: number) {
 }
 
 function formatDate(value: string) {
-  return new Date(value).toLocaleDateString('fr-FR');
+  return new Date(value).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' });
 }
 
 function formatReservationCount(count: number) {

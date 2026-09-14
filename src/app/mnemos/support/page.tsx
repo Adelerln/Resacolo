@@ -154,7 +154,7 @@ export default async function MnemosSupportPage({ searchParams }: { searchParams
                 return (
                   <tr key={r.id} className="hover:bg-slate-800/30">
                     <td className="px-3 py-2 text-xs text-slate-400">
-                      {new Date(r.updated_at).toLocaleString('fr-FR')}
+                      {new Date(r.updated_at).toLocaleString('fr-FR', { timeZone: 'Europe/Paris' })}
                     </td>
                     <td className="px-3 py-2 text-slate-200">{orgName ?? r.organizer_id}</td>
                     <td className="px-3 py-2">

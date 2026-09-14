@@ -83,9 +83,9 @@ function splitName(value: string | null | undefined) {
 }
 
 function formatChildBirthdate(value: string) {
-  const date = new Date(`${value}T12:00:00`);
+  const date = new Date(`${value}T12:00:00Z`);
   if (!Number.isFinite(date.getTime())) return value || 'Date non renseignée';
-  return date.toLocaleDateString('fr-FR');
+  return date.toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' });
 }
 
 const EMPTY_CHILD_FORM: FamilyProfileChildInput = {
@@ -862,6 +862,7 @@ export default function MonCompteClient({
               <p className="mt-1">
                 Envoyée le{' '}
                 {new Date(pendingDeletion.createdAt).toLocaleDateString('fr-FR', {
+                  timeZone: 'Europe/Paris',
                   day: 'numeric',
                   month: 'long',
                   year: 'numeric'

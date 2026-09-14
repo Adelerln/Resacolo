@@ -101,7 +101,7 @@ export function AdminOrganizerMembersSection({
                     <td className="px-4 py-3 text-slate-600">{member.last_name ?? '—'}</td>
                     <td className="px-4 py-3 text-slate-600">{ROLE_LABELS[normalizedRole]}</td>
                     <td className="px-4 py-3 text-slate-600">
-                      {new Date(member.created_at).toLocaleDateString('fr-FR')}
+                      {new Date(member.created_at).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' })}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="inline-flex items-center justify-end gap-2">

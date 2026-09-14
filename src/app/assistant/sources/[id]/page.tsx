@@ -48,7 +48,7 @@ export default async function AssistantSourcePage({ params }: PageProps) {
             Type : <strong>{document.source_type}</strong> · Réf. : <code>{document.source_ref}</code>
           </p>
           <p className="text-sm text-slate-600">
-            Dernière indexation : {new Date(document.updated_at).toLocaleString('fr-FR')}
+            Dernière indexation : {new Date(document.updated_at).toLocaleString('fr-FR', { timeZone: 'Europe/Paris' })}
           </p>
           {document.source_url ? (
             <Link href={document.source_url} className="text-sm font-medium text-brand-700 underline">

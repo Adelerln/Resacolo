@@ -388,7 +388,7 @@ export default async function OrganizerAccommodationsPage({ searchParams }: Page
                     </span>
                   </td>
                   <td className="px-4 py-3 text-center text-slate-600">
-                    {new Date(accommodation.updated_at).toLocaleDateString('fr-FR')}
+                    {new Date(accommodation.updated_at).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' })}
                   </td>
                   <td className="px-4 py-3 text-center">
                     <div className="flex items-center justify-center gap-2 whitespace-nowrap">

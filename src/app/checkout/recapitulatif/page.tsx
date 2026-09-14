@@ -43,9 +43,9 @@ import {
 
 function formatBirthdateFr(iso: string | undefined) {
   if (!iso?.trim()) return '—';
-  const d = new Date(`${iso.trim()}T12:00:00`);
+  const d = new Date(`${iso.trim()}T12:00:00Z`);
   if (!Number.isFinite(d.getTime())) return iso;
-  return d.toLocaleDateString('fr-FR');
+  return d.toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' });
 }
 
 function bornWordForGender(gender: CheckoutParticipant['childGender'] | undefined) {

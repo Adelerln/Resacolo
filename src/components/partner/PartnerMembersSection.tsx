@@ -83,7 +83,7 @@ export default function PartnerMembersSection({
                     {PARTNER_ACCESS_LABELS[normalizePartnerAccessRole(member.role)]}
                   </td>
                   <td className="px-4 py-3 text-slate-600">
-                    {new Date(member.created_at).toLocaleDateString('fr-FR')}
+                    {new Date(member.created_at).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' })}
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="inline-flex items-center justify-end gap-2">

@@ -162,7 +162,7 @@ export function PartnerReservationDetailsModal({ reservation }: { reservation: P
                 ) : null}
                 <DetailRow
                   label="Créée le"
-                  value={new Date(reservation.createdAt).toLocaleString('fr-FR')}
+                  value={new Date(reservation.createdAt).toLocaleString('fr-FR', { timeZone: 'Europe/Paris' })}
                 />
                 <DetailRow label="Séjour" value={reservation.stayTitle} />
                 <DetailRow label="Lieu" value={reservation.stayLocation} />

@@ -56,7 +56,7 @@ function formatRemainingPlacesLabel(count: number) {
 }
 
 function formatDateRange(startDate: string, endDate: string) {
-  return `${new Date(startDate).toLocaleDateString('fr-FR')} - ${new Date(endDate).toLocaleDateString('fr-FR')}`;
+  return `${new Date(startDate).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' })} - ${new Date(endDate).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' })}`;
 }
 
 function availabilityLabel(availability: StayListItem['availability']) {
@@ -147,7 +147,7 @@ export default function OrganizerStaysTable({
                   <div className="min-w-0 flex-1">
                     <p className="font-medium text-slate-900">{draft.title || 'Sans titre'}</p>
                     <p className="text-xs text-slate-500">
-                      Mis à jour le {new Date(draft.updatedAt).toLocaleString('fr-FR')}
+                      Mis à jour le {new Date(draft.updatedAt).toLocaleString('fr-FR', { timeZone: 'Europe/Paris' })}
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center justify-end gap-2 sm:flex-shrink-0 sm:flex-nowrap">

@@ -153,7 +153,7 @@ export function StayExplorer({ stays }: StayExplorerProps) {
             {filtered.length} séjour{filtered.length > 1 ? 's' : ''} trouvé{filtered.length > 1 ? 's' : ''}
           </p>
           <p>
-            Dernière mise à jour {filtered.length ? new Date(Math.max(...filtered.map((stay) => new Date(stay.updatedAt).getTime()))).toLocaleDateString('fr-FR') : '—'}
+            Dernière mise à jour {filtered.length ? new Date(Math.max(...filtered.map((stay) => new Date(stay.updatedAt).getTime()))).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' }) : '—'}
           </p>
         </header>
         <StayList stays={filtered} />

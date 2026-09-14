@@ -209,7 +209,7 @@ export default async function AdminAccommodationsPage({ searchParams }: PageProp
                     </span>
                   </td>
                   <td className="px-4 py-3 text-slate-600">
-                    {new Date(row.updated_at).toLocaleDateString('fr-FR')}
+                    {new Date(row.updated_at).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' })}
                   </td>
                 </tr>
               ))}

@@ -19,7 +19,7 @@ export type PartnerBeneficiaryRow = {
 type SortKey = 'name' | 'email' | 'phone' | 'city' | 'attachedAt' | 'familyQuotient' | 'familyQuotientExpiresOn';
 
 function formatDate(value: string) {
-  return new Date(value).toLocaleDateString('fr-FR');
+  return new Date(value).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' });
 }
 
 function compareBeneficiaries(a: PartnerBeneficiaryRow, b: PartnerBeneficiaryRow, key: SortKey) {

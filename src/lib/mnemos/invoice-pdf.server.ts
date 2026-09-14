@@ -91,7 +91,7 @@ function estimateTextWidth(value: string, size: number, font: 'regular' | 'bold'
 }
 
 function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString('fr-FR');
+  return new Date(iso).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' });
 }
 
 function normalizePdfText(value: string) {

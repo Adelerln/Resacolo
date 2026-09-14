@@ -16,11 +16,11 @@ function formatUnitPrice(value: number | null) {
 function formatDateRange(startDate: string | null, endDate: string | null) {
   if (!startDate || !endDate) return null;
 
-  const start = new Date(`${startDate}T00:00:00`);
-  const end = new Date(`${endDate}T00:00:00`);
+  const start = new Date(`${startDate}T12:00:00Z`);
+  const end = new Date(`${endDate}T12:00:00Z`);
   if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) return null;
 
-  return `du ${start.toLocaleDateString('fr-FR')} au ${end.toLocaleDateString('fr-FR')}`;
+  return `du ${start.toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' })} au ${end.toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' })}`;
 }
 
 function getDetailedItemSelectionLines(item: CartItem, priced: CheckoutPricingItem | undefined) {

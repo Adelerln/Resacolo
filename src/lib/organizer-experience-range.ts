@@ -1,5 +1,6 @@
 import { mockOrganizers } from '@/lib/mockOrganizers';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
+import { parisYear } from '@/lib/paris-time';
 
 export type OrganizerExperienceRange = {
   minYears: number;
@@ -13,7 +14,7 @@ function normalizeExperienceYears(foundedYear: number, currentYear: number) {
 
 function deriveOrganizerExperienceRangeFromYears(
   foundedYears: Array<number | null | undefined>,
-  currentYear = new Date().getFullYear()
+  currentYear = parisYear()
 ): OrganizerExperienceRange | null {
   const experienceYears = foundedYears
     .filter((year): year is number => typeof year === 'number' && Number.isFinite(year))

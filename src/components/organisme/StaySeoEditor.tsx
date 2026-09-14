@@ -303,7 +303,7 @@ export default function StaySeoEditor({
           </p>
           {seoGeneratedAt && (
             <p className="mt-1 text-xs text-slate-500">
-              Dernière génération: {new Date(seoGeneratedAt).toLocaleString('fr-FR')}
+              Dernière génération: {new Date(seoGeneratedAt).toLocaleString('fr-FR', { timeZone: 'Europe/Paris' })}
               {seoGenerationSource ? ` (${seoGenerationSource})` : ''}
             </p>
           )}

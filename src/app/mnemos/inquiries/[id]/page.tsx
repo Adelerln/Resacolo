@@ -63,8 +63,6 @@ export default async function MnemosInquiryDetailPage({ params, searchParams }: 
           Enregistré.
           {sp.notify === 'mail-queued'
             ? ' E-mail de notification en cours d’envoi à l’organisateur.'
-          {isMnemosTransferredInquiry(row.source) && row.organizer_id
-            ? ' Si un nouvel organisateur a été choisi, un e-mail lui a été envoyé (adresse contact de la fiche organisme).'
             : null}
         </div>
       )}
@@ -74,10 +72,7 @@ export default async function MnemosInquiryDetailPage({ params, searchParams }: 
         </div>
       )}
 
-      <div>
-        <h1 className="text-2xl font-semibold text-white">Demande</h1>
-        <p className="text-xs text-slate-500">{row.id}</p>
-      </div>
+      <h1 className="text-2xl font-semibold text-white">Demande</h1>
 
       <section className="rounded-xl border border-slate-700 bg-slate-900/50 p-5">
         <h2 className="text-sm font-semibold text-slate-400">Message initial</h2>

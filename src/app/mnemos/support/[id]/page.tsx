@@ -157,7 +157,7 @@ export default async function MnemosSupportDetailPage({ params, searchParams }: 
             >
               <div className="flex flex-wrap justify-between gap-1 text-xs text-slate-500">
                 <span>{m.author_user_id}</span>
-                <span>{new Date(m.created_at).toLocaleString('fr-FR')}</span>
+                <span>{new Date(m.created_at).toLocaleString('fr-FR', { timeZone: 'Europe/Paris' })}</span>
                 {m.is_internal ? <span className="text-amber-400">Interne</span> : null}
               </div>
               <p className="mt-1 whitespace-pre-wrap">{m.body}</p>

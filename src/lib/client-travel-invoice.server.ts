@@ -34,10 +34,10 @@ function asRecord(value: Json | null | undefined): Record<string, unknown> | nul
 function formatDateRange(startDate: string | null | undefined, endDate: string | null | undefined) {
   if (!startDate && !endDate) return '';
   if (startDate && endDate) {
-    return `${new Date(`${startDate}T00:00:00Z`).toLocaleDateString('fr-FR')} - ${new Date(`${endDate}T00:00:00Z`).toLocaleDateString('fr-FR')}`;
+    return `${new Date(`${startDate}T00:00:00Z`).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' })} - ${new Date(`${endDate}T00:00:00Z`).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' })}`;
   }
   const value = startDate ?? endDate;
-  return value ? new Date(`${value}T00:00:00Z`).toLocaleDateString('fr-FR') : '';
+  return value ? new Date(`${value}T00:00:00Z`).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' }) : '';
 }
 
 function resolveBillingSnapshot(
@@ -318,7 +318,9 @@ export async function ensureClientTravelInvoiceForOrder(orderId: string) {
 
   let invoice = (existingInvoice as InvoiceRow | null) ?? null;
   if (!invoice) {
-    const invoiceYear = new Date(model.issuedAt).getFullYear();
+    const invoiceYear = Number(
+      new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Paris', year: 'numeric' }).format(new Date(model.issuedAt))
+    );
     const nextNumber = await allocateInvoiceNumber(supabase, invoiceYear);
     const { data: createdInvoice, error: createError } = await supabase
       .from('invoices')

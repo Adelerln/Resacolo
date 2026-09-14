@@ -239,7 +239,7 @@ export default async function MnemosBillingPage({
                 <tbody className="divide-y divide-slate-800 text-slate-300">
                   {pubLines.map((l) => (
                     <tr key={l.id}>
-                      <td className="px-2 py-1.5">{new Date(l.occurred_at).toLocaleString('fr-FR')}</td>
+                      <td className="px-2 py-1.5">{new Date(l.occurred_at).toLocaleString('fr-FR', { timeZone: 'Europe/Paris' })}</td>
                       <td className="px-2 py-1.5 text-right tabular-nums">{euros(l.amount_cents)}</td>
                     </tr>
                   ))}
@@ -296,7 +296,7 @@ export default async function MnemosBillingPage({
                 <tbody className="divide-y divide-slate-800 text-slate-300">
                   {comLines.map((l) => (
                     <tr key={l.id}>
-                      <td className="px-2 py-1.5">{new Date(l.occurred_at).toLocaleString('fr-FR')}</td>
+                      <td className="px-2 py-1.5">{new Date(l.occurred_at).toLocaleString('fr-FR', { timeZone: 'Europe/Paris' })}</td>
                       <td className="px-2 py-1.5">{formatMnemosLedgerChannel(l.channel)}</td>
                       <td className="px-2 py-1.5 text-right tabular-nums">{euros(l.amount_cents)}</td>
                     </tr>

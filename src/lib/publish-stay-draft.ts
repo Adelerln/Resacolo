@@ -18,6 +18,7 @@ import {
 } from '@/lib/stay-draft-accommodation-import';
 import { expandDraftAges } from '@/lib/stay-draft-content';
 import { liveSessionStableKey } from '@/lib/draft-session-keys';
+import { parisMonth } from '@/lib/paris-time';
 import { readDraftDestinationFields } from '@/lib/stay-draft-destination';
 import {
   isVideoUrlCandidate,
@@ -1232,7 +1233,7 @@ async function resolveSeasonIdFromSessions(
     throw new PublishStayDraftError('resolve-season', 'Aucune saison disponible.');
   }
 
-  const targetName = resolveSeasonNameFromSessions(sessions) ?? seasonNameFromMonth(new Date().getMonth() + 1);
+  const targetName = resolveSeasonNameFromSessions(sessions) ?? seasonNameFromMonth(parisMonth());
 
   return list.find((season) => season.name === targetName)?.id ?? list[0].id;
 }

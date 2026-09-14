@@ -5,19 +5,13 @@ import { getRagEnv } from '@/lib/rag/env';
 
 type SocketLike = net.Socket | tls.TLSSocket;
 
-type SendEmailInput = {
+export type SendSmtpEmailInput = {
   to: string | readonly string[];
   subject: string;
   text: string;
-  replyTo?: string;
-export type SendSmtpEmailInput = {
-  to: string;
-  subject: string;
-  text: string;
   html?: string;
+  replyTo?: string;
 };
-
-type SendEmailInput = SendSmtpEmailInput;
 
 class SmtpClient {
   private socket: SocketLike | null = null;
@@ -162,10 +156,10 @@ function safeAddress(value: string) {
   return address;
 }
 
-export async function sendSmtpEmail(input: SendEmailInput) {
 function encodeSubject(subject: string) {
-  if (/^[\x20-\x7E]*$/.test(subject)) return subject;
-  return `=?UTF-8?B?${Buffer.from(subject, 'utf8').toString('base64')}?=`;
+  const safeSubject = subject.replace(/[\r\n]+/g, ' ');
+  if (/^[\x20-\x7E]*$/.test(safeSubject)) return safeSubject;
+  return `=?UTF-8?B?${Buffer.from(safeSubject, 'utf8').toString('base64')}?=`;
 }
 
 function buildMimeBody(input: SendSmtpEmailInput) {
@@ -230,18 +224,11 @@ export async function sendSmtpEmail(input: SendSmtpEmailInput) {
     }
     await client.sendCommand('DATA', [354]);
 
-    const messageId = `<${Date.now()}.${crypto.randomUUID()}@${from.includes('@') ? from.split('@')[1] : 'resacolo.com'}>`;
+    const messageId = `<${Date.now()}.${crypto.randomUUID()}@${sender.includes('@') ? sender.split('@')[1] : 'resacolo.com'}>`;
     const payload = [
       `From: ${sender}`,
       `To: ${recipients.join(', ')}`,
       ...(replyTo ? [`Reply-To: ${replyTo}`] : []),
-      `Subject: ${input.subject.replace(/[\r\n]+/g, ' ')}`,
-      'MIME-Version: 1.0',
-      'Content-Type: text/plain; charset=UTF-8',
-      '',
-      input.text
-      `From: Resacolo <${from}>`,
-      `To: ${input.to}`,
       `Subject: ${encodeSubject(input.subject)}`,
       `Date: ${new Date().toUTCString()}`,
       `Message-ID: ${messageId}`,
@@ -255,6 +242,3 @@ export async function sendSmtpEmail(input: SendSmtpEmailInput) {
 }
 
 export const sendEscalationEmail = sendSmtpEmail;
-export async function sendEscalationEmail(input: SendEmailInput) {
-  await sendSmtpEmail(input);
-}

@@ -58,10 +58,18 @@ export function getMoneticoEnv(): MoneticoEnv {
 }
 
 function formatMoneticoDate(date: Date) {
-  const pad = (v: number) => String(v).padStart(2, '0');
-  return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()}:${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(
-    date.getSeconds()
-  )}`;
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Paris',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23'
+  }).formatToParts(date);
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((value) => value.type === type)?.value ?? '';
+  return `${part('day')}/${part('month')}/${part('year')}:${part('hour')}:${part('minute')}:${part('second')}`;
 }
 
 export function formatMoneticoAmount(cents: number, currency: string) {

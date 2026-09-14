@@ -22,7 +22,7 @@ type SortKey =
 type SortDirection = 'asc' | 'desc';
 type SearchParamsValue = string | string[] | undefined;
 type AdminPartnersPageProps = {
-  searchParams?: Promise<Record<string, SearchParamsValue>> | Record<string, SearchParamsValue>;
+  searchParams?: Promise<Record<string, SearchParamsValue>>;
 };
 type PartnerRow = Pick<
   CollectivityRow,
@@ -95,7 +95,7 @@ function getSortIndicator(
 
 function formatLastConnection(value: string | null) {
   if (!value) return '—';
-  return new Date(value).toLocaleDateString('fr-FR');
+  return new Date(value).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' });
 }
 
 function getOfferBadgeClass(offerMode: string | null | undefined) {
@@ -105,7 +105,7 @@ function getOfferBadgeClass(offerMode: string | null | undefined) {
 }
 
 export default async function AdminPartnersPage({ searchParams }: AdminPartnersPageProps) {
-  const resolvedSearchParams = searchParams instanceof Promise ? await searchParams : searchParams;
+  const resolvedSearchParams = await searchParams;
   const session = await requireAdminSection('partners');
   const canEditPartners = isAdminWorkspaceRole(session.role) && canMutateAdminSection(session.role, 'partners');
   const supabase = getServerSupabaseClient();
@@ -277,7 +277,7 @@ export default async function AdminPartnersPage({ searchParams }: AdminPartnersP
                   </td>
                   <td className="px-4 py-3 text-slate-600">{partner.contact_email ?? '—'}</td>
                   <td className="px-4 py-3 text-slate-600">
-                    {new Date(partner.created_at).toLocaleDateString('fr-FR')}
+                    {new Date(partner.created_at).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' })}
                   </td>
                   <td className="px-4 py-3 text-slate-600">{partner.userCount}</td>
                   <td className="px-4 py-3 text-slate-600">{formatLastConnection(partner.lastConnectionAt)}</td>

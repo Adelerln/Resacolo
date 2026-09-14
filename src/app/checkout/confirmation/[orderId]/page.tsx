@@ -351,7 +351,7 @@ export default function CheckoutConfirmationPage() {
           {order.paidAt ? (
             <p className="text-sm text-emerald-700">
               {isPartnerTotalMode ? 'Réservation validée' : 'Paiement validé'} le{' '}
-              {new Date(order.paidAt).toLocaleString('fr-FR')}.
+              {new Date(order.paidAt).toLocaleString('fr-FR', { timeZone: 'Europe/Paris' })}.
             </p>
           ) : order.paymentStatus === 'SUCCEEDED' && order.remainingBalanceCents > 0 ? (
             <p className="text-sm text-emerald-700">Acompte validé. Solde à régler depuis votre espace client.</p>

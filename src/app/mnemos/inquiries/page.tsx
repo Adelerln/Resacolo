@@ -3,6 +3,7 @@ import { requireRole } from '@/lib/auth/require';
 import { isMissingPublicTableError } from '@/lib/mnemos/supabase-table-missing';
 import { MnemosFieldLabel } from '@/components/mnemos/MnemosFieldLabel';
 import { formatInquiryContact } from '@/lib/inquiries';
+import { parisMidnightUtc, shiftDateKey } from '@/lib/paris-time';
 import {
   INQUIRY_SOURCE_LABELS,
   INQUIRY_SOURCE_VALUES,
@@ -41,10 +42,10 @@ export default async function MnemosInquiriesPage({ searchParams }: { searchPara
     q = q.eq('source', sp.source.trim());
   }
   if (sp.from?.trim()) {
-    q = q.gte('created_at', new Date(`${sp.from}T00:00:00.000Z`).toISOString());
+    q = q.gte('created_at', parisMidnightUtc(sp.from).toISOString());
   }
   if (sp.to?.trim()) {
-    q = q.lt('created_at', new Date(`${sp.to}T23:59:59.999Z`).toISOString());
+    q = q.lt('created_at', parisMidnightUtc(shiftDateKey(sp.to, 1)).toISOString());
   }
 
   const { data: rows, error } = await q.limit(200);
@@ -166,7 +167,7 @@ export default async function MnemosInquiriesPage({ searchParams }: { searchPara
                 return (
                 <tr key={r.id} className="hover:bg-slate-800/30">
                   <td className="px-3 py-2 text-xs text-slate-400">
-                    {new Date(r.created_at).toLocaleString('fr-FR')}
+                    {new Date(r.created_at).toLocaleString('fr-FR', { timeZone: 'Europe/Paris' })}
                   </td>
                   <td className="px-3 py-2">
                     <span className="rounded-full bg-slate-800 px-2 py-0.5 text-xs text-violet-200">

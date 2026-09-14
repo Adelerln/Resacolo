@@ -332,7 +332,7 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
     eligibilityLabel: row.eligibility.status === 'ELIGIBLE' ? 'Éligible' : 'Inéligible',
     aidLabel: formatCurrencyFromCents(row.simulation.aidCents),
     appliedSummary: row.simulation.appliedSummary,
-    sessionRangeLabel: `${new Date(`${row.sessionItem.start_date}T00:00:00Z`).toLocaleDateString('fr-FR')} - ${new Date(`${row.sessionItem.end_date}T00:00:00Z`).toLocaleDateString('fr-FR')}`,
+    sessionRangeLabel: `${new Date(`${row.sessionItem.start_date}T00:00:00Z`).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' })} - ${new Date(`${row.sessionItem.end_date}T00:00:00Z`).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' })}`,
     priceLabel: formatCurrencyFromCents(row.sessionItem.estimated_price_cents || 0),
     familyLabel: formatCurrencyFromCents(row.simulation.familyCents),
     ineligibleReason:

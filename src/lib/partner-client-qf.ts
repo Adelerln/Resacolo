@@ -1,4 +1,5 @@
 import { normalizePartnerCatalogRules } from '@/lib/partner-catalog-rules';
+import { parisDateKey } from '@/lib/paris-time';
 import type { PartnerCatalogRules } from '@/types/partner-catalog-rules';
 
 function normalizeFamilyQuotientExpiresOn(value: string | null | undefined) {
@@ -23,7 +24,7 @@ export function isFamilyQuotientCurrent(
   const normalized = normalizeFamilyQuotientExpiresOn(expiresOn);
   // No expiration date → QF stays valid until the CSE sets one that has passed.
   if (!normalized) return true;
-  const today = referenceDate.toISOString().slice(0, 10);
+  const today = parisDateKey(referenceDate);
   return normalized >= today;
 }
 

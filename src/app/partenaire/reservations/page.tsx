@@ -14,7 +14,7 @@ import { PartnerReservationDetailsModal } from '@/components/partner/PartnerRese
 import type { Json } from '@/types/supabase';
 
 function formatDate(value: string) {
-  return new Date(value).toLocaleDateString('fr-FR');
+  return new Date(value).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' });
 }
 
 function formatCurrencyFromCents(value: number) {

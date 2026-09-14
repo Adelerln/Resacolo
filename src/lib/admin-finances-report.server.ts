@@ -3,6 +3,7 @@ import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { readResacoloBillingSettings } from '@/lib/resacolo-billing-settings.server';
 import { repairMissingCommissionFeesForPaidOrders } from '@/lib/resacolo-fee-ledger.server';
+import { parisDateKey, parisMidnightUtc } from '@/lib/paris-time';
 import type { Database } from '@/types/supabase';
 
 export type FinancesGranularity = 'mois' | 'annee' | 'saison' | 'organisateur';
@@ -37,17 +38,14 @@ export type FinancesPublicationDetail = {
   stayTitles: string[];
 };
 
-function yearBoundsUtc(year: number) {
-  const start = Date.UTC(year, 0, 1, 0, 0, 0, 0);
-  const end = Date.UTC(year + 1, 0, 1, 0, 0, 0, 0);
+function yearBoundsParis(year: number) {
+  const start = parisMidnightUtc(`${year}-01-01`).getTime();
+  const end = parisMidnightUtc(`${year + 1}-01-01`).getTime();
   return { start, end, startIso: new Date(start).toISOString(), endIso: new Date(end).toISOString() };
 }
 
 function monthKeyFromMs(ms: number) {
-  const d = new Date(ms);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  return `${y}-${m}`;
+  return parisDateKey(new Date(ms)).slice(0, 7);
 }
 
 function monthLabel(key: string) {
@@ -168,7 +166,7 @@ export async function loadAdminFinancesReport(
   ledgerTableMissing: boolean;
   publicationFeeEnabled: boolean;
 }> {
-  const { start, end, startIso, endIso } = yearBoundsUtc(year);
+  const { start, end, startIso, endIso } = yearBoundsParis(year);
   await repairMissingCommissionFeesForPaidOrders(supabase, year);
   const settings = await readResacoloBillingSettings(supabase);
   const publicationFeeEnabled = settings.publication_fee_enabled;

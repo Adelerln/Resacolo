@@ -224,7 +224,7 @@ export default async function OrganismeUsersPage({
                     </form>
                   </td>
                   <td className="px-4 py-3 text-slate-600">
-                    {new Date(member.created_at).toLocaleDateString('fr-FR')}
+                    {new Date(member.created_at).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' })}
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex flex-nowrap justify-end gap-2 whitespace-nowrap">

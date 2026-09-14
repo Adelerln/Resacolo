@@ -64,7 +64,7 @@ function resolveBeneficiaryFamilyName(
 
 function formatDate(value: string | null | undefined) {
   if (!value) return '-';
-  return new Date(value).toLocaleDateString('fr-FR');
+  return new Date(value).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' });
 }
 
 function formatDateRange(startDate: string | null | undefined, endDate: string | null | undefined) {

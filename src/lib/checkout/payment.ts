@@ -58,7 +58,12 @@ type PrepareCheckoutPaymentResult = {
   payments: Array<{ orderId: string; paymentId: string; organizerId: string; organizerName: string }>;
   confirmationPath: string;
   pricing: CheckoutPricing;
-  monetico: MoneticoPayload;
+  monetico: MoneticoPayload & {
+    provider?: string;
+    payId?: string | null;
+    transId?: string;
+    payType?: string;
+  };
 };
 
 type PrepareCheckoutPaymentGroupResult = {

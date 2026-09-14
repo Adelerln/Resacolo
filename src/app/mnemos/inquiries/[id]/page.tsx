@@ -22,7 +22,7 @@ export const revalidate = 0;
 
 type PageProps = {
   params: Promise<{ id: string }>;
-  searchParams?: Promise<{ saved?: string; err?: string }>;
+  searchParams?: Promise<{ saved?: string; err?: string; notify?: string }>;
 };
 
 export default async function MnemosInquiryDetailPage({ params, searchParams }: PageProps) {
@@ -61,6 +61,9 @@ export default async function MnemosInquiryDetailPage({ params, searchParams }: 
       {sp.saved === '1' && (
         <div className="rounded-lg border border-emerald-800/50 bg-emerald-950/30 px-3 py-2 text-sm text-emerald-100">
           Enregistré.
+          {sp.notify === 'mail-queued'
+            ? ' E-mail de notification en cours d’envoi à l’organisateur.'
+            : null}
         </div>
       )}
       {sp.err && (

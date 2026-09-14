@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Image from 'next/image';
-import { MapPin, ClipboardList, Mail } from 'lucide-react';
+import { MapPin, ClipboardList } from 'lucide-react';
+import { OrganizerJoinForm } from '@/components/rejoindre-resacolo/OrganizerJoinForm';
 
 const ORANGE = '#FA8500';
 const ORIGIN_GRAY = '#505050';
@@ -81,95 +82,7 @@ export default function RejoindreResacoloPage() {
           </div>
 
           <div className="border-t border-slate-200 bg-slate-50 px-6 py-8 md:px-10 md:pb-10 md:pt-8">
-            <form className="mx-auto max-w-3xl space-y-6">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <label className="mb-2 block text-sm font-semibold text-slate-700">
-                  Nom de l&apos;organisme *
-                </label>
-                <input className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 shadow-sm outline-none focus:border-brand-600" />
-              </div>
-              <div>
-                <label className="mb-2 block text-sm font-semibold text-slate-700">
-                  Numéro Atout France (IM + 9 chiffres) *
-                </label>
-                <input
-                  placeholder="Ex. : IM012345678"
-                  className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 shadow-sm outline-none focus:border-brand-600"
-                />
-              </div>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <label className="mb-2 block text-sm font-semibold text-slate-700">
-                  Numéro SDJES (format XXXORGXXXX) *
-                </label>
-                <input
-                  placeholder="Ex. : 123ORG4567"
-                  pattern="^[0-9]{3}ORG[0-9]{4}$"
-                  title="Format attendu : 123ORG4567"
-                  className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 uppercase shadow-sm outline-none focus:border-brand-600"
-                  required
-                />
-              </div>
-              <div>
-                <label className="mb-2 block text-sm font-semibold text-slate-700">
-                  Site web (facultatif)
-                </label>
-                <input className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 shadow-sm outline-none focus:border-brand-600" />
-              </div>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <label className="mb-2 block text-sm font-semibold text-slate-700">Nom *</label>
-                <input className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 shadow-sm outline-none focus:border-brand-600" />
-              </div>
-              <div>
-                <label className="mb-2 block text-sm font-semibold text-slate-700">Prénom *</label>
-                <input className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 shadow-sm outline-none focus:border-brand-600" />
-              </div>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <label className="mb-2 block text-sm font-semibold text-slate-700">Email *</label>
-                <input
-                  type="email"
-                  className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 shadow-sm outline-none focus:border-brand-600"
-                />
-              </div>
-              <div>
-                <label className="mb-2 block text-sm font-semibold text-slate-700">
-                  Téléphone (facultatif)
-                </label>
-                <input className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 shadow-sm outline-none focus:border-brand-600" />
-              </div>
-            </div>
-
-            <div>
-              <label className="mb-2 block text-sm font-semibold text-slate-700">
-                Présentez brièvement vos séjours et vos attentes *
-              </label>
-              <textarea
-                rows={6}
-                className="w-full rounded-xl border border-slate-300 bg-white p-4 shadow-sm outline-none focus:border-brand-600"
-                placeholder="Types de séjours, publics accueillis, périodes, volumes approximatifs, etc."
-              />
-            </div>
-
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-sm text-slate-500">* champs obligatoires</p>
-              <button
-                type="submit"
-                className="cta-orange-sweep inline-flex items-center gap-2 rounded-xl px-8 py-3 text-sm font-semibold uppercase tracking-wide text-white shadow-sm transition"
-              >
-                <Mail className="h-4 w-4" />
-                Envoyer la demande
-              </button>
-            </div>
-          </form>
+            <OrganizerJoinForm />
           </div>
         </div>
       </section>

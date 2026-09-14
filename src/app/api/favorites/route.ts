@@ -28,11 +28,12 @@ export async function GET(request: Request) {
   void request;
   const userId = await requireClientUserId();
   if (!userId) {
-    return NextResponse.json({ error: 'unauthorized', stayIds: [] }, { status: 401 });
+    // Visiteur / compte non-client : pas d’erreur, juste aucun favori.
+    return NextResponse.json({ stayIds: [], isAuthenticated: false });
   }
   try {
     const stayIds = await getFavoriteStayIdsForUserId(userId);
-    return NextResponse.json({ stayIds });
+    return NextResponse.json({ stayIds, isAuthenticated: true });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'server', stayIds: [] }, { status: 500 });
   }

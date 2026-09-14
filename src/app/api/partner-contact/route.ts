@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import { createAndNotifyAdminInboundRequest } from '@/lib/admin-inbound-requests.server';
 import { getRagEnv } from '@/lib/rag/env';
 import { sendSmtpEmail } from '@/lib/rag/smtp';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
@@ -18,6 +19,22 @@ export async function POST(request: Request) {
   try {
     const input = partnerContactSchema.parse(await request.json());
     const supabase = getServerSupabaseClient();
+    const nameParts = input.name.trim().split(/\s+/);
+    const firstName = nameParts[0] ?? input.name;
+    const lastName = nameParts.slice(1).join(' ').trim() || null;
+
+    const requestId = await createAndNotifyAdminInboundRequest(supabase, {
+      kind: 'PARTNER',
+      organizationName: input.institution,
+      contactFirstName: firstName,
+      contactLastName: lastName,
+      contactEmail: input.email,
+      formula: input.formula,
+      message: input.message,
+      rawPayload: input
+    });
+
+    return NextResponse.json({ ok: true, requestId });
     const { data: settings, error: settingsError } = await supabase
       .from('partner_contact_settings')
       .select('partner_request_email')

@@ -9,6 +9,7 @@ import {
   isInquiryStatusValue,
   isInquiryTypeValue
 } from '@/lib/inquiry-options';
+import { scheduleOrganizerInquiryTransferNotify } from '@/lib/inquiry-transfer-notifications.server';
 import { notifyOrganizerOfInquiryTransfer } from '@/lib/inquiry-transfer-notifications.server';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 
@@ -64,6 +65,22 @@ export async function updateInquiry(formData: FormData) {
     redirect(`/mnemos/inquiries/${id}?err=${encodeURIComponent(error.message)}`);
   }
 
+  const shouldNotifyTransfer =
+    Boolean(transferOrganizerId) &&
+    (previous.organizer_id !== transferOrganizerId || previous.source !== INQUIRY_SOURCE_MNEMOS_TRANSFER);
+
+  if (shouldNotifyTransfer) {
+    const contactName = [previous.first_name, previous.last_name].filter(Boolean).join(' ').trim();
+    scheduleOrganizerInquiryTransferNotify({
+      inquiryId: id,
+      organizerId: transferOrganizerId,
+      contactName,
+      contactEmail: previous.email,
+      contactPhone: previous.phone,
+      subject: previous.subject,
+      message: previous.message,
+      getSupabase: getServerSupabaseClient
+    });
   const isNewTransfer =
     Boolean(transferOrganizerId) && previous.organizer_id !== transferOrganizerId;
 
@@ -91,5 +108,9 @@ export async function updateInquiry(formData: FormData) {
     revalidatePath('/organisme/demandes');
     revalidatePath(`/organisme/demandes/${id}`);
   }
-  redirect(`/mnemos/inquiries/${id}?saved=1`);
+
+  const savedUrl = new URL(`/mnemos/inquiries/${id}`, 'http://local');
+  savedUrl.searchParams.set('saved', '1');
+  if (shouldNotifyTransfer) savedUrl.searchParams.set('notify', 'mail-queued');
+  redirect(`${savedUrl.pathname}?${savedUrl.searchParams.toString()}`);
 }

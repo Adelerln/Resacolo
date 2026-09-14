@@ -61,6 +61,9 @@ export default async function MnemosInquiryDetailPage({ params, searchParams }: 
       {sp.saved === '1' && (
         <div className="rounded-lg border border-emerald-800/50 bg-emerald-950/30 px-3 py-2 text-sm text-emerald-100">
           Enregistré.
+          {isMnemosTransferredInquiry(row.source) && row.organizer_id
+            ? ' Si un nouvel organisateur a été choisi, un e-mail lui a été envoyé (adresse contact de la fiche organisme).'
+            : null}
         </div>
       )}
       {sp.err && (

@@ -70,7 +70,8 @@ export async function verifyTurnstileToken(token: string, remoteIp: string | nul
   }
 
   if (!secrets.length) {
-    throw new Error('TURNSTILE_SECRET_KEY is not configured');
+    console.error('[turnstile] clé secrète absente pour la vérification du captcha');
+    return { success: false, errorCodes: ['missing_secret'] };
   }
 
   let lastResult: TurnstileVerificationResult = {
@@ -79,7 +80,13 @@ export async function verifyTurnstileToken(token: string, remoteIp: string | nul
   };
 
   for (const secret of secrets) {
-    const result = await verifyTurnstileTokenWithSecret(secret, token, remoteIp);
+    let result: TurnstileVerificationResult;
+    try {
+      result = await verifyTurnstileTokenWithSecret(secret, token, remoteIp);
+    } catch (error) {
+      console.error('[turnstile] vérification indisponible', error);
+      return { success: false, errorCodes: ['verification_unavailable'] };
+    }
     if (result.success) {
       return result;
     }
@@ -90,6 +97,9 @@ export async function verifyTurnstileToken(token: string, remoteIp: string | nul
 }
 
 export function formatTurnstileUserError(errorCodes: string[]) {
+  if (errorCodes.includes('missing_secret')) {
+    return 'Captcha indisponible : la clé secrète Turnstile manque sur le serveur. Configurez TURNSTILE_SECRET_KEY dans Vercel pour la production.';
+  }
   if (errorCodes.includes('invalid-input-secret')) {
     return 'Configuration captcha incorrecte côté serveur. Vérifiez que TURNSTILE_SECRET_KEY correspond à NEXT_PUBLIC_TURNSTILE_SITE_KEY sur Vercel.';
   }

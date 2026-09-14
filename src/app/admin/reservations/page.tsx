@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { requireAdminSection } from '@/lib/auth/require';
 import { canMutateAdminSection, isAdminWorkspaceRole } from '@/lib/admin-access';
 import {
+  normalizeOrderStatus,
   orderStatusBadgeClassName,
   orderStatusLabel
 } from '@/lib/order-workflow';
@@ -246,7 +247,7 @@ export default async function AdminRequestsPage({ searchParams }: { searchParams
       };
     })
     .filter((reservation) => {
-      if (status && reservation.status !== status) return false;
+      if (status && normalizeOrderStatus(reservation.status) !== normalizeOrderStatus(status)) return false;
       if (
         normalizedSeasonFilter &&
         normalizeSeasonLabel(reservation.seasonName) !== normalizedSeasonFilter
@@ -379,7 +380,7 @@ export default async function AdminRequestsPage({ searchParams }: { searchParams
                         <input type="hidden" name="redirectTo" value={redirectTo} />
                         <select
                           name="status"
-                          defaultValue={reservation.status}
+                          defaultValue={normalizeOrderStatus(reservation.status) ?? 'REQUESTED'}
                           className="rounded border border-slate-200 px-2 py-1 text-xs"
                         >
                           {ADMIN_ORDER_STATUSES.map((statusOption) => (

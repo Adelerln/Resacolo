@@ -5,6 +5,11 @@ import { getRagEnv } from '@/lib/rag/env';
 
 type SocketLike = net.Socket | tls.TLSSocket;
 
+type SendEmailInput = {
+  to: string | readonly string[];
+  subject: string;
+  text: string;
+  replyTo?: string;
 export type SendSmtpEmailInput = {
   to: string;
   subject: string;
@@ -149,6 +154,15 @@ function escapeForData(value: string) {
   return value.replace(/\r?\n/g, '\r\n').replace(/^\./gm, '..');
 }
 
+function safeAddress(value: string) {
+  const address = value.trim();
+  if (!address || /[\r\n<>]/.test(address)) {
+    throw new Error('Adresse email SMTP invalide.');
+  }
+  return address;
+}
+
+export async function sendSmtpEmail(input: SendEmailInput) {
 function encodeSubject(subject: string) {
   if (/^[\x20-\x7E]*$/.test(subject)) return subject;
   return `=?UTF-8?B?${Buffer.from(subject, 'utf8').toString('base64')}?=`;
@@ -195,6 +209,12 @@ export async function sendSmtpEmail(input: SendSmtpEmailInput) {
   }
 
   const { host, port, user, pass, from } = env.smtp;
+  const recipients = (typeof input.to === 'string' ? [input.to] : input.to).map(safeAddress);
+  if (recipients.length === 0) {
+    throw new Error('Aucun destinataire SMTP configuré.');
+  }
+  const sender = safeAddress(from);
+  const replyTo = input.replyTo ? safeAddress(input.replyTo) : null;
   const client = new SmtpClient(host, port);
   const localHost = 'resacolo.local';
 
@@ -204,12 +224,22 @@ export async function sendSmtpEmail(input: SendSmtpEmailInput) {
     await client.sendCommand('AUTH LOGIN', [334]);
     await client.sendCommand(Buffer.from(user).toString('base64'), [334]);
     await client.sendCommand(Buffer.from(pass).toString('base64'), [235]);
-    await client.sendCommand(`MAIL FROM:<${from}>`, [250]);
-    await client.sendCommand(`RCPT TO:<${input.to}>`, [250, 251]);
+    await client.sendCommand(`MAIL FROM:<${sender}>`, [250]);
+    for (const recipient of recipients) {
+      await client.sendCommand(`RCPT TO:<${recipient}>`, [250, 251]);
+    }
     await client.sendCommand('DATA', [354]);
 
     const messageId = `<${Date.now()}.${crypto.randomUUID()}@${from.includes('@') ? from.split('@')[1] : 'resacolo.com'}>`;
     const payload = [
+      `From: ${sender}`,
+      `To: ${recipients.join(', ')}`,
+      ...(replyTo ? [`Reply-To: ${replyTo}`] : []),
+      `Subject: ${input.subject.replace(/[\r\n]+/g, ' ')}`,
+      'MIME-Version: 1.0',
+      'Content-Type: text/plain; charset=UTF-8',
+      '',
+      input.text
       `From: Resacolo <${from}>`,
       `To: ${input.to}`,
       `Subject: ${encodeSubject(input.subject)}`,
@@ -224,6 +254,7 @@ export async function sendSmtpEmail(input: SendSmtpEmailInput) {
   }
 }
 
+export const sendEscalationEmail = sendSmtpEmail;
 export async function sendEscalationEmail(input: SendEmailInput) {
   await sendSmtpEmail(input);
 }

@@ -59,6 +59,13 @@ SMTP_FROM=chatbot@resacolo.com
 CRON_WEEKLY_STOCK_TOKEN=change-me
 ```
 
+Le formulaire `/contact` utilise également ces variables SMTP. Après validation du captcha, il enregistre la demande puis envoie un même email à `jeanne@thalie.org` et `adele.rolin@gmail.com`. Sans configuration SMTP, le formulaire affiche une erreur et n'enregistre pas la demande.
+
+En production sur Vercel, `NEXT_PUBLIC_TURNSTILE_SITE_KEY` et `TURNSTILE_SECRET_KEY` doivent provenir du même widget Cloudflare Turnstile, dont la liste des domaines autorisés inclut `resacolo.vercel.app`. La clé secrète doit être définie dans l'environnement **Production** et le site redéployé après toute modification des variables. Une clé secrète absente ou une vérification Cloudflare indisponible fait répondre `/api/contact` avec une erreur `503` explicite.
+
+Le formulaire `/devenir-partenaire` utilise aussi SMTP. Après avoir appliqué la migration `supabase/migrations/20260913_partner_contact_settings.sql`, renseignez dans **Admin → Tableau de bord → Réception des demandes de partenariat**, sous « Points d'attention », l'adresse de la personne qui recevra ces demandes. Chaque demande est enregistrée avec une référence, puis envoyée à cette adresse. Si aucun destinataire ou transport SMTP n'est configuré, le formulaire affiche une erreur au lieu d'annoncer un envoi réussi.
+
+La migration `supabase/migrations/202609132200_remove_legacy_order_statuses.sql` remplace les anciens statuts de commande `VALIDATED` et `BOOKED` par `PENDING_PAYMENT`, et `CONFIRMED` par `PAID`. Elle interdit ensuite de réutiliser ces trois valeurs dans `orders`.
 Rapport stocks organisateurs (lundi 9h Paris, dès le 2026-09-28) : cron `GET /api/cron/weekly-stock-report` — test `?token=...&dryRun=1`. Voir `docs/guides/email-templates/README.md`.
 
 URL canonique du site (SEO, sitemap, métadonnées) :

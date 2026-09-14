@@ -3,13 +3,7 @@
 import Image from 'next/image';
 import Script from 'next/script';
 import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
-import { ChevronDown } from 'lucide-react';
 import { CONTACT_COLORS, CONTACT_HERO_VISUAL } from './contact-data';
-
-type OrganizerRecipient = {
-  id: string;
-  name: string;
-};
 
 const TURNSTILE_TEST_SITE_KEY = '1x00000000000000000000AA';
 
@@ -45,7 +39,6 @@ export default function ContactPage() {
   const isPreviewOrDev =
     process.env.NODE_ENV !== 'production' || vercelEnv === 'preview' || vercelEnv === 'development';
 
-  const [recipient, setRecipient] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
@@ -59,9 +52,6 @@ export default function ContactPage() {
   const [turnstileToken, setTurnstileToken] = useState('');
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [organizers, setOrganizers] = useState<OrganizerRecipient[]>([]);
-  const [isLoadingOrganizers, setIsLoadingOrganizers] = useState(true);
-  const [organizersLoadError, setOrganizersLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     const hostname = window.location.hostname;
@@ -199,53 +189,6 @@ export default function ContactPage() {
     }
   }, []);
 
-  useEffect(() => {
-    const controller = new AbortController();
-    let isMounted = true;
-
-    const loadOrganizers = async () => {
-      try {
-        const response = await fetch('/api/organizers/options', {
-          method: 'GET',
-          cache: 'no-store',
-          signal: controller.signal
-        });
-
-        if (!response.ok) {
-          throw new Error('Impossible de charger les organisateurs.');
-        }
-
-        const payload = (await response.json()) as {
-          organizers?: OrganizerRecipient[];
-        };
-
-        if (!isMounted) return;
-        setOrganizers(
-          Array.isArray(payload.organizers)
-            ? payload.organizers.filter(
-                (organizer): organizer is OrganizerRecipient =>
-                  Boolean(organizer?.id) && typeof organizer.name === 'string'
-              )
-            : []
-        );
-      } catch {
-        if (!isMounted) return;
-        setOrganizersLoadError('La liste des organisateurs est momentanément indisponible.');
-      } finally {
-        if (isMounted) {
-          setIsLoadingOrganizers(false);
-        }
-      }
-    };
-
-    loadOrganizers();
-
-    return () => {
-      isMounted = false;
-      controller.abort();
-    };
-  }, []);
-
   const isTestSiteKey = siteKey === TURNSTILE_TEST_SITE_KEY;
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
@@ -271,7 +214,6 @@ export default function ContactPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          recipient,
           firstName,
           lastName,
           email,
@@ -290,7 +232,6 @@ export default function ContactPage() {
       }
 
       setStatus('success');
-      setRecipient('');
       setFirstName('');
       setLastName('');
       setEmail('');
@@ -327,8 +268,8 @@ export default function ContactPage() {
               Contactez-<span style={{ color: CONTACT_COLORS.orange }}>nous</span>
             </h1>
             <p className="mt-6 max-w-2xl text-base leading-relaxed text-[#636363] sm:text-lg">
-              Pour toute question ou précision sur une colonie de vacances ou un séjour, vous pouvez solliciter
-              directement son organisateur.
+              Une question sur une colonie de vacances ou un séjour ? Envoyez-nous votre message et notre équipe vous
+              répondra.
             </p>
           </div>
           <div className="relative mx-auto w-full max-w-[28rem] lg:max-w-[30rem]">
@@ -351,46 +292,14 @@ export default function ContactPage() {
             <span style={{ color: CONTACT_COLORS.blue }}>Formulaire </span>de contact
           </h2>
           <p className="mx-auto mt-5 max-w-2xl text-center text-sm leading-relaxed text-[#636363] sm:text-base">
-            Vous souhaitez contacter un organisateur ou joindre notre assistance technique.
-            <br />
-            Complétez les champs ci-dessous et envoyez votre demande.
+            Complétez les champs ci-dessous pour contacter notre équipe.
             <br />
             Nous vous répondrons dans les plus brefs délais.
           </p>
 
           <form onSubmit={handleSubmit} className="mt-10 space-y-8">
             <div>
-              <p className="contact-step-title">1. Choisissez un destinataire *</p>
-              <div className="relative mt-2">
-                <label htmlFor="contact-recipient" className="sr-only">
-                  Destinataire
-                </label>
-                <select
-                  id="contact-recipient"
-                  required
-                  value={recipient}
-                  onChange={(e) => setRecipient(e.target.value)}
-                  className="contact-input appearance-none pr-12"
-                >
-                  <option value="">Sélectionner un destinataire</option>
-                  {organizers.map((organizer) => (
-                    <option key={organizer.id} value={`organizer:${organizer.id}`}>
-                      {organizer.name}
-                    </option>
-                  ))}
-                  <option value="assistance">ASSISTANCE TECHNIQUE RESACOLO</option>
-                </select>
-                <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
-              </div>
-              {isLoadingOrganizers && <p className="mt-2 text-xs text-slate-500">Chargement des organisateurs...</p>}
-              {!isLoadingOrganizers && organizers.length === 0 && !organizersLoadError && (
-                <p className="mt-2 text-xs text-slate-500">Aucun organisateur disponible pour le moment.</p>
-              )}
-              {organizersLoadError && <p className="mt-2 text-xs text-amber-700">{organizersLoadError}</p>}
-            </div>
-
-            <div>
-              <p className="contact-step-title">2. Renseignez vos informations *</p>
+              <p className="contact-step-title">1. Renseignez vos informations *</p>
               <div className="mt-2 grid gap-4 sm:grid-cols-2">
                 <div>
                   <label htmlFor="contact-first-name" className="sr-only">
@@ -451,7 +360,7 @@ export default function ContactPage() {
             </div>
 
             <div>
-              <p className="contact-step-title">3. Rédigez votre message *</p>
+              <p className="contact-step-title">2. Rédigez votre message *</p>
 
               <div className="mt-2">
                 <label htmlFor="contact-message" className="sr-only">
@@ -460,6 +369,7 @@ export default function ContactPage() {
                 <textarea
                   id="contact-message"
                   required
+                  maxLength={4000}
                   rows={6}
                   placeholder="Précisez votre demande : nom du séjour, saison, date de départ..."
                   value={message}

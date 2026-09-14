@@ -341,7 +341,6 @@ function mapStatusForPreWorkflowV2Enum(
 ): Database['public']['Enums']['order_status'] {
   if (status === 'PENDING_PAYMENT') return 'REQUESTED';
   if (status === 'PARTIALLY_PAID') return 'REQUESTED';
-  if (status === 'TRANSFERRED') return 'CONFIRMED';
   return status;
 }
 

@@ -10,7 +10,6 @@ import {
   isInquiryTypeValue
 } from '@/lib/inquiry-options';
 import { scheduleOrganizerInquiryTransferNotify } from '@/lib/inquiry-transfer-notifications.server';
-import { notifyOrganizerOfInquiryTransfer } from '@/lib/inquiry-transfer-notifications.server';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 
 export async function updateInquiry(formData: FormData) {
@@ -81,25 +80,6 @@ export async function updateInquiry(formData: FormData) {
       message: previous.message,
       getSupabase: getServerSupabaseClient
     });
-  const isNewTransfer =
-    Boolean(transferOrganizerId) && previous.organizer_id !== transferOrganizerId;
-
-  if (isNewTransfer) {
-    const contactName = [previous.first_name, previous.last_name].filter(Boolean).join(' ').trim();
-    try {
-      await notifyOrganizerOfInquiryTransfer({
-        supabase,
-        inquiryId: id,
-        organizerId: transferOrganizerId,
-        contactName,
-        contactEmail: previous.email,
-        contactPhone: previous.phone,
-        subject: previous.subject,
-        message: previous.message
-      });
-    } catch (notifyError) {
-      console.error('[mnemos/inquiries] transfer email skipped', notifyError);
-    }
   }
 
   revalidatePath('/mnemos/inquiries');

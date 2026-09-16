@@ -1566,7 +1566,8 @@ export function StayDetailView({
                 ) : null}
                 {normalizedFinanceMode === 'MANUAL' && !hasResolvedCseQfPricing ? (
                   <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900">
-                    Le prix affiché n&apos;est pas encore définitif. Votre réservation sera transmise au partenaire comme une demande de devis.
+                    Le prix affiché n&apos;est pas encore définitif. Le paiement sera différé : votre
+                    partenaire doit calculer la prise en charge et la renseigner dans son back-office.
                   </div>
                 ) : partnerFinanceDisplay && normalizedFinanceMode !== 'MANUAL' ? (
                   <div className="mt-3 space-y-1 text-sm">

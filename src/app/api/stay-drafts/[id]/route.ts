@@ -84,7 +84,8 @@ const bodySchema = z.object({
     .default([]),
   video_urls: z.array(z.string()).optional().default([]),
   accommodation_video_urls: z.array(z.string()).optional().default([]),
-  partner_discount_percent: z.number().min(0).max(100).nullable().optional().default(null)
+  partner_discount_percent: z.number().min(0).max(100).nullable().optional().default(null),
+  is_caf_eligible: z.boolean().optional().default(true)
 });
 
 type StayDraftRow = Database['public']['Tables']['stay_drafts']['Row'];
@@ -408,7 +409,8 @@ async function parseBody(req: Request): Promise<{ payload: StayDraftReviewPayloa
     partner_discount_percent:
       data.partner_discount_percent != null && Number.isFinite(data.partner_discount_percent)
         ? data.partner_discount_percent
-        : null
+        : null,
+    is_caf_eligible: data.is_caf_eligible !== false
   };
 
   if (!payload.title) {
@@ -603,6 +605,7 @@ async function handleUpdate(req: Request, params: { id: string }, mode: 'save' |
     supervision_text: toNullableString(parsedBody.payload.supervision_text),
     transport_text: toNullableString(parsedBody.payload.transport_text),
     transport_mode: toNullableString(parsedBody.payload.transport_mode),
+    is_caf_eligible: parsedBody.payload.is_caf_eligible !== false,
     categories: categories.length > 0 ? categories : null,
     ages: ages.length > 0 ? ages : null,
     age_min: ages.length > 0 ? ages[0] : null,
@@ -650,7 +653,8 @@ async function handleUpdate(req: Request, params: { id: string }, mode: 'save' |
         parsedBody.payload.accommodation_video_urls.length > 0
           ? parsedBody.payload.accommodation_video_urls
           : null,
-      partner_discount_percent: parsedBody.payload.partner_discount_percent
+      partner_discount_percent: parsedBody.payload.partner_discount_percent,
+      is_caf_eligible: parsedBody.payload.is_caf_eligible !== false
   };
 
   if (mode === 'validate') {

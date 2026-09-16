@@ -2,6 +2,10 @@
 
 Copier-coller le HTML de chaque fichier dans **Authentication → Email Templates**.
 
+## Réservations (famille + organisateur)
+
+Brouillons par mode de règlement / statut : voir le dossier [`reservation/`](./reservation/) (CB totalité, acompte, ANCV Connect, ANCV papier, différé, VACAF, prise en charge partenaire).
+
 ## Rapport stocks organisateurs (app)
 
 - Brouillon visuel : `weekly-stock-report-draft.html`

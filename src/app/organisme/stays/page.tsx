@@ -1,4 +1,5 @@
 import { revalidatePath } from 'next/cache';
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import ErrorToast from '@/components/common/ErrorToast';
 import NewStayChoiceModalTrigger from '@/components/organisme/NewStayChoiceModalTrigger';
@@ -6,6 +7,10 @@ import SavedToast from '@/components/common/SavedToast';
 import OrganizerPageHeader from '@/components/organisme/OrganizerPageHeader';
 import OrganizerStaysTable from '@/components/organisme/OrganizerStaysTable';
 import { requireOrganizerPageAccess } from '@/lib/organizer-backoffice-access.server';
+import {
+  ORGANIZER_CGV_REQUIRED_MESSAGE,
+  organizerHasUploadedCgv
+} from '@/lib/organizer-cgv';
 import { withOrganizerQuery } from '@/lib/organizers.server';
 import { getReservedSessionCounts } from '@/lib/session-reservations';
 import { isPublishedStayStatus, stayDraftShouldAppearInImportList } from '@/lib/stay-draft-published';
@@ -47,6 +52,7 @@ export default async function OrganizerStaysPage({ searchParams }: PageProps) {
     requiredSection: 'stays'
   });
   const supabase = getServerSupabaseClient();
+  const hasCgv = organizerId ? await organizerHasUploadedCgv(supabase, organizerId) : false;
   const savedParam = formatRedirectValue(resolvedSearchParams?.saved);
   const deletedParam = formatRedirectValue(resolvedSearchParams?.deleted);
   const visibilityParam = formatRedirectValue(resolvedSearchParams?.visibility);
@@ -554,9 +560,20 @@ export default async function OrganizerStaysPage({ searchParams }: PageProps) {
       {draftDeletedParam === '1' && <SavedToast message="Le brouillon d'import a bien été supprimé." />}
       {savedParam === '1' && <SavedToast message="Le stock de la session a bien été mis à jour." />}
       {errorParam && <ErrorToast message={decodeURIComponent(errorParam)} />}
+      {!hasCgv ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          {ORGANIZER_CGV_REQUIRED_MESSAGE}{' '}
+          <Link
+            href={withOrganizerQuery('/organisme/organisateur', organizerId)}
+            className="font-semibold underline underline-offset-2"
+          >
+            Ouvrir ma fiche organisateur
+          </Link>
+        </div>
+      ) : null}
       <OrganizerPageHeader
         title="Séjours"
-        actions={<NewStayChoiceModalTrigger organizerId={organizerId} />}
+        actions={<NewStayChoiceModalTrigger organizerId={organizerId} hasCgv={hasCgv} />}
       />
 
       {stayRows.length > 0 || importDraftRows.length > 0 ? (

@@ -234,7 +234,19 @@ export async function buildWeeklyStockReports(
     stays.push(...(data ?? []));
   }
 
-  if (stays.length === 0) return [];
+  if (stays.length === 0) {
+    return organizersWithEmail
+      .map((organizer) => ({
+        organizerId: organizer.id,
+        organizerName: organizer.name,
+        contactEmail: organizer.contactEmail,
+        activeSessionCount: 0,
+        remainingPlaces: 0,
+        fullSessionCount: 0,
+        seasons: [] as WeeklyStockSeasonGroup[]
+      }))
+      .sort((a, b) => a.organizerName.localeCompare(b.organizerName, 'fr'));
+  }
 
   const stayById = new Map(stays.map((stay) => [stay.id, stay]));
   const stayIds = stays.map((stay) => stay.id);
@@ -262,7 +274,19 @@ export async function buildWeeklyStockReports(
     }
   }
 
-  if (sessions.length === 0) return [];
+  if (sessions.length === 0) {
+    return organizersWithEmail
+      .map((organizer) => ({
+        organizerId: organizer.id,
+        organizerName: organizer.name,
+        contactEmail: organizer.contactEmail,
+        activeSessionCount: 0,
+        remainingPlaces: 0,
+        fullSessionCount: 0,
+        seasons: [] as WeeklyStockSeasonGroup[]
+      }))
+      .sort((a, b) => a.organizerName.localeCompare(b.organizerName, 'fr'));
+  }
 
   const seasonIds = Array.from(
     new Set(stays.map((stay) => stay.season_id).filter((id): id is string => Boolean(id)))
@@ -358,7 +382,6 @@ export async function buildWeeklyStockReports(
   const reports: WeeklyStockOrganizerReport[] = [];
   for (const report of reportsByOrganizer.values()) {
     const seasons = Array.from(seasonBuckets.get(report.organizerId)?.values() ?? []);
-    if (seasons.length === 0) continue;
 
     for (const season of seasons) {
       season.sessions.sort((a, b) => a.startDate.localeCompare(b.startDate) || a.stayTitle.localeCompare(b.stayTitle, 'fr'));
@@ -401,6 +424,27 @@ function renderSessionRows(sessions: WeeklyStockSessionRow[]) {
 }
 
 function renderSeasonBlocks(seasons: WeeklyStockSeasonGroup[]) {
+  if (seasons.length === 0) {
+    return `
+          <tr>
+            <td style="padding:0 32px 24px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#fff7ed;border:1px solid #fed7aa;border-radius:12px;">
+                <tr>
+                  <td style="padding:24px 20px;text-align:center;">
+                    <p style="margin:0 0 8px;font-size:16px;font-weight:700;color:#c2410c;">
+                      Aucun séjour en stock pour le moment
+                    </p>
+                    <p style="margin:0;font-size:14px;line-height:1.6;color:#9a3412;">
+                      Vous n&apos;avez actuellement aucun séjour publié avec des sessions actives sur Resacolo.<br />
+                      Ajoutez un séjour pour apparaître dans les recherches des familles.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>`;
+  }
+
   return seasons
     .map((season) => {
       const style = seasonHeaderStyle(season.seasonName);
@@ -440,10 +484,35 @@ export function renderWeeklyStockReportHtml(input: {
   report: WeeklyStockOrganizerReport;
   reportDateIso: string;
   dashboardUrl?: string;
+  addStayUrl?: string;
 }) {
   const reportDateLabel = formatReportDateLong(input.reportDateIso);
   const dashboardUrl = input.dashboardUrl ?? 'https://resacolo.com/organisme';
+  const addStayUrl = input.addStayUrl ?? 'https://resacolo.com/organisme/stays/new';
   const { report } = input;
+  const isEmpty = report.activeSessionCount === 0;
+  const ctaUrl = isEmpty ? addStayUrl : dashboardUrl;
+  const ctaLabel = isEmpty ? 'Ajouter un séjour' : 'Mettre à jour mes stocks';
+  const ctaHint = isEmpty
+    ? 'Cliquez sur le bouton pour créer un séjour et le mettre en stock sur Resacolo.'
+    : 'Pensez à actualiser les places restantes pour éviter les sur-réservations.';
+  const introHtml = isEmpty
+    ? `Au <strong>${escapeHtml(reportDateLabel)}</strong>, vous n&apos;avez <strong>aucun séjour en stock</strong> sur Resacolo.`
+    : `Voici le récapitulatif de vos places restantes sur Resacolo,<br />
+                au <strong>${escapeHtml(reportDateLabel)}</strong>.`;
+  const legendBlock = isEmpty
+    ? ''
+    : `
+          <tr>
+            <td style="padding:0 40px 24px;">
+              <p style="margin:0 0 8px;font-size:12px;font-weight:600;color:#64748b;">Légende</p>
+              <p style="margin:0;font-size:12px;line-height:1.7;color:#94a3b8;">
+                <span style="color:#15803d;font-weight:600;">Disponible</span> = 3 places ou plus &nbsp;·&nbsp;
+                <span style="color:#b45309;font-weight:600;">Presque plein</span> = 1 ou 2 places &nbsp;·&nbsp;
+                <span style="color:#b91c1c;font-weight:600;">Complet</span> = 0 place
+              </p>
+            </td>
+          </tr>`;
 
   return `<!DOCTYPE html>
 <html lang="fr">
@@ -477,14 +546,13 @@ export function renderWeeklyStockReportHtml(input: {
                 Point stocks · Lundi 9h
               </p>
               <h1 style="margin:0 0 12px;font-size:22px;font-weight:700;line-height:1.3;color:#1d1f25;text-align:center;">
-                État de vos séjours en stock
+                ${isEmpty ? 'Aucun séjour en stock' : 'État de vos séjours en stock'}
               </h1>
               <p style="margin:0 0 8px;font-size:15px;line-height:1.6;color:#404040;text-align:center;">
                 Bonjour <strong>${escapeHtml(report.organizerName)}</strong>,
               </p>
               <p style="margin:0;font-size:15px;line-height:1.6;color:#64748b;text-align:center;">
-                Voici le récapitulatif de vos places restantes sur Resacolo,<br />
-                au <strong>${escapeHtml(reportDateLabel)}</strong>.
+                ${introHtml}
               </p>
             </td>
           </tr>
@@ -509,33 +577,24 @@ export function renderWeeklyStockReportHtml(input: {
             </td>
           </tr>
           ${renderSeasonBlocks(report.seasons)}
-          <tr>
-            <td style="padding:0 40px 24px;">
-              <p style="margin:0 0 8px;font-size:12px;font-weight:600;color:#64748b;">Légende</p>
-              <p style="margin:0;font-size:12px;line-height:1.7;color:#94a3b8;">
-                <span style="color:#15803d;font-weight:600;">Disponible</span> = 3 places ou plus &nbsp;·&nbsp;
-                <span style="color:#b45309;font-weight:600;">Presque plein</span> = 1 ou 2 places &nbsp;·&nbsp;
-                <span style="color:#b91c1c;font-weight:600;">Complet</span> = 0 place
-              </p>
-            </td>
-          </tr>
+          ${legendBlock}
           <tr>
             <td align="center" style="padding:0 40px 32px;">
               <table role="presentation" cellpadding="0" cellspacing="0" border="0">
                 <tr>
                   <td align="center" bgcolor="#f48200" style="border-radius:8px;background-color:#f48200;">
                     <a
-                      href="${escapeHtml(dashboardUrl)}"
+                      href="${escapeHtml(ctaUrl)}"
                       target="_blank"
                       style="display:inline-block;padding:14px 28px;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;"
                     >
-                      Mettre à jour mes stocks
+                      ${escapeHtml(ctaLabel)}
                     </a>
                   </td>
                 </tr>
               </table>
               <p style="margin:16px 0 0;font-size:13px;line-height:1.5;color:#94a3b8;text-align:center;">
-                Pensez à actualiser les places restantes pour éviter les sur-réservations.
+                ${escapeHtml(ctaHint)}
               </p>
             </td>
           </tr>
@@ -562,20 +621,39 @@ export function renderWeeklyStockReportText(input: {
   report: WeeklyStockOrganizerReport;
   reportDateIso: string;
   dashboardUrl?: string;
+  addStayUrl?: string;
 }) {
   const { report } = input;
   const reportDateLabel = formatReportDateLong(input.reportDateIso);
   const dashboardUrl = input.dashboardUrl ?? 'https://resacolo.com/organisme';
+  const addStayUrl = input.addStayUrl ?? 'https://resacolo.com/organisme/stays/new';
+  const isEmpty = report.activeSessionCount === 0;
   const lines = [
     `Point stocks Resacolo — ${reportDateLabel}`,
     '',
     `Bonjour ${report.organizerName},`,
-    '',
+    ''
+  ];
+
+  if (isEmpty) {
+    lines.push(
+      `Au ${reportDateLabel}, vous n'avez aucun séjour en stock sur Resacolo.`,
+      '',
+      'Sessions actives : 0',
+      'Places restantes : 0',
+      'Sessions complètes : 0',
+      '',
+      `Ajouter un séjour : ${addStayUrl}`
+    );
+    return lines.join('\n');
+  }
+
+  lines.push(
     `Sessions actives : ${report.activeSessionCount}`,
     `Places restantes : ${report.remainingPlaces}`,
     `Sessions complètes : ${report.fullSessionCount}`,
     ''
-  ];
+  );
 
   for (const season of report.seasons) {
     lines.push(

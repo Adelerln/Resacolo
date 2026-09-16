@@ -15,7 +15,7 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 const organizerSelect =
-  'id,name,contact_email,created_at,description,hero_intro_text,founded_year,age_min,age_max,logo_path,logo_url,website_url,education_project_path,slug,is_founding_member,is_resacolo_member,profile_completeness_percent,accepts_ancv_paper,accepts_ancv_connect,is_vacaf_approved' as const;
+  'id,name,contact_email,created_at,description,hero_intro_text,founded_year,age_min,age_max,logo_path,logo_url,website_url,education_project_path,slug,is_founding_member,is_resacolo_member,profile_completeness_percent,accepts_ancv_paper,accepts_ancv_connect,ancv_paper_mailing_address,is_vacaf_approved' as const;
 
 type OrganizerDetail = Database['public']['Tables']['organizers']['Row'];
 type OverviewRow = Database['public']['Views']['organizer_admin_overview']['Row'];
@@ -317,6 +317,20 @@ export default async function AdminOrganizerDetailPage({ params: paramsPromise, 
               <span>Agréé VACAF National / CAF AVE</span>
             </label>
           </div>
+          <label className="mt-4 block text-sm font-medium text-slate-700">
+            Adresse postale pour l&apos;envoi des chèques-vacances papier
+            <textarea
+              name="ancv_paper_mailing_address"
+              rows={3}
+              defaultValue={row.ancv_paper_mailing_address ?? ''}
+              placeholder="Nom de l’organisme, rue, code postal, ville…"
+              className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900"
+            />
+            <span className="mt-1 block text-xs font-normal text-slate-500">
+              Affichée à la famille dans le mail de confirmation si les chèques-vacances papier sont
+              acceptés.
+            </span>
+          </label>
         </div>
 
         <div className="border-t border-slate-100 pt-6">

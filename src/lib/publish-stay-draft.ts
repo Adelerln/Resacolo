@@ -34,6 +34,10 @@ import { tryCanonicalizeStaySourceUrl } from '@/lib/stay-source-url-canonical';
 import { normalizeStayTitle } from '@/lib/stay-title';
 import { resolveStayDestination } from '@/lib/stay-destination-resolver';
 import { maybeRecordPublicationFeeWhenStayPublished } from '@/lib/resacolo-fee-ledger.server';
+import {
+  ORGANIZER_CGV_REQUIRED_MESSAGE,
+  organizerHasUploadedCgv
+} from '@/lib/organizer-cgv';
 import type { Database, Json } from '@/types/supabase';
 
 type StayDraftRow = Database['public']['Tables']['stay_drafts']['Row'];
@@ -342,6 +346,15 @@ function readPartnerDiscountPercentFromRawPayload(rawPayload: Record<string, unk
   const n = typeof v === 'number' ? v : Number(String(v).trim().replace(',', '.'));
   if (!Number.isFinite(n) || n < 0 || n > 100) return null;
   return n;
+}
+
+function readIsCafEligibleFromDraft(input: {
+  rawPayload: Record<string, unknown>;
+  draftColumn?: boolean | null;
+}): boolean {
+  if (typeof input.rawPayload.is_caf_eligible === 'boolean') return input.rawPayload.is_caf_eligible;
+  if (typeof input.draftColumn === 'boolean') return input.draftColumn;
+  return true;
 }
 
 function coerceAccommodationJsonObject(value: Json | null): Record<string, unknown> {
@@ -1304,6 +1317,10 @@ async function updateOrInsertStay(
   const draftRawPayload = asObject(draft.raw_payload);
   const publishedSourceUrl = tryCanonicalizeStaySourceUrl(draft.source_url) ?? draft.source_url;
   const partnerDiscountPercent = readPartnerDiscountPercentFromRawPayload(draftRawPayload);
+  const isCafEligible = readIsCafEligibleFromDraft({
+    rawPayload: draftRawPayload,
+    draftColumn: (draft as { is_caf_eligible?: boolean | null }).is_caf_eligible
+  });
   const ageMin = ages.length > 0 ? ages[0] : draft.age_min;
   const ageMax = ages.length > 0 ? ages[ages.length - 1] : draft.age_max;
   const normalizedTitle = normalizeStayTitle(draft.title);
@@ -1355,6 +1372,7 @@ async function updateOrInsertStay(
     transport_mode: transportMode,
     transport_text: toNullableText(draft.transport_text),
     partner_discount_percent: partnerDiscountPercent,
+    is_caf_eligible: isCafEligible,
     seo_primary_keyword: toNullableText(sanitizeSeoPrimaryKeyword(draft.seo_primary_keyword)),
     seo_secondary_keywords: draft.seo_secondary_keywords ?? [],
     seo_target_city: toNullableText(draft.seo_target_city),
@@ -1466,6 +1484,7 @@ async function updateOrInsertStay(
     transport_mode: transportMode,
     transport_text: basePayload.transport_text ?? null,
     partner_discount_percent: partnerDiscountPercent,
+    is_caf_eligible: isCafEligible,
     seo_primary_keyword: basePayload.seo_primary_keyword ?? null,
     seo_secondary_keywords: basePayload.seo_secondary_keywords ?? [],
     seo_target_city: basePayload.seo_target_city ?? null,
@@ -2262,6 +2281,11 @@ export async function publishStayDraftToLive(
       'validate-draft-status',
       "Le draft doit être validé avant la publication live."
     );
+  }
+
+  const hasCgv = await organizerHasUploadedCgv(supabase, draft.organizer_id);
+  if (!hasCgv) {
+    throw new PublishStayDraftError('validate-cgv', ORGANIZER_CGV_REQUIRED_MESSAGE);
   }
 
   const title = normalizeStayTitle(draft.title ?? '');

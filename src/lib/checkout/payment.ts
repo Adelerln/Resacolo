@@ -4,6 +4,7 @@ import { resolveCheckoutCollectivityForUser } from '@/lib/account-profile/server
 import { markCheckoutCartConverted } from '@/lib/checkout/cart-tracking';
 import type { CartItem } from '@/types/cart';
 import {
+  formatEuroFromCents,
   getOrganizerSelection,
   type CheckoutContact,
   type CheckoutParticipant,
@@ -40,6 +41,7 @@ import {
   validateAncvConnectAmountAgainstOrderTotal,
   validateAncvConnectMatricule
 } from '@/lib/ancv-connect-matricule';
+import { sendReservationNotificationEmails } from '@/lib/reservation-notifications.server';
 import { isMissingAnyColumnError } from '@/lib/supabase-schema-errors';
 
 type PrepareCheckoutPaymentInput = {
@@ -767,13 +769,14 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
     if (!organizerSettings || organizerItems.length === 0) continue;
 
     const effectiveContact = buildEffectiveContactForOrganizer(input.contact, organizerId);
-    const requestKind = resolveOrderRequestKind(effectiveContact, organizerSettings);
+    const stayCafEligible = organizerItems.every((item) => item.isCafEligible !== false);
+    const requestKind = resolveOrderRequestKind(effectiveContact, organizerSettings, { stayCafEligible });
     const organizerPricing = buildPricingForOrganizerGroup(organizerItems, pricing.currency);
     const isPartnerTotalCoverage = !requestKind && isPartnerFullCoverageCheckout(organizerPricing);
     const paidAt = isPartnerTotalCoverage ? requestedAt : null;
     const initialStatus = isPartnerTotalCoverage
       ? ('PAID' as Database['public']['Enums']['order_status'])
-      : resolveInitialOrderStatus(effectiveContact, organizerSettings);
+      : resolveInitialOrderStatus(effectiveContact, organizerSettings, { stayCafEligible });
     const immediatePaymentAmountCents = computeImmediatePaymentAmountCents(
       organizerPricing.financeFamilyPayableTotalCents ?? 0,
       effectiveContact.paymentMode
@@ -975,6 +978,43 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
         console.error('checkout: génération facture client échouée après paiement total partenaire', invoiceError);
       }
     }
+
+    const notificationLines = organizerParticipants.map((participant, index) => {
+      const pricedItem = organizerItems[index];
+      const childName = [participant.childFirstName, participant.childLastName]
+        .filter(Boolean)
+        .join(' ')
+        .trim();
+      const sessionLabel =
+        pricedItem?.sessionStartDate && pricedItem?.sessionEndDate
+          ? `Du ${pricedItem.sessionStartDate} au ${pricedItem.sessionEndDate}`
+          : 'Session';
+      return {
+        stayTitle: pricedItem?.stayTitle ?? 'Séjour',
+        sessionLabel,
+        childName: childName || 'Participant',
+        amountLabel: pricedItem ? formatEuroFromCents(pricedItem.totalPriceCents) : null
+      };
+    });
+
+    void sendReservationNotificationEmails({
+      orderId: order.id,
+      organizerId,
+      organizerName: organizerSettings.name,
+      organizerEmail: organizerSettings.contact_email,
+      familyEmail: effectiveContact.email,
+      contact: effectiveContact,
+      paymentMode: effectiveContact.paymentMode,
+      requestKind,
+      lines: notificationLines,
+      organizerAcceptsAncvPaper: organizerSettings.accepts_ancv_paper,
+      organizerAcceptsAncvConnect: organizerSettings.accepts_ancv_connect,
+      organizerIsVacafApproved: organizerSettings.is_vacaf_approved,
+      stayCafEligible,
+      ancvPaperMailingAddress: organizerSettings.ancv_paper_mailing_address ?? null
+    }).catch((error) => {
+      console.error('checkout: envoi emails réservation échoué', error);
+    });
 
     groupResults.push({
       organizerId,

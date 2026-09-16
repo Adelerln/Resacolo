@@ -7,6 +7,7 @@ import { FavoritesProvider } from '@/components/favorites/FavoritesProvider';
 import { MainNavigation } from '@/components/layout/MainNavigation';
 import { PartnerHeroBanner } from '@/components/layout/PartnerHeroBanner';
 import { Footer } from '@/components/layout/Footer';
+import { CookieConsentBanner } from '@/components/cookies/CookieConsentBanner';
 import { PageTransition } from '@/components/ui/PageTransition';
 import type { PublicSitePartnerBranding } from '@/types/partner-branding';
 
@@ -72,6 +73,7 @@ export function SiteShell({
           </Suspense>
         </main>
         <Footer />
+        <CookieConsentBanner />
         <LazyPublicChatbotWidget />
       </div>
     </FavoritesProvider>

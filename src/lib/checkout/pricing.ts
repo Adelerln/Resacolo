@@ -10,7 +10,7 @@ import {
 } from '@/lib/partner-client-qf';
 import { computePartnerDiscountedPrice } from '@/lib/stay-partner-pricing';
 import { computePartnerFinanceDisplay, normalizePartnerFinanceMode } from '@/lib/partner-offers';
-import { isMissingColumnError } from '@/lib/supabase-schema-errors';
+import { isMissingAnyColumnError, isMissingColumnError } from '@/lib/supabase-schema-errors';
 import type { CartItem } from '@/types/cart';
 import type { Database } from '@/types/supabase';
 import { formatEuroFromCents, type CheckoutPricing, type CheckoutPricingItem } from '@/types/checkout';
@@ -35,6 +35,7 @@ type StayRow = Pick<
   | 'required_documents_text'
   | 'supervision_text'
   | 'partner_discount_percent'
+  | 'is_caf_eligible'
 >;
 type SessionPriceRow = Pick<Database['public']['Tables']['session_prices']['Row'], 'session_id' | 'amount_cents'>;
 type TransportRow = Pick<
@@ -139,13 +140,20 @@ async function fetchSession(sessionId: string): Promise<SessionRow> {
 
 async function fetchStay(stayId: string): Promise<StayRow> {
   const supabase = getServerSupabaseClient();
-  const { data, error } = await supabase
-    .from('stays')
-    .select(
-      'id,organizer_id,title,status,age_min,age_max,categories,destination_country,destination_countries,transport_mode,required_documents_text,supervision_text,partner_discount_percent'
-    )
-    .eq('id', stayId)
-    .maybeSingle();
+  const selectWithCaf =
+    'id,organizer_id,title,status,age_min,age_max,categories,destination_country,destination_countries,transport_mode,required_documents_text,supervision_text,partner_discount_percent,is_caf_eligible';
+  const selectLegacy =
+    'id,organizer_id,title,status,age_min,age_max,categories,destination_country,destination_countries,transport_mode,required_documents_text,supervision_text,partner_discount_percent';
+
+  const { data, error } = await supabase.from('stays').select(selectWithCaf).eq('id', stayId).maybeSingle();
+
+  if (error && isMissingAnyColumnError(error, ['is_caf_eligible'])) {
+    const fallback = await supabase.from('stays').select(selectLegacy).eq('id', stayId).maybeSingle();
+    if (fallback.error || !fallback.data) {
+      asValidationError('Le séjour sélectionné est introuvable.');
+    }
+    return { ...fallback.data, is_caf_eligible: true };
+  }
 
   if (error || !data) {
     asValidationError('Le séjour sélectionné est introuvable.');
@@ -588,7 +596,8 @@ export async function repriceCart(items: CartItem[]): Promise<CheckoutPricing> {
         cseAidCents,
         familyCentsAfterAid,
         cseEligible,
-        cseLabel
+        cseLabel,
+        isCafEligible: stay.is_caf_eligible !== false
       };
     })
   );

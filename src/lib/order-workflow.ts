@@ -8,6 +8,7 @@ export type OrganizerCheckoutSettings = {
   accepts_ancv_paper: boolean;
   accepts_ancv_connect: boolean;
   is_vacaf_approved: boolean;
+  ancv_paper_mailing_address?: string | null;
 };
 
 /** Anciens flux « demande » (plus CV_CONNECT : TPE Limonetik). Conservé pour compat. */
@@ -91,9 +92,11 @@ export function parseAmountEurosToCents(value: string | null | undefined) {
 
 export function resolveOrderRequestKind(
   contact: Pick<CheckoutContact, 'paymentMode' | 'vacafNumber'>,
-  organizer: OrganizerCheckoutSettings
+  organizer: OrganizerCheckoutSettings,
+  options?: { stayCafEligible?: boolean }
 ): OrderRequestKind {
-  if (organizer.is_vacaf_approved && contact.vacafNumber.trim()) {
+  const stayCafEligible = options?.stayCafEligible !== false;
+  if (organizer.is_vacaf_approved && stayCafEligible && contact.vacafNumber.trim()) {
     return 'VACAF';
   }
 
@@ -102,9 +105,10 @@ export function resolveOrderRequestKind(
 
 export function resolveInitialOrderStatus(
   contact: Pick<CheckoutContact, 'paymentMode' | 'vacafNumber'>,
-  organizer: OrganizerCheckoutSettings
+  organizer: OrganizerCheckoutSettings,
+  options?: { stayCafEligible?: boolean }
 ): OrderStatus {
-  return resolveOrderRequestKind(contact, organizer) ? 'REQUESTED' : 'PENDING_PAYMENT';
+  return resolveOrderRequestKind(contact, organizer, options) ? 'REQUESTED' : 'PENDING_PAYMENT';
 }
 
 export function computeImmediatePaymentAmountCents(
@@ -428,14 +432,14 @@ export function resolveCheckoutConfirmationFollowUpMessage(input: {
     return {
       tone: 'warning',
       message:
-        "Votre demande est bien transmise. L'organisme vous recontactera pour finaliser le règlement ANCV Connect et saisir le montant reçu."
+        "Votre demande est bien transmise. L'organisateur va vous adresser un lien pour régler depuis votre espace personnel ANCV Connect, puis saisir le montant reçu."
     };
   }
   if (context.isPartnerManualQuoteMode) {
     return {
       tone: 'warning',
       message:
-        'Votre demande de devis est bien transmise. Votre partenaire doit maintenant préciser son montant de prise en charge avant validation finale.'
+        'Paiement différé : votre demande est bien transmise. Votre partenaire doit maintenant calculer la prise en charge et la renseigner dans son back-office avant validation finale.'
     };
   }
   if (context.isPartnerTotalMode) {
@@ -455,7 +459,8 @@ export function resolveCheckoutConfirmationFollowUpMessage(input: {
   if (context.isDeferredMode) {
     return {
       tone: 'warning',
-      message: 'Votre commande est bien enregistrée. Le règlement est différé et sera finalisé ultérieurement.'
+      message:
+        'Votre commande est bien enregistrée. Le paiement est différé car votre partenaire doit d’abord calculer la prise en charge et la renseigner dans son back-office. Le reste à charge vous sera communiqué ensuite.'
     };
   }
 
@@ -505,7 +510,7 @@ export function resolveCheckoutConfirmationSubtitle(input: {
     return 'Votre demande a été transmise à l’organisme pour traitement ANCV Connect.';
   }
   if (input.isPartnerManualQuoteMode) {
-    return 'Votre demande de devis a été transmise à votre partenaire.';
+    return 'Paiement différé : votre partenaire doit calculer la prise en charge dans son back-office.';
   }
   if (input.isPartnerTotalMode) {
     return 'Votre réservation est enregistrée sans paiement immédiat.';
@@ -514,7 +519,7 @@ export function resolveCheckoutConfirmationSubtitle(input: {
     return 'Votre commande est enregistrée. Le règlement en ANCV papier sera finalisé hors ligne.';
   }
   if (input.isDeferredMode) {
-    return 'Votre commande est enregistrée. Le règlement différé sera finalisé ultérieurement.';
+    return 'Paiement différé : le partenaire doit d’abord calculer la prise en charge dans son back-office.';
   }
   if (input.orderStatus === 'REQUESTED') {
     return 'Votre demande a été transmise à l’organisme.';

@@ -22,6 +22,7 @@ export function PartnerContactForm() {
   const [institution, setInstitution] = useState('');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [formule, setFormule] = useState<Formule>('');
   const [message, setMessage] = useState('');
   const [status, setStatus] = useState<SubmitStatus>('idle');
@@ -41,6 +42,7 @@ export function PartnerContactForm() {
           institution,
           name,
           email,
+          phone,
           formula: formule,
           message
         })
@@ -58,6 +60,7 @@ export function PartnerContactForm() {
       setInstitution('');
       setName('');
       setEmail('');
+      setPhone('');
       setFormule('');
       setMessage('');
     } catch {
@@ -110,8 +113,18 @@ export function PartnerContactForm() {
               />
             </div>
             <div>
-              <label className="mb-2 block text-sm font-semibold text-slate-700">4. Formule CSE*</label>
-              <div className="relative">
+              <label className="mb-2 block text-sm font-semibold text-slate-700">4. Téléphone</label>
+              <input
+                type="tel"
+                value={phone}
+                onChange={(event) => setPhone(event.target.value)}
+                placeholder="Facultatif"
+                className="h-12 w-full rounded-2xl border border-slate-300 bg-white px-4 shadow-sm outline-none transition focus:border-brand-600"
+              />
+            </div>
+            <div className="md:col-span-2">
+              <label className="mb-2 block text-sm font-semibold text-slate-700">5. Formule CSE*</label>
+              <div className="relative max-w-md">
                 <select
                   required
                   value={formule}
@@ -131,15 +144,18 @@ export function PartnerContactForm() {
           </div>
 
           <div>
-            <label className="mb-2 block text-sm font-semibold text-slate-700">5. Message*</label>
+            <label className="mb-2 block text-sm font-semibold text-slate-700">6. Message*</label>
             <textarea
               required
+              minLength={10}
+              maxLength={4000}
               rows={7}
-              placeholder="Message*"
+              placeholder="Décrivez votre demande (10 caractères minimum)"
               value={message}
               onChange={(event) => setMessage(event.target.value)}
               className="w-full rounded-2xl border border-slate-300 bg-white p-4 shadow-sm outline-none transition focus:border-brand-600"
             />
+            <p className="mt-1.5 text-xs text-slate-500">10 caractères minimum.</p>
           </div>
 
           {errorMessage && <p className="rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-600">{errorMessage}</p>}

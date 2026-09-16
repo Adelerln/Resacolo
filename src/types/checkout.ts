@@ -83,6 +83,8 @@ export type CheckoutPricingItem = {
   familyCentsAfterAid?: number;
   cseEligible?: boolean;
   cseLabel?: string | null;
+  /** Séjour éligible CAF / VACAF (false notamment pour certains séjours à l'étranger). */
+  isCafEligible?: boolean;
 };
 
 export type CheckoutPricing = {

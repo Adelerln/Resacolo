@@ -7,6 +7,7 @@ const mnemosNav = [
   { href: '/mnemos/billing', label: 'Commissions' },
   { href: '/mnemos/inquiries', label: 'Demandes de renseignements' },
   { href: '/mnemos/contact-notifications', label: 'Notifications' },
+  { href: '/mnemos/weekly-stock-emails', label: 'Mails & demandes' },
   { href: '/mnemos/admins', label: 'Comptes admin' },
   { href: '/mnemos/support', label: 'Assistance organismes' },
   { href: '/mnemos/account-deletions', label: 'Suppressions de compte' },

@@ -1,5 +1,5 @@
 /**
- * Génère le rapport stocks THALIE et l'envoie via Microsoft Outlook (macOS).
+ * Envoi test du rapport stocks (vide ou réel) uniquement à monsejour@thalie.org via Outlook.
  * Usage: npx tsx scripts/send-thalie-stock-via-outlook.ts
  */
 import { createClient } from '@supabase/supabase-js';
@@ -10,7 +10,6 @@ import {
   buildWeeklyStockReportSubject,
   buildWeeklyStockReports,
   getParisClock,
-  getStockAvailability,
   renderWeeklyStockReportHtml,
   renderWeeklyStockReportText,
   type WeeklyStockOrganizerReport
@@ -44,65 +43,19 @@ function appleScriptString(value: string) {
   return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }
 
-function demoReport(): WeeklyStockOrganizerReport {
-  const sessions = [
-    {
-      sessionId: 'demo-1',
-      stayTitle: 'Aventure mer — Cap d’Agde (démo)',
-      startDate: '2026-07-05',
-      endDate: '2026-07-12',
-      ageMin: 8,
-      ageMax: 12,
-      reserved: 12,
-      remaining: 18,
-      availability: getStockAvailability(18)
-    },
-    {
-      sessionId: 'demo-2',
-      stayTitle: 'Multi-activités montagne (démo)',
-      startDate: '2026-07-19',
-      endDate: '2026-07-26',
-      ageMin: 10,
-      ageMax: 14,
-      reserved: 28,
-      remaining: 2,
-      availability: getStockAvailability(2)
-    },
-    {
-      sessionId: 'demo-3',
-      stayTitle: 'Colo nature & chevaux (démo)',
-      startDate: '2026-08-02',
-      endDate: '2026-08-09',
-      ageMin: 7,
-      ageMax: 11,
-      reserved: 30,
-      remaining: 0,
-      availability: getStockAvailability(0)
-    }
-  ] as const;
-
+function emptyThalieReport(): WeeklyStockOrganizerReport {
   return {
     organizerId: THALIE_ID,
     organizerName: 'Thalie',
     contactEmail: TO,
-    activeSessionCount: sessions.length,
-    remainingPlaces: sessions.reduce((sum, s) => sum + s.remaining, 0),
-    fullSessionCount: sessions.filter((s) => s.availability === 'full').length,
-    seasons: [
-      {
-        seasonId: null,
-        seasonName: 'Été',
-        sessions: [...sessions],
-        sessionCount: sessions.length,
-        remainingPlaces: sessions.reduce((sum, s) => sum + s.remaining, 0)
-      }
-    ]
+    activeSessionCount: 0,
+    remainingPlaces: 0,
+    fullSessionCount: 0,
+    seasons: []
   };
 }
 
 function sendViaOutlook(input: { subject: string; htmlPath: string; text: string; to: string }) {
-  // Outlook for Mac: HTML via opening file in browser-ish is flaky;
-  // we set content from shell-escaped HTML file using do shell script + UTF-8.
   const script = `
 set htmlPath to "${appleScriptString(input.htmlPath)}"
 set htmlContent to do shell script "python3 -c 'import pathlib,sys; sys.stdout.write(pathlib.Path(sys.argv[1]).read_text(encoding=\\"utf-8\\"))' " & quoted form of htmlPath
@@ -122,7 +75,6 @@ tell application "Microsoft Outlook"
     set account of newMessage to targetAccount
   end if
 
-  -- Prefer HTML body when supported
   try
     set content of newMessage to htmlContent
   on error
@@ -134,12 +86,11 @@ tell application "Microsoft Outlook"
 end tell
 `;
 
-  const result = execFileSync('osascript', ['-e', script], {
+  return execFileSync('osascript', ['-e', script], {
     encoding: 'utf8',
     timeout: 180000,
     maxBuffer: 20 * 1024 * 1024
   });
-  return result;
 }
 
 async function main() {
@@ -153,35 +104,14 @@ async function main() {
   });
 
   const reports = await buildWeeklyStockReports(supabase);
-  let report =
+  const report =
     reports.find((r) => r.organizerId === THALIE_ID) ||
-    reports.find((r) => r.organizerName.toLowerCase().includes('thalie'));
-
-  let usedDemo = false;
-  if (!report || report.activeSessionCount === 0) {
-    // Base liée au .env.local : Thalie n'a pas de séjours PUBLISHED → e-mail test avec données démo.
-    report = demoReport();
-    usedDemo = true;
-  }
+    reports.find((r) => r.organizerName.toLowerCase().includes('thalie')) ||
+    emptyThalieReport();
 
   const reportDateIso = getParisClock().dateIso;
-  let html = renderWeeklyStockReportHtml({ report, reportDateIso });
-  if (usedDemo) {
-    html = html.replace(
-      'État de vos séjours en stock',
-      'État de vos séjours en stock (e-mail test)'
-    );
-    html = html.replace(
-      'Voici le récapitulatif de vos places restantes sur Resacolo,<br />',
-      'Ceci est un <strong>envoi test</strong> (aucun séjour publié trouvé dans cet environnement).<br />Voici un aperçu du format du récapitulatif stocks,<br />'
-    );
-  }
-  const text = [
-    usedDemo ? '[E-MAIL TEST — données démo, aucun séjour publié en base locale]' : '',
-    renderWeeklyStockReportText({ report, reportDateIso })
-  ]
-    .filter(Boolean)
-    .join('\n\n');
+  const html = renderWeeklyStockReportHtml({ report, reportDateIso });
+  const text = renderWeeklyStockReportText({ report, reportDateIso });
   const subject = `[TEST] ${buildWeeklyStockReportSubject(reportDateIso)} — Thalie`;
 
   const outHtml = resolve(process.cwd(), 'tmp-thalie-stock-report.html');
@@ -192,9 +122,9 @@ async function main() {
         to: TO,
         fromAccount: FROM_ACCOUNT,
         subject,
-        usedDemo,
         sessions: report.activeSessionCount,
         remaining: report.remainingPlaces,
+        emptyStock: report.activeSessionCount === 0,
         preview: outHtml
       },
       null,

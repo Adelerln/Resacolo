@@ -5,7 +5,8 @@ import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import type { LucideIcon } from 'lucide-react';
-import { BarChart3, CircleHelp, FileLock2, Mail, Scale, Shield, Tent } from 'lucide-react';
+import { BarChart3, CircleHelp, Cookie, FileLock2, Mail, Scale, Shield, Tent } from 'lucide-react';
+import { openCookieConsentSettings } from '@/components/cookies/CookieConsentBanner';
 
 type FooterHighlight = {
   title: string;
@@ -220,6 +221,18 @@ export function Footer({ hideHelpAndLegal = false }: { hideHelpAndLegal?: boolea
                         </Link>
                       </li>
                     ))}
+                    <li>
+                      <button
+                        type="button"
+                        onClick={openCookieConsentSettings}
+                        className="flex w-full cursor-pointer items-start gap-2 text-left text-white hover:text-white"
+                      >
+                        <span className={footerLinkIconClass} aria-hidden>
+                          <Cookie className="h-4 w-4" strokeWidth={2} />
+                        </span>
+                        <span className="min-w-0 flex-1">Gérer les cookies</span>
+                      </button>
+                    </li>
                   </ul>
                 </div>
               </div>

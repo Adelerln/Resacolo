@@ -200,7 +200,8 @@ function describePartnerReservationPendingActions(input: {
   if (financeMode === 'MANUAL' && !input.hasContributionSnapshot && isOpenWorkflow) {
     actions.push({
       actorLabel: 'Partenaire',
-      description: 'Indiquer le montant de prise en charge à appliquer à la réservation.'
+      description:
+        'Calculer la prise en charge partenaire et la renseigner dans le back-office (paiement différé jusqu’à ce calcul).'
     });
   }
 
@@ -214,7 +215,8 @@ function describePartnerReservationPendingActions(input: {
   if (input.status === 'REQUESTED' && input.requestKind === 'ANCV_CONNECT') {
     actions.push({
       actorLabel: 'Organisme',
-      description: 'Recontacter la famille puis saisir le montant ANCV Connect effectivement encaissé.'
+      description:
+        'Envoyer à la famille un lien de paiement ANCV Connect (montant + identifiant client), puis saisir le montant effectivement encaissé.'
     });
   }
 

@@ -50,6 +50,11 @@ export type StayDraftReviewPayload = {
   accommodation_video_urls: string[];
   /** Pourcentage de remise partenaire (0–100), ou null si non renseigné. */
   partner_discount_percent: number | null;
+  /**
+   * Séjour éligible aux aides CAF / VACAF.
+   * À désactiver notamment pour certains séjours à l'étranger.
+   */
+  is_caf_eligible: boolean;
   /** Champ éditorial live (`stays.activities_text`) — tunnel séjour publié. */
   activities_text: string;
   /** Champ live (`stays.required_documents_text`) — tunnel séjour publié. */
@@ -102,6 +107,7 @@ export type StayDraftReviewFieldErrorKey =
   | 'seo_checks'
   | 'video_urls'
   | 'partner_discount_percent'
+  | 'is_caf_eligible'
   | 'activities_text'
   | 'required_documents_text'
   | 'form';

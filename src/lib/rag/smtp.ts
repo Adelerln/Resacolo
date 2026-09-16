@@ -1,20 +1,16 @@
 import crypto from 'node:crypto';
 import net from 'node:net';
 import tls from 'node:tls';
-import { getRagEnv } from '@/lib/rag/env';
+import { getMissingSmtpEnvKeys, getRagEnv } from '@/lib/rag/env';
 
 type SocketLike = net.Socket | tls.TLSSocket;
 
-type SendEmailInput = {
-  to: string | readonly string[];
-  subject: string;
-  text: string;
-  replyTo?: string;
 export type SendSmtpEmailInput = {
   to: string;
   subject: string;
   text: string;
   html?: string;
+  replyTo?: string;
 };
 
 type SendEmailInput = SendSmtpEmailInput;
@@ -154,15 +150,6 @@ function escapeForData(value: string) {
   return value.replace(/\r?\n/g, '\r\n').replace(/^\./gm, '..');
 }
 
-function safeAddress(value: string) {
-  const address = value.trim();
-  if (!address || /[\r\n<>]/.test(address)) {
-    throw new Error('Adresse email SMTP invalide.');
-  }
-  return address;
-}
-
-export async function sendSmtpEmail(input: SendEmailInput) {
 function encodeSubject(subject: string) {
   if (/^[\x20-\x7E]*$/.test(subject)) return subject;
   return `=?UTF-8?B?${Buffer.from(subject, 'utf8').toString('base64')}?=`;
@@ -205,16 +192,15 @@ function buildMimeBody(input: SendSmtpEmailInput) {
 export async function sendSmtpEmail(input: SendSmtpEmailInput) {
   const env = getRagEnv();
   if (!env.smtp) {
-    throw new Error('SMTP non configuré.');
+    const missing = getMissingSmtpEnvKeys();
+    throw new Error(
+      missing.length > 0
+        ? `SMTP non configuré (variables manquantes : ${missing.join(', ')}).`
+        : 'SMTP non configuré.'
+    );
   }
 
   const { host, port, user, pass, from } = env.smtp;
-  const recipients = (typeof input.to === 'string' ? [input.to] : input.to).map(safeAddress);
-  if (recipients.length === 0) {
-    throw new Error('Aucun destinataire SMTP configuré.');
-  }
-  const sender = safeAddress(from);
-  const replyTo = input.replyTo ? safeAddress(input.replyTo) : null;
   const client = new SmtpClient(host, port);
   const localHost = 'resacolo.local';
 
@@ -224,24 +210,16 @@ export async function sendSmtpEmail(input: SendSmtpEmailInput) {
     await client.sendCommand('AUTH LOGIN', [334]);
     await client.sendCommand(Buffer.from(user).toString('base64'), [334]);
     await client.sendCommand(Buffer.from(pass).toString('base64'), [235]);
-    await client.sendCommand(`MAIL FROM:<${sender}>`, [250]);
-    for (const recipient of recipients) {
-      await client.sendCommand(`RCPT TO:<${recipient}>`, [250, 251]);
-    }
+    await client.sendCommand(`MAIL FROM:<${from}>`, [250]);
+    await client.sendCommand(`RCPT TO:<${input.to}>`, [250, 251]);
     await client.sendCommand('DATA', [354]);
 
     const messageId = `<${Date.now()}.${crypto.randomUUID()}@${from.includes('@') ? from.split('@')[1] : 'resacolo.com'}>`;
+    const replyTo = input.replyTo?.trim();
     const payload = [
-      `From: ${sender}`,
-      `To: ${recipients.join(', ')}`,
-      ...(replyTo ? [`Reply-To: ${replyTo}`] : []),
-      `Subject: ${input.subject.replace(/[\r\n]+/g, ' ')}`,
-      'MIME-Version: 1.0',
-      'Content-Type: text/plain; charset=UTF-8',
-      '',
-      input.text
       `From: Resacolo <${from}>`,
       `To: ${input.to}`,
+      ...(replyTo ? [`Reply-To: ${replyTo}`] : []),
       `Subject: ${encodeSubject(input.subject)}`,
       `Date: ${new Date().toUTCString()}`,
       `Message-ID: ${messageId}`,
@@ -254,7 +232,6 @@ export async function sendSmtpEmail(input: SendSmtpEmailInput) {
   }
 }
 
-export const sendEscalationEmail = sendSmtpEmail;
 export async function sendEscalationEmail(input: SendEmailInput) {
   await sendSmtpEmail(input);
 }

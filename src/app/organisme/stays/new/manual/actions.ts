@@ -5,6 +5,10 @@ import { requireOrganizerPageAccess } from '@/lib/organizer-backoffice-access.se
 import { withOrganizerQuery } from '@/lib/organizers.server';
 import { canonicalizeStaySourceUrl } from '@/lib/stay-source-url-canonical';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
+import {
+  ORGANIZER_CGV_REQUIRED_MESSAGE,
+  organizerHasUploadedCgv
+} from '@/lib/organizer-cgv';
 
 type DynamicStayDraftInsertIdBuilder = {
   insert: (values: Record<string, unknown>) => {
@@ -97,6 +101,16 @@ export async function createManualDraftAndRedirect(
   }
 
   const supabase = getServerSupabaseClient();
+  const hasCgv = await organizerHasUploadedCgv(supabase, actionOrganizerId);
+  if (!hasCgv) {
+    redirect(
+      withOrganizerQuery(
+        `/organisme/organisateur?error=${encodeURIComponent(ORGANIZER_CGV_REQUIRED_MESSAGE)}`,
+        actionOrganizerId
+      )
+    );
+  }
+
   const selectedAccommodationId = linkedAccommodation?.id?.trim() ?? '';
 
   if (!selectedAccommodationId) {

@@ -182,8 +182,10 @@ export default function ConfidentialitePage() {
             <strong>Opt-in pour le dépôt de cookies</strong>
           </p>
           <p>
-            Nous n’utilisons pas de cookies. Si nous devions en utiliser à l’avenir, vous en seriez informé
-            préalablement et auriez la possibilité de désactiver ces cookies.
+            Les cookies strictement nécessaires au fonctionnement du Site (session, panier, sécurité) sont déposés
+            sans consentement préalable. Les cookies de mesure d&apos;audience / performance ne sont déposés
+            qu&apos;après votre accord via le bandeau cookies. Vous pouvez à tout moment modifier vos choix depuis
+            le lien « Gérer les cookies » en bas de page.
           </p>
         </section>
 

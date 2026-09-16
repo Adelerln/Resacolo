@@ -143,6 +143,7 @@ export default function CheckoutRecapitulatifPage() {
       const groupPricing = buildGroupPricingSummary(pricingItems);
       const settings = organizerCheckoutSettingsById[organizerId];
       const selection = getOrganizerSelection(contact, organizerId);
+      const stayCafEligible = pricingItems.length === 0 || pricingItems.every((item) => item.isCafEligible !== false);
       const requestKind = settings
         ? resolveOrderRequestKind(
             { paymentMode: selection.paymentMode, vacafNumber: selection.vacafNumber },
@@ -150,7 +151,8 @@ export default function CheckoutRecapitulatifPage() {
               accepts_ancv_paper: settings.acceptsAncvPaper,
               accepts_ancv_connect: settings.acceptsAncvConnect,
               is_vacaf_approved: settings.isVacafApproved
-            }
+            },
+            { stayCafEligible }
           )
         : null;
       const groupIsPartnerTotalCoverage = !requestKind && isPartnerFullCoverageCheckout(groupPricing);
@@ -169,13 +171,18 @@ export default function CheckoutRecapitulatifPage() {
         selection,
         settings,
         requestKind,
+        stayCafEligible,
         pricing: groupPricing,
         isPartnerTotalCoverage: groupIsPartnerTotalCoverage,
         availablePaymentModes,
         displayedPaymentModes,
         hasAidSelectionOptions:
           !groupIsPartnerTotalCoverage &&
-          Boolean(settings?.acceptsAncvPaper || settings?.acceptsAncvConnect || settings?.isVacafApproved)
+          Boolean(
+            settings?.acceptsAncvPaper ||
+              settings?.acceptsAncvConnect ||
+              (settings?.isVacafApproved && stayCafEligible)
+          )
       };
     });
   }, [contact, items, organizerCheckoutSettingsById, organizerIds, pricing]);
@@ -721,14 +728,16 @@ export default function CheckoutRecapitulatifPage() {
                       {group.pricing.financeRequiresQuote ? (
                         <div className="space-y-4">
                           <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                            Aucun paiement n&apos;est demandé à ce stade pour {group.organizerName}. Vous êtes
-                            en train d&apos;envoyer une demande de devis à votre partenaire.
+                            Paiement différé : aucun règlement n&apos;est demandé à ce stade pour{' '}
+                            {group.organizerName}. Votre partenaire doit d&apos;abord calculer la prise en
+                            charge et la renseigner dans son back-office ; le reste à charge vous sera
+                            indiqué ensuite.
                             {group.hasAidSelectionOptions ? (
                               <>
                                 {' '}
                                 Vous pouvez toutefois préciser ici si vous comptez mobiliser{' '}
                                 {[
-                                  group.settings?.isVacafApproved ? 'VACAF' : null,
+                                  group.settings?.isVacafApproved && group.stayCafEligible ? 'VACAF' : null,
                                   group.settings?.acceptsAncvPaper ? 'ANCV papier' : null,
                                   group.settings?.acceptsAncvConnect ? 'ANCV Connect' : null
                                 ]
@@ -892,7 +901,7 @@ export default function CheckoutRecapitulatifPage() {
                                 <span className="font-medium text-slate-700">ANCV Connect</span>
                               </label>
                             ) : null}
-                            {group.settings?.isVacafApproved ? (
+                            {group.settings?.isVacafApproved && group.stayCafEligible ? (
                               <label className="flex items-start gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
                                 <input
                                   type="checkbox"
@@ -910,7 +919,7 @@ export default function CheckoutRecapitulatifPage() {
                             ) : null}
                           </div>
 
-                          {group.settings?.isVacafApproved && wantsVacafAid ? (
+                          {group.settings?.isVacafApproved && group.stayCafEligible && wantsVacafAid ? (
                             <div className="mt-4">
                               <label
                                 htmlFor={`recap-vacaf-${group.organizerId}`}
@@ -1139,7 +1148,9 @@ export default function CheckoutRecapitulatifPage() {
               </div>
               {pricing.financeRequiresQuote ? (
                 <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
-                  Le prix affiché correspond au coût actuel du séjour, mais le montant final à régler sera confirmé par votre partenaire après étude.
+                  Paiement différé : le prix catalogue est affiché, mais le partenaire doit d&apos;abord
+                  calculer la prise en charge et la renseigner dans son back-office avant de connaître le
+                  reste à charge.
                 </div>
               ) : pricing.financePartnerContributionTotalCents != null && pricing.financePartnerContributionTotalCents > 0 ? (
                 <>

@@ -2099,6 +2099,7 @@ export type Database = {
           activity_keys: string[]
           accepts_ancv_connect: boolean
           accepts_ancv_paper: boolean
+          ancv_paper_mailing_address: string | null
           contact_email: string | null
           created_at: string
           description: string | null
@@ -2126,6 +2127,7 @@ export type Database = {
           activity_keys?: string[]
           accepts_ancv_connect?: boolean
           accepts_ancv_paper?: boolean
+          ancv_paper_mailing_address?: string | null
           contact_email?: string | null
           created_at?: string
           description?: string | null
@@ -2153,6 +2155,7 @@ export type Database = {
           activity_keys?: string[]
           accepts_ancv_connect?: boolean
           accepts_ancv_paper?: boolean
+          ancv_paper_mailing_address?: string | null
           contact_email?: string | null
           created_at?: string
           description?: string | null
@@ -2502,6 +2505,7 @@ export type Database = {
           location_text: string | null
           organizer_id: string
           payment_aids: string[]
+          is_caf_eligible: boolean
           program_text: string | null
           raw_payload: Json | null
           region_text: string | null
@@ -2550,6 +2554,7 @@ export type Database = {
           location_text?: string | null
           organizer_id: string
           payment_aids?: string[]
+          is_caf_eligible?: boolean
           program_text?: string | null
           raw_payload?: Json | null
           region_text?: string | null
@@ -2598,6 +2603,7 @@ export type Database = {
           location_text?: string | null
           organizer_id?: string
           payment_aids?: string[]
+          is_caf_eligible?: boolean
           program_text?: string | null
           raw_payload?: Json | null
           region_text?: string | null
@@ -2784,6 +2790,71 @@ export type Database = {
           },
         ]
       }
+      weekly_stock_report_email_logs: {
+        Row: {
+          id: string
+          created_at: string
+          run_id: string
+          report_date: string
+          organizer_id: string | null
+          organizer_name: string | null
+          recipient_email: string
+          status: string
+          error_message: string | null
+          subject: string | null
+          active_session_count: number | null
+          remaining_places: number | null
+          full_session_count: number | null
+          dry_run: boolean
+          force_run: boolean
+          metadata: Json
+        }
+        Insert: {
+          id?: string
+          created_at?: string
+          run_id: string
+          report_date: string
+          organizer_id?: string | null
+          organizer_name?: string | null
+          recipient_email: string
+          status: string
+          error_message?: string | null
+          subject?: string | null
+          active_session_count?: number | null
+          remaining_places?: number | null
+          full_session_count?: number | null
+          dry_run?: boolean
+          force_run?: boolean
+          metadata?: Json
+        }
+        Update: {
+          id?: string
+          created_at?: string
+          run_id?: string
+          report_date?: string
+          organizer_id?: string | null
+          organizer_name?: string | null
+          recipient_email?: string
+          status?: string
+          error_message?: string | null
+          subject?: string | null
+          active_session_count?: number | null
+          remaining_places?: number | null
+          full_session_count?: number | null
+          dry_run?: boolean
+          force_run?: boolean
+          metadata?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "weekly_stock_report_email_logs_organizer_id_fkey"
+            columns: ["organizer_id"]
+            isOneToOne: false
+            referencedRelation: "organizers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       stays: {
         Row: {
           ages: number[]
@@ -2808,6 +2879,7 @@ export type Database = {
           organizer_id: string
           payment_aids: string[]
           partner_discount_percent: number | null
+          is_caf_eligible: boolean
           program_text: string | null
           required_documents_text: string | null
           seo_checks: Json
@@ -2858,6 +2930,7 @@ export type Database = {
           organizer_id: string
           payment_aids?: string[]
           partner_discount_percent?: number | null
+          is_caf_eligible?: boolean
           program_text?: string | null
           required_documents_text?: string | null
           seo_checks?: Json
@@ -2908,6 +2981,7 @@ export type Database = {
           organizer_id?: string
           payment_aids?: string[]
           partner_discount_percent?: number | null
+          is_caf_eligible?: boolean
           program_text?: string | null
           required_documents_text?: string | null
           seo_checks?: Json

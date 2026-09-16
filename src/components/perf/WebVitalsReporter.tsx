@@ -4,6 +4,11 @@ import { useEffect, useRef } from 'react';
 import { useReportWebVitals } from 'next/web-vitals';
 import { usePathname } from 'next/navigation';
 import { PERF_BUDGETS, isTrackedWebVitalMetric, resolvePerfPageTemplate } from '@/lib/perf/budgets';
+import {
+  hasAnalyticsConsent,
+  readCookieConsentPreferences,
+  type CookieConsentPreferences
+} from '@/lib/cookie-consent';
 
 type DeviceType = 'mobile' | 'tablet' | 'desktop';
 type WebVitalRating = 'good' | 'needs-improvement' | 'poor';
@@ -77,12 +82,30 @@ function sendPayload(payload: WebVitalPayload) {
 export function WebVitalsReporter() {
   const pathname = usePathname();
   const pathnameRef = useRef(pathname);
+  const analyticsAllowedRef = useRef(false);
 
   useEffect(() => {
     pathnameRef.current = pathname;
   }, [pathname]);
 
+  useEffect(() => {
+    const syncConsent = (preferences?: CookieConsentPreferences | null) => {
+      analyticsAllowedRef.current = hasAnalyticsConsent(
+        preferences ?? readCookieConsentPreferences()
+      );
+    };
+    syncConsent();
+
+    const onConsentChanged = (event: Event) => {
+      const detail = (event as CustomEvent<CookieConsentPreferences>).detail;
+      syncConsent(detail);
+    };
+    window.addEventListener('resacolo:cookie-consent-changed', onConsentChanged);
+    return () => window.removeEventListener('resacolo:cookie-consent-changed', onConsentChanged);
+  }, []);
+
   useReportWebVitals((metric: WebVitalMetric) => {
+    if (!analyticsAllowedRef.current) return;
     if (!isTrackedWebVitalMetric(metric.name)) return;
 
     const route = pathnameRef.current || (typeof window !== 'undefined' ? window.location.pathname : '');

@@ -61,7 +61,20 @@ export async function POST(request: Request) {
       );
     }
 
+    const message = error instanceof Error ? error.message : String(error);
     console.error('[organizer-contact] erreur', error);
+
+    if (message.includes('enregistrée') && message.includes("e-mail d'alerte")) {
+      const requestIdMatch = message.match(/\(([0-9a-f-]{36})\)/i);
+      return NextResponse.json(
+        {
+          error: message,
+          requestId: requestIdMatch?.[1] ?? null
+        },
+        { status: 502 }
+      );
+    }
+
     return NextResponse.json(
       {
         error: 'Impossible de traiter la demande actuellement.'

@@ -74,7 +74,7 @@ function getFinanceSummary(
   }
 
   if (mode === 'MANUAL' || priced.financeRequiresQuote) {
-    return 'Demande de devis : le montant final sera confirmé par votre partenaire.';
+    return 'Paiement différé : le partenaire doit calculer la prise en charge et la renseigner dans son back-office.';
   }
 
   if (mode === 'TOTAL') {
@@ -198,7 +198,8 @@ export function CheckoutCartSummary({
             </div>
             {pricing?.financeRequiresQuote ? (
               <div className="mt-2 text-xs font-semibold text-amber-700 sm:text-sm">
-                Demande de devis : le montant final sera confirmé par votre partenaire.
+                Demande de devis / paiement différé : le partenaire doit calculer la prise en charge et la
+                renseigner dans son back-office.
               </div>
             ) : pricing && pricing.financeFamilyPayableTotalCents != null && pricing.financeFamilyPayableTotalCents !== pricing.totalCents ? (
               <div className="mt-2 flex items-center justify-between text-xs font-semibold text-emerald-700 sm:text-sm">
@@ -247,7 +248,8 @@ export function CheckoutCartSummary({
         </div>
         {pricing?.financeRequiresQuote ? (
           <div className="mt-1 text-xs font-semibold text-amber-700">
-            Demande de devis : le montant final sera confirmé par votre partenaire.
+            Paiement différé : le partenaire doit calculer la prise en charge et la renseigner dans son
+            back-office.
           </div>
         ) : pricing && pricing.financeFamilyPayableTotalCents != null && pricing.financeFamilyPayableTotalCents !== pricing.totalCents ? (
           <div className="mt-1 flex items-center justify-between text-xs font-semibold text-emerald-700">

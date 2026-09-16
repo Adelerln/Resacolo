@@ -87,20 +87,24 @@ export async function POST(request: Request) {
     }
 
     try {
-      await sendSmtpEmail({
-        to: CONTACT_EMAIL_RECIPIENTS,
-        subject: '[Resacolo] Nouvelle demande de contact',
-        replyTo: input.email,
-        text: [
-          `Référence de la demande : ${data.id}`,
-          `Nom : ${input.firstName} ${input.lastName}`,
-          `Email : ${input.email}`,
-          `Téléphone : ${input.phone || 'Non renseigné'}`,
-          '',
-          'Message :',
-          input.message
-        ].join('\n')
-      });
+      await Promise.all(
+        CONTACT_EMAIL_RECIPIENTS.map((to) =>
+          sendSmtpEmail({
+            to,
+            subject: '[Resacolo] Nouvelle demande de contact',
+            replyTo: input.email,
+            text: [
+              `Référence de la demande : ${data.id}`,
+              `Nom : ${input.firstName} ${input.lastName}`,
+              `Email : ${input.email}`,
+              `Téléphone : ${input.phone || 'Non renseigné'}`,
+              '',
+              'Message :',
+              input.message
+            ].join('\n')
+          })
+        )
+      );
     } catch (emailError) {
       console.error('[contact] envoi email échoué', { inquiryId: data.id, error: emailError });
       return NextResponse.json(
@@ -110,7 +114,9 @@ export async function POST(request: Request) {
         },
         { status: 502 }
       );
-    // Best-effort : la demande reste visible dans Mnemos même si l'e-mail échoue.
+    }
+
+    // Best-effort : notification configurée côté admin (ne bloque pas la réponse).
     try {
       await notifyContactFormRecipients({
         supabase,
@@ -119,7 +125,7 @@ export async function POST(request: Request) {
         lastName: input.lastName,
         email: input.email,
         phone: input.phone,
-        recipient: input.recipient,
+        recipient: 'Formulaire de contact',
         message: input.message
       });
     } catch (notifyError) {

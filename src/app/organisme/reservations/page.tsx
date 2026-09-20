@@ -289,19 +289,37 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
       onlinePaidCents
     });
     const now = new Date().toISOString();
+    const fullUpdatePayload = {
+      request_kind: requestKind,
+      external_aid_cents: nextExternalAidCents,
+      external_paid_cents: nextExternalPaidCents,
+      request_resolved_at: now,
+      status: nextStatus,
+      paid_at: nextStatus === 'PAID' ? now : null,
+      partially_paid_at: nextStatus === 'PARTIALLY_PAID' ? now : null
+    };
 
-    const { error: updateError } = await supabase
-      .from('orders')
-      .update({
-        request_kind: requestKind,
-        external_aid_cents: nextExternalAidCents,
-        external_paid_cents: nextExternalPaidCents,
-        request_resolved_at: now,
-        status: nextStatus,
-        paid_at: nextStatus === 'PAID' ? now : null,
-        partially_paid_at: nextStatus === 'PARTIALLY_PAID' ? now : null
-      })
-      .eq('id', orderId);
+    let updateError = (
+      await supabase.from('orders').update(fullUpdatePayload).eq('id', orderId)
+    ).error;
+
+    // Bases sans colonnes optionnelles (request_resolved_at / partially_paid_at).
+    if (updateError && isMissingAnyColumnError(updateError, ['request_resolved_at', 'partially_paid_at'])) {
+      const withoutResolvedAt = { ...fullUpdatePayload } as Record<string, string | number | null>;
+      delete withoutResolvedAt.request_resolved_at;
+      updateError = (await supabase.from('orders').update(withoutResolvedAt).eq('id', orderId)).error;
+
+      if (updateError && isMissingAnyColumnError(updateError, ['partially_paid_at'])) {
+        const minimalPayload = {
+          request_kind: requestKind,
+          external_aid_cents: nextExternalAidCents,
+          external_paid_cents: nextExternalPaidCents,
+          status: nextStatus,
+          paid_at: nextStatus === 'PAID' ? now : null
+        };
+        updateError = (await supabase.from('orders').update(minimalPayload).eq('id', orderId)).error;
+      }
+    }
 
     if (updateError) {
       redirect(

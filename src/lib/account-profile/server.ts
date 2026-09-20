@@ -27,6 +27,11 @@ import {
   CLIENT_CHILDREN_MISSING_ERROR,
   listFamilyChildren
 } from '@/lib/account-children.server';
+import {
+  findLegacyWpCustomerByEmail,
+  markLegacyWpCustomerClaimed,
+  readLegacyWpReservations
+} from '@/lib/legacy-wp/server';
 
 type ClientProfileRow = Database['public']['Tables']['client_profiles']['Row'];
 type ClientProfileInsert = Database['public']['Tables']['client_profiles']['Insert'];
@@ -1973,9 +1978,12 @@ export async function getFamilyProfileSnapshot(input: {
   sessionEmail?: string | null;
 }): Promise<FamilyProfileSnapshot> {
   let profile: FamilyProfile;
+  let hadPersistedProfile = false;
   try {
+    const existing = await getFamilyProfile(input.userId);
+    hadPersistedProfile = Boolean(existing);
     profile =
-      (await getFamilyProfile(input.userId)) ??
+      existing ??
       createDefaultProfile({
         userId: input.userId,
         sessionName: input.sessionName,
@@ -1995,6 +2003,7 @@ export async function getFamilyProfileSnapshot(input: {
       throw error;
     }
   }
+
   const contactEmails = Array.from(
     new Set(
       [normalizeContactEmail(input.sessionEmail), normalizeContactEmail(profile.email)].filter(
@@ -2002,10 +2011,57 @@ export async function getFamilyProfileSnapshot(input: {
       )
     )
   );
-  const [reservations, cseAffiliation] = await Promise.all([
+
+  // Seed profil depuis legacy WP si le compte n'a pas encore d'adresse (claim à la demande).
+  const legacyEmail = contactEmails[0] ?? null;
+  if (legacyEmail) {
+    try {
+      const legacy = await findLegacyWpCustomerByEmail(legacyEmail);
+      if (
+        legacy &&
+        (!legacy.claimed_user_id || legacy.claimed_user_id === input.userId) &&
+        (!hadPersistedProfile || !profile.addressLine1.trim())
+      ) {
+        profile = await upsertFamilyProfileFromRegistration({
+          userId: input.userId,
+          firstName: legacy.first_name || profile.billingFirstName || 'Famille',
+          lastName: legacy.last_name || profile.billingLastName || '',
+          email: legacyEmail,
+          phone: legacy.phone || profile.phone || '',
+          addressLine1: legacy.address_line1 || profile.addressLine1 || '',
+          addressLine2: legacy.address_line2 || profile.addressLine2 || '',
+          postalCode: legacy.postal_code || profile.postalCode || '',
+          city: legacy.city || profile.city || '',
+          country: legacy.country || profile.country || DEFAULT_COUNTRY
+        });
+        await markLegacyWpCustomerClaimed({ userId: input.userId, email: legacyEmail });
+        hadPersistedProfile = true;
+      } else if (legacy && !legacy.claimed_user_id) {
+        await markLegacyWpCustomerClaimed({ userId: input.userId, email: legacyEmail });
+      }
+    } catch (legacyError) {
+      console.warn('[account-profile] legacy claim skipped:', messageFromUnknown(legacyError));
+    }
+  }
+
+  const [nativeReservations, legacyReservations, cseAffiliation] = await Promise.all([
     readReservations(input.userId, { contactEmails }),
+    readLegacyWpReservations({
+      email: legacyEmail,
+      userId: input.userId
+    }),
     readFamilyCseAffiliation(input.userId)
   ]);
+
+  const reservations = [...nativeReservations, ...legacyReservations].sort((left, right) => {
+    if (left.isPast !== right.isPast) {
+      return left.isPast ? 1 : -1;
+    }
+    const leftDate = left.sessionStartDate ? new Date(left.sessionStartDate).getTime() : 0;
+    const rightDate = right.sessionStartDate ? new Date(right.sessionStartDate).getTime() : 0;
+    return rightDate - leftDate;
+  });
+
   return { profile, reservations, cseAffiliation };
 }
 

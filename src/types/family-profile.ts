@@ -85,6 +85,8 @@ export type FamilyReservation = {
   hasSuccessfulPayment: boolean;
   partnerAdjustmentMessage: string | null;
   partnerAdjustmentUpdatedAt: string | null;
+  /** Réservation importée depuis WordPress (pas de facturation / paiement). */
+  isLegacy?: boolean;
 };
 
 export type FamilyCseAffiliation = {

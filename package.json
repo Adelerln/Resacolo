@@ -8,6 +8,7 @@
     "check:user-login-events": "node scripts/verify-user-login-events.mjs",
     "check:seo": "node scripts/check-seo.mjs",
     "check:media": "node scripts/check-critical-media.mjs",
+    "import:legacy-wp": "node scripts/import-legacy-wp-customers.mjs",
     "ci:seo": "npm run build && npm run check:seo",
     "ci:perf": "npm run check:media",
     "ci:lighthouse": "npm run build && npx --yes @lhci/cli@0.14.x autorun --config=.lighthouserc.cjs",

@@ -9,7 +9,7 @@ import { PasswordInput } from '@/components/auth/PasswordInput';
 
 type LoginMode = 'family' | 'pro';
 type Step = 'email' | 'method';
-type Method = 'choice' | 'password' | 'magic';
+type Method = 'choice' | 'password' | 'magic' | 'legacy-reset';
 
 type LoginStepsFormProps = {
   mode: LoginMode;
@@ -30,6 +30,7 @@ export function LoginStepsForm({
   const [method, setMethod] = useState<Method>(magicSent ? 'magic' : 'choice');
   const [email, setEmail] = useState(initialEmail);
   const [emailError, setEmailError] = useState<string | null>(null);
+  const [checkingLegacy, setCheckingLegacy] = useState(false);
 
   const isFamily = mode === 'family';
   const primaryButtonClass = isFamily
@@ -46,7 +47,7 @@ export function LoginStepsForm({
     return query ? `/login/mot-de-passe-oublie?${query}` : '/login/mot-de-passe-oublie';
   }, [email]);
 
-  function goToMethod(event: React.FormEvent) {
+  async function goToMethod(event: React.FormEvent) {
     event.preventDefault();
     const nextEmail = email.trim().toLowerCase();
     if (!nextEmail || !/.+@.+\..+/.test(nextEmail)) {
@@ -55,8 +56,31 @@ export function LoginStepsForm({
     }
     setEmailError(null);
     setEmail(nextEmail);
-    setMethod('choice');
-    setStep('method');
+    setCheckingLegacy(true);
+    try {
+      if (isFamily) {
+        const response = await fetch('/api/auth/legacy-status', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: nextEmail })
+        });
+        const data = (await response.json().catch(() => null)) as {
+          needsPasswordReset?: boolean;
+        } | null;
+        if (data?.needsPasswordReset) {
+          setMethod('legacy-reset');
+          setStep('method');
+          return;
+        }
+      }
+      setMethod('choice');
+      setStep('method');
+    } catch {
+      setMethod('choice');
+      setStep('method');
+    } finally {
+      setCheckingLegacy(false);
+    }
   }
 
   function backToEmail() {
@@ -101,9 +125,10 @@ export function LoginStepsForm({
             {emailError ? <p className="text-sm text-rose-600">{emailError}</p> : null}
             <button
               type="submit"
-              className={`w-full rounded-lg px-4 py-2.5 text-sm font-semibold text-white ${primaryButtonClass}`}
+              disabled={checkingLegacy}
+              className={`w-full rounded-lg px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60 ${primaryButtonClass}`}
             >
-              Continuer
+              {checkingLegacy ? 'Vérification…' : 'Continuer'}
             </button>
           </form>
 
@@ -130,6 +155,28 @@ export function LoginStepsForm({
           <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
             Connexion avec <span className="font-semibold text-slate-900">{email}</span>
           </div>
+
+          {method === 'legacy-reset' ? (
+            <div className="space-y-4">
+              <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+                <p className="font-semibold">Déjà client ResaColo ?</p>
+                <p className="mt-1">
+                  Pour accéder à votre espace, vous devez créer un nouveau mot de passe. Votre profil et
+                  vos anciennes réservations apparaîtront automatiquement.
+                </p>
+              </div>
+              <form action="/api/auth/forgot-password" method="post">
+                <input type="hidden" name="email" value={email} />
+                <input type="hidden" name="returnPath" value="/login/mot-de-passe-oublie" />
+                <button
+                  type="submit"
+                  className={`w-full rounded-lg px-4 py-2.5 text-sm font-semibold text-white ${primaryButtonClass}`}
+                >
+                  Réinitialisation mot de passe
+                </button>
+              </form>
+            </div>
+          ) : null}
 
           {method === 'choice' ? (
             <div className="space-y-3">
@@ -233,7 +280,7 @@ export function LoginStepsForm({
             </form>
           ) : null}
 
-          {isFamily && createAccountHref ? (
+          {isFamily && createAccountHref && method !== 'legacy-reset' ? (
             <Link
               href={createAccountHref}
               className="inline-flex w-full items-center justify-center rounded-lg border border-accent-500 px-4 py-2 text-sm font-semibold text-accent-600 hover:bg-accent-50"

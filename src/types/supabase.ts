@@ -457,6 +457,108 @@ export type Database = {
         }
         Relationships: []
       }
+      legacy_wp_customers: {
+        Row: {
+          id: string
+          created_at: string
+          updated_at: string
+          email: string
+          wp_customer_id: number | null
+          wp_user_id: number | null
+          first_name: string
+          last_name: string
+          phone: string
+          address_line1: string
+          address_line2: string
+          postal_code: string
+          city: string
+          country: string
+          registered_at: string | null
+          claimed_user_id: string | null
+        }
+        Insert: {
+          id?: string
+          created_at?: string
+          updated_at?: string
+          email: string
+          wp_customer_id?: number | null
+          wp_user_id?: number | null
+          first_name?: string
+          last_name?: string
+          phone?: string
+          address_line1?: string
+          address_line2?: string
+          postal_code?: string
+          city?: string
+          country?: string
+          registered_at?: string | null
+          claimed_user_id?: string | null
+        }
+        Update: {
+          id?: string
+          created_at?: string
+          updated_at?: string
+          email?: string
+          wp_customer_id?: number | null
+          wp_user_id?: number | null
+          first_name?: string
+          last_name?: string
+          phone?: string
+          address_line1?: string
+          address_line2?: string
+          postal_code?: string
+          city?: string
+          country?: string
+          registered_at?: string | null
+          claimed_user_id?: string | null
+        }
+        Relationships: []
+      }
+      legacy_wp_reservations: {
+        Row: {
+          id: string
+          created_at: string
+          updated_at: string
+          email: string
+          wp_order_id: number
+          wp_order_item_id: number
+          stay_title: string
+          session_start_date: string | null
+          session_end_date: string | null
+          reserved_at: string | null
+          status_code: string
+          status_label: string
+        }
+        Insert: {
+          id?: string
+          created_at?: string
+          updated_at?: string
+          email: string
+          wp_order_id: number
+          wp_order_item_id: number
+          stay_title: string
+          session_start_date?: string | null
+          session_end_date?: string | null
+          reserved_at?: string | null
+          status_code: string
+          status_label: string
+        }
+        Update: {
+          id?: string
+          created_at?: string
+          updated_at?: string
+          email?: string
+          wp_order_id?: number
+          wp_order_item_id?: number
+          stay_title?: string
+          session_start_date?: string | null
+          session_end_date?: string | null
+          reserved_at?: string | null
+          status_code?: string
+          status_label?: string
+        }
+        Relationships: []
+      }
       client_children: {
         Row: {
           additional_info: string

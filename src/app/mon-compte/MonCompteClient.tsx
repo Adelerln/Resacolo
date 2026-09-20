@@ -624,7 +624,11 @@ export default function MonCompteClient({
                           <img
                             src={reservation.coverImage}
                             alt={reservation.title}
-                            className={`h-full w-full object-cover ${reservation.isPast ? 'opacity-85' : ''}`}
+                            className={`h-full w-full ${
+                              reservation.isLegacy
+                                ? 'object-contain bg-gradient-to-br from-brand-50 via-white to-cyan-50 p-2'
+                                : `object-cover ${reservation.isPast ? 'opacity-85' : ''}`
+                            }`}
                             loading="lazy"
                           />
                         </div>
@@ -677,7 +681,7 @@ export default function MonCompteClient({
                               <ShieldCheck className="h-3 w-3 shrink-0" />
                               {reservation.status}
                             </span>
-                            {reservation.remainingBalanceCents > 0 ? (
+                            {reservation.isLegacy ? null : reservation.remainingBalanceCents > 0 ? (
                               <span className="inline-flex w-fit max-w-full items-center gap-1 whitespace-nowrap rounded-full bg-amber-50 px-2 py-0 text-[11px] font-semibold leading-4 text-amber-700">
                                 <Wallet className="h-3 w-3 shrink-0" />
                                 Solde à régler : {formatMoneyCentsFr(reservation.remainingBalanceCents, reservation.currency)}

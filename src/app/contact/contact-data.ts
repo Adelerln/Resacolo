@@ -94,7 +94,7 @@ export const CONTACT_SUBJECT_VALUES = CONTACT_SUBJECT_OPTIONS.map((option) => op
   ...ContactSubjectValue[]
 ];
 
-export function getContactSubjectOption(value: string) {
+export function getContactSubjectOption(value: string): ContactSubjectOption | null {
   return CONTACT_SUBJECT_OPTIONS.find((option) => option.value === value) ?? null;
 }
 

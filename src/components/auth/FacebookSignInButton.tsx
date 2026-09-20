@@ -3,8 +3,8 @@
 import { useState } from 'react';
 import { getBrowserSupabaseClient } from '@/lib/supabase/browser';
 
-/** Remettre à `true` quand Facebook Login est approuvé / prêt en prod. */
-const FACEBOOK_LOGIN_ENABLED = false;
+/** Facebook Login Live (Meta app publiée + permissions public_profile / email approuvées). */
+const FACEBOOK_LOGIN_ENABLED = true;
 
 type FacebookSignInButtonProps = {
   redirectTo?: string;

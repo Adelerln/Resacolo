@@ -37,6 +37,7 @@ function DetailRow({
 export default function FamilyReservationDetailsModal({ reservation }: { reservation: FamilyReservation }) {
   const [open, setOpen] = useState(false);
   const canContactOrganizer =
+    !reservation.isLegacy &&
     Boolean(reservation.organizerContactEmail) &&
     (
       ['PAID', 'PARTIALLY_PAID', 'PENDING_PAYMENT', 'REQUESTED'].includes(reservation.orderStatus) ||
@@ -125,6 +126,13 @@ export default function FamilyReservationDetailsModal({ reservation }: { reserva
               </div>
 
               <div className="bg-slate-50/65 px-5 py-4 sm:px-7 sm:py-5">
+                {reservation.isLegacy ? (
+                  <p className="rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-sm text-slate-600">
+                    Réservation historique importée depuis l&apos;ancien site Resacolo. Les détails de
+                    facturation et de paiement ne sont pas disponibles.
+                  </p>
+                ) : (
+                  <>
                 <div className={`grid gap-3 ${reservation.remainingBalanceCents > 0 ? 'sm:grid-cols-2' : 'sm:grid-cols-1'}`}>
                   <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3.5">
                     <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Montant total</p>
@@ -152,8 +160,11 @@ export default function FamilyReservationDetailsModal({ reservation }: { reserva
                     ) : null}
                   </div>
                 ) : null}
+                  </>
+                )}
               </div>
 
+              {reservation.isLegacy ? null : (
               <div className="px-5 pb-6 pt-3 sm:px-7 sm:pb-7">
                 <dl className="divide-y divide-slate-100">
                   <DetailRow label="Participant(s)" value={reservation.children.join(', ') || reservation.child} />
@@ -183,6 +194,7 @@ export default function FamilyReservationDetailsModal({ reservation }: { reserva
                   />
                 </dl>
               </div>
+              )}
             </div>
           </div>
         </div>

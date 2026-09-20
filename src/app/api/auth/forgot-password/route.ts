@@ -3,6 +3,11 @@ import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { z } from 'zod';
 import { buildAuthCallbackUrl } from '@/lib/auth/urls';
+import {
+  ensureAuthUserForLegacyCustomer,
+  findAuthUserIdByEmail,
+  findLegacyWpCustomerByEmail
+} from '@/lib/legacy-wp/server';
 import type { Database } from '@/types/supabase';
 
 export const runtime = 'nodejs';
@@ -40,17 +45,36 @@ export async function POST(req: Request) {
     }
 
     const input = parsed.data;
+    const email = input.email.trim().toLowerCase();
     const returnPath = sanitizeRelativePath(input.returnPath);
     const resetRedirectTo = buildAuthCallbackUrl(req, {
       next: '/login/reinitialiser',
       flow: 'recovery'
     });
 
+    let legacyDetected = false;
+    try {
+      const legacy = await findLegacyWpCustomerByEmail(email);
+      if (legacy) {
+        legacyDetected = true;
+        const existingAuthId = await findAuthUserIdByEmail(email);
+        if (!existingAuthId) {
+          await ensureAuthUserForLegacyCustomer({
+            email,
+            firstName: legacy.first_name,
+            lastName: legacy.last_name
+          });
+        }
+      }
+    } catch (legacyError) {
+      console.warn('[auth/forgot-password] legacy bootstrap failed:', legacyError);
+    }
+
     const cookieStore = await cookies();
     const cookieAccess = (() => cookieStore) as unknown as typeof cookies;
     const supabase = createRouteHandlerClient<Database>({ cookies: cookieAccess });
 
-    const { error } = await supabase.auth.resetPasswordForEmail(input.email.trim().toLowerCase(), {
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: resetRedirectTo
     });
 
@@ -61,10 +85,10 @@ export async function POST(req: Request) {
       );
     }
 
-    return NextResponse.redirect(
-      buildUrl(req, returnPath, { sent: '1' }),
-      { status: 303 }
-    );
+    const successParams: Record<string, string> = { sent: '1', email };
+    if (legacyDetected) successParams.legacy = '1';
+
+    return NextResponse.redirect(buildUrl(req, returnPath, successParams), { status: 303 });
   } catch (error) {
     console.error('[auth/forgot-password] unexpected error:', error);
     return NextResponse.redirect(

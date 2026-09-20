@@ -36,6 +36,7 @@ function DetailRow({
 }
 
 function canPayBalance(reservation: FamilyReservation) {
+  if (reservation.isLegacy) return false;
   return (
     reservation.remainingBalanceCents > 0 &&
     reservation.orderStatus !== 'CANCELLED' &&
@@ -44,6 +45,7 @@ function canPayBalance(reservation: FamilyReservation) {
 }
 
 function canContactOrganizer(reservation: FamilyReservation) {
+  if (reservation.isLegacy) return false;
   return (
     Boolean(reservation.organizerContactEmail) &&
     (['PAID', 'PARTIALLY_PAID', 'PENDING_PAYMENT', 'REQUESTED'].includes(reservation.orderStatus) ||
@@ -52,6 +54,7 @@ function canContactOrganizer(reservation: FamilyReservation) {
 }
 
 function canDownloadInvoice(reservation: FamilyReservation) {
+  if (reservation.isLegacy) return false;
   return (
     reservation.orderStatus !== 'CART' &&
     reservation.orderStatus !== 'CANCELLED' &&
@@ -80,7 +83,11 @@ export default function FamilyReservationAccordion({
             <img
               src={reservation.coverImage}
               alt={reservation.title}
-              className={`h-full w-full object-cover ${reservation.isPast ? 'opacity-85' : ''}`}
+              className={`h-full w-full ${
+                reservation.isLegacy
+                  ? 'object-contain bg-gradient-to-br from-brand-50 via-white to-cyan-50 p-3'
+                  : `object-cover ${reservation.isPast ? 'opacity-85' : ''}`
+              }`}
               loading="lazy"
             />
           </div>
@@ -132,7 +139,7 @@ export default function FamilyReservationAccordion({
               <ShieldCheck className="h-3 w-3 shrink-0" />
               {reservation.status}
             </span>
-            {reservation.remainingBalanceCents > 0 ? (
+            {reservation.isLegacy ? null : reservation.remainingBalanceCents > 0 ? (
               <span className="inline-flex w-fit max-w-full items-center gap-1.5 whitespace-nowrap rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-700">
                 <Wallet className="h-3 w-3 shrink-0" />
                 Solde à régler : {formatMoneyCentsFr(reservation.remainingBalanceCents, reservation.currency)}
@@ -143,6 +150,13 @@ export default function FamilyReservationAccordion({
       </summary>
 
       <div className="border-t border-slate-200 bg-slate-50/60 px-4 py-4 sm:px-6">
+        {reservation.isLegacy ? (
+          <p className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+            Réservation historique importée depuis l&apos;ancien site Resacolo. Les détails de
+            facturation et de paiement ne sont pas disponibles.
+          </p>
+        ) : (
+          <>
         <div className={`grid gap-3 ${reservation.remainingBalanceCents > 0 ? 'sm:grid-cols-2' : 'sm:grid-cols-1'}`}>
           <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Montant total</p>
@@ -233,6 +247,8 @@ export default function FamilyReservationAccordion({
             </a>
           ) : null}
         </div>
+          </>
+        )}
       </div>
     </details>
   );

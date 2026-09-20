@@ -100,6 +100,10 @@ export function resolveOrderRequestKind(
     return 'VACAF';
   }
 
+  if (contact.paymentMode === 'CV_CONNECT' && organizer.accepts_ancv_connect) {
+    return 'ANCV_CONNECT';
+  }
+
   return null;
 }
 

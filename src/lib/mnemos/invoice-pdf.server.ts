@@ -665,7 +665,6 @@ function renderClientTravelInvoicePdf(
     `${RESACOLO_COMPANY.legalName}, ${RESACOLO_COMPANY.legalForm} au capital de ${RESACOLO_COMPANY.shareCapitalLabel}, ${RESACOLO_COMPANY.addressLine1}, ${RESACOLO_COMPANY.postalCode} ${RESACOLO_COMPANY.city.toUpperCase()}`,
     40,
     56,
-    82,
     { size: 7, color: '0.35 0.38 0.42' }
   );
   page.text(
@@ -684,7 +683,6 @@ function renderClientTravelInvoicePdf(
     `Assureur : ${RESACOLO_COMPANY.professionalInsurance.insurer}, ${RESACOLO_COMPANY.professionalInsurance.address}`,
     40,
     44,
-    46,
     { size: 7, color: '0.35 0.38 0.42' }
   );
 

@@ -49,8 +49,6 @@ import {
 } from '@/lib/ancv-connect-matricule';
 import { sendReservationNotificationEmails } from '@/lib/reservation-notifications.server';
 import { isMissingAnyColumnError } from '@/lib/supabase-schema-errors';
-import { assertCardDepositAllowedOrThrow, earliestIsoDate } from '@/lib/checkout/deposit-eligibility';
-import { sendReservationNotificationEmails } from '@/lib/reservation-notifications.server';
 
 type PrepareCheckoutPaymentInput = {
   checkoutId: string;
@@ -721,7 +719,14 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
             customerEmail: input.contact.email,
             billingFirstName: input.contact.billingFirstName,
             billingLastName: input.contact.billingLastName,
-            merchantCustomerId: clientUserId
+            merchantCustomerId: clientUserId,
+            phone: input.contact.phone,
+            addressLine1: input.contact.addressLine1,
+            postalCode: input.contact.postalCode,
+            city: input.contact.city,
+            countryCode: 'FR',
+            paymentMode: input.contact.paymentMode,
+            orderDesc: `Resacolo ${reference}`
           })
         : ({
             provider: 'monetico' as const,
@@ -733,26 +738,6 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
             formMethod: 'POST' as const,
             formFields: {}
           } satisfies MoneticoPayload & { provider: 'monetico' });
-    const moneticoPayload = await createProviderPayload({
-      checkoutId: input.checkoutId,
-      orderId: primaryOnlineRow.order_id,
-      paymentId: primaryOnlineRow.id,
-      reference,
-      transactionId,
-      amountCents: onlineRows.reduce((sum, row) => sum + Math.max(0, row.amount_cents ?? 0), 0),
-      currency: pricing.currency,
-      customerEmail: input.contact.email,
-      billingFirstName: input.contact.billingFirstName,
-      billingLastName: input.contact.billingLastName,
-      merchantCustomerId: clientUserId,
-      phone: input.contact.phone,
-      addressLine1: input.contact.addressLine1,
-      postalCode: input.contact.postalCode,
-      city: input.contact.city,
-      countryCode: 'FR',
-      paymentMode: input.contact.paymentMode,
-      orderDesc: `Resacolo ${reference}`
-    });
 
     const providerTransactionId =
       (moneticoPayload as { transId?: string }).transId || moneticoPayload.transactionId || transactionId;
@@ -820,11 +805,6 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
       paymentMode: effectiveContact.paymentMode
     });
     const isPartnerTotalCoverage = !requestKind && isPartnerFullCoverageCheckout(organizerPricing);
-    assertCardDepositAllowedOrThrow({
-      earliestSessionStartDate: earliestIsoDate(organizerItems.map((item) => item.sessionStartDate)),
-      paymentMode: effectiveContact.paymentMode,
-      vacafNumber: effectiveContact.vacafNumber
-    });
     const paidAt = isPartnerTotalCoverage ? requestedAt : null;
     const initialStatus = isPartnerTotalCoverage
       ? ('PAID' as Database['public']['Enums']['order_status'])
@@ -1063,7 +1043,6 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
       organizerAcceptsAncvPaper: organizerSettings.accepts_ancv_paper,
       organizerAcceptsAncvConnect: organizerSettings.accepts_ancv_connect,
       organizerIsVacafApproved: organizerSettings.is_vacaf_approved,
-      stayCafEligible: true,
       stayCafEligible,
       ancvPaperMailingAddress: organizerSettings.ancv_paper_mailing_address ?? null
     }).catch((error) => {
@@ -1096,31 +1075,8 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
       : createMoneticoReference(input.checkoutId, primaryGroup.orderId);
   const transactionId = createMoneticoMockTransactionId(input.checkoutId, primaryOnlineGroup.paymentId);
   const onlineAmountCents = onlineGroups.reduce((sum, group) => sum + group.immediatePaymentAmountCents, 0);
-  const moneticoPayload = await createProviderPayload({
-    checkoutId: input.checkoutId,
-    orderId: primaryOnlineGroup.orderId,
-    paymentId: primaryOnlineGroup.paymentId,
-    reference,
-    transactionId,
-    amountCents: onlineGroups.reduce((sum, group) => sum + group.immediatePaymentAmountCents, 0),
-    currency: pricing.currency,
-    customerEmail: input.contact.email,
-    billingFirstName: input.contact.billingFirstName,
-    billingLastName: input.contact.billingLastName,
-    merchantCustomerId: clientUserId,
-    phone: input.contact.phone,
-    addressLine1: input.contact.addressLine1,
-    postalCode: input.contact.postalCode,
-    city: input.contact.city,
-    countryCode: 'FR',
-    paymentMode: primaryOnlineGroup.paymentMode,
-    orderDesc: `Resacolo ${reference}`
-  });
-  const providerTransactionId =
-    (moneticoPayload as { transId?: string }).transId || moneticoPayload.transactionId || transactionId;
   const allOrderIds = groupResults.map((group) => group.orderId);
   const allPaymentIds = groupResults.map((group) => group.paymentId);
-  const pspProvider = (moneticoPayload as { provider?: string }).provider;
 
   // VACAF / ANCV / différé : pas de TPE — ne pas appeler Axepta/Monetico (évite erreurs config post-création).
   const moneticoPayload =
@@ -1136,7 +1092,14 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
           customerEmail: input.contact.email,
           billingFirstName: input.contact.billingFirstName,
           billingLastName: input.contact.billingLastName,
-          merchantCustomerId: clientUserId
+          merchantCustomerId: clientUserId,
+          phone: input.contact.phone,
+          addressLine1: input.contact.addressLine1,
+          postalCode: input.contact.postalCode,
+          city: input.contact.city,
+          countryCode: 'FR',
+          paymentMode: primaryOnlineGroup.paymentMode,
+          orderDesc: `Resacolo ${reference}`
         })
       : ({
           provider: 'monetico' as const,
@@ -1151,6 +1114,7 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
 
   const providerTransactionId =
     (moneticoPayload as { transId?: string }).transId || moneticoPayload.transactionId || transactionId;
+  const pspProvider = (moneticoPayload as { provider?: string }).provider;
 
   for (const group of groupResults) {
     const shouldAttachMonetico = group.immediatePaymentAmountCents > 0;
@@ -1172,14 +1136,7 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
                   transId: providerTransactionId,
                   payId: (moneticoPayload as { payId?: string | null }).payId ?? null
                 }
-              : shouldAttachMonetico && pspProvider === 'axepta-limonetik'
-                ? {
-                    provider: 'axepta-limonetik',
-                    payType: 'cvconnect',
-                    transId: providerTransactionId,
-                    payId: (moneticoPayload as { payId?: string | null }).payId ?? null
-                  }
-                : null
+              : null
         }
       })
       .eq('id', group.paymentId);

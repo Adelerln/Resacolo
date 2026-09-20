@@ -15,7 +15,6 @@ function redirectToPsp(paymentData: CheckoutPaymentIntentResponse) {
   const isGetRedirect =
     psp.formMethod === 'GET' || !psp.formFields || Object.keys(psp.formFields).length === 0;
   if (psp.provider === 'axepta' && isGetRedirect) {
-  if ((psp.provider === 'axepta' || psp.provider === 'axepta-limonetik') && isGetRedirect) {
     window.location.assign(psp.paymentUrl);
     return;
   }
@@ -160,9 +159,6 @@ export default function CheckoutPaiementPage() {
 
       const mockMode =
         paymentData.monetico.provider === 'axepta' ? 'axepta-mock' : 'monetico-mock';
-        paymentData.monetico.provider === 'axepta' || paymentData.monetico.provider === 'axepta-limonetik'
-          ? 'axepta-mock'
-          : 'monetico-mock';
       await confirmPaymentManually({
         checkoutId,
         payments: paymentData.payments.map((payment) => ({

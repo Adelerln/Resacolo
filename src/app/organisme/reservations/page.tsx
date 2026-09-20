@@ -290,7 +290,7 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
     new Set(
       orderItems
         .map((item) => item.session_id)
-        .filter((id): id is string => Boolean(id) && !sessionsById.has(id))
+        .filter((id): id is string => typeof id === 'string' && id.length > 0 && !sessionsById.has(id))
     )
   );
   if (missingSessionIds.length > 0) {

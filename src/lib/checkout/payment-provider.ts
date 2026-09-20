@@ -4,25 +4,18 @@ import {
   getAxeptaMode,
   type AxeptaPayload
 } from '@/lib/checkout/axepta';
-import {
-  createAxeptaLimonetikCvConnectPayload,
-  type AxeptaLimonetikPayload
-} from '@/lib/checkout/axepta-limonetik';
 import { buildMoneticoLivePayload, getMoneticoMode, type MoneticoPayload } from '@/lib/checkout/monetico';
 import type { CheckoutPaymentMode } from '@/types/checkout';
 
-export type PaymentProviderName = 'monetico' | 'axepta' | 'axepta-limonetik';
+export type PaymentProviderName = 'monetico' | 'axepta';
 
-export type CheckoutPspPayload =
-  | (MoneticoPayload & { provider: 'monetico' })
-  | AxeptaPayload
-  | AxeptaLimonetikPayload;
+export type CheckoutPspPayload = (MoneticoPayload & { provider: 'monetico' }) | AxeptaPayload;
 
 function readEnv(name: string) {
   return (process.env[name] ?? '').trim();
 }
 
-export function getPaymentProvider(): Exclude<PaymentProviderName, 'axepta-limonetik'> {
+export function getPaymentProvider(): PaymentProviderName {
   const raw = readEnv('PAYMENT_PROVIDER').toLowerCase();
   if (raw === 'axepta') return 'axepta';
   return 'monetico';
@@ -56,31 +49,6 @@ export async function createCheckoutPspPayload(input: {
   paymentMode?: CheckoutPaymentMode | null;
   orderDesc?: string | null;
 }): Promise<CheckoutPspPayload> {
-  const useLimonetik = input.paymentMode === 'CV_CONNECT';
-
-  if (useLimonetik) {
-    if (!String(input.phone ?? '').trim()) {
-      throw new Error('Un numéro de téléphone mobile est requis pour le paiement ANCV Connect.');
-    }
-    return createAxeptaLimonetikCvConnectPayload({
-      amountCents: input.amountCents,
-      currency: input.currency,
-      customerEmail: input.customerEmail,
-      mobileNo: input.phone || '',
-      firstName: input.billingFirstName || '',
-      lastName: input.billingLastName || '',
-      street: input.addressLine1 || '',
-      postalCode: input.postalCode || '',
-      city: input.city || '',
-      countryCode: input.countryCode || 'FR',
-      orderId: input.orderId,
-      checkoutId: input.checkoutId,
-      paymentId: input.paymentId,
-      merchantReference: input.reference.slice(0, 30),
-      orderDesc: input.orderDesc || `Resacolo ${input.reference}`
-    });
-  }
-
   if (getPaymentProvider() === 'axepta') {
     const transId = createAxeptaTransId();
     return createAxeptaCheckoutSession({
@@ -147,7 +115,6 @@ export function toLegacyMoneticoResponseShape(payload: CheckoutPspPayload): {
   formFields: Record<string, string>;
   payId?: string | null;
   transId?: string;
-  payType?: string;
 } {
   if (payload.provider === 'axepta') {
     return {
@@ -161,22 +128,6 @@ export function toLegacyMoneticoResponseShape(payload: CheckoutPspPayload): {
       formFields: payload.formFields,
       payId: payload.payId,
       transId: payload.transId
-    };
-  }
-
-  if (payload.provider === 'axepta-limonetik') {
-    return {
-      provider: 'axepta-limonetik',
-      mode: payload.mode,
-      reference: payload.reference,
-      transactionId: payload.transactionId,
-      paymentUrl: payload.paymentUrl,
-      testMode: payload.testMode,
-      formMethod: payload.formMethod,
-      formFields: payload.formFields,
-      payId: payload.payId,
-      transId: payload.transId,
-      payType: payload.payType
     };
   }
 

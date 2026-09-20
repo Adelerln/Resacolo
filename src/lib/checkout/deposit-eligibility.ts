@@ -26,11 +26,20 @@ export function earliestIsoDate(dates: Array<string | null | undefined>): string
   return earliest;
 }
 
+/** Modes « hors CB totale/acompte » (différé / aides ANCV). */
 /** Modes d’aide / hors CB pour lesquels l’acompte ou le flux demande reste autorisé même &lt; J-30. */
 export function isAidOrOfflinePaymentMode(paymentMode: CheckoutPaymentMode | null | undefined): boolean {
   return paymentMode === 'CV_PAPER' || paymentMode === 'CV_CONNECT' || paymentMode === 'DEFERRED';
 }
 
+/**
+ * Acompte CB (DEPOSIT_200) autorisé uniquement si le départ est à ≥ 30 jours.
+ * Ne dépend PAS du mode de paiement choisi (sinon l’acompte réapparaissait en cliquant ANCV).
+ */
+export function isCardDepositAllowed(input: {
+  earliestSessionStartDate: string | null | undefined;
+  from?: Date;
+}): boolean {
 export function isVacafAidSelected(vacafNumber: string | null | undefined): boolean {
   return Boolean(vacafNumber?.trim());
 }
@@ -67,6 +76,7 @@ export function assertCardDepositAllowedOrThrow(input: {
 }
 
 /** Si l’acompte n’est plus autorisé, bascule le mode vers FULL. */
+export function coercePaymentModeForDeparture<T extends Pick<CheckoutContact, 'paymentMode'>>(
 export function coercePaymentModeForDeparture<T extends Pick<CheckoutContact, 'paymentMode' | 'vacafNumber'>>(
   contact: T,
   earliestSessionStartDate: string | null | undefined,

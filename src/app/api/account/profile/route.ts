@@ -219,7 +219,7 @@ const patchSchema = z.discriminatedUnion('source', [
 
 export async function GET() {
   const session = await getSession();
-  if (!session || session.role !== 'CLIENT') {
+  if (!session || (session.role !== 'CLIENT' && !session.isClient)) {
     return NextResponse.json({ error: 'AUTH_REQUIRED' }, { status: 401 });
   }
 
@@ -237,7 +237,7 @@ export async function GET() {
 
 export async function PATCH(req: Request) {
   const session = await getSession();
-  if (!session || session.role !== 'CLIENT') {
+  if (!session || (session.role !== 'CLIENT' && !session.isClient)) {
     return NextResponse.json({ error: 'AUTH_REQUIRED' }, { status: 401 });
   }
 

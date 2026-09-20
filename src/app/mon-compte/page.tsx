@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { getCurrentUser } from '@/lib/auth/session';
-import type { FamilyProfile } from '@/types/family-profile';
+import { getFamilyProfileSnapshot } from '@/lib/account-profile/server';
+import type { FamilyCseAffiliation, FamilyProfile, FamilyReservation } from '@/types/family-profile';
 import MonCompteClient from './MonCompteClient';
 
 export const metadata = {
@@ -61,19 +62,41 @@ export default async function MonComptePage() {
     redirect('/login?mode=family&redirectTo=/mon-compte');
   }
 
-  if (session.role !== 'CLIENT') {
+  if (session.role !== 'CLIENT' && !session.isClient) {
     redirect('/login?mode=family&forceLogin=1');
   }
 
-  // Profil / réservations / CSE : chargés côté client via /api/account/profile
-  // pour que le premier rendu après login soit immédiat (pas de cold-start DB).
+  // Profil / réservations : chargement serveur prioritaire.
+  // En cas de timeout / erreur DB, fallback client pour ne pas bloquer le login.
+  let initialProfile = buildFallbackProfile(session);
+  let reservations: FamilyReservation[] = [];
+  let initialCseAffiliation: FamilyCseAffiliation | null = null;
+  let profileLoadError: string | null = null;
+  let deferAccountDataToClient = false;
+
+  try {
+    const snapshot = await getFamilyProfileSnapshot({
+      userId: session.userId,
+      sessionName: session.name,
+      sessionEmail: session.email
+    });
+    initialProfile = snapshot.profile;
+    reservations = snapshot.reservations;
+    initialCseAffiliation = snapshot.cseAffiliation;
+  } catch (error) {
+    console.error('[mon-compte] chargement snapshot échoué, fallback client', error);
+    profileLoadError = error instanceof Error ? error.message : 'Chargement du compte interrompu.';
+    deferAccountDataToClient = true;
+  }
+
   return (
     <MonCompteClient
-      initialProfile={buildFallbackProfile(session)}
-      reservations={[]}
-      initialCseAffiliation={null}
+      initialProfile={initialProfile}
+      reservations={reservations}
+      initialCseAffiliation={initialCseAffiliation}
       favoriteStays={[]}
-      profileLoadError={null}
+      profileLoadError={profileLoadError}
+      deferAccountDataToClient={deferAccountDataToClient}
     />
   );
 }

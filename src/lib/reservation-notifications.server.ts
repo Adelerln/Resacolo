@@ -35,6 +35,8 @@ export type ReservationNotificationInput = {
   >;
   paymentMode: CheckoutPaymentMode;
   requestKind: OrderRequestKind;
+  /** True only when a partner affiliation requires a manual finance quote. */
+  isPartnerManualQuote?: boolean;
   lines: ReservationNotificationLine[];
   organizerAcceptsAncvPaper: boolean;
   organizerAcceptsAncvConnect: boolean;
@@ -54,6 +56,9 @@ function escapeHtml(value: string) {
     .replace(/'/g, '&#39;');
 }
 
+function paymentModeLabel(mode: CheckoutPaymentMode, requestKind?: OrderRequestKind) {
+  if (requestKind === 'VACAF') return 'Demande VACAF / AVE';
+  if (requestKind === 'ANCV_CONNECT' || mode === 'CV_CONNECT') return 'ANCV Connect';
 function paymentModeLabel(mode: CheckoutPaymentMode) {
   switch (mode) {
     case 'FULL':
@@ -74,6 +79,7 @@ function paymentModeLabel(mode: CheckoutPaymentMode) {
 export function buildOrganizerReservationActions(input: {
   paymentMode: CheckoutPaymentMode;
   requestKind: OrderRequestKind;
+  isPartnerManualQuote?: boolean;
   organizerAcceptsAncvPaper: boolean;
   organizerAcceptsAncvConnect: boolean;
   organizerIsVacafApproved: boolean;
@@ -86,6 +92,7 @@ export function buildOrganizerReservationActions(input: {
   const hasVacaf =
     input.requestKind === 'VACAF' ||
     (input.hasVacafNumber && input.organizerIsVacafApproved && input.stayCafEligible);
+  const hasAncvConnect = input.requestKind === 'ANCV_CONNECT' || input.paymentMode === 'CV_CONNECT';
 
   if (hasVacaf) {
     actions.push({
@@ -101,6 +108,15 @@ export function buildOrganizerReservationActions(input: {
     });
   }
 
+  if (hasAncvConnect) {
+    if (input.organizerAcceptsAncvConnect) {
+      const clientId = input.ancvConnectMatricule?.trim() || null;
+      const amount = input.ancvConnectAmount?.trim() || null;
+      const clientIdPart = clientId ? ` (matricule ${clientId})` : '';
+      const amountPart = amount ? ` pour environ ${amount} €` : '';
+      actions.push({
+        title: 'Action requise — ANCV Connect',
+        description: `Recontactez la famille pour finaliser le règlement ANCV Connect${amountPart}${clientIdPart}, puis saisissez le montant effectivement reçu dans votre espace organisateur.`
   if (input.requestKind === 'ANCV_CONNECT' || input.paymentMode === 'CV_CONNECT') {
     if (input.organizerAcceptsAncvConnect) {
       const clientId = input.ancvConnectMatricule?.trim() || null;
@@ -138,6 +154,21 @@ export function buildOrganizerReservationActions(input: {
     }
   }
 
+  // DEFERRED is also used when VACAF is checked (no online CB). Never confuse that with a partner quote.
+  if (input.paymentMode === 'DEFERRED' && !hasVacaf && !hasAncvConnect && !input.hasVacafNumber) {
+    if (input.isPartnerManualQuote) {
+      actions.push({
+        title: 'Paiement différé — devis partenaire',
+        description:
+          'Le règlement est différé car le partenaire doit d’abord calculer la prise en charge et la renseigner dans son back-office. Attendez ce calcul avant de finaliser le reste à charge avec la famille.'
+      });
+    } else {
+      actions.push({
+        title: 'Paiement différé',
+        description:
+          'La famille a choisi un règlement différé. Aucun paiement en ligne n’est attendu pour l’instant : recontactez-la pour finaliser le reste à charge.'
+      });
+    }
   if (input.paymentMode === 'DEFERRED') {
     actions.push({
       title: 'Paiement différé — devis partenaire',
@@ -245,6 +276,7 @@ export function renderOrganizerReservationEmail(input: ReservationNotificationIn
   const actions = buildOrganizerReservationActions({
     paymentMode: input.paymentMode,
     requestKind: input.requestKind,
+    isPartnerManualQuote: input.isPartnerManualQuote,
     organizerAcceptsAncvPaper: input.organizerAcceptsAncvPaper,
     organizerAcceptsAncvConnect: input.organizerAcceptsAncvConnect,
     organizerIsVacafApproved: input.organizerIsVacafApproved,
@@ -285,6 +317,7 @@ export function renderOrganizerReservationEmail(input: ReservationNotificationIn
                     <p style="margin:0 0 4px;font-size:14px;color:#1d1f25;"><strong>Famille :</strong> ${escapeHtml(familyName || '—')}</p>
                     <p style="margin:0 0 4px;font-size:14px;color:#1d1f25;"><strong>E-mail :</strong> ${escapeHtml(input.contact.email)}</p>
                     <p style="margin:0 0 4px;font-size:14px;color:#1d1f25;"><strong>Téléphone :</strong> ${escapeHtml(input.contact.phone || '—')}</p>
+                    <p style="margin:0 0 4px;font-size:14px;color:#1d1f25;"><strong>Mode de règlement :</strong> ${escapeHtml(paymentModeLabel(input.paymentMode, input.requestKind))}</p>
                     <p style="margin:0 0 4px;font-size:14px;color:#1d1f25;"><strong>Mode de règlement :</strong> ${escapeHtml(paymentModeLabel(input.paymentMode))}</p>
                     ${
                       showAncvConnectIds
@@ -329,6 +362,7 @@ export function renderOrganizerReservationEmail(input: ReservationNotificationIn
     `Famille : ${familyName || '—'}`,
     `E-mail : ${input.contact.email}`,
     `Téléphone : ${input.contact.phone || '—'}`,
+    `Mode de règlement : ${paymentModeLabel(input.paymentMode, input.requestKind)}`,
     `Mode de règlement : ${paymentModeLabel(input.paymentMode)}`,
     ...(showAncvConnectIds
       ? [
@@ -376,6 +410,7 @@ export function renderFamilyReservationEmail(input: ReservationNotificationInput
 
   if (input.paymentMode === 'CV_CONNECT' || input.requestKind === 'ANCV_CONNECT') {
     nextSteps.push(
+      'ANCV Connect : l’organisateur va vous recontacter pour finaliser le règlement avec vos Chèques-Vacances Connect.'
       'ANCV Connect : l’organisateur va vous adresser un lien pour que vous puissiez régler depuis votre espace personnel ANCV Connect.'
     );
   } else if (input.paymentMode === 'CV_PAPER') {
@@ -398,6 +433,22 @@ export function renderFamilyReservationEmail(input: ReservationNotificationInput
       'Votre paiement par carte bancaire a été initié. Dès que la banque confirme l’opération, le statut passe à « Payée » dans votre espace Mon compte (cela peut prendre quelques instants après le retour de la page bancaire).'
     );
   } else if (input.paymentMode === 'DEFERRED') {
+    const coveredByAid =
+      input.requestKind === 'VACAF' ||
+      input.requestKind === 'ANCV_CONNECT' ||
+      Boolean(input.contact.vacafNumber?.trim());
+    if (!coveredByAid) {
+      if (input.isPartnerManualQuote) {
+        nextSteps.push(
+          'Paiement différé : aucun règlement n’est demandé pour l’instant, car votre partenaire doit d’abord calculer la prise en charge et la renseigner dans son back-office. Le reste à charge vous sera indiqué ensuite.'
+        );
+      } else {
+        nextSteps.push(
+          'Paiement différé : aucun règlement n’est demandé pour l’instant. L’organisateur vous recontactera pour finaliser le reste à charge.'
+        );
+      }
+    }
+  } else if (nextSteps.length === 0) {
     nextSteps.push(
       'Paiement différé : aucun règlement n’est demandé pour l’instant, car votre partenaire doit d’abord calculer la prise en charge et la renseigner dans son back-office. Le reste à charge vous sera indiqué ensuite.'
     );
@@ -430,6 +481,7 @@ export function renderFamilyReservationEmail(input: ReservationNotificationInput
                     <p style="margin:0 0 8px;font-size:13px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.03em;">Votre demande</p>
                     <p style="margin:0 0 4px;font-size:14px;color:#1d1f25;"><strong>Référence :</strong> ${escapeHtml(input.orderId)}</p>
                     <p style="margin:0 0 4px;font-size:14px;color:#1d1f25;"><strong>Organisateur :</strong> ${escapeHtml(input.organizerName)}</p>
+                    <p style="margin:0;font-size:14px;color:#1d1f25;"><strong>Mode de règlement :</strong> ${escapeHtml(paymentModeLabel(input.paymentMode, input.requestKind))}</p>
                     <p style="margin:0;font-size:14px;color:#1d1f25;"><strong>Mode de règlement :</strong> ${escapeHtml(paymentModeLabel(input.paymentMode))}</p>
                   </td>
                 </tr>
@@ -465,6 +517,7 @@ export function renderFamilyReservationEmail(input: ReservationNotificationInput
     'Votre demande de réservation est bien enregistrée',
     `Référence : ${input.orderId}`,
     `Organisateur : ${input.organizerName}`,
+    `Mode de règlement : ${paymentModeLabel(input.paymentMode, input.requestKind)}`,
     `Mode de règlement : ${paymentModeLabel(input.paymentMode)}`,
     '',
     ...input.lines.map(

@@ -96,7 +96,7 @@ export async function GET(req: Request) {
     requestUrl.searchParams.get('loginMode') === 'pro' ? 'pro' : 'family';
   const next = sanitizeRelativePath(
     requestUrl.searchParams.get('next'),
-    flow === 'recovery'
+    flow === 'recovery' || flow === 'invite'
       ? '/login/reinitialiser'
       : loginMode === 'family'
         ? '/mon-compte'
@@ -137,12 +137,15 @@ export async function GET(req: Request) {
     });
   }
 
-  if (flow === 'recovery' || flow === 'email-change') {
+  if (flow === 'recovery' || flow === 'email-change' || flow === 'invite') {
     if (flow === 'email-change') {
       await syncClientProfileEmailFromAuthUser({
         userId: data.user.id,
         email: data.user.email
       });
+    }
+    if (flow === 'invite') {
+      await ensureClientRowForOauthUser(data.user);
     }
     const redirectResponse = NextResponse.redirect(new URL(next, req.url), { status: 303 });
     redirectResponse.headers.set('Cache-Control', 'no-store');

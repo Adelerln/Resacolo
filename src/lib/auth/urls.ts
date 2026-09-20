@@ -40,7 +40,7 @@ export function buildAuthCallbackUrl(
   options: {
     next: string;
     loginMode?: 'family' | 'pro';
-    flow?: 'login' | 'recovery' | 'email-change';
+    flow?: 'login' | 'recovery' | 'email-change' | 'invite';
   }
 ) {
   const url = new URL('/auth/callback', getAuthRedirectOrigin(req));

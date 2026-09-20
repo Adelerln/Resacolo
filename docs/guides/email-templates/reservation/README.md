@@ -12,10 +12,11 @@ Placeholders ANCV : `{{ANCV_CONNECT_MATRICULE}}`, `{{ANCV_CONNECT_AMOUNT}}`, `{{
 | Acompte 200 € | `family-cb-deposit.html` | `organizer-cb-deposit.html` |
 | ANCV Connect | `family-ancv-connect.html` | `organizer-ancv-connect.html` |
 | ANCV papier | `family-ancv-paper.html` | `organizer-ancv-paper.html` |
-| Paiement différé (prise en charge partenaire à calculer dans le back-office) | `family-deferred.html` | `organizer-deferred.html` |
-| VACAF (rare) | `family-vacaf.html` | `organizer-vacaf.html` |
+| Paiement différé **partenaire** (devis / prise en charge à calculer) | `family-deferred.html` | `organizer-deferred.html` |
+| VACAF / AVE (ne pas utiliser les mails « différé partenaire ») | `family-vacaf.html` | `organizer-vacaf.html` |
 | Prise en charge partenaire (totalité) | `family-partner-full.html` | `organizer-partner-full.html` |
 
 Notes :
 - Ouvrir les fichiers dans un navigateur pour prévisualiser.
 - Les envois live passent par `src/lib/reservation-notifications.server.ts` (police Raleway).
+- Cocher VACAF force le mode `DEFERRED` côté checkout (pas de CB), mais l’e-mail doit rester le scénario VACAF — jamais « devis partenaire ».

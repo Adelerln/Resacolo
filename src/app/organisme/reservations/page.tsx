@@ -254,16 +254,68 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
     : { data: [] };
 
   const sessions = sessionsRaw ?? [];
-  const sessionIds = sessions.map((session) => session.id);
+  const sessionsById = new Map(sessions.map((session) => [session.id, session]));
+  const staysById = new Map(stays.map((stay) => [stay.id, stay]));
 
-  const { data: orderItemsRaw } = sessionIds.length
-    ? await supabase
-        .from('order_items')
-        .select('order_id,session_id,child_first_name,child_last_name,total_price_cents')
-        .in('session_id', sessionIds)
-    : { data: [] };
+  // Source de vérité : order_items.organizer_id (pas le parcours stays→sessions,
+  // qui masque les commandes si un séjour/session est absent du catalogue).
+  let orderItems: Array<{
+    order_id: string;
+    session_id: string | null;
+    child_first_name: string | null;
+    child_last_name: string | null;
+    total_price_cents: number | null;
+  }> = [];
 
-  const orderItems = orderItemsRaw ?? [];
+  const { data: orderItemsByOrganizer, error: orderItemsByOrganizerError } = await supabase
+    .from('order_items')
+    .select('order_id,session_id,child_first_name,child_last_name,total_price_cents')
+    .eq('organizer_id', selectedOrganizerId);
+
+  if (!orderItemsByOrganizerError && orderItemsByOrganizer) {
+    orderItems = orderItemsByOrganizer;
+  } else {
+    const sessionIds = sessions.map((session) => session.id);
+    const { data: orderItemsRaw } = sessionIds.length
+      ? await supabase
+          .from('order_items')
+          .select('order_id,session_id,child_first_name,child_last_name,total_price_cents')
+          .in('session_id', sessionIds)
+      : { data: [] };
+    orderItems = orderItemsRaw ?? [];
+  }
+
+  // Compléter les sessions/séjours manquants pour l’affichage
+  const missingSessionIds = Array.from(
+    new Set(
+      orderItems
+        .map((item) => item.session_id)
+        .filter((id): id is string => Boolean(id) && !sessionsById.has(id))
+    )
+  );
+  if (missingSessionIds.length > 0) {
+    const { data: extraSessions } = await supabase
+      .from('sessions')
+      .select('id,start_date,end_date,stay_id')
+      .in('id', missingSessionIds);
+    for (const session of extraSessions ?? []) {
+      sessionsById.set(session.id, session);
+    }
+    const missingStayIds = Array.from(
+      new Set(
+        (extraSessions ?? [])
+          .map((session) => session.stay_id)
+          .filter((id): id is string => Boolean(id) && !staysById.has(id))
+      )
+    );
+    if (missingStayIds.length > 0) {
+      const { data: extraStays } = await supabase.from('stays').select('id,title').in('id', missingStayIds);
+      for (const stay of extraStays ?? []) {
+        staysById.set(stay.id, stay);
+      }
+    }
+  }
+
   const orderIds = Array.from(new Set(orderItems.map((item) => item.order_id).filter(Boolean)));
 
   const { data: ordersRaw } = orderIds.length
@@ -337,8 +389,6 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
     itemsByOrderId.set(item.order_id, existing);
   }
 
-  const sessionsById = new Map(sessions.map((session) => [session.id, session]));
-  const staysById = new Map(stays.map((stay) => [stay.id, stay]));
   const clientsByUserId = new Map((clientsRaw ?? []).map((client) => [client.user_id, client.full_name]));
   const profilesByUserId = new Map(profiles.map((profile) => [profile.user_id, profile]));
   const paymentsByOrderId = new Map<string, { amount_cents: number; currency: string; raw_payload: unknown; status: string }>();
@@ -369,7 +419,11 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
       if (order.status === 'CANCELLED' && order.cancellation_reason === 'PAYMENT_FAILED') {
         return false;
       }
-      return payment?.status !== 'FAILED';
+      // Ne pas masquer une demande VACAF/ANCV si un paiement CB a échoué à côté.
+      if (payment?.status === 'FAILED') {
+        return order.status === 'REQUESTED' || Boolean(order.request_kind);
+      }
+      return true;
     })
     .map((order) => {
     const items = itemsByOrderId.get(order.id) ?? [];

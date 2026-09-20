@@ -32,6 +32,10 @@ export function getActivePaymentProviderMode(): 'mock' | 'live' {
   return getPaymentProvider() === 'axepta' ? getAxeptaMode() : getMoneticoMode();
 }
 
+/**
+ * Crée le payload PSP (carte uniquement).
+ * ANCV Connect n’utilise plus Axepta Limonetik : c’est une demande organisateur (hors TPE).
+ */
 export async function createCheckoutPspPayload(input: {
   checkoutId: string;
   orderId: string;

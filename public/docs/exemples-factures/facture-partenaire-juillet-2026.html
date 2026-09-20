@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <title>Facture 26-P01-0007 — Partenaire juillet 2026</title>
+  <style>
+    @page { size: A4; margin: 0; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Helvetica, Arial, sans-serif;
+      color: #0f172a;
+      background: #cbd5e1;
+    }
+    .page {
+      width: 210mm;
+      min-height: 297mm;
+      margin: 0 auto;
+      background: #fff;
+      position: relative;
+      padding-bottom: 28mm;
+    }
+    .banner {
+      height: 50px;
+      background: #fa8000;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 36px;
+    }
+    .banner img { height: 28px; width: auto; display: block; }
+    .banner .brand-fallback {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+    }
+    .banner .doc-type { font-size: 13px; font-weight: 700; }
+    .content { padding: 18px 36px 0; }
+    .parties {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      margin-top: 8px;
+    }
+    .company { font-size: 9.5px; line-height: 1.45; color: #334155; }
+    .company strong { display: block; font-size: 10.5px; color: #0f172a; margin-bottom: 2px; }
+    .customer { font-size: 9.5px; line-height: 1.45; color: #334155; }
+    .customer .name { font-size: 12px; font-weight: 700; color: #0f172a; margin-bottom: 4px; }
+    .divider {
+      margin: 16px 0 14px;
+      border: 0;
+      border-top: 1px solid #e2e8f0;
+    }
+    .meta { font-size: 9.5px; line-height: 1.55; color: #334155; }
+    .meta .title { font-size: 15px; font-weight: 700; color: #0f172a; margin-bottom: 6px; }
+    .meta .sub { color: #94a3b8; }
+    .vat-note { margin-top: 8px; font-size: 8px; color: #747b85; }
+    table.lines {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 16px;
+      font-size: 8.5px;
+    }
+    table.lines thead th {
+      background: #f5f7f9;
+      border: 1px solid #e2e8f0;
+      text-align: left;
+      padding: 8px 10px;
+      font-size: 8.5px;
+      font-weight: 700;
+    }
+    table.lines thead th.amount { text-align: right; }
+    table.lines tbody td {
+      border-bottom: 1px solid #ebedef;
+      padding: 8px 10px;
+      vertical-align: top;
+    }
+    table.lines tbody td.amount { text-align: right; white-space: nowrap; }
+    .bottom {
+      margin-top: 20px;
+      display: flex;
+      justify-content: flex-end;
+    }
+    .summary {
+      width: 223px;
+      background: #fa8000;
+      color: #fff;
+      border-radius: 4px;
+      padding: 12px 16px;
+    }
+    .summary .row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .summary .row.paid {
+      margin-top: 12px;
+      font-size: 9px;
+      font-weight: 500;
+    }
+    .footer {
+      position: absolute;
+      left: 36px;
+      right: 36px;
+      bottom: 16px;
+      border-top: 1px solid #e2e8f0;
+      padding-top: 10px;
+      font-size: 6.5px;
+      line-height: 1.45;
+      color: #595f6b;
+    }
+    .footer p { margin: 0 0 4px; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="banner">
+      <img src="/image/footer/logo_footer/logo-resacolo-RVB-blanc_logo-final%20copie%202.png" alt="Resacolo" onerror="this.style.display='none';this.nextElementSibling.style.display='block';" />
+      <div class="brand-fallback" style="display:none">RESACOLO</div>
+      <div class="doc-type">Facture</div>
+    </div>
+
+    <div class="content">
+      <div class="parties">
+        <div class="company">
+          <strong>RESACOLO SAS</strong>
+          24/26 rue Bichat<br />
+          75010 PARIS<br />
+          <span style="color:#595f6b">SIRET 904 862 158 00014</span><br />
+          <span style="color:#595f6b">TVA intracommunautaire FR67904862158</span>
+        </div>
+        <div class="customer">
+          <div class="name">CSE Partenaire Test Resacolo</div>
+          12 avenue des Familles<br />
+          75015 PARIS<br />
+          <span style="color:#595f6b">partenaire@test.resacolo.com</span>
+        </div>
+      </div>
+
+      <hr class="divider" />
+
+      <div class="meta">
+        <div class="title">Facture 26-P01-0007</div>
+        <div class="sub">Période juillet 2026 · 50 séjours</div>
+        <div>Date d’émission : 05/08/2026</div>
+        <div>Date de règlement : 20/08/2026</div>
+        <div>Mode de règlement : Virement bancaire</div>
+        <div>Objet : Prises en charge CSE sur les réservations de juillet 2026</div>
+        <div class="vat-note">Régime particulier - Agences de voyage. TVA non détaillée sur cette facture.</div>
+      </div>
+
+      <table class="lines">
+        <thead>
+          <tr>
+            <th>Désignation</th>
+            <th class="amount">Montant TTC</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Prise en charge CSE — 14 séjours · UCPA Jeunesse (PU moyen 480,00 €)</td>
+            <td class="amount">6 720,00 €</td>
+          </tr><tr>
+            <td>Prise en charge CSE — 11 séjours · Vacances Ouvertes (PU moyen 420,00 €)</td>
+            <td class="amount">4 620,00 €</td>
+          </tr><tr>
+            <td>Prise en charge CSE — 9 séjours · Ligue de l’enseignement 75 (PU moyen 390,00 €)</td>
+            <td class="amount">3 510,00 €</td>
+          </tr><tr>
+            <td>Prise en charge CSE — 8 séjours · FFCamps (PU moyen 510,00 €)</td>
+            <td class="amount">4 080,00 €</td>
+          </tr><tr>
+            <td>Prise en charge CSE — 5 séjours · Objectif Nature (PU moyen 560,00 €)</td>
+            <td class="amount">2 800,00 €</td>
+          </tr><tr>
+            <td>Prise en charge CSE — 3 séjours · Autres organismes (PU moyen 350,00 €)</td>
+            <td class="amount">1 050,00 €</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="bottom">
+        <div class="summary">
+          <div class="row"><span>TOTAL TTC</span><span>22 780,00 €</span></div>
+          <div class="row paid"><span>RESTANT DÛ</span><span>22 780,00 €</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer">
+      <p>En cas de non-paiement à la date de règlement, des pénalités de retard au taux d’intérêt appliqué par la Banque centrale européenne à son opération de refinancement la plus récente majoré de 10 points de pourcentage seront exigibles le jour suivant ladite date, sans qu’un rappel soit nécessaire.</p>
+      <p>Indemnité forfaitaire pour frais de recouvrement : 40 €.</p>
+      <p>RESACOLO, SAS au capital de 1 000 EUR, 24/26 rue Bichat, 75010 PARIS</p>
+      <p>RCS PARIS 904 862 158 | SIRET 904 862 158 00014 | TVA FR67904862158 | Atout France IM075220017</p>
+    </div>
+  </div>
+</body>
+</html>

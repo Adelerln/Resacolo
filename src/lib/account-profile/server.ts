@@ -25,7 +25,8 @@ import {
 } from '@/lib/partner-offers';
 import {
   CLIENT_CHILDREN_MISSING_ERROR,
-  listFamilyChildren
+  listFamilyChildren,
+  migrateLegacyChildrenJsonToTable
 } from '@/lib/account-children.server';
 import {
   findLegacyWpCustomerByEmail,
@@ -226,7 +227,7 @@ function parseChildrenJson(value: Json | null): FamilyProfileChild[] {
       const record = item as Record<string, unknown>;
       const firstName = typeof record.firstName === 'string' ? record.firstName.trim() : '';
       const lastName = typeof record.lastName === 'string' ? record.lastName.trim() : '';
-      const birthdate = typeof record.birthdate === 'string' ? record.birthdate.trim() : '';
+      const birthdate = typeof record.birthdate === 'string' ? record.birthdate.trim().slice(0, 10) : '';
       const gender =
         record.gender === 'MASCULIN' || record.gender === 'FEMININ' ? record.gender : '';
       const additionalInfo =
@@ -1245,10 +1246,16 @@ async function readReservations(
       .from('payments')
       .select('order_id')
       .filter('raw_payload->contact->>email', 'eq', normalizedEmail)
-      .order('updated_at', { ascending: false });
+      .order('updated_at', { ascending: false })
+      .limit(100);
 
     if (!paymentLookupError && paymentRows?.length) {
       return Array.from(new Set(paymentRows.map((row) => row.order_id).filter(Boolean)));
+    }
+
+    // Fallback coûteux : uniquement si le filtre JSON a échoué (pas s'il a juste 0 résultat).
+    if (!paymentLookupError) {
+      return [] as string[];
     }
 
     const { data: recentPayments, error: scanError } = await supabase
@@ -1347,18 +1354,19 @@ async function readReservations(
   const { data: directOrders, error: directOrdersError } = await readOrdersForClientUserIds(ownerUserIds);
   let orders = directOrders ?? [];
 
-  if (!directOrdersError) {
-    for (const email of contactEmails) {
-      const linkedOrders = await readOrdersByCheckoutEmail(email);
-      orders = mergeReservationOrdersById([...orders, ...linkedOrders]);
+  // Liaison par e-mail checkout uniquement si aucune commande directe :
+  // évite un scan payments (~250 lignes) à chaque ouverture de Mon compte.
+  const shouldLookupByCheckoutEmail = Boolean(directOrdersError) || orders.length === 0;
+
+  if (shouldLookupByCheckoutEmail) {
+    if (directOrdersError) {
+      console.warn('[account-profile] direct reservation lookup failed, trying checkout email fallback', {
+        userId,
+        ownerUserIds,
+        error: directOrdersError.message
+      });
+      orders = [];
     }
-  } else {
-    console.warn('[account-profile] direct reservation lookup failed, trying checkout email fallback', {
-      userId,
-      ownerUserIds,
-      error: directOrdersError.message
-    });
-    orders = [];
     for (const email of contactEmails) {
       const linkedOrders = await readOrdersByCheckoutEmail(email);
       orders = mergeReservationOrdersById([...orders, ...linkedOrders]);
@@ -1944,6 +1952,26 @@ async function upsertProfile(profile: FamilyProfile): Promise<FamilyProfile> {
   return mapRowToProfile(data as ClientProfileRow, profile.children);
 }
 
+async function resolveFamilyChildren(userId: string, childrenJson: Json | null): Promise<FamilyProfileChild[]> {
+  const legacyChildren = parseChildrenJson(childrenJson);
+
+  try {
+    const tableChildren = await listFamilyChildren(userId);
+    if (tableChildren.length > 0) {
+      return tableChildren;
+    }
+    if (legacyChildren.length > 0) {
+      return await migrateLegacyChildrenJsonToTable({ userId, children: legacyChildren });
+    }
+    return tableChildren;
+  } catch (childrenError) {
+    if (childrenError instanceof Error && childrenError.message === CLIENT_CHILDREN_MISSING_ERROR) {
+      return legacyChildren;
+    }
+    throw childrenError;
+  }
+}
+
 export async function getFamilyProfile(userId: string): Promise<FamilyProfile | null> {
   const supabase = getServerSupabaseClient();
   const { data, error } = await supabase
@@ -1958,17 +1986,26 @@ export async function getFamilyProfile(userId: string): Promise<FamilyProfile | 
     }
     throw new Error(`Impossible de lire le profil famille: ${error.message}`);
   }
-  if (!data) return null;
 
-  let children = parseChildrenJson((data as ClientProfileRow).children_json);
-  try {
-    children = await listFamilyChildren(userId);
-  } catch (childrenError) {
-    if (!(childrenError instanceof Error) || childrenError.message !== CLIENT_CHILDREN_MISSING_ERROR) {
+  // Même sans fiche client_profiles, les enfants déjà en base doivent rester visibles
+  // (sinon un ajout sur /mon-compte disparaît au rechargement / au checkout).
+  if (!data) {
+    try {
+      const children = await listFamilyChildren(userId);
+      if (children.length === 0) return null;
+      return {
+        ...createDefaultProfile({ userId }),
+        children
+      };
+    } catch (childrenError) {
+      if (childrenError instanceof Error && childrenError.message === CLIENT_CHILDREN_MISSING_ERROR) {
+        return null;
+      }
       throw childrenError;
     }
   }
 
+  const children = await resolveFamilyChildren(userId, (data as ClientProfileRow).children_json);
   return mapRowToProfile(data as ClientProfileRow, children);
 }
 

@@ -51,7 +51,7 @@ export function buildAuthCallbackUrl(
 }
 
 export function buildEmailConfirmRedirectUrl(req: Request) {
-  const url = new URL('/auth/confirm', getAuthRedirectOrigin(req));
+  const url = new URL('/confirmation-mail/valider', getAuthRedirectOrigin(req));
   url.searchParams.set('next', '/confirmation-mail');
   return url.toString();
 }

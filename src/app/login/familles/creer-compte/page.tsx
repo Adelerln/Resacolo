@@ -19,6 +19,14 @@ export const metadata = {
 const INPUT_CLASS =
   'mt-1.5 min-h-[44px] w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm tracking-normal text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] outline-none transition placeholder:text-slate-400 focus:border-brand-400 focus:ring-2 focus:ring-brand-200';
 
+function RequiredMark() {
+  return (
+    <span aria-hidden="true" className="ml-1 text-red-600">
+      *
+    </span>
+  );
+}
+
 function sanitizeRelativePath(value: string | undefined) {
   if (!value) return '/mon-compte';
   const trimmed = value.trim();
@@ -155,26 +163,32 @@ export default async function FamilyRegisterPage({
 
             <form className="mt-3 space-y-6" action="/api/auth/register-client" method="post">
               <input type="hidden" name="redirectTo" value={safeRedirectTo} />
+              <p className="text-xs text-slate-500">
+                <span aria-hidden="true" className="font-semibold text-red-600">
+                  *
+                </span>{' '}
+                Champs obligatoires
+              </p>
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="block text-sm font-medium text-slate-700">
-                  Prénom
+                  Prénom<RequiredMark />
                   <input name="firstName" type="text" className={INPUT_CLASS} required />
                 </label>
                 <label className="block text-sm font-medium text-slate-700">
-                  Nom
+                  Nom<RequiredMark />
                   <input name="lastName" type="text" className={INPUT_CLASS} required />
                 </label>
               </div>
               <label className="block text-sm font-medium text-slate-700">
-                Email
+                Email<RequiredMark />
                 <input name="email" type="email" className={INPUT_CLASS} required />
               </label>
               <label className="block text-sm font-medium text-slate-700">
-                Téléphone
+                Téléphone<RequiredMark />
                 <input name="phone" type="tel" className={INPUT_CLASS} required />
               </label>
               <label className="block text-sm font-medium text-slate-700">
-                Adresse postale
+                Adresse postale<RequiredMark />
                 <input name="addressLine1" type="text" className={INPUT_CLASS} required />
               </label>
               <label className="block text-sm font-medium text-slate-700">
@@ -183,17 +197,17 @@ export default async function FamilyRegisterPage({
               </label>
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="block text-sm font-medium text-slate-700">
-                  Code postal
+                  Code postal<RequiredMark />
                   <input name="postalCode" type="text" className={INPUT_CLASS} required />
                 </label>
                 <label className="block text-sm font-medium text-slate-700">
-                  Ville
+                  Ville<RequiredMark />
                   <input name="city" type="text" className={INPUT_CLASS} required />
                 </label>
               </div>
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-slate-700">
-                  Mot de passe
+                  Mot de passe<RequiredMark />
                   <PasswordInput
                     name="password"
                     required
@@ -269,7 +283,7 @@ export default async function FamilyRegisterPage({
                   >
                     Conditions Générales d&apos;Utilisation
                   </Link>
-                  .
+                  .<RequiredMark />
                 </span>
               </label>
 

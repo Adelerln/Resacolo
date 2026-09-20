@@ -663,7 +663,7 @@ async function insertOrderWithCompatibilityFallback(input: {
     request_kind: input.requestKind
   };
 
-  const attemptInsert = async (payload: Record<string, unknown>) => {
+  const attemptInsert = async (payload: Database['public']['Tables']['orders']['Insert']) => {
     const { data, error } = await supabase.from('orders').insert(payload).select('id').single();
     return { order: data, error };
   };

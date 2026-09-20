@@ -136,7 +136,8 @@ export async function applyPublishedStayReviewPayload(
     partner_discount_percent:
       payload.partner_discount_percent != null && Number.isFinite(payload.partner_discount_percent)
         ? payload.partner_discount_percent
-        : null
+        : null,
+    is_caf_eligible: payload.is_caf_eligible !== false
   };
 
   const seoPayload: StayUpdate = {

@@ -247,6 +247,7 @@ export type Database = {
       }
       checkout_carts: {
         Row: {
+          abandonment_reminder_sent_at: string | null
           client_user_id: string | null
           contact_snapshot: Json | null
           converted_order_id: string | null
@@ -261,6 +262,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          abandonment_reminder_sent_at?: string | null
           client_user_id?: string | null
           contact_snapshot?: Json | null
           converted_order_id?: string | null
@@ -275,6 +277,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          abandonment_reminder_sent_at?: string | null
           client_user_id?: string | null
           contact_snapshot?: Json | null
           converted_order_id?: string | null
@@ -451,6 +454,108 @@ export type Database = {
           updated_at?: string
           user_id?: string
           vacaf_number?: string
+        }
+        Relationships: []
+      }
+      legacy_wp_customers: {
+        Row: {
+          id: string
+          created_at: string
+          updated_at: string
+          email: string
+          wp_customer_id: number | null
+          wp_user_id: number | null
+          first_name: string
+          last_name: string
+          phone: string
+          address_line1: string
+          address_line2: string
+          postal_code: string
+          city: string
+          country: string
+          registered_at: string | null
+          claimed_user_id: string | null
+        }
+        Insert: {
+          id?: string
+          created_at?: string
+          updated_at?: string
+          email: string
+          wp_customer_id?: number | null
+          wp_user_id?: number | null
+          first_name?: string
+          last_name?: string
+          phone?: string
+          address_line1?: string
+          address_line2?: string
+          postal_code?: string
+          city?: string
+          country?: string
+          registered_at?: string | null
+          claimed_user_id?: string | null
+        }
+        Update: {
+          id?: string
+          created_at?: string
+          updated_at?: string
+          email?: string
+          wp_customer_id?: number | null
+          wp_user_id?: number | null
+          first_name?: string
+          last_name?: string
+          phone?: string
+          address_line1?: string
+          address_line2?: string
+          postal_code?: string
+          city?: string
+          country?: string
+          registered_at?: string | null
+          claimed_user_id?: string | null
+        }
+        Relationships: []
+      }
+      legacy_wp_reservations: {
+        Row: {
+          id: string
+          created_at: string
+          updated_at: string
+          email: string
+          wp_order_id: number
+          wp_order_item_id: number
+          stay_title: string
+          session_start_date: string | null
+          session_end_date: string | null
+          reserved_at: string | null
+          status_code: string
+          status_label: string
+        }
+        Insert: {
+          id?: string
+          created_at?: string
+          updated_at?: string
+          email: string
+          wp_order_id: number
+          wp_order_item_id: number
+          stay_title: string
+          session_start_date?: string | null
+          session_end_date?: string | null
+          reserved_at?: string | null
+          status_code: string
+          status_label: string
+        }
+        Update: {
+          id?: string
+          created_at?: string
+          updated_at?: string
+          email?: string
+          wp_order_id?: number
+          wp_order_item_id?: number
+          stay_title?: string
+          session_start_date?: string | null
+          session_end_date?: string | null
+          reserved_at?: string | null
+          status_code?: string
+          status_label?: string
         }
         Relationships: []
       }
@@ -1209,6 +1314,9 @@ export type Database = {
           id: string
           paid_at: string | null
           partially_paid_at: string | null
+          deposit_reminder_sent_at: string | null
+          balance_reminder_sent_at: string | null
+          payment_reminder_missing_email_alerted_at: string | null
           request_kind: string | null
           request_resolved_at: string | null
           requested_at: string | null
@@ -1233,6 +1341,9 @@ export type Database = {
           id?: string
           paid_at?: string | null
           partially_paid_at?: string | null
+          deposit_reminder_sent_at?: string | null
+          balance_reminder_sent_at?: string | null
+          payment_reminder_missing_email_alerted_at?: string | null
           request_kind?: string | null
           request_resolved_at?: string | null
           requested_at?: string | null
@@ -1257,6 +1368,9 @@ export type Database = {
           id?: string
           paid_at?: string | null
           partially_paid_at?: string | null
+          deposit_reminder_sent_at?: string | null
+          balance_reminder_sent_at?: string | null
+          payment_reminder_missing_email_alerted_at?: string | null
           request_kind?: string | null
           request_resolved_at?: string | null
           requested_at?: string | null
@@ -1273,6 +1387,72 @@ export type Database = {
             columns: ["collectivity_id"]
             isOneToOne: false
             referencedRelation: "collectivities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      order_cancellation_requests: {
+        Row: {
+          id: string
+          created_at: string
+          updated_at: string
+          order_id: string
+          organizer_id: string
+          kind: string
+          status: string
+          reason: string
+          attachment_path: string | null
+          amount_cents: number | null
+          created_by_user_id: string | null
+          reviewed_by_user_id: string | null
+          reviewed_at: string | null
+          review_note: string | null
+        }
+        Insert: {
+          id?: string
+          created_at?: string
+          updated_at?: string
+          order_id: string
+          organizer_id: string
+          kind: string
+          status?: string
+          reason: string
+          attachment_path?: string | null
+          amount_cents?: number | null
+          created_by_user_id?: string | null
+          reviewed_by_user_id?: string | null
+          reviewed_at?: string | null
+          review_note?: string | null
+        }
+        Update: {
+          id?: string
+          created_at?: string
+          updated_at?: string
+          order_id?: string
+          organizer_id?: string
+          kind?: string
+          status?: string
+          reason?: string
+          attachment_path?: string | null
+          amount_cents?: number | null
+          created_by_user_id?: string | null
+          reviewed_by_user_id?: string | null
+          reviewed_at?: string | null
+          review_note?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_cancellation_requests_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_cancellation_requests_organizer_id_fkey"
+            columns: ["organizer_id"]
+            isOneToOne: false
+            referencedRelation: "organizers"
             referencedColumns: ["id"]
           },
         ]
@@ -1839,6 +2019,90 @@ export type Database = {
         }
         Relationships: []
       }
+      admin_inbound_request_settings: {
+        Row: {
+          created_at: string
+          id: string
+          organizer_notification_email: string | null
+          partner_notification_email: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          organizer_notification_email?: string | null
+          partner_notification_email?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          organizer_notification_email?: string | null
+          partner_notification_email?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      admin_inbound_requests: {
+        Row: {
+          atout_france: string | null
+          contact_email: string
+          contact_first_name: string | null
+          contact_last_name: string | null
+          contact_phone: string | null
+          created_at: string
+          formula: string | null
+          id: string
+          kind: string
+          message: string
+          organization_name: string | null
+          raw_payload: Json
+          resolved_at: string | null
+          sdjes: string | null
+          status: string
+          updated_at: string
+          website_url: string | null
+        }
+        Insert: {
+          atout_france?: string | null
+          contact_email: string
+          contact_first_name?: string | null
+          contact_last_name?: string | null
+          contact_phone?: string | null
+          created_at?: string
+          formula?: string | null
+          id?: string
+          kind: string
+          message: string
+          organization_name?: string | null
+          raw_payload?: Json
+          resolved_at?: string | null
+          sdjes?: string | null
+          status?: string
+          updated_at?: string
+          website_url?: string | null
+        }
+        Update: {
+          atout_france?: string | null
+          contact_email?: string
+          contact_first_name?: string | null
+          contact_last_name?: string | null
+          contact_phone?: string | null
+          created_at?: string
+          formula?: string | null
+          id?: string
+          kind?: string
+          message?: string
+          organization_name?: string | null
+          raw_payload?: Json
+          resolved_at?: string | null
+          sdjes?: string | null
+          status?: string
+          updated_at?: string
+          website_url?: string | null
+        }
+        Relationships: []
+      }
       accommodation_media: {
         Row: {
           accommodation_id: string
@@ -2015,6 +2279,7 @@ export type Database = {
           activity_keys: string[]
           accepts_ancv_connect: boolean
           accepts_ancv_paper: boolean
+          ancv_paper_mailing_address: string | null
           contact_email: string | null
           created_at: string
           description: string | null
@@ -2042,6 +2307,7 @@ export type Database = {
           activity_keys?: string[]
           accepts_ancv_connect?: boolean
           accepts_ancv_paper?: boolean
+          ancv_paper_mailing_address?: string | null
           contact_email?: string | null
           created_at?: string
           description?: string | null
@@ -2069,6 +2335,7 @@ export type Database = {
           activity_keys?: string[]
           accepts_ancv_connect?: boolean
           accepts_ancv_paper?: boolean
+          ancv_paper_mailing_address?: string | null
           contact_email?: string | null
           created_at?: string
           description?: string | null
@@ -2091,6 +2358,27 @@ export type Database = {
           stay_duration_min_days?: number | null
           stay_type_keys?: string[]
           website_url?: string | null
+        }
+        Relationships: []
+      }
+      partner_contact_settings: {
+        Row: {
+          created_at: string
+          id: string
+          partner_request_email: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          partner_request_email?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          partner_request_email?: string | null
+          updated_at?: string
         }
         Relationships: []
       }
@@ -2397,6 +2685,7 @@ export type Database = {
           location_text: string | null
           organizer_id: string
           payment_aids: string[]
+          is_caf_eligible: boolean
           program_text: string | null
           raw_payload: Json | null
           region_text: string | null
@@ -2445,6 +2734,7 @@ export type Database = {
           location_text?: string | null
           organizer_id: string
           payment_aids?: string[]
+          is_caf_eligible?: boolean
           program_text?: string | null
           raw_payload?: Json | null
           region_text?: string | null
@@ -2493,6 +2783,7 @@ export type Database = {
           location_text?: string | null
           organizer_id?: string
           payment_aids?: string[]
+          is_caf_eligible?: boolean
           program_text?: string | null
           raw_payload?: Json | null
           region_text?: string | null
@@ -2679,6 +2970,71 @@ export type Database = {
           },
         ]
       }
+      weekly_stock_report_email_logs: {
+        Row: {
+          id: string
+          created_at: string
+          run_id: string
+          report_date: string
+          organizer_id: string | null
+          organizer_name: string | null
+          recipient_email: string
+          status: string
+          error_message: string | null
+          subject: string | null
+          active_session_count: number | null
+          remaining_places: number | null
+          full_session_count: number | null
+          dry_run: boolean
+          force_run: boolean
+          metadata: Json
+        }
+        Insert: {
+          id?: string
+          created_at?: string
+          run_id: string
+          report_date: string
+          organizer_id?: string | null
+          organizer_name?: string | null
+          recipient_email: string
+          status: string
+          error_message?: string | null
+          subject?: string | null
+          active_session_count?: number | null
+          remaining_places?: number | null
+          full_session_count?: number | null
+          dry_run?: boolean
+          force_run?: boolean
+          metadata?: Json
+        }
+        Update: {
+          id?: string
+          created_at?: string
+          run_id?: string
+          report_date?: string
+          organizer_id?: string | null
+          organizer_name?: string | null
+          recipient_email?: string
+          status?: string
+          error_message?: string | null
+          subject?: string | null
+          active_session_count?: number | null
+          remaining_places?: number | null
+          full_session_count?: number | null
+          dry_run?: boolean
+          force_run?: boolean
+          metadata?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "weekly_stock_report_email_logs_organizer_id_fkey"
+            columns: ["organizer_id"]
+            isOneToOne: false
+            referencedRelation: "organizers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       stays: {
         Row: {
           ages: number[]
@@ -2703,6 +3059,7 @@ export type Database = {
           organizer_id: string
           payment_aids: string[]
           partner_discount_percent: number | null
+          is_caf_eligible: boolean
           program_text: string | null
           required_documents_text: string | null
           seo_checks: Json
@@ -2753,6 +3110,7 @@ export type Database = {
           organizer_id: string
           payment_aids?: string[]
           partner_discount_percent?: number | null
+          is_caf_eligible?: boolean
           program_text?: string | null
           required_documents_text?: string | null
           seo_checks?: Json
@@ -2803,6 +3161,7 @@ export type Database = {
           organizer_id?: string
           payment_aids?: string[]
           partner_discount_percent?: number | null
+          is_caf_eligible?: boolean
           program_text?: string | null
           required_documents_text?: string | null
           seo_checks?: Json

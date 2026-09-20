@@ -6,17 +6,16 @@ export async function getFavorites() {
     cache: 'no-store'
   });
 
-  if (response.status === 401) {
-    return { isAuthenticated: false, stayIds: [] as string[] };
-  }
-
   if (!response.ok) {
+    if (response.status === 401) {
+      return { isAuthenticated: false, stayIds: [] as string[] };
+    }
     throw new Error('Impossible de charger les favoris.');
   }
 
-  const payload = (await response.json()) as { stayIds?: string[] };
+  const payload = (await response.json()) as { stayIds?: string[]; isAuthenticated?: boolean };
   return {
-    isAuthenticated: true,
+    isAuthenticated: payload.isAuthenticated === true,
     stayIds: payload.stayIds ?? []
   };
 }

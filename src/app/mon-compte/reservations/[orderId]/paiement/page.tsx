@@ -106,7 +106,7 @@ export default function BalancePaiementPage() {
         amountCents: number;
         currency: string;
         monetico?: {
-          provider?: 'monetico' | 'axepta';
+          provider?: 'monetico' | 'axepta' | 'axepta-limonetik';
           mode: 'mock' | 'live';
           paymentUrl: string;
           formMethod: 'POST' | 'GET';

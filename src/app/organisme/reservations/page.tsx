@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import OrganizerPageHeader from '@/components/organisme/OrganizerPageHeader';
 import OrganizerReservationDetailsModal from '@/components/organisme/OrganizerReservationDetailsModal';
+import { OrganizerCancellationForm } from '@/components/organisme/OrganizerCancellationForm';
 import { canAccessOrganizerSection } from '@/lib/organizer-access';
 import { requireOrganizerPageAccess } from '@/lib/organizer-backoffice-access.server';
 import {
@@ -19,6 +20,8 @@ import type { Database } from '@/types/supabase';
 type PageProps = {
   searchParams?: Promise<{
     organizerId?: string | string[];
+    error?: string | string[];
+    cancelled?: string | string[];
   }>;
 };
 
@@ -389,6 +392,7 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
   const clientsByUserId = new Map((clientsRaw ?? []).map((client) => [client.user_id, client.full_name]));
   const profilesByUserId = new Map(profiles.map((profile) => [profile.user_id, profile]));
   const paymentsByOrderId = new Map<string, { amount_cents: number; currency: string; raw_payload: unknown; status: string }>();
+  const onlinePaidCentsByOrderId = new Map<string, number>();
   for (const payment of paymentsRaw ?? []) {
     if (!paymentsByOrderId.has(payment.order_id)) {
       paymentsByOrderId.set(payment.order_id, {
@@ -397,6 +401,12 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
         raw_payload: payment.raw_payload,
         status: payment.status
       });
+    }
+    if (payment.status === 'SUCCEEDED') {
+      onlinePaidCentsByOrderId.set(
+        payment.order_id,
+        (onlinePaidCentsByOrderId.get(payment.order_id) ?? 0) + Math.max(0, payment.amount_cents ?? 0)
+      );
     }
   }
   const collectivitiesById = new Map(
@@ -460,6 +470,7 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
             ? formatEuroFromCents(order.external_paid_cents, payment?.currency ?? 'EUR')
             : null,
         totalCents,
+        onlinePaidCents: onlinePaidCentsByOrderId.get(order.id) ?? 0,
         details: {
           id: order.id,
           clientName: clientsByUserId.get(order.client_user_id) ?? participantNames[0] ?? 'Client inconnu',
@@ -502,6 +513,16 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
         title="Réservations"
         subtitle="Suivez les réservations liées à votre organisme."
       />
+      {typeof resolvedSearchParams?.error === 'string' && resolvedSearchParams.error ? (
+        <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+          {resolvedSearchParams.error}
+        </div>
+      ) : null}
+      {String(resolvedSearchParams?.cancelled ?? '') === '1' ? (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          Demande d&apos;annulation / remboursement enregistrée.
+        </div>
+      ) : null}
       <div className="organizer-table-shell">
         <div className="overflow-x-auto">
           <table className="organizer-table min-w-[1120px] w-full table-fixed">
@@ -594,6 +615,13 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
                   <td className="px-4 py-3 text-right font-medium text-slate-900">{reservation.amountLabel}</td>
                   <td className="w-[140px] px-4 py-3 text-right">
                     <OrganizerReservationDetailsModal reservation={reservation.details} />
+                    {reservation.status !== 'CANCELLED' ? (
+                      <OrganizerCancellationForm
+                        organizerId={selectedOrganizerId}
+                        orderId={reservation.id}
+                        onlinePaidCents={reservation.onlinePaidCents}
+                      />
+                    ) : null}
                   </td>
                 </tr>
               ))}

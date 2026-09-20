@@ -33,6 +33,13 @@ type MnemosInvoicePdfInput = {
 
 type ClientTravelInvoicePdfLine = {
   label: string;
+  quantity?: number;
+  amountCents: number;
+};
+
+type ClientTravelInvoicePaymentRow = {
+  date: string;
+  label: string;
   amountCents: number;
 };
 
@@ -53,6 +60,7 @@ type ClientTravelInvoicePdfInput = {
   paidCents: number;
   remainingBalanceCents: number;
   lines: ClientTravelInvoicePdfLine[];
+  payments?: ClientTravelInvoicePaymentRow[];
 };
 
 type PdfLine = {
@@ -500,10 +508,13 @@ function renderClientTravelInvoicePdf(
   const summaryHasBalance = input.remainingBalanceCents > 0;
   const summaryHasPaid = input.paidCents > 0;
   const summaryHeight = 34 + (summaryHasBalance ? 24 : 0) + (summaryHasPaid ? 20 : 0);
-  const summaryBottom = 118;
+  const paymentCount = Math.min(6, (input.payments ?? []).length);
+  const payBoxH = 16 + 18 + Math.max(1, paymentCount || 1) * 16 + 10;
+  const summaryBottom = 128;
   const summaryTop = summaryBottom + summaryHeight;
-  const tableBottomLimit = summaryTop + 18;
-  const footerTop = 96;
+  const bottomBlocksTop = summaryBottom + Math.max(summaryHeight, payBoxH);
+  const tableBottomLimit = bottomBlocksTop + 18;
+  const footerTop = 108;
 
   page.rect(0, 792, 595, 50, '0.98 0.50 0.00');
   if (logo) {
@@ -556,28 +567,32 @@ function renderClientTravelInvoicePdf(
   }
 
   metaY -= 6;
-  page.text(
-    'Régime particulier - Agences de voyage. TVA non détaillée sur cette facture.',
-    40,
-    metaY,
-    { size: 8, color: '0.45 0.48 0.52' }
-  );
+  page.text('Régime particulier - Agences de voyage (art. 266, 1-e du CGI)', 40, metaY, {
+    size: 8,
+    color: '0.45 0.48 0.52'
+  });
 
   let y = metaY - 24;
   page.rect(36, y - 10, 523, 26, '0.96 0.97 0.99');
   page.strokeRect(36, y - 10, 523, 26);
   page.text('Désignation', 46, y, { size: 8.5, font: 'bold' });
+  page.text('Qté', 360, y, { size: 8.5, font: 'bold', align: 'right' });
+  page.text('PU TTC', 430, y, { size: 8.5, font: 'bold', align: 'right' });
   page.text('Montant TTC', 552, y, { size: 8.5, font: 'bold', align: 'right' });
   y -= 28;
 
   visibleLines.forEach((line) => {
-    const wrapped = wrapText(line.label, 72).slice(0, 3);
+    const quantity = Math.max(1, line.quantity ?? 1);
+    const unitCents = Math.round(line.amountCents / quantity);
+    const wrapped = wrapText(line.label, 48).slice(0, 3);
     const rowHeight = Math.max(24, wrapped.length * 12 + 8);
     if (y - rowHeight < tableBottomLimit) {
       return;
     }
     page.line(36, y + 8, 559, y + 8, '0.92 0.94 0.96');
     wrapped.forEach((part, index) => page.text(part, 46, y - index * 12, { size: 8.5 }));
+    page.text(String(quantity), 360, y, { size: 8.5, align: 'right' });
+    page.text(euros(unitCents), 430, y, { size: 8.5, align: 'right' });
     page.text(euros(line.amountCents), 552, y, { size: 8.5, align: 'right' });
     y -= rowHeight;
   });
@@ -586,8 +601,39 @@ function renderClientTravelInvoicePdf(
     const overflowTotal = overflowLines.reduce((sum, line) => sum + line.amountCents, 0);
     page.line(36, y + 8, 559, y + 8, '0.92 0.94 0.96');
     page.text(`Autres lignes regroupées (${overflowLines.length})`, 46, y, { size: 8.5 });
+    page.text(String(overflowLines.length), 360, y, { size: 8.5, align: 'right' });
     page.text(euros(overflowTotal), 552, y, { size: 8.5, align: 'right' });
     y -= 24;
+  }
+
+  const paymentRows = input.payments ?? [];
+  const payBoxX = 36;
+  const payBoxW = 280;
+  const payRowH = 16;
+  const payBoxBottom = summaryBottom;
+  const payBoxTop = payBoxBottom + payBoxH;
+  page.rect(payBoxX, payBoxBottom, payBoxW, payBoxH, '0.96 0.97 0.99');
+  page.strokeRect(payBoxX, payBoxBottom, payBoxW, payBoxH);
+  page.text('Récapitulatif des paiements', payBoxX + 8, payBoxTop - 14, { size: 9, font: 'bold' });
+  let payY = payBoxTop - 28;
+  page.text('Date', payBoxX + 8, payY, { size: 7.5, font: 'bold', color: '0.35 0.38 0.42' });
+  page.text('Mode', payBoxX + 78, payY, { size: 7.5, font: 'bold', color: '0.35 0.38 0.42' });
+  page.text('Montant', payBoxX + payBoxW - 8, payY, {
+    size: 7.5,
+    font: 'bold',
+    align: 'right',
+    color: '0.35 0.38 0.42'
+  });
+  payY -= payRowH;
+  if (paymentRows.length === 0) {
+    page.text('Aucun paiement enregistré', payBoxX + 8, payY, { size: 8, color: '0.45 0.48 0.52' });
+  } else {
+    paymentRows.slice(0, 6).forEach((payment) => {
+      page.text(payment.date, payBoxX + 8, payY, { size: 8 });
+      page.text(payment.label.slice(0, 22), payBoxX + 78, payY, { size: 8 });
+      page.text(euros(payment.amountCents), payBoxX + payBoxW - 8, payY, { size: 8, align: 'right' });
+      payY -= payRowH;
+    });
   }
 
   page.rect(332, summaryBottom, 223, summaryHeight, '0.98 0.50 0.00');
@@ -619,12 +665,26 @@ function renderClientTravelInvoicePdf(
     `${RESACOLO_COMPANY.legalName}, ${RESACOLO_COMPANY.legalForm} au capital de ${RESACOLO_COMPANY.shareCapitalLabel}, ${RESACOLO_COMPANY.addressLine1}, ${RESACOLO_COMPANY.postalCode} ${RESACOLO_COMPANY.city.toUpperCase()}`,
     40,
     56,
+    82,
     { size: 7, color: '0.35 0.38 0.42' }
   );
   page.text(
-    `RCS ${RESACOLO_COMPANY.rcsCity.toUpperCase()} ${RESACOLO_COMPANY.rcsNumber} | SIRET ${RESACOLO_COMPANY.siret} | TVA ${RESACOLO_COMPANY.vatNumber} | Atout France ${RESACOLO_COMPANY.atoutFranceRegistration}`,
+    `RCS ${RESACOLO_COMPANY.rcsCity.toUpperCase()} ${RESACOLO_COMPANY.rcsNumber} | SIRET ${RESACOLO_COMPANY.siret}`,
+    40,
+    70,
+    { size: 7, color: '0.35 0.38 0.42' }
+  );
+  page.text(
+    `Numéro de TVA intracommunautaire : ${RESACOLO_COMPANY.vatNumber} | Numéro d'immatriculation Atout France : ${RESACOLO_COMPANY.atoutFranceRegistration}`,
+    40,
+    58,
+    { size: 7, color: '0.35 0.38 0.42' }
+  );
+  page.text(
+    `Assureur : ${RESACOLO_COMPANY.professionalInsurance.insurer}, ${RESACOLO_COMPANY.professionalInsurance.address}`,
     40,
     44,
+    46,
     { size: 7, color: '0.35 0.38 0.42' }
   );
 

@@ -14,7 +14,6 @@ import RangeField from '@/components/partner/RangeField';
 import StayTypeRulesCards from '@/components/partner/StayTypeRulesCards';
 import OrganizerRulesCards from '@/components/partner/OrganizerRulesCards';
 import CountryDropdownField from '@/components/partner/CountryDropdownField';
-import PartnerCatalogQfScaleCard from '@/components/partner/PartnerCatalogQfScaleCard';
 
 const CATALOG_FORM_ID = 'partner-catalog-form';
 
@@ -35,20 +34,6 @@ type PartnerCatalogRulesConfiguratorProps = {
   fieldClassName: string;
 };
 
-function hasCaps(rules: PartnerCatalogRules) {
-  const financial = rules.financialRules;
-  return (
-    financial.capPerStayCents != null ||
-    financial.capPerChildYearCents != null ||
-    financial.capPerFamilyYearCents != null ||
-    financial.capPerDayCents != null ||
-    financial.maxStaysPerChildYear != null ||
-    financial.maxSubsidizedDaysYear != null ||
-    financial.minFamilyRemainderPercent != null ||
-    financial.minFamilyRemainderCents != null
-  );
-}
-
 function buildInitialCriteriaState(rules: PartnerCatalogRules) {
   return {
     age: rules.blockingRules.ageMin != null || rules.blockingRules.ageMax != null,
@@ -65,10 +50,7 @@ function buildInitialCriteriaState(rules: PartnerCatalogRules) {
       rules.blockingRules.organizersExcluded.length > 0,
     countries:
       rules.blockingRules.countriesAllowed.length > 0 ||
-      rules.blockingRules.countriesExcluded.length > 0,
-    caps: hasCaps(rules),
-    qfRange: rules.financialRules.qfMin != null || rules.financialRules.qfMax != null,
-    qfScale: rules.qfScale.length > 0
+      rules.blockingRules.countriesExcluded.length > 0
   };
 }
 
@@ -79,7 +61,7 @@ export default function PartnerCatalogRulesConfigurator({
   seasonOptions,
   organizerOptions,
   countryOptions,
-  qfRows,
+  qfRows: _qfRows,
   baseStayCount,
   baseSessionCount,
   eligibleSessionCount,
@@ -88,7 +70,6 @@ export default function PartnerCatalogRulesConfigurator({
 }: PartnerCatalogRulesConfiguratorProps) {
   const [criteria, setCriteria] = useState(() => buildInitialCriteriaState(draftRules));
   const [previewTick, setPreviewTick] = useState(0);
-  const showFinancialRules = normalizePartnerFinanceMode(financeMode) === 'MANUAL';
 
   const bumpPreview = useCallback(() => {
     window.requestAnimationFrame(() => {
@@ -122,9 +103,14 @@ export default function PartnerCatalogRulesConfigurator({
     const form = document.getElementById(CATALOG_FORM_ID) as HTMLFormElement | null;
     if (!form) return eligibleSessionCount;
 
-    const rules = parsePartnerCatalogRulesFromFormData(new FormData(form));
+    const parsed = parsePartnerCatalogRulesFromFormData(new FormData(form));
+    const rules = {
+      ...parsed,
+      financialRules: draftRules.financialRules,
+      qfScale: draftRules.qfScale
+    };
     return countEligiblePartnerCatalogSessions(rules, catalogSnapshot);
-  }, [previewTick, catalogSnapshot, eligibleSessionCount]);
+  }, [previewTick, catalogSnapshot, draftRules.financialRules, draftRules.qfScale, eligibleSessionCount]);
 
   return (
     <div className="space-y-6">
@@ -323,154 +309,21 @@ export default function PartnerCatalogRulesConfigurator({
         </div>
       </section>
 
-      {showFinancialRules ? (
-      <section className="space-y-3">
-        <div>
-          <h2 className="text-lg font-semibold text-slate-900">Règles financières</h2>
-          <p className="mt-1 text-sm text-slate-600">
-            Paramétrez la prise en charge CSE appliquée aux séjours éligibles.
-          </p>
-        </div>
-
-        <div className="grid gap-3 xl:grid-cols-2">
-          <PartnerCatalogCriterionCard
-            title="Plafonds et limites"
-            description="Caps par séjour, par famille ou sur la période."
-            enabled={criteria.caps}
-            onEnabledChange={(enabled) => setCriterion('caps', enabled)}
+      <section className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+        <h2 className="text-lg font-semibold text-slate-900">Règles financières</h2>
+        <p className="mt-2 text-sm text-slate-600">
+          Les plafonds, le filtre QF et le barème se configurent dans la page{' '}
+          <Link
+            href="/partenaire/financement"
+            className="font-semibold text-slate-900 underline decoration-slate-300 underline-offset-2 hover:decoration-slate-500"
           >
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label className="text-sm font-medium text-slate-700">
-                Plafond / séjour (€)
-                <input
-                  name="cap_per_stay_eur"
-                  defaultValue={
-                    draftRules.financialRules.capPerStayCents != null
-                      ? (draftRules.financialRules.capPerStayCents / 100).toString()
-                      : ''
-                  }
-                  className={fieldClassName}
-                />
-              </label>
-              <label className="text-sm font-medium text-slate-700">
-                Plafond / enfant / an (€)
-                <input
-                  name="cap_per_child_year_eur"
-                  defaultValue={
-                    draftRules.financialRules.capPerChildYearCents != null
-                      ? (draftRules.financialRules.capPerChildYearCents / 100).toString()
-                      : ''
-                  }
-                  className={fieldClassName}
-                />
-              </label>
-              <label className="text-sm font-medium text-slate-700">
-                Plafond / famille / an (€)
-                <input
-                  name="cap_per_family_year_eur"
-                  defaultValue={
-                    draftRules.financialRules.capPerFamilyYearCents != null
-                      ? (draftRules.financialRules.capPerFamilyYearCents / 100).toString()
-                      : ''
-                  }
-                  className={fieldClassName}
-                />
-              </label>
-              <label className="text-sm font-medium text-slate-700">
-                Plafond / jour (€)
-                <input
-                  name="cap_per_day_eur"
-                  defaultValue={
-                    draftRules.financialRules.capPerDayCents != null
-                      ? (draftRules.financialRules.capPerDayCents / 100).toString()
-                      : ''
-                  }
-                  className={fieldClassName}
-                />
-              </label>
-              <label className="text-sm font-medium text-slate-700">
-                Nb max séjours / enfant / an
-                <input
-                  name="max_stays_per_child_year"
-                  defaultValue={draftRules.financialRules.maxStaysPerChildYear ?? ''}
-                  className={fieldClassName}
-                />
-              </label>
-              <label className="text-sm font-medium text-slate-700">
-                Nb max jours aidés / an
-                <input
-                  name="max_subsidized_days_year"
-                  defaultValue={draftRules.financialRules.maxSubsidizedDaysYear ?? ''}
-                  className={fieldClassName}
-                />
-              </label>
-              <label className="text-sm font-medium text-slate-700">
-                Reste à charge min (%)
-                <input
-                  name="min_family_remainder_percent"
-                  defaultValue={draftRules.financialRules.minFamilyRemainderPercent ?? ''}
-                  className={fieldClassName}
-                />
-              </label>
-              <label className="text-sm font-medium text-slate-700">
-                Reste à charge min (€)
-                <input
-                  name="min_family_remainder_eur"
-                  defaultValue={
-                    draftRules.financialRules.minFamilyRemainderCents != null
-                      ? (draftRules.financialRules.minFamilyRemainderCents / 100).toString()
-                      : ''
-                  }
-                  className={fieldClassName}
-                />
-              </label>
-            </div>
-          </PartnerCatalogCriterionCard>
-
-          <PartnerCatalogCriterionCard
-            title="Quotient familial (filtre)"
-            description="Limiter l'éligibilité à une tranche de QF."
-            enabled={criteria.qfRange}
-            onEnabledChange={(enabled) => setCriterion('qfRange', enabled)}
-          >
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label className="text-sm font-medium text-slate-700">
-                QF min
-                <input name="qf_min" defaultValue={draftRules.financialRules.qfMin ?? ''} className={fieldClassName} />
-              </label>
-              <label className="text-sm font-medium text-slate-700">
-                QF max
-                <input name="qf_max" defaultValue={draftRules.financialRules.qfMax ?? ''} className={fieldClassName} />
-              </label>
-            </div>
-          </PartnerCatalogCriterionCard>
-
-          <div className="xl:col-span-2">
-            <PartnerCatalogQfScaleCard
-              enabled={criteria.qfScale}
-              onEnabledChange={(enabled) => setCriterion('qfScale', enabled)}
-              qfRows={qfRows}
-              onValuesChange={bumpPreview}
-            />
-          </div>
-        </div>
+            Financement
+          </Link>
+          {normalizePartnerFinanceMode(financeMode) === 'MANUAL'
+            ? ' (mode Calcul manuel).'
+            : ' — disponibles uniquement en mode « Calcul manuel ».'}
+        </p>
       </section>
-      ) : (
-        <section className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
-          <h2 className="text-lg font-semibold text-slate-900">Règles financières</h2>
-          <p className="mt-2 text-sm text-slate-600">
-            Cette section est disponible uniquement avec le mode de prise en charge « Calcul manuel ». Configurez-le
-            dans la page{' '}
-            <Link
-              href="/partenaire/financement"
-              className="font-semibold text-slate-900 underline decoration-slate-300 underline-offset-2 hover:decoration-slate-500"
-            >
-              Financement
-            </Link>
-            .
-          </p>
-        </section>
-      )}
     </div>
   );
 }

@@ -401,6 +401,7 @@ export default function StayDraftReviewForm({
       ? String(initialPayload.partner_discount_percent)
       : ''
   );
+  const [isCafEligible, setIsCafEligible] = useState(() => initialPayload.is_caf_eligible !== false);
   const [selectedCategories, setSelectedCategories] = useState(() =>
     normalizeStayDraftCategories(initialPayload.categories).categories
   );
@@ -1208,6 +1209,7 @@ export default function StayDraftReviewForm({
       seo_score: Number.isFinite(seoScore) ? seoScore : null,
       seo_checks: seoChecks,
       partner_discount_percent: partnerDiscountParsed,
+      is_caf_eligible: isCafEligible,
       linked_accommodation_id: isPublishedVariant
         ? selectedLinkedAccommodationId?.trim() || null
         : null
@@ -1317,6 +1319,7 @@ export default function StayDraftReviewForm({
       seo_score: Number.isFinite(seoScore) ? seoScore : null,
       seo_checks: seoChecks,
       partner_discount_percent: partnerParsed,
+      is_caf_eligible: isCafEligible,
       linked_accommodation_id: null
     };
   }
@@ -2189,6 +2192,26 @@ export default function StayDraftReviewForm({
             </div>
           ) : null}
         </div>
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-4">
+          <label className="flex items-start gap-3">
+            <input
+              type="checkbox"
+              checked={isCafEligible}
+              onChange={(event) => setIsCafEligible(event.target.checked)}
+              className="mt-1 h-4 w-4 rounded border-slate-300"
+            />
+            <span>
+              <span className="block text-sm font-semibold text-slate-900">
+                Séjour éligible aux aides CAF / VACAF
+              </span>
+              <span className="mt-1 block text-sm text-slate-600">
+                Décochez notamment pour certains séjours à l&apos;étranger non pris en charge par la CAF.
+                Si l&apos;organisme est agréé VACAF, cette case pilote l&apos;affichage et le traitement de l&apos;aide.
+              </span>
+            </span>
+          </label>
+        </section>
 
         <label className="block text-sm font-medium text-slate-700">
           Résumé

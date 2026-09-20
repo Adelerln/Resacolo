@@ -79,32 +79,28 @@ function validateAncvConnectFields(
 ) {
   if (data.paymentMode !== 'CV_CONNECT') return;
 
-  if (!data.ancvConnectMatricule.trim()) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: [...prefixPath, 'ancvConnectMatricule'],
-      message: 'Matricule ANCV Connect requis.'
-    });
-    return;
+  // Matricule / montant optionnels pour le TPE Limonetik ; on valide seulement s'ils sont renseignés.
+  if (data.ancvConnectMatricule.trim()) {
+    const matriculeError = validateAncvConnectMatricule(data.ancvConnectMatricule);
+    if (matriculeError) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [...prefixPath, 'ancvConnectMatricule'],
+        message: matriculeError
+      });
+    }
   }
 
-  const matriculeError = validateAncvConnectMatricule(data.ancvConnectMatricule);
-  if (matriculeError) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: [...prefixPath, 'ancvConnectMatricule'],
-      message: matriculeError
-    });
-  }
-
-  const normalized = data.ancvConnectAmount.replace(',', '.').trim();
-  const amount = Number(normalized);
-  if (!normalized || !Number.isFinite(amount) || amount <= 0) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: [...prefixPath, 'ancvConnectAmount'],
-      message: 'Montant ANCV Connect invalide.'
-    });
+  if (data.ancvConnectAmount.trim()) {
+    const normalized = data.ancvConnectAmount.replace(',', '.').trim();
+    const amount = Number(normalized);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [...prefixPath, 'ancvConnectAmount'],
+        message: 'Montant ANCV Connect invalide.'
+      });
+    }
   }
 }
 

@@ -35,6 +35,10 @@ import {
   normalizePartnerFinanceMode
 } from '@/lib/partner-offers';
 import { isBalancePaymentPayload } from '@/lib/order-balance-payment';
+import {
+  assertCardDepositAllowedOrThrow,
+  earliestIsoDate
+} from '@/lib/checkout/deposit-eligibility';
 import { normalizeVacafNumberInput, validateVacafNumber } from '@/lib/vacaf-number';
 import {
   normalizeAncvConnectMatriculeInput,
@@ -42,6 +46,7 @@ import {
   validateAncvConnectAmountAgainstOrderTotal,
   validateAncvConnectMatricule
 } from '@/lib/ancv-connect-matricule';
+import { sendReservationNotificationEmails } from '@/lib/reservation-notifications.server';
 import { isMissingAnyColumnError } from '@/lib/supabase-schema-errors';
 import { assertCardDepositAllowedOrThrow, earliestIsoDate } from '@/lib/checkout/deposit-eligibility';
 import { sendReservationNotificationEmails } from '@/lib/reservation-notifications.server';
@@ -62,7 +67,12 @@ type PrepareCheckoutPaymentResult = {
   payments: Array<{ orderId: string; paymentId: string; organizerId: string; organizerName: string }>;
   confirmationPath: string;
   pricing: CheckoutPricing;
-  monetico: MoneticoPayload;
+  monetico: MoneticoPayload & {
+    provider?: string;
+    payId?: string | null;
+    transId?: string;
+    payType?: string;
+  };
 };
 
 type PrepareCheckoutPaymentGroupResult = {
@@ -73,6 +83,7 @@ type PrepareCheckoutPaymentGroupResult = {
   immediatePaymentAmountCents: number;
   isPartnerTotalCoverage: boolean;
   requestKind: ReturnType<typeof resolveOrderRequestKind>;
+  paymentMode: CheckoutContact['paymentMode'];
 };
 
 const HOLD_MINUTES = 30;
@@ -232,7 +243,21 @@ async function createProviderPayload(input: {
   billingFirstName?: string | null;
   billingLastName?: string | null;
   merchantCustomerId?: string | null;
-}): Promise<MoneticoPayload & { provider?: string; payId?: string | null; transId?: string }> {
+  phone?: string | null;
+  addressLine1?: string | null;
+  postalCode?: string | null;
+  city?: string | null;
+  countryCode?: string | null;
+  paymentMode?: CheckoutContact['paymentMode'] | null;
+  orderDesc?: string | null;
+}): Promise<
+  MoneticoPayload & {
+    provider?: string;
+    payId?: string | null;
+    transId?: string;
+    payType?: string;
+  }
+> {
   const payload = await createCheckoutPspPayload(input);
   return toLegacyMoneticoResponseShape(payload);
 }
@@ -329,7 +354,6 @@ function mapStatusForPreWorkflowV2Enum(
 ): Database['public']['Enums']['order_status'] {
   if (status === 'PENDING_PAYMENT') return 'REQUESTED';
   if (status === 'PARTIALLY_PAID') return 'REQUESTED';
-  if (status === 'TRANSFERRED') return 'CONFIRMED';
   return status;
 }
 
@@ -708,6 +732,26 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
             formMethod: 'POST' as const,
             formFields: {}
           } satisfies MoneticoPayload & { provider: 'monetico' });
+    const moneticoPayload = await createProviderPayload({
+      checkoutId: input.checkoutId,
+      orderId: primaryOnlineRow.order_id,
+      paymentId: primaryOnlineRow.id,
+      reference,
+      transactionId,
+      amountCents: onlineRows.reduce((sum, row) => sum + Math.max(0, row.amount_cents ?? 0), 0),
+      currency: pricing.currency,
+      customerEmail: input.contact.email,
+      billingFirstName: input.contact.billingFirstName,
+      billingLastName: input.contact.billingLastName,
+      merchantCustomerId: clientUserId,
+      phone: input.contact.phone,
+      addressLine1: input.contact.addressLine1,
+      postalCode: input.contact.postalCode,
+      city: input.contact.city,
+      countryCode: 'FR',
+      paymentMode: input.contact.paymentMode,
+      orderDesc: `Resacolo ${reference}`
+    });
 
     const providerTransactionId =
       (moneticoPayload as { transId?: string }).transId || moneticoPayload.transactionId || transactionId;
@@ -767,17 +811,23 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
     if (!organizerSettings || organizerItems.length === 0) continue;
 
     const effectiveContact = buildEffectiveContactForOrganizer(input.contact, organizerId);
-    const requestKind = resolveOrderRequestKind(effectiveContact, organizerSettings);
+    const stayCafEligible = organizerItems.every((item) => item.isCafEligible !== false);
+    const requestKind = resolveOrderRequestKind(effectiveContact, organizerSettings, { stayCafEligible });
     const organizerPricing = buildPricingForOrganizerGroup(organizerItems, pricing.currency);
     assertCardDepositAllowedOrThrow({
       earliestSessionStartDate: earliestIsoDate(organizerItems.map((item) => item.sessionStartDate)),
       paymentMode: effectiveContact.paymentMode
     });
     const isPartnerTotalCoverage = !requestKind && isPartnerFullCoverageCheckout(organizerPricing);
+    assertCardDepositAllowedOrThrow({
+      earliestSessionStartDate: earliestIsoDate(organizerItems.map((item) => item.sessionStartDate)),
+      paymentMode: effectiveContact.paymentMode,
+      vacafNumber: effectiveContact.vacafNumber
+    });
     const paidAt = isPartnerTotalCoverage ? requestedAt : null;
     const initialStatus = isPartnerTotalCoverage
       ? ('PAID' as Database['public']['Enums']['order_status'])
-      : resolveInitialOrderStatus(effectiveContact, organizerSettings);
+      : resolveInitialOrderStatus(effectiveContact, organizerSettings, { stayCafEligible });
     const immediatePaymentAmountCents = computeImmediatePaymentAmountCents(
       organizerPricing.financeFamilyPayableTotalCents ?? 0,
       effectiveContact.paymentMode
@@ -799,20 +849,25 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
       }
     }
     if (effectiveContact.paymentMode === 'CV_CONNECT') {
-      const ancvMatriculeError = validateAncvConnectMatricule(effectiveContact.ancvConnectMatricule);
-      if (ancvMatriculeError) {
-        throw new CheckoutValidationError(ancvMatriculeError);
+      // Matricule / montant : optionnels (info). Le TPE Limonetik encaisse le total famille.
+      if (effectiveContact.ancvConnectMatricule.trim()) {
+        const ancvMatriculeError = validateAncvConnectMatricule(effectiveContact.ancvConnectMatricule);
+        if (ancvMatriculeError) {
+          throw new CheckoutValidationError(ancvMatriculeError);
+        }
       }
-      const orderPayableTotalCents = resolveAncvConnectOrderPayableTotalCents(
-        organizerPricing.financeFamilyPayableTotalCents ?? null,
-        organizerPricing.totalCents
-      );
-      const ancvAmountError = validateAncvConnectAmountAgainstOrderTotal(
-        effectiveContact.ancvConnectAmount,
-        orderPayableTotalCents
-      );
-      if (ancvAmountError) {
-        throw new CheckoutValidationError(ancvAmountError);
+      if (effectiveContact.ancvConnectAmount.trim()) {
+        const orderPayableTotalCents = resolveAncvConnectOrderPayableTotalCents(
+          organizerPricing.financeFamilyPayableTotalCents ?? null,
+          organizerPricing.totalCents
+        );
+        const ancvAmountError = validateAncvConnectAmountAgainstOrderTotal(
+          effectiveContact.ancvConnectAmount,
+          orderPayableTotalCents
+        );
+        if (ancvAmountError) {
+          throw new CheckoutValidationError(ancvAmountError);
+        }
       }
     }
 
@@ -1008,6 +1063,7 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
       organizerAcceptsAncvConnect: organizerSettings.accepts_ancv_connect,
       organizerIsVacafApproved: organizerSettings.is_vacaf_approved,
       stayCafEligible: true,
+      stayCafEligible,
       ancvPaperMailingAddress: organizerSettings.ancv_paper_mailing_address ?? null
     }).catch((error) => {
       console.error('checkout: envoi emails réservation échoué', error);
@@ -1021,6 +1077,7 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
       immediatePaymentAmountCents,
       isPartnerTotalCoverage,
       requestKind,
+      paymentMode: effectiveContact.paymentMode,
       paymentRawPayload
     });
   }
@@ -1038,8 +1095,31 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
       : createMoneticoReference(input.checkoutId, primaryGroup.orderId);
   const transactionId = createMoneticoMockTransactionId(input.checkoutId, primaryOnlineGroup.paymentId);
   const onlineAmountCents = onlineGroups.reduce((sum, group) => sum + group.immediatePaymentAmountCents, 0);
+  const moneticoPayload = await createProviderPayload({
+    checkoutId: input.checkoutId,
+    orderId: primaryOnlineGroup.orderId,
+    paymentId: primaryOnlineGroup.paymentId,
+    reference,
+    transactionId,
+    amountCents: onlineGroups.reduce((sum, group) => sum + group.immediatePaymentAmountCents, 0),
+    currency: pricing.currency,
+    customerEmail: input.contact.email,
+    billingFirstName: input.contact.billingFirstName,
+    billingLastName: input.contact.billingLastName,
+    merchantCustomerId: clientUserId,
+    phone: input.contact.phone,
+    addressLine1: input.contact.addressLine1,
+    postalCode: input.contact.postalCode,
+    city: input.contact.city,
+    countryCode: 'FR',
+    paymentMode: primaryOnlineGroup.paymentMode,
+    orderDesc: `Resacolo ${reference}`
+  });
+  const providerTransactionId =
+    (moneticoPayload as { transId?: string }).transId || moneticoPayload.transactionId || transactionId;
   const allOrderIds = groupResults.map((group) => group.orderId);
   const allPaymentIds = groupResults.map((group) => group.paymentId);
+  const pspProvider = (moneticoPayload as { provider?: string }).provider;
 
   // VACAF / ANCV / différé : pas de TPE — ne pas appeler Axepta/Monetico (évite erreurs config post-création).
   const moneticoPayload =
@@ -1085,13 +1165,20 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
           isBatch: groupResults.length > 1,
           monetico: shouldAttachMonetico ? moneticoPayload : null,
           axepta:
-            shouldAttachMonetico && (moneticoPayload as { provider?: string }).provider === 'axepta'
+            shouldAttachMonetico && pspProvider === 'axepta'
               ? {
                   provider: 'axepta',
                   transId: providerTransactionId,
                   payId: (moneticoPayload as { payId?: string | null }).payId ?? null
                 }
-              : null
+              : shouldAttachMonetico && pspProvider === 'axepta-limonetik'
+                ? {
+                    provider: 'axepta-limonetik',
+                    payType: 'cvconnect',
+                    transId: providerTransactionId,
+                    payId: (moneticoPayload as { payId?: string | null }).payId ?? null
+                  }
+                : null
         }
       })
       .eq('id', group.paymentId);

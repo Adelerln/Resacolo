@@ -15,6 +15,10 @@ export const RESACOLO_COMPANY = {
   latePaymentPenaltyRateLabel:
     'taux d’intérêt appliqué par la Banque centrale européenne à son opération de refinancement la plus récente majoré de 10 points de pourcentage',
   latePaymentFixedFeeEuros: 40
+  professionalInsurance: {
+    insurer: 'HISCOX SA',
+    address: "49 AVENUE DE L'OPÉRA, 75002 PARIS, FRANCE"
+  }
 } as const;
 
 export const RESACOLO_INVOICE_LATE_PAYMENT_MENTIONS = [

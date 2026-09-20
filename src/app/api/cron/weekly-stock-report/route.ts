@@ -9,6 +9,10 @@ import {
 } from '@/lib/organizer-weekly-stock-report';
 import { sendSmtpEmail } from '@/lib/rag/smtp';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
+import {
+  createWeeklyStockReportRunId,
+  insertWeeklyStockReportEmailLog
+} from '@/lib/weekly-stock-report-email-logs.server';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -43,12 +47,29 @@ export async function GET(request: Request) {
     .toLowerCase();
   const toOverride = (url.searchParams.get('to') ?? '').trim().toLowerCase();
   const scheduleCheck = shouldRunWeeklyStockReport(new Date(), { bypassSchedule: force || dryRun });
+  const runId = createWeeklyStockReportRunId();
 
   if (!scheduleCheck.ok) {
+    await insertWeeklyStockReportEmailLog({
+      runId,
+      reportDate: scheduleCheck.clock.dateIso,
+      recipientEmail: 'cron@resacolo.internal',
+      status: 'skipped',
+      errorMessage: scheduleCheck.reason,
+      dryRun,
+      forceRun: force,
+      metadata: {
+        kind: 'schedule-skip',
+        parisHour: scheduleCheck.clock.hour,
+        weekday: scheduleCheck.clock.weekday
+      }
+    });
+
     return NextResponse.json({
       ok: true,
       skipped: true,
       reason: scheduleCheck.reason,
+      runId,
       reportDate: scheduleCheck.clock.dateIso,
       parisHour: scheduleCheck.clock.hour,
       startDate: WEEKLY_STOCK_REPORT_START_DATE
@@ -63,8 +84,18 @@ export async function GET(request: Request) {
     reports = await buildWeeklyStockReports(supabase);
   } catch (error) {
     console.error('[api/cron/weekly-stock-report] build failure', error);
+    await insertWeeklyStockReportEmailLog({
+      runId,
+      reportDate: reportDateIso,
+      recipientEmail: 'cron@resacolo.internal',
+      status: 'failed',
+      errorMessage: error instanceof Error ? error.message : 'Impossible de construire les rapports.',
+      dryRun,
+      forceRun: force,
+      metadata: { kind: 'build-failure' }
+    });
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Impossible de construire les rapports.' },
+      { error: error instanceof Error ? error.message : 'Impossible de construire les rapports.', runId },
       { status: 500 }
     );
   }
@@ -92,14 +123,33 @@ export async function GET(request: Request) {
     : undefined;
 
   if (dryRun) {
+    for (const report of reports) {
+      await insertWeeklyStockReportEmailLog({
+        runId,
+        reportDate: reportDateIso,
+        organizerId: report.organizerId,
+        organizerName: report.organizerName,
+        recipientEmail: toOverride || report.contactEmail,
+        status: 'skipped',
+        subject,
+        activeSessionCount: report.activeSessionCount,
+        remainingPlaces: report.remainingPlaces,
+        fullSessionCount: report.fullSessionCount,
+        dryRun: true,
+        forceRun: force,
+        metadata: { kind: 'dry-run' }
+      });
+    }
+
     return NextResponse.json({
       ok: true,
       dryRun: true,
+      runId,
       reportDate: reportDateIso,
       startDate: WEEKLY_STOCK_REPORT_START_DATE,
       candidates: reports.length,
       sent: 0,
-      skipped: 0,
+      skipped: reports.length,
       failed: 0,
       toOverride: toOverride || null,
       preview
@@ -118,6 +168,20 @@ export async function GET(request: Request) {
         html
       });
       sent.push({ organizerId: report.organizerId, email: to });
+      await insertWeeklyStockReportEmailLog({
+        runId,
+        reportDate: reportDateIso,
+        organizerId: report.organizerId,
+        organizerName: report.organizerName,
+        recipientEmail: to,
+        status: 'sent',
+        subject,
+        activeSessionCount: report.activeSessionCount,
+        remainingPlaces: report.remainingPlaces,
+        fullSessionCount: report.fullSessionCount,
+        dryRun: false,
+        forceRun: force
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'send-failed';
       console.error('[api/cron/weekly-stock-report] send failure', {
@@ -130,12 +194,28 @@ export async function GET(request: Request) {
         email: to,
         error: message
       });
+      await insertWeeklyStockReportEmailLog({
+        runId,
+        reportDate: reportDateIso,
+        organizerId: report.organizerId,
+        organizerName: report.organizerName,
+        recipientEmail: to,
+        status: 'failed',
+        errorMessage: message,
+        subject,
+        activeSessionCount: report.activeSessionCount,
+        remainingPlaces: report.remainingPlaces,
+        fullSessionCount: report.fullSessionCount,
+        dryRun: false,
+        forceRun: force
+      });
     }
   }
 
   return NextResponse.json({
     ok: failed.length === 0,
     dryRun: false,
+    runId,
     reportDate: reportDateIso,
     startDate: WEEKLY_STOCK_REPORT_START_DATE,
     candidates: reports.length,

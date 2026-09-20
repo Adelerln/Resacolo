@@ -59,6 +59,7 @@ function escapeHtml(value: string) {
 function paymentModeLabel(mode: CheckoutPaymentMode, requestKind?: OrderRequestKind) {
   if (requestKind === 'VACAF') return 'Demande VACAF / AVE';
   if (requestKind === 'ANCV_CONNECT' || mode === 'CV_CONNECT') return 'ANCV Connect';
+function paymentModeLabel(mode: CheckoutPaymentMode) {
   switch (mode) {
     case 'FULL':
       return 'Paiement intégral';
@@ -116,6 +117,17 @@ export function buildOrganizerReservationActions(input: {
       actions.push({
         title: 'Action requise — ANCV Connect',
         description: `Recontactez la famille pour finaliser le règlement ANCV Connect${amountPart}${clientIdPart}, puis saisissez le montant effectivement reçu dans votre espace organisateur.`
+  if (input.requestKind === 'ANCV_CONNECT' || input.paymentMode === 'CV_CONNECT') {
+    if (input.organizerAcceptsAncvConnect) {
+      const clientId = input.ancvConnectMatricule?.trim() || null;
+      const amount = input.ancvConnectAmount?.trim() || null;
+      const clientIdPart = clientId
+        ? ` en utilisant l’identifiant client ${clientId}`
+        : ' en utilisant l’identifiant client indiqué sur la demande';
+      const amountPart = amount ? ` pour le montant de ${amount}` : ' pour le montant indiqué';
+      actions.push({
+        title: 'Action requise — ANCV Connect',
+        description: `Envoyez à la famille un lien de paiement ANCV Connect${amountPart}${clientIdPart}. Une fois le règlement effectué, enregistrez le montant effectivement reçu dans votre espace organisateur.`
       });
     } else {
       actions.push({
@@ -157,6 +169,12 @@ export function buildOrganizerReservationActions(input: {
           'La famille a choisi un règlement différé. Aucun paiement en ligne n’est attendu pour l’instant : recontactez-la pour finaliser le reste à charge.'
       });
     }
+  if (input.paymentMode === 'DEFERRED') {
+    actions.push({
+      title: 'Paiement différé — devis partenaire',
+      description:
+        'Le règlement est différé car le partenaire doit d’abord calculer la prise en charge et la renseigner dans son back-office. Attendez ce calcul avant de finaliser le reste à charge avec la famille.'
+    });
   }
 
   if (actions.length === 0) {
@@ -300,6 +318,7 @@ export function renderOrganizerReservationEmail(input: ReservationNotificationIn
                     <p style="margin:0 0 4px;font-size:14px;color:#1d1f25;"><strong>E-mail :</strong> ${escapeHtml(input.contact.email)}</p>
                     <p style="margin:0 0 4px;font-size:14px;color:#1d1f25;"><strong>Téléphone :</strong> ${escapeHtml(input.contact.phone || '—')}</p>
                     <p style="margin:0 0 4px;font-size:14px;color:#1d1f25;"><strong>Mode de règlement :</strong> ${escapeHtml(paymentModeLabel(input.paymentMode, input.requestKind))}</p>
+                    <p style="margin:0 0 4px;font-size:14px;color:#1d1f25;"><strong>Mode de règlement :</strong> ${escapeHtml(paymentModeLabel(input.paymentMode))}</p>
                     ${
                       showAncvConnectIds
                         ? `<p style="margin:0 0 4px;font-size:14px;color:#1d1f25;"><strong>Identifiant client ANCV Connect :</strong> ${escapeHtml(ancvConnectMatricule || '—')}</p>
@@ -344,6 +363,7 @@ export function renderOrganizerReservationEmail(input: ReservationNotificationIn
     `E-mail : ${input.contact.email}`,
     `Téléphone : ${input.contact.phone || '—'}`,
     `Mode de règlement : ${paymentModeLabel(input.paymentMode, input.requestKind)}`,
+    `Mode de règlement : ${paymentModeLabel(input.paymentMode)}`,
     ...(showAncvConnectIds
       ? [
           `Identifiant client ANCV Connect : ${ancvConnectMatricule || '—'}`,
@@ -391,6 +411,7 @@ export function renderFamilyReservationEmail(input: ReservationNotificationInput
   if (input.paymentMode === 'CV_CONNECT' || input.requestKind === 'ANCV_CONNECT') {
     nextSteps.push(
       'ANCV Connect : l’organisateur va vous recontacter pour finaliser le règlement avec vos Chèques-Vacances Connect.'
+      'ANCV Connect : l’organisateur va vous adresser un lien pour que vous puissiez régler depuis votre espace personnel ANCV Connect.'
     );
   } else if (input.paymentMode === 'CV_PAPER') {
     const mailingAddress = input.ancvPaperMailingAddress?.trim();
@@ -428,6 +449,10 @@ export function renderFamilyReservationEmail(input: ReservationNotificationInput
       }
     }
   } else if (nextSteps.length === 0) {
+    nextSteps.push(
+      'Paiement différé : aucun règlement n’est demandé pour l’instant, car votre partenaire doit d’abord calculer la prise en charge et la renseigner dans son back-office. Le reste à charge vous sera indiqué ensuite.'
+    );
+  } else {
     nextSteps.push('L’organisateur va traiter votre demande et vous recontactera si une information manque.');
   }
 
@@ -457,6 +482,7 @@ export function renderFamilyReservationEmail(input: ReservationNotificationInput
                     <p style="margin:0 0 4px;font-size:14px;color:#1d1f25;"><strong>Référence :</strong> ${escapeHtml(input.orderId)}</p>
                     <p style="margin:0 0 4px;font-size:14px;color:#1d1f25;"><strong>Organisateur :</strong> ${escapeHtml(input.organizerName)}</p>
                     <p style="margin:0;font-size:14px;color:#1d1f25;"><strong>Mode de règlement :</strong> ${escapeHtml(paymentModeLabel(input.paymentMode, input.requestKind))}</p>
+                    <p style="margin:0;font-size:14px;color:#1d1f25;"><strong>Mode de règlement :</strong> ${escapeHtml(paymentModeLabel(input.paymentMode))}</p>
                   </td>
                 </tr>
               </table>
@@ -492,6 +518,7 @@ export function renderFamilyReservationEmail(input: ReservationNotificationInput
     `Référence : ${input.orderId}`,
     `Organisateur : ${input.organizerName}`,
     `Mode de règlement : ${paymentModeLabel(input.paymentMode, input.requestKind)}`,
+    `Mode de règlement : ${paymentModeLabel(input.paymentMode)}`,
     '',
     ...input.lines.map(
       (line) =>

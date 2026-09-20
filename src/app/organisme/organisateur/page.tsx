@@ -99,9 +99,9 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
   }
 
   const organizerSelectWithCatalog =
-    'id,name,contact_email,description,hero_intro_text,founded_year,age_min,age_max,logo_path,education_project_path,slug,season_keys,stay_type_keys,activity_keys,accepts_ancv_paper,accepts_ancv_connect,is_vacaf_approved';
+    'id,name,contact_email,description,hero_intro_text,founded_year,age_min,age_max,logo_path,education_project_path,slug,season_keys,stay_type_keys,activity_keys,accepts_ancv_paper,accepts_ancv_connect,ancv_paper_mailing_address,is_vacaf_approved';
   const organizerSelectFallback =
-    'id,name,contact_email,description,hero_intro_text,founded_year,age_min,age_max,logo_path,education_project_path,slug,accepts_ancv_paper,accepts_ancv_connect,is_vacaf_approved';
+    'id,name,contact_email,description,hero_intro_text,founded_year,age_min,age_max,logo_path,education_project_path,slug,accepts_ancv_paper,accepts_ancv_connect,ancv_paper_mailing_address,is_vacaf_approved';
   const organizerSelectLegacy =
     'id,name,contact_email,description,hero_intro_text,founded_year,age_min,age_max,logo_path,education_project_path,slug';
 
@@ -147,6 +147,7 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
             activity_keys: [],
             accepts_ancv_paper: legacyPaymentMeta?.acceptsAncvPaper ?? false,
             accepts_ancv_connect: legacyPaymentMeta?.acceptsAncvConnect ?? false,
+            ancv_paper_mailing_address: null,
             is_vacaf_approved: legacyPaymentMeta?.isVacafApproved ?? false
           }
       : null;
@@ -228,6 +229,7 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
     );
     const acceptsAncvPaper = formData.get('accepts_ancv_paper') === 'on';
     const acceptsAncvConnect = formData.get('accepts_ancv_connect') === 'on';
+    const ancvPaperMailingAddress = String(formData.get('ancv_paper_mailing_address') ?? '').trim();
     const isVacafApproved = formData.get('is_vacaf_approved') === 'on';
     const logoFile = formData.get('logo');
     const projectFile = formData.get('education_project');
@@ -294,6 +296,7 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
       activity_keys: activityKeys,
       accepts_ancv_paper: acceptsAncvPaper,
       accepts_ancv_connect: acceptsAncvConnect,
+      ancv_paper_mailing_address: acceptsAncvPaper ? ancvPaperMailingAddress || null : null,
       is_vacaf_approved: isVacafApproved,
       slug
     };
@@ -460,6 +463,20 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
                 <span>Je suis agréé VACAF National / CAF AVE</span>
               </label>
             </div>
+            <label className="mt-4 block text-sm font-medium text-slate-700">
+              Adresse postale pour l&apos;envoi des chèques-vacances papier
+              <textarea
+                name="ancv_paper_mailing_address"
+                rows={3}
+                defaultValue={organizer.ancv_paper_mailing_address ?? ''}
+                placeholder="Nom de l’organisme, rue, code postal, ville…"
+                className="organizer-input mt-1 bg-white"
+              />
+              <span className="mt-1 block text-xs font-normal text-slate-500">
+                Affichée à la famille dans le mail de confirmation si vous acceptez les chèques-vacances
+                papier.
+              </span>
+            </label>
           </div>
           <div className="mt-4 grid gap-4 md:grid-cols-3">
             <label className="block text-sm font-medium text-slate-700">

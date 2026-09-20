@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Image from 'next/image';
 import { Fragment } from 'react';
 import { PartnerContactForm } from '@/components/devenir-partenaire/PartnerContactForm';
+import { buildPageMetadata } from '@/lib/seo-meta';
 import {
   Award,
   Check,
@@ -20,10 +21,18 @@ const ORANGE = '#FA8500';
 const ORIGIN_BLUE = '#37B5F5';
 const ORIGIN_GRAY = '#505050';
 
-export const metadata: Metadata = {
-  title: 'Devenir Partenaire | Resacolo',
-  description: 'Devenir partenaire de RESACOLO, c’est promouvoir et faciliter le départ en colonie de vacances.'
-};
+export const metadata: Metadata = buildPageMetadata({
+  title: 'Devenir partenaire Resacolo (CSE & collectivités)',
+  description:
+    'CSE, comité d’entreprise ou collectivité : devenez partenaire Resacolo pour faciliter le départ en colonie de vacances de vos bénéficiaires.',
+  path: '/devenir-partenaire',
+  keywords: [
+    'partenariat colo',
+    'CSE colonies de vacances',
+    'comité entreprise séjour enfants',
+    'devenir partenaire Resacolo'
+  ]
+});
 
 const processSteps = [
   {

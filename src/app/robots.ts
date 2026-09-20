@@ -10,6 +10,7 @@ export default function robots(): MetadataRoute.Robots {
         disallow: [
           '/admin',
           '/api',
+          '/account',
           '/back-office',
           '/checkout',
           '/compte',
@@ -21,7 +22,11 @@ export default function robots(): MetadataRoute.Robots {
           '/panier',
           '/partenaire/reservations',
           '/partenaire/catalogue',
-          '/auth'
+          '/partenaire/montants-organisateurs',
+          '/partenaire/securite',
+          '/partenaire/fiche',
+          '/auth',
+          '/assistant'
         ]
       }
     ],

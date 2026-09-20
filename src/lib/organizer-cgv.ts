@@ -3,6 +3,9 @@ import type { Database } from '@/types/supabase';
 
 const ORGANIZER_DOCS_BUCKET = 'organizer-docs';
 
+export const ORGANIZER_CGV_REQUIRED_MESSAGE =
+  'Avant d’ajouter un séjour, déposez vos CGV (PDF) dans votre fiche organisateur.';
+
 function buildOrganizerFolder(organizerId: string) {
   return `organizers/${organizerId}`;
 }
@@ -30,6 +33,14 @@ export async function findOrganizerCgvPath(
   return `${folder}/${picked.name}`;
 }
 
+export async function organizerHasUploadedCgv(
+  supabase: SupabaseClient<Database>,
+  organizerId: string
+): Promise<boolean> {
+  const path = await findOrganizerCgvPath(supabase, organizerId);
+  return Boolean(path);
+}
+
 export async function createOrganizerCgvSignedUrl(
   supabase: SupabaseClient<Database>,
   organizerId: string,
@@ -43,4 +54,3 @@ export async function createOrganizerCgvSignedUrl(
   if (error) return null;
   return data?.signedUrl ?? null;
 }
-

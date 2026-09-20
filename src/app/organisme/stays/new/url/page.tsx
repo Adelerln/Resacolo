@@ -7,6 +7,7 @@ import OrganizerPageHeader from '@/components/organisme/OrganizerPageHeader';
 import { formatAccommodationType } from '@/lib/accommodation-types';
 import { extractAccommodationLocationMeta } from '@/lib/accommodation-location';
 import { requireOrganizerPageAccess } from '@/lib/organizer-backoffice-access.server';
+import { requireOrganizerCgvForStayCreation } from '@/lib/require-organizer-cgv-for-stays.server';
 import { withOrganizerQuery } from '@/lib/organizers.server';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 
@@ -39,6 +40,8 @@ export default async function NewStayUrlPage({ searchParams }: PageProps) {
   if (!organizerId) {
     redirect('/organisme/sejours');
   }
+
+  await requireOrganizerCgvForStayCreation(organizerId);
 
   const supabase = getServerSupabaseClient();
   const errorParam = formatRedirectValue(resolvedSearchParams?.error);

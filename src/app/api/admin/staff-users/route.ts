@@ -54,9 +54,12 @@ export async function POST(req: Request) {
 
   const formData = await req.formData();
   const redirectToRaw = String(formData.get('redirect_to') ?? '').trim();
-  const redirectTo = redirectToRaw.startsWith('/admin/utilisateurs')
-    ? redirectToRaw
-    : '/admin/utilisateurs?openCreate=1';
+  const redirectTo =
+    redirectToRaw.startsWith('/admin/utilisateurs') || redirectToRaw.startsWith('/mnemos/admins')
+      ? redirectToRaw
+      : '/admin/utilisateurs?openCreate=1';
+  const successRedirect =
+    redirectTo.startsWith('/mnemos/admins') ? '/mnemos/admins' : '/admin/utilisateurs';
   const firstName = String(formData.get('first_name') ?? '').trim();
   const lastName = String(formData.get('last_name') ?? '').trim();
   const email = String(formData.get('email') ?? '').trim().toLowerCase();
@@ -211,5 +214,6 @@ export async function POST(req: Request) {
   }
 
   revalidatePath('/admin/utilisateurs');
-  return redirectUrl(req, '/admin/utilisateurs', { success: 'staff-user-created' });
+  revalidatePath('/mnemos/admins');
+  return redirectUrl(req, successRedirect, { success: 'staff-user-created' });
 }

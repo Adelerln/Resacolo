@@ -70,6 +70,9 @@ pip-log.txt
 # Playwright traces (souvent > 100 Mo — ne pas versionner)
 tmp/pw-traces/
 
+# Exports CSV migration WordPress (données personnelles)
+scripts/data/legacy-wp/
+
 node_modules/
 
 __pycache__/
@@ -82,3 +85,5 @@ __pycache__/
 .env.test
 .env.production
 .env.*
+.vercel
+.env*

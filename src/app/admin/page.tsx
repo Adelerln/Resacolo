@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { requireAdminSection } from '@/lib/auth/require';
 import { isAdminWorkspaceRole } from '@/lib/admin-access';
+import { normalizeOrderStatus } from '@/lib/order-workflow';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 
 const SEASON_ORDER_STATUSES = new Set(['PENDING_PAYMENT', 'PARTIALLY_PAID', 'PAID']);
@@ -235,7 +236,7 @@ export default async function AdminHome() {
 
   const requestedOrders = orders.filter((order) => order.status === 'REQUESTED').length;
   const seasonOrderIds = new Set(
-    orders.filter((order) => SEASON_ORDER_STATUSES.has(order.status)).map((order) => order.id)
+    orders.filter((order) => SEASON_ORDER_STATUSES.has(normalizeOrderStatus(order.status) ?? '')).map((order) => order.id)
   );
   const sessionStartDateById = new Map(sessions.map((session) => [session.id, session.start_date]));
   const orderIdsBySeasonYear = new Map<string, Set<string>>(

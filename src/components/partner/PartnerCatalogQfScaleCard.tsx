@@ -19,6 +19,8 @@ type PartnerCatalogQfScaleCardProps = {
   onEnabledChange: (enabled: boolean) => void;
   qfRows: QfRow[];
   onValuesChange?: () => void;
+  /** Formulaire parent pour la validation live (défaut : catalogue). */
+  formId?: string;
 };
 
 function initialRowCount(qfRows: QfRow[]) {
@@ -34,21 +36,22 @@ export default function PartnerCatalogQfScaleCard({
   enabled,
   onEnabledChange,
   qfRows,
-  onValuesChange
+  onValuesChange,
+  formId = CATALOG_FORM_ID
 }: PartnerCatalogQfScaleCardProps) {
   const [rowCount, setRowCount] = useState(() => initialRowCount(qfRows));
   const [scaleMode, setScaleMode] = useState<QfAidMode>(() => initialScaleMode(qfRows));
   const [boundsValidationError, setBoundsValidationError] = useState<string | null>(null);
 
   const refreshBoundsValidation = useCallback(() => {
-    const form = document.getElementById(CATALOG_FORM_ID) as HTMLFormElement | null;
+    const form = document.getElementById(formId) as HTMLFormElement | null;
     if (!form) {
       setBoundsValidationError(null);
       return;
     }
     const rows = parseQfScaleFromFormData(new FormData(form));
     setBoundsValidationError(getPartnerCatalogQfScaleBoundsValidationError(rows));
-  }, []);
+  }, [formId]);
 
   const notifyChange = useCallback(() => {
     refreshBoundsValidation();
@@ -73,7 +76,7 @@ export default function PartnerCatalogQfScaleCard({
 
   useEffect(() => {
     if (!enabled) return;
-    const form = document.getElementById(CATALOG_FORM_ID);
+    const form = document.getElementById(formId);
     if (!form) return;
 
     const handleFormChange = (event: Event) => {
@@ -95,7 +98,7 @@ export default function PartnerCatalogQfScaleCard({
       form.removeEventListener('input', handleFormChange);
       form.removeEventListener('change', handleFormChange);
     };
-  }, [enabled, refreshBoundsValidation]);
+  }, [enabled, formId, refreshBoundsValidation]);
 
   return (
     <PartnerCatalogCriterionCard

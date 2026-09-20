@@ -1001,7 +1001,9 @@ async function fetchStaysFromSupabase(options: { stayIds?: string[] } = {}): Pro
       const paymentAidsFromBooleans = [
         organizer?.accepts_ancv_connect ? 'ancv_connect' : null,
         organizer?.accepts_ancv_paper ? 'ancv_paper' : null,
-        organizer?.is_vacaf_approved ? 'caf_vouchers' : null
+        organizer?.is_vacaf_approved && (stay as { is_caf_eligible?: boolean | null }).is_caf_eligible !== false
+          ? 'caf_vouchers'
+          : null
       ].filter(
         (value): value is 'ancv_connect' | 'ancv_paper' | 'caf_vouchers' => value !== null
       );

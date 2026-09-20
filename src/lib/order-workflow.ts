@@ -11,7 +11,8 @@ export type OrganizerCheckoutSettings = {
   ancv_paper_mailing_address?: string | null;
 };
 
-export const CHECKOUT_MANUAL_REQUEST_PAYMENT_MODES = new Set<CheckoutContact['paymentMode']>(['CV_CONNECT']);
+/** Anciens flux « demande » (plus CV_CONNECT : TPE Limonetik). Conservé pour compat. */
+export const CHECKOUT_MANUAL_REQUEST_PAYMENT_MODES = new Set<CheckoutContact['paymentMode']>([]);
 export const CHECKOUT_OFFLINE_PAYMENT_MODES = new Set<CheckoutContact['paymentMode']>(['CV_PAPER', 'DEFERRED']);
 export const ACTIVE_ORDER_STATUSES = new Set<OrderStatus>([
   'REQUESTED',
@@ -27,13 +28,18 @@ export const FAMILY_ORDER_STATUS_LABELS = {
   PENDING_PAYMENT: 'En attente de paiement',
   PARTIALLY_PAID: 'Partiellement payée',
   PAID: 'Payée',
-  CONFIRMED: 'Payée',
   CANCELLED: 'Annulée',
   TRANSFERRED: 'Transférée',
-  VALIDATED: 'En attente de paiement',
-  BOOKED: 'En attente de paiement',
   CART: 'Panier'
 } as const satisfies Record<string, string>;
+
+/** Les anciennes valeurs restent dans l'enum PostgreSQL, mais plus dans le parcours actif. */
+export function normalizeOrderStatus(status: OrderStatus | string | null | undefined): OrderStatus | null {
+  if (!status) return null;
+  if (status === 'VALIDATED' || status === 'BOOKED') return 'PENDING_PAYMENT';
+  if (status === 'CONFIRMED') return 'PAID';
+  return status as OrderStatus;
+}
 
 /** Modes de paiement choisis au checkout (info complémentaire, pas un statut). */
 export const FAMILY_PAYMENT_MODE_LABELS: Record<CheckoutContact['paymentMode'], string> = {
@@ -86,14 +92,12 @@ export function parseAmountEurosToCents(value: string | null | undefined) {
 
 export function resolveOrderRequestKind(
   contact: Pick<CheckoutContact, 'paymentMode' | 'vacafNumber'>,
-  organizer: OrganizerCheckoutSettings
+  organizer: OrganizerCheckoutSettings,
+  options?: { stayCafEligible?: boolean }
 ): OrderRequestKind {
-  if (organizer.is_vacaf_approved && contact.vacafNumber.trim()) {
+  const stayCafEligible = options?.stayCafEligible !== false;
+  if (organizer.is_vacaf_approved && stayCafEligible && contact.vacafNumber.trim()) {
     return 'VACAF';
-  }
-
-  if (contact.paymentMode === 'CV_CONNECT' && organizer.accepts_ancv_connect) {
-    return 'ANCV_CONNECT';
   }
 
   return null;
@@ -101,9 +105,10 @@ export function resolveOrderRequestKind(
 
 export function resolveInitialOrderStatus(
   contact: Pick<CheckoutContact, 'paymentMode' | 'vacafNumber'>,
-  organizer: OrganizerCheckoutSettings
+  organizer: OrganizerCheckoutSettings,
+  options?: { stayCafEligible?: boolean }
 ): OrderStatus {
-  return resolveOrderRequestKind(contact, organizer) ? 'REQUESTED' : 'PENDING_PAYMENT';
+  return resolveOrderRequestKind(contact, organizer, options) ? 'REQUESTED' : 'PENDING_PAYMENT';
 }
 
 export function computeImmediatePaymentAmountCents(
@@ -114,7 +119,7 @@ export function computeImmediatePaymentAmountCents(
     return Math.min(totalCents, 20_000);
   }
 
-  if (paymentMode === 'FULL') {
+  if (paymentMode === 'FULL' || paymentMode === 'CV_CONNECT') {
     return totalCents;
   }
 
@@ -136,19 +141,19 @@ export function computeRemainingBalanceCents(input: {
   );
 }
 
-/** Une commande avec solde restant ne peut pas être considérée comme payée (PAID / CONFIRMED). */
+/** Une commande avec solde restant ne peut pas être considérée comme payée. */
 export function reconcileOrderStatusWithBalance(input: {
   status: OrderStatus | string | null | undefined;
   remainingBalanceCents: number;
   onlinePaidCents?: number | null;
   externalPaidCents?: number | null;
 }): OrderStatus {
-  const status = (input.status ?? 'PENDING_PAYMENT') as OrderStatus;
+  const status = normalizeOrderStatus(input.status) ?? 'PENDING_PAYMENT';
   if (input.remainingBalanceCents <= 0) {
     return status;
   }
 
-  if (status === 'PAID' || status === 'CONFIRMED') {
+  if (status === 'PAID') {
     if ((input.onlinePaidCents ?? 0) > 0 || (input.externalPaidCents ?? 0) > 0) {
       return 'PARTIALLY_PAID';
     }
@@ -256,11 +261,9 @@ export function inferOrderRequestKind(input: {
   }
 
   const contactRecord = contact as { paymentMode?: string; vacafNumber?: string };
+  // VACAF reste une demande ; CV_CONNECT est un paiement TPE (Limonetik) — ne pas inférer ANCV_CONNECT.
   if (typeof contactRecord.vacafNumber === 'string' && contactRecord.vacafNumber.trim()) {
     return 'VACAF';
-  }
-  if (contactRecord.paymentMode === 'CV_CONNECT') {
-    return 'ANCV_CONNECT';
   }
 
   return null;
@@ -429,14 +432,14 @@ export function resolveCheckoutConfirmationFollowUpMessage(input: {
     return {
       tone: 'warning',
       message:
-        "Votre demande est bien transmise. L'organisme vous recontactera pour finaliser le règlement ANCV Connect et saisir le montant reçu."
+        "Votre demande est bien transmise. L'organisateur va vous adresser un lien pour régler depuis votre espace personnel ANCV Connect, puis saisir le montant reçu."
     };
   }
   if (context.isPartnerManualQuoteMode) {
     return {
       tone: 'warning',
       message:
-        'Votre demande de devis est bien transmise. Votre partenaire doit maintenant préciser son montant de prise en charge avant validation finale.'
+        'Paiement différé : votre demande est bien transmise. Votre partenaire doit maintenant calculer la prise en charge et la renseigner dans son back-office avant validation finale.'
     };
   }
   if (context.isPartnerTotalMode) {
@@ -456,7 +459,8 @@ export function resolveCheckoutConfirmationFollowUpMessage(input: {
   if (context.isDeferredMode) {
     return {
       tone: 'warning',
-      message: 'Votre commande est bien enregistrée. Le règlement est différé et sera finalisé ultérieurement.'
+      message:
+        'Votre commande est bien enregistrée. Le paiement est différé car votre partenaire doit d’abord calculer la prise en charge et la renseigner dans son back-office. Le reste à charge vous sera communiqué ensuite.'
     };
   }
 
@@ -506,7 +510,7 @@ export function resolveCheckoutConfirmationSubtitle(input: {
     return 'Votre demande a été transmise à l’organisme pour traitement ANCV Connect.';
   }
   if (input.isPartnerManualQuoteMode) {
-    return 'Votre demande de devis a été transmise à votre partenaire.';
+    return 'Paiement différé : votre partenaire doit calculer la prise en charge dans son back-office.';
   }
   if (input.isPartnerTotalMode) {
     return 'Votre réservation est enregistrée sans paiement immédiat.';
@@ -515,7 +519,7 @@ export function resolveCheckoutConfirmationSubtitle(input: {
     return 'Votre commande est enregistrée. Le règlement en ANCV papier sera finalisé hors ligne.';
   }
   if (input.isDeferredMode) {
-    return 'Votre commande est enregistrée. Le règlement différé sera finalisé ultérieurement.';
+    return 'Paiement différé : le partenaire doit d’abord calculer la prise en charge dans son back-office.';
   }
   if (input.orderStatus === 'REQUESTED') {
     return 'Votre demande a été transmise à l’organisme.';
@@ -524,12 +528,13 @@ export function resolveCheckoutConfirmationSubtitle(input: {
 }
 
 export function orderStatusLabel(status: OrderStatus | string | null | undefined) {
-  if (!status) return '-';
-  return FAMILY_ORDER_STATUS_LABELS[status as keyof typeof FAMILY_ORDER_STATUS_LABELS] ?? status;
+  const normalized = normalizeOrderStatus(status);
+  if (!normalized) return '-';
+  return FAMILY_ORDER_STATUS_LABELS[normalized as keyof typeof FAMILY_ORDER_STATUS_LABELS] ?? normalized;
 }
 
 export function orderStatusBadgeClassName(status: OrderStatus | string | null | undefined) {
-  switch (status) {
+  switch (normalizeOrderStatus(status)) {
     case 'REQUESTED':
       return 'bg-amber-100 text-amber-900';
     case 'PENDING_PAYMENT':
@@ -537,15 +542,11 @@ export function orderStatusBadgeClassName(status: OrderStatus | string | null | 
     case 'PARTIALLY_PAID':
       return 'bg-indigo-100 text-indigo-900';
     case 'PAID':
-    case 'CONFIRMED':
       return 'bg-emerald-100 text-emerald-900';
     case 'CANCELLED':
       return 'bg-rose-100 text-rose-900';
     case 'TRANSFERRED':
       return 'bg-violet-100 text-violet-900';
-    case 'VALIDATED':
-    case 'BOOKED':
-      return 'bg-sky-100 text-sky-900';
     default:
       return 'bg-slate-100 text-slate-700';
   }

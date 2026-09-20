@@ -1,7 +1,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { FaqHubClient } from '@/components/faq/FaqHubClient';
-import { buildPageMetadata } from '@/lib/seo-meta';
+import { buildBreadcrumbJsonLd, buildFaqPageJsonLd, buildPageMetadata, serializeJsonLd } from '@/lib/seo-meta';
 
 const ORANGE = '#FA8500';
 const AVION_SRC = '/image/faq/pictos_faq/avion.png';
@@ -11,12 +11,28 @@ export const metadata = buildPageMetadata({
   description:
     'Questions fréquentes sur les colonies de vacances Resacolo : inscription, tarifs, aides, annulations et données personnelles.',
   path: '/faq',
-  keywords: ['faq colo', 'questions colonie vacances', 'inscription séjour enfants']
+  keywords: [
+    'faq colo',
+    'questions colonie vacances',
+    'inscription séjour enfants',
+    'annulation colonie',
+    'tarifs colo'
+  ]
 });
 
 export default function FaqPage() {
+  const faqJsonLd = serializeJsonLd(buildFaqPageJsonLd());
+  const breadcrumbJsonLd = serializeJsonLd(
+    buildBreadcrumbJsonLd([
+      { name: 'Accueil', path: '/' },
+      { name: 'FAQ', path: '/faq' }
+    ])
+  );
+
   return (
     <div className="min-h-screen bg-white">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: faqJsonLd }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: breadcrumbJsonLd }} />
       <FaqHubClient />
 
       <section className="relative overflow-hidden border-t border-slate-100 bg-[#F8F8F8] py-16 md:py-20">

@@ -179,6 +179,11 @@ export async function PATCH(
         : Number.isFinite(Number(nextPartnerDiscountRaw))
           ? Number(nextPartnerDiscountRaw)
           : null;
+  const nextIsCafEligible = hasOwn(payload, 'is_caf_eligible')
+    ? payload.is_caf_eligible !== false
+    : typeof currentRawPayload.is_caf_eligible === 'boolean'
+      ? currentRawPayload.is_caf_eligible
+      : (currentDraft as { is_caf_eligible?: boolean | null }).is_caf_eligible !== false;
   const updatePayload: Record<string, unknown> = {
     title: hasOwn(payload, 'title')
       ? toNullableString(normalizeStayTitle(String(payload.title ?? '')))
@@ -209,6 +214,7 @@ export async function PATCH(
     transport_mode: hasOwn(payload, 'transport_mode')
       ? toNullableString(normalizeStayTransportLogisticsMode(String(payload.transport_mode ?? '')))
       : currentDraft.transport_mode,
+    is_caf_eligible: nextIsCafEligible,
     categories: nextCategories.length > 0 ? nextCategories : null,
     ages: nextAges.length > 0 ? nextAges : null,
     age_min: nextAges.length > 0 ? nextAges[0] : null,
@@ -315,6 +321,7 @@ export async function PATCH(
     accommodation_video_urls:
       nextAccommodationVideoUrls.length > 0 ? nextAccommodationVideoUrls : null,
     partner_discount_percent: nextPartnerDiscount,
+    is_caf_eligible: nextIsCafEligible,
     autosave_updated_at: now
   };
 

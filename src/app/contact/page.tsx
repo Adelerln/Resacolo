@@ -1,17 +1,24 @@
 'use client';
 
 import Image from 'next/image';
+import Link from 'next/link';
 import Script from 'next/script';
 import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
-import { ChevronDown } from 'lucide-react';
-import { CONTACT_COLORS, CONTACT_HERO_VISUAL } from './contact-data';
+import {
+  CONTACT_COLORS,
+  CONTACT_HERO_VISUAL,
+  CONTACT_SUBJECT_OPTIONS,
+  getContactSubjectOption,
+  type ContactSubjectValue
+} from './contact-data';
 
-type OrganizerRecipient = {
+const TURNSTILE_TEST_SITE_KEY = '1x00000000000000000000AA';
+const ORGANIZER_OTHER_VALUE = '__other__';
+
+type OrganizerOption = {
   id: string;
   name: string;
 };
-
-const TURNSTILE_TEST_SITE_KEY = '1x00000000000000000000AA';
 
 type TurnstileRenderOptions = {
   sitekey: string;
@@ -45,11 +52,15 @@ export default function ContactPage() {
   const isPreviewOrDev =
     process.env.NODE_ENV !== 'production' || vercelEnv === 'preview' || vercelEnv === 'development';
 
-  const [recipient, setRecipient] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [subject, setSubject] = useState<ContactSubjectValue | ''>('');
+  const [organizerId, setOrganizerId] = useState('');
+  const [organizerOtherName, setOrganizerOtherName] = useState('');
+  const [organizers, setOrganizers] = useState<OrganizerOption[]>([]);
+  const [organizersLoading, setOrganizersLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [siteKey, setSiteKey] = useState('');
   const [turnstileScriptReady, setTurnstileScriptReady] = useState(false);
@@ -59,18 +70,27 @@ export default function ContactPage() {
   const [turnstileToken, setTurnstileToken] = useState('');
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [organizers, setOrganizers] = useState<OrganizerRecipient[]>([]);
-  const [isLoadingOrganizers, setIsLoadingOrganizers] = useState(true);
-  const [organizersLoadError, setOrganizersLoadError] = useState<string | null>(null);
+
+  const selectedSubject = subject ? getContactSubjectOption(subject) : null;
+  const showOrganizerField = Boolean(
+    selectedSubject?.requiresOrganizer || selectedSubject?.suggestOrganizer
+  );
+  const organizerRequired = Boolean(selectedSubject?.requiresOrganizer);
+  const resolvedOrganizerName =
+    organizerId === ORGANIZER_OTHER_VALUE
+      ? organizerOtherName.trim()
+      : organizers.find((organizer) => organizer.id === organizerId)?.name.trim() || '';
 
   useEffect(() => {
     const hostname = window.location.hostname;
     const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
     const isVercelPreviewHost = hostname.endsWith('.vercel.app');
-    const isProductionHost =
-      !isLocalhost && !isVercelPreviewHost && process.env.NODE_ENV === 'production' && vercelEnv !== 'preview';
+    // Vercel's production deployment may also be served from a .vercel.app hostname.
+    const isProductionDeployment =
+      vercelEnv === 'production' ||
+      (vercelEnv === '' && !isLocalhost && !isVercelPreviewHost && process.env.NODE_ENV === 'production');
 
-    if (isProductionHost) {
+    if (isProductionDeployment) {
       setSiteKey(configuredSiteKey);
       return;
     }
@@ -94,6 +114,36 @@ export default function ContactPage() {
       setTurnstileScriptReady(true);
     }
   }, []);
+
+  useEffect(() => {
+    if (!showOrganizerField) return;
+
+    let cancelled = false;
+    setOrganizersLoading(true);
+
+    void fetch('/api/organizers/options')
+      .then(async (response) => {
+        const payload = (await response.json().catch(() => null)) as
+          | { organizers?: OrganizerOption[] }
+          | null;
+        if (cancelled) return;
+        setOrganizers(
+          Array.isArray(payload?.organizers)
+            ? payload.organizers.filter((organizer) => organizer.id && organizer.name)
+            : []
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setOrganizers([]);
+      })
+      .finally(() => {
+        if (!cancelled) setOrganizersLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [showOrganizerField]);
 
   const mountTurnstileWidget = useCallback(() => {
     if (!siteKey || !widgetContainerRef.current || !window.turnstile) {
@@ -197,53 +247,6 @@ export default function ContactPage() {
     }
   }, []);
 
-  useEffect(() => {
-    const controller = new AbortController();
-    let isMounted = true;
-
-    const loadOrganizers = async () => {
-      try {
-        const response = await fetch('/api/organizers/options', {
-          method: 'GET',
-          cache: 'no-store',
-          signal: controller.signal
-        });
-
-        if (!response.ok) {
-          throw new Error('Impossible de charger les organisateurs.');
-        }
-
-        const payload = (await response.json()) as {
-          organizers?: OrganizerRecipient[];
-        };
-
-        if (!isMounted) return;
-        setOrganizers(
-          Array.isArray(payload.organizers)
-            ? payload.organizers.filter(
-                (organizer): organizer is OrganizerRecipient =>
-                  Boolean(organizer?.id) && typeof organizer.name === 'string'
-              )
-            : []
-        );
-      } catch {
-        if (!isMounted) return;
-        setOrganizersLoadError('La liste des organisateurs est momentanément indisponible.');
-      } finally {
-        if (isMounted) {
-          setIsLoadingOrganizers(false);
-        }
-      }
-    };
-
-    loadOrganizers();
-
-    return () => {
-      isMounted = false;
-      controller.abort();
-    };
-  }, []);
-
   const isTestSiteKey = siteKey === TURNSTILE_TEST_SITE_KEY;
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
@@ -261,6 +264,18 @@ export default function ContactPage() {
       return;
     }
 
+    if (!subject) {
+      setStatus('error');
+      setErrorMessage('Choisissez l’objet de votre demande.');
+      return;
+    }
+
+    if (organizerRequired && !resolvedOrganizerName) {
+      setStatus('error');
+      setErrorMessage('Indiquez le nom de l’organisateur concerné.');
+      return;
+    }
+
     setStatus('loading');
     setErrorMessage(null);
 
@@ -269,11 +284,12 @@ export default function ContactPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          recipient,
           firstName,
           lastName,
           email,
           phone,
+          subject,
+          organizerName: resolvedOrganizerName,
           message,
           turnstileToken
         })
@@ -288,11 +304,13 @@ export default function ContactPage() {
       }
 
       setStatus('success');
-      setRecipient('');
       setFirstName('');
       setLastName('');
       setEmail('');
       setPhone('');
+      setSubject('');
+      setOrganizerId('');
+      setOrganizerOtherName('');
       setMessage('');
       resetTurnstile();
     } catch {
@@ -325,8 +343,8 @@ export default function ContactPage() {
               Contactez-<span style={{ color: CONTACT_COLORS.orange }}>nous</span>
             </h1>
             <p className="mt-6 max-w-2xl text-base leading-relaxed text-[#636363] sm:text-lg">
-              Pour toute question ou précision sur une colonie de vacances ou un séjour, vous pouvez solliciter
-              directement son organisateur.
+              Une question sur une colonie de vacances ou un séjour ? Envoyez-nous votre message et notre équipe vous
+              répondra.
             </p>
           </div>
           <div className="relative mx-auto w-full max-w-[28rem] lg:max-w-[30rem]">
@@ -349,46 +367,34 @@ export default function ContactPage() {
             <span style={{ color: CONTACT_COLORS.blue }}>Formulaire </span>de contact
           </h2>
           <p className="mx-auto mt-5 max-w-2xl text-center text-sm leading-relaxed text-[#636363] sm:text-base">
-            Vous souhaitez contacter un organisateur ou joindre notre assistance technique.
-            <br />
-            Complétez les champs ci-dessous et envoyez votre demande.
+            Complétez les champs ci-dessous pour contacter notre équipe.
             <br />
             Nous vous répondrons dans les plus brefs délais.
+          </p>
+          <p className="mx-auto mt-3 max-w-2xl text-center text-sm leading-relaxed text-[#636363]">
+            <span className="italic">Merci de cliquer sur ces liens si votre demande concerne :</span>
+            <br />
+            <Link
+              href="/rejoindre-resacolo"
+              className="font-medium underline-offset-2 hover:underline"
+              style={{ color: CONTACT_COLORS.blue }}
+            >
+              Rejoindre Resacolo en tant qu’organisateur
+            </Link>
+            {' '}
+            ou{' '}
+            <Link
+              href="/devenir-partenaire"
+              className="font-medium underline-offset-2 hover:underline"
+              style={{ color: CONTACT_COLORS.blue }}
+            >
+              Devenir partenaire
+            </Link>
           </p>
 
           <form onSubmit={handleSubmit} className="mt-10 space-y-8">
             <div>
-              <p className="contact-step-title">1. Choisissez un destinataire *</p>
-              <div className="relative mt-2">
-                <label htmlFor="contact-recipient" className="sr-only">
-                  Destinataire
-                </label>
-                <select
-                  id="contact-recipient"
-                  required
-                  value={recipient}
-                  onChange={(e) => setRecipient(e.target.value)}
-                  className="contact-input appearance-none pr-12"
-                >
-                  <option value="">Sélectionner un destinataire</option>
-                  {organizers.map((organizer) => (
-                    <option key={organizer.id} value={`organizer:${organizer.id}`}>
-                      {organizer.name}
-                    </option>
-                  ))}
-                  <option value="assistance">ASSISTANCE TECHNIQUE RESACOLO</option>
-                </select>
-                <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
-              </div>
-              {isLoadingOrganizers && <p className="mt-2 text-xs text-slate-500">Chargement des organisateurs...</p>}
-              {!isLoadingOrganizers && organizers.length === 0 && !organizersLoadError && (
-                <p className="mt-2 text-xs text-slate-500">Aucun organisateur disponible pour le moment.</p>
-              )}
-              {organizersLoadError && <p className="mt-2 text-xs text-amber-700">{organizersLoadError}</p>}
-            </div>
-
-            <div>
-              <p className="contact-step-title">2. Renseignez vos informations *</p>
+              <p className="contact-step-title">1. Renseignez vos informations *</p>
               <div className="mt-2 grid gap-4 sm:grid-cols-2">
                 <div>
                   <label htmlFor="contact-first-name" className="sr-only">
@@ -449,6 +455,101 @@ export default function ContactPage() {
             </div>
 
             <div>
+              <p className="contact-step-title">2. Objet de votre demande *</p>
+              <div className="mt-2 space-y-4">
+                <div>
+                  <label htmlFor="contact-subject" className="sr-only">
+                    Objet
+                  </label>
+                  <select
+                    id="contact-subject"
+                    required
+                    value={subject}
+                    onChange={(e) => {
+                      const next = e.target.value as ContactSubjectValue | '';
+                      setSubject(next);
+                      const nextOption = next ? getContactSubjectOption(next) : null;
+                      if (!nextOption?.requiresOrganizer && !nextOption?.suggestOrganizer) {
+                        setOrganizerId('');
+                        setOrganizerOtherName('');
+                      }
+                    }}
+                    className="contact-input"
+                  >
+                    <option value="" disabled>
+                      Sélectionnez un objet*
+                    </option>
+                    {CONTACT_SUBJECT_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {showOrganizerField ? (
+                  <div className="space-y-3">
+                    <div>
+                      <label htmlFor="contact-organizer" className="sr-only">
+                        Organisateur
+                      </label>
+                      <select
+                        id="contact-organizer"
+                        required={organizerRequired}
+                        value={organizerId}
+                        onChange={(e) => {
+                          setOrganizerId(e.target.value);
+                          if (e.target.value !== ORGANIZER_OTHER_VALUE) {
+                            setOrganizerOtherName('');
+                          }
+                        }}
+                        className="contact-input"
+                      >
+                        <option value="">
+                          {organizerRequired
+                            ? 'Sélectionnez l’organisateur*'
+                            : 'Organisateur (facultatif)'}
+                        </option>
+                        {organizersLoading ? (
+                          <option value="" disabled>
+                            Chargement des organisateurs…
+                          </option>
+                        ) : null}
+                        {organizers.map((organizer) => (
+                          <option key={organizer.id} value={organizer.id}>
+                            {organizer.name}
+                          </option>
+                        ))}
+                        <option value={ORGANIZER_OTHER_VALUE}>Autre / je ne trouve pas…</option>
+                      </select>
+                    </div>
+                    {organizerId === ORGANIZER_OTHER_VALUE ? (
+                      <div>
+                        <label htmlFor="contact-organizer-other" className="sr-only">
+                          Nom de l’organisateur
+                        </label>
+                        <input
+                          id="contact-organizer-other"
+                          type="text"
+                          required={organizerRequired}
+                          maxLength={200}
+                          placeholder={
+                            organizerRequired
+                              ? 'Nom de l’organisateur*'
+                              : 'Nom de l’organisateur (facultatif)'
+                          }
+                          value={organizerOtherName}
+                          onChange={(e) => setOrganizerOtherName(e.target.value)}
+                          className="contact-input"
+                        />
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            <div>
               <p className="contact-step-title">3. Rédigez votre message *</p>
 
               <div className="mt-2">
@@ -458,6 +559,7 @@ export default function ContactPage() {
                 <textarea
                   id="contact-message"
                   required
+                  maxLength={4000}
                   rows={6}
                   placeholder="Précisez votre demande : nom du séjour, saison, date de départ..."
                   value={message}

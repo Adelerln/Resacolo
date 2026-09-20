@@ -19,11 +19,29 @@ function read(name: string) {
   return value ? value : undefined;
 }
 
+function readFirst(...names: string[]) {
+  for (const name of names) {
+    const value = read(name);
+    if (value) return value;
+  }
+  return undefined;
+}
+
 function readInt(name: string, fallback: number) {
   const raw = read(name);
   if (!raw) return fallback;
   const parsed = Number.parseInt(raw, 10);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+/** Diagnostique sans exposer de secrets : quelles clés SMTP manquent. */
+export function getMissingSmtpEnvKeys() {
+  const missing: string[] = [];
+  if (!readFirst('SMTP_HOST', 'SMTP_HOSTNAME')) missing.push('SMTP_HOST');
+  if (!readFirst('SMTP_USER', 'SMTP_USERNAME')) missing.push('SMTP_USER');
+  if (!readFirst('SMTP_PASS', 'SMTP_PASSWORD', 'SMTP_PASSWD')) missing.push('SMTP_PASS');
+  if (!readFirst('SMTP_FROM', 'SMTP_FROM_EMAIL', 'SMTP_SENDER')) missing.push('SMTP_FROM');
+  return missing;
 }
 
 export function getRagEnv(): RagEnv {
@@ -32,10 +50,10 @@ export function getRagEnv(): RagEnv {
   const reindexToken = read('RAG_REINDEX_TOKEN');
   const escalationEmail = read('CHATBOT_ESCALATION_EMAIL');
 
-  const smtpHost = read('SMTP_HOST');
-  const smtpUser = read('SMTP_USER');
-  const smtpPass = read('SMTP_PASS');
-  const smtpFrom = read('SMTP_FROM');
+  const smtpHost = readFirst('SMTP_HOST', 'SMTP_HOSTNAME');
+  const smtpUser = readFirst('SMTP_USER', 'SMTP_USERNAME');
+  const smtpPass = readFirst('SMTP_PASS', 'SMTP_PASSWORD', 'SMTP_PASSWD');
+  const smtpFrom = readFirst('SMTP_FROM', 'SMTP_FROM_EMAIL', 'SMTP_SENDER');
   const smtpPort = readInt('SMTP_PORT', 465);
 
   const smtp =

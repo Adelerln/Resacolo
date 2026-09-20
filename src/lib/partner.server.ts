@@ -1,4 +1,5 @@
 import { getServerSupabaseClient } from '@/lib/supabase/server';
+import { resolveStayDestination } from '@/lib/stay-destination-resolver';
 import {
   computeRemainingBalanceCents,
   inferOrderRequestKind,
@@ -119,9 +120,7 @@ function inferPartnerRequestKind(input: {
   if (String(input.vacafNumberSnapshot ?? '').trim()) {
     return 'VACAF' as const;
   }
-  if (String(input.ancvConnectMatricule ?? '').trim()) {
-    return 'ANCV_CONNECT' as const;
-  }
+  // Matricule ANCV optionnel sur le TPE Limonetik : ne pas inférer une demande organisme.
   return inferOrderRequestKind({
     requestKind: input.requestKind,
     paymentRawPayload: input.paymentRawPayload
@@ -140,7 +139,7 @@ function partnerReservationStatusLabel(
   const hasOpenOrganizerPaperWorkflow =
     paymentMode === 'CV_PAPER' &&
     externalPaidCents <= 0 &&
-    (status === 'REQUESTED' || status === 'PENDING_PAYMENT' || status === 'VALIDATED' || status === 'BOOKED');
+    (status === 'REQUESTED' || status === 'PENDING_PAYMENT');
 
   if (status === 'REQUESTED') {
     if (requestKind === 'VACAF') return 'En attente de traitement organisme (VACAF)';
@@ -152,13 +151,13 @@ function partnerReservationStatusLabel(
     return 'En attente de paiement famille';
   }
 
-  if (status === 'PENDING_PAYMENT' || status === 'VALIDATED' || status === 'BOOKED') {
+  if (status === 'PENDING_PAYMENT') {
     if (hasOpenOrganizerPaperWorkflow) return 'En attente de traitement organisme (ANCV papier)';
     if (financeMode === 'MANUAL' && !hasContributionSnapshot) return 'En attente de traitement partenaire';
     return 'En attente de paiement famille';
   }
   if (status === 'PARTIALLY_PAID') return 'Paiement partiel reçu';
-  if (status === 'PAID' || status === 'CONFIRMED') return 'Réservation payée';
+  if (status === 'PAID') return 'Réservation payée';
   if (status === 'CANCELLED') return 'Réservation annulée';
   if (status === 'TRANSFERRED') return 'Réservation transférée';
 
@@ -192,21 +191,18 @@ function describePartnerReservationPendingActions(input: {
   const isOpenWorkflow =
     input.status === 'REQUESTED' ||
     input.status === 'PENDING_PAYMENT' ||
-    input.status === 'VALIDATED' ||
-    input.status === 'BOOKED' ||
     input.status === 'PARTIALLY_PAID';
   const organizerPaperWorkflowOpen =
     input.paymentMode === 'CV_PAPER' &&
     input.externalPaidCents <= 0 &&
     (input.status === 'REQUESTED' ||
-      input.status === 'PENDING_PAYMENT' ||
-      input.status === 'VALIDATED' ||
-      input.status === 'BOOKED');
+      input.status === 'PENDING_PAYMENT');
 
   if (financeMode === 'MANUAL' && !input.hasContributionSnapshot && isOpenWorkflow) {
     actions.push({
       actorLabel: 'Partenaire',
-      description: 'Indiquer le montant de prise en charge à appliquer à la réservation.'
+      description:
+        'Calculer la prise en charge partenaire et la renseigner dans le back-office (paiement différé jusqu’à ce calcul).'
     });
   }
 
@@ -220,7 +216,8 @@ function describePartnerReservationPendingActions(input: {
   if (input.status === 'REQUESTED' && input.requestKind === 'ANCV_CONNECT') {
     actions.push({
       actorLabel: 'Organisme',
-      description: 'Recontacter la famille puis saisir le montant ANCV Connect effectivement encaissé.'
+      description:
+        'Envoyer à la famille un lien de paiement ANCV Connect (montant + identifiant client), puis saisir le montant effectivement encaissé.'
     });
   }
 
@@ -232,7 +229,7 @@ function describePartnerReservationPendingActions(input: {
   }
 
   if (
-    (input.status === 'PENDING_PAYMENT' || input.status === 'VALIDATED' || input.status === 'BOOKED') &&
+    input.status === 'PENDING_PAYMENT' &&
     !organizerPaperWorkflowOpen &&
     input.clientContributionCents > 0
   ) {
@@ -812,7 +809,7 @@ export async function listPartnerCatalogStays() {
   const { data: stays, error: staysError } = await supabase
     .from('stays')
     .select(
-      'id,title,status,season_id,categories,age_min,age_max,destination_country,destination_countries,transport_mode,required_documents_text,supervision_text,location_text,organizer_id,partner_discount_percent'
+      'id,title,status,season_id,categories,age_min,age_max,destination_type,destination_country,destination_countries,destination_city,destination_region,destination_itinerary_label,region_text,transport_mode,required_documents_text,supervision_text,location_text,organizer_id,partner_discount_percent'
     )
     .eq('status', 'PUBLISHED')
     .order('updated_at', { ascending: false })
@@ -910,12 +907,38 @@ export async function listPartnerCatalogStays() {
   );
   const seasonsById = new Map((seasons ?? []).map((season) => [season.id, season.name]));
 
-  return (stays ?? []).map((stay) => ({
-    ...stay,
-    season_name: seasonsById.get(stay.season_id) ?? stay.season_id,
-    organizer_name: organizersById.get(stay.organizer_id)?.name ?? 'Organisateur',
-    organizer_is_partner: organizersById.get(stay.organizer_id)?.is_resacolo_member ?? false,
-    education_project_path: organizersById.get(stay.organizer_id)?.education_project_path ?? null,
-    sessions: sessionsByStayId.get(stay.id) ?? []
-  }));
+  return (stays ?? []).map((stay) => {
+    const resolvedDestination = resolveStayDestination({
+      destinationType: stay.destination_type,
+      destinationCountry: stay.destination_country,
+      destinationCountries: stay.destination_countries,
+      destinationCity: stay.destination_city,
+      destinationRegion: stay.destination_region,
+      regionText: stay.region_text,
+      locationText: stay.location_text,
+      destinationItineraryLabel: stay.destination_itinerary_label
+    });
+    const resolvedCountry =
+      resolvedDestination.destinationCountry ??
+      (resolvedDestination.destinationType === 'fixed_france' || resolvedDestination.destinationRegion
+        ? 'France'
+        : null);
+    const resolvedCountries =
+      resolvedDestination.destinationCountries.length > 0
+        ? resolvedDestination.destinationCountries
+        : resolvedCountry
+          ? [resolvedCountry]
+          : [];
+
+    return {
+      ...stay,
+      destination_country: resolvedCountry,
+      destination_countries: resolvedCountries,
+      season_name: seasonsById.get(stay.season_id) ?? stay.season_id,
+      organizer_name: organizersById.get(stay.organizer_id)?.name ?? 'Organisateur',
+      organizer_is_partner: organizersById.get(stay.organizer_id)?.is_resacolo_member ?? false,
+      education_project_path: organizersById.get(stay.organizer_id)?.education_project_path ?? null,
+      sessions: sessionsByStayId.get(stay.id) ?? []
+    };
+  });
 }

@@ -86,6 +86,11 @@ function ResetPasswordForm() {
         setError(updateError.message || 'Impossible de mettre à jour le mot de passe.');
         return;
       }
+      try {
+        await fetch('/api/auth/claim-legacy', { method: 'POST' });
+      } catch {
+        // Le claim sera retenté au premier chargement de Mon compte.
+      }
       setSuccess(true);
       await supabase.auth.signOut();
       window.setTimeout(() => {

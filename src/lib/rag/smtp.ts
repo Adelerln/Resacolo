@@ -1,6 +1,7 @@
+import crypto from 'node:crypto';
 import net from 'node:net';
 import tls from 'node:tls';
-import { getRagEnv } from '@/lib/rag/env';
+import { getMissingSmtpEnvKeys, getRagEnv } from '@/lib/rag/env';
 
 type SocketLike = net.Socket | tls.TLSSocket;
 
@@ -9,6 +10,7 @@ export type SendSmtpEmailInput = {
   subject: string;
   text: string;
   html?: string;
+  replyTo?: string;
 };
 
 type SendEmailInput = SendSmtpEmailInput;
@@ -190,7 +192,12 @@ function buildMimeBody(input: SendSmtpEmailInput) {
 export async function sendSmtpEmail(input: SendSmtpEmailInput) {
   const env = getRagEnv();
   if (!env.smtp) {
-    throw new Error('SMTP non configuré.');
+    const missing = getMissingSmtpEnvKeys();
+    throw new Error(
+      missing.length > 0
+        ? `SMTP non configuré (variables manquantes : ${missing.join(', ')}).`
+        : 'SMTP non configuré.'
+    );
   }
 
   const { host, port, user, pass, from } = env.smtp;
@@ -207,10 +214,15 @@ export async function sendSmtpEmail(input: SendSmtpEmailInput) {
     await client.sendCommand(`RCPT TO:<${input.to}>`, [250, 251]);
     await client.sendCommand('DATA', [354]);
 
+    const messageId = `<${Date.now()}.${crypto.randomUUID()}@${from.includes('@') ? from.split('@')[1] : 'resacolo.com'}>`;
+    const replyTo = input.replyTo?.trim();
     const payload = [
-      `From: ${from}`,
+      `From: Resacolo <${from}>`,
       `To: ${input.to}`,
+      ...(replyTo ? [`Reply-To: ${replyTo}`] : []),
       `Subject: ${encodeSubject(input.subject)}`,
+      `Date: ${new Date().toUTCString()}`,
+      `Message-ID: ${messageId}`,
       buildMimeBody(input)
     ].join('\r\n');
 

@@ -27,6 +27,7 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
   const isResacoloMember = formData.get('is_resacolo_member') === 'on';
   const acceptsAncvPaper = formData.get('accepts_ancv_paper') === 'on';
   const acceptsAncvConnect = formData.get('accepts_ancv_connect') === 'on';
+  const ancvPaperMailingAddress = String(formData.get('ancv_paper_mailing_address') ?? '').trim();
   const isVacafApproved = formData.get('is_vacaf_approved') === 'on';
   const heroIntroText = String(formData.get('hero_intro_text') ?? '').trim();
   const hasDescriptionField = formData.has('description');
@@ -82,6 +83,7 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
     is_resacolo_member: isResacoloMember,
     accepts_ancv_paper: acceptsAncvPaper,
     accepts_ancv_connect: acceptsAncvConnect,
+    ancv_paper_mailing_address: acceptsAncvPaper ? ancvPaperMailingAddress || null : null,
     is_vacaf_approved: isVacafApproved,
     hero_intro_text: heroIntroText || null,
     founded_year: foundedYear,

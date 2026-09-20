@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server';
 import { requireOrganizerApiAccess } from '@/lib/organizer-backoffice-access.server';
+import {
+  ORGANIZER_CGV_REQUIRED_MESSAGE,
+  organizerHasUploadedCgv
+} from '@/lib/organizer-cgv';
 import { withOrganizerQuery } from '@/lib/organizers.server';
 import { canonicalizeStaySourceUrl, tryCanonicalizeStaySourceUrl } from '@/lib/stay-source-url-canonical';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
@@ -495,6 +499,24 @@ export async function POST(req: Request) {
     });
   }
 
+  const supabase = getServerSupabaseClient();
+  const hasCgv = await organizerHasUploadedCgv(supabase, selectedOrganizerId);
+  if (!hasCgv) {
+    if (requestExpectsJson(req)) {
+      return NextResponse.json({ error: ORGANIZER_CGV_REQUIRED_MESSAGE }, { status: 403 });
+    }
+    return NextResponse.redirect(
+      new URL(
+        withOrganizerQuery(
+          `/organisme/organisateur?error=${encodeURIComponent(ORGANIZER_CGV_REQUIRED_MESSAGE)}`,
+          selectedOrganizerId
+        ),
+        req.url
+      ),
+      303
+    );
+  }
+
   if (!sourceUrlInput) {
     if (requestExpectsJson(req)) {
       return NextResponse.json({ error: "L'URL de la fiche séjour est requise." }, { status: 400 });
@@ -520,7 +542,6 @@ export async function POST(req: Request) {
     [sourceUrlInput, canonicalSourceUrl].map((value) => value.trim()).filter(Boolean)
   );
 
-  const supabase = getServerSupabaseClient();
   let selectedAccommodation:
     | {
         id: string;

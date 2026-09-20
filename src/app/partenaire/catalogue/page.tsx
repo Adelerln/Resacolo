@@ -134,29 +134,20 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
     const existingRules = normalizePartnerCatalogRules(
       collectivity.catalog_rules_draft ?? getDefaultPartnerCatalogRules()
     );
+    // Les règles financières (plafonds / QF / barème) se gèrent sur /partenaire/financement.
+    parsedRules.financialRules = existingRules.financialRules;
+    parsedRules.qfScale = existingRules.qfScale;
     if (normalizePartnerFinanceMode(collectivity.finance_mode) !== 'MANUAL') {
-      // Eligibility form has no financing fields: keep existing caps/QF filters,
-      // and mirror aid mode + rate from /partenaire/financement.
       Object.assign(
         parsedRules,
-        applyCollectivityFinanceToCatalogRules(
-          {
-            ...parsedRules,
-            financialRules: {
-              ...existingRules.financialRules,
-              ...parsedRules.financialRules
-            },
-            qfScale: existingRules.qfScale
-          },
-          {
-            finance_mode: collectivity.finance_mode,
-            finance_percent_value: collectivity.finance_percent_value,
-            finance_fixed_cents: collectivity.finance_fixed_cents
-          }
-        )
+        applyCollectivityFinanceToCatalogRules(parsedRules, {
+          finance_mode: collectivity.finance_mode,
+          finance_percent_value: collectivity.finance_percent_value,
+          finance_fixed_cents: collectivity.finance_fixed_cents
+        })
       );
     }
-    // MANUAL: keep form-parsed aidMode / QF scale (do not clobber with stale draft percent).
+    // MANUAL: conserve financialRules / qfScale déjà chargés depuis le draft existant.
     const rules: PartnerCatalogRules = syncKnownSiteCountriesWithRules(
       normalizePartnerCatalogRules(parsedRules),
       siteCountries

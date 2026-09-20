@@ -366,6 +366,7 @@ export function mapPublishedStayToReviewPayload(input: {
       stay.partner_discount_percent != null && Number.isFinite(stay.partner_discount_percent)
         ? stay.partner_discount_percent
         : null,
+    is_caf_eligible: stay.is_caf_eligible !== false,
     activities_text: stay.activities_text ?? '',
     required_documents_text: stay.required_documents_text ?? ''
   };

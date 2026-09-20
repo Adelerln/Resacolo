@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import ErrorToast from '@/components/common/ErrorToast';
 import NewStayEntryChoiceOverlay from '@/components/organisme/NewStayEntryChoiceOverlay';
 import { requireOrganizerPageAccess } from '@/lib/organizer-backoffice-access.server';
+import { requireOrganizerCgvForStayCreation } from '@/lib/require-organizer-cgv-for-stays.server';
 import { withOrganizerQuery } from '@/lib/organizers.server';
 
 type PageProps = {
@@ -29,6 +30,8 @@ export default async function NewStayChoicePage({ searchParams }: PageProps) {
   if (!organizerId) {
     redirect('/organisme/sejours');
   }
+
+  await requireOrganizerCgvForStayCreation(organizerId);
 
   const errorParam = formatRedirectValue(resolvedSearchParams?.error);
   const prefillParam = formatRedirectValue(resolvedSearchParams?.prefill);

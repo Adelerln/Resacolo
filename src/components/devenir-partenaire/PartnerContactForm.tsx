@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
+import { TurnstileField } from '@/components/turnstile/TurnstileField';
 
 const ORANGE = '#FA8500';
 const BLUE = '#52B0EA';
@@ -22,13 +23,27 @@ export function PartnerContactForm() {
   const [institution, setInstitution] = useState('');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [formule, setFormule] = useState<Formule>('');
   const [message, setMessage] = useState('');
+  const [turnstileToken, setTurnstileToken] = useState('');
+  const [turnstileResetKey, setTurnstileResetKey] = useState(0);
   const [status, setStatus] = useState<SubmitStatus>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  const resetCaptcha = () => {
+    setTurnstileToken('');
+    setTurnstileResetKey((value) => value + 1);
+  };
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+
+    if (!turnstileToken) {
+      setStatus('error');
+      setErrorMessage('Merci de valider le captcha avant l’envoi.');
+      return;
+    }
 
     setStatus('loading');
     setErrorMessage(null);
@@ -41,8 +56,10 @@ export function PartnerContactForm() {
           institution,
           name,
           email,
+          phone,
           formula: formule,
-          message
+          message,
+          turnstileToken
         })
       });
 
@@ -51,6 +68,7 @@ export function PartnerContactForm() {
       if (!response.ok) {
         setStatus('error');
         setErrorMessage(parseApiErrorMessage(payload) ?? 'Impossible d’envoyer la demande pour le moment.');
+        resetCaptcha();
         return;
       }
 
@@ -58,11 +76,14 @@ export function PartnerContactForm() {
       setInstitution('');
       setName('');
       setEmail('');
+      setPhone('');
       setFormule('');
       setMessage('');
+      resetCaptcha();
     } catch {
       setStatus('error');
       setErrorMessage('Impossible d’envoyer la demande pour le moment.');
+      resetCaptcha();
     }
   };
 
@@ -110,8 +131,18 @@ export function PartnerContactForm() {
               />
             </div>
             <div>
-              <label className="mb-2 block text-sm font-semibold text-slate-700">4. Formule CSE*</label>
-              <div className="relative">
+              <label className="mb-2 block text-sm font-semibold text-slate-700">4. Téléphone</label>
+              <input
+                type="tel"
+                value={phone}
+                onChange={(event) => setPhone(event.target.value)}
+                placeholder="Facultatif"
+                className="h-12 w-full rounded-2xl border border-slate-300 bg-white px-4 shadow-sm outline-none transition focus:border-brand-600"
+              />
+            </div>
+            <div className="md:col-span-2">
+              <label className="mb-2 block text-sm font-semibold text-slate-700">5. Formule CSE*</label>
+              <div className="relative max-w-md">
                 <select
                   required
                   value={formule}
@@ -131,16 +162,25 @@ export function PartnerContactForm() {
           </div>
 
           <div>
-            <label className="mb-2 block text-sm font-semibold text-slate-700">5. Message*</label>
+            <label className="mb-2 block text-sm font-semibold text-slate-700">6. Message*</label>
             <textarea
               required
+              minLength={10}
+              maxLength={4000}
               rows={7}
-              placeholder="Message*"
+              placeholder="Décrivez votre demande (10 caractères minimum)"
               value={message}
               onChange={(event) => setMessage(event.target.value)}
               className="w-full rounded-2xl border border-slate-300 bg-white p-4 shadow-sm outline-none transition focus:border-brand-600"
             />
+            <p className="mt-1.5 text-xs text-slate-500">10 caractères minimum.</p>
           </div>
+
+          <TurnstileField
+            key={turnstileResetKey}
+            onTokenChange={setTurnstileToken}
+            onErrorMessage={setErrorMessage}
+          />
 
           {errorMessage && <p className="rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-600">{errorMessage}</p>}
           {status === 'success' && (

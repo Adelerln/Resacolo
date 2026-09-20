@@ -304,6 +304,15 @@ function readPartnerDiscountPercentFromRaw(rawPayload: Record<string, unknown>):
   return n;
 }
 
+function readIsCafEligibleFromDraft(input: {
+  rawPayload: Record<string, unknown>;
+  draftColumn?: boolean | null;
+}): boolean {
+  if (typeof input.rawPayload.is_caf_eligible === 'boolean') return input.rawPayload.is_caf_eligible;
+  if (typeof input.draftColumn === 'boolean') return input.draftColumn;
+  return true;
+}
+
 function readExistingAccommodationId(rawPayload: Record<string, unknown>): string | null {
   const importOptions = rawPayload.import_options;
   if (!isPlainRecord(importOptions)) return null;
@@ -588,6 +597,10 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
     video_urls: normalizeImportedVideoUrlList(fallbackStayVideoUrls),
     accommodation_video_urls: normalizeImportedVideoUrlList(rawAccommodationVideoUrls),
     partner_discount_percent: readPartnerDiscountPercentFromRaw(rawPayload),
+    is_caf_eligible: readIsCafEligibleFromDraft({
+      rawPayload,
+      draftColumn: (draft as { is_caf_eligible?: boolean | null }).is_caf_eligible
+    }),
     activities_text: '',
     required_documents_text: normalizeString(draft.required_documents_text)
   };

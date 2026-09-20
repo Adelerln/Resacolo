@@ -151,10 +151,15 @@ export default function FamilyReservationAccordion({
 
       <div className="border-t border-slate-200 bg-slate-50/60 px-4 py-4 sm:px-6">
         {reservation.isLegacy ? (
-          <p className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
-            Réservation historique importée depuis l&apos;ancien site Resacolo. Les détails de
-            facturation et de paiement ne sont pas disponibles.
-          </p>
+            <p className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+              Réservation effectuée avant octobre 2026, les détails de facturation et de paiement ne
+              sont pas disponibles. Pour toute demande spécifique relative aux réservations
+              antérieures à cette date, merci d&apos;adresser une demande via le{' '}
+              <Link href="/contact" className="underline underline-offset-2 hover:text-slate-900">
+                formulaire de contact
+              </Link>
+              .
+            </p>
         ) : (
           <>
         <div className={`grid gap-3 ${reservation.remainingBalanceCents > 0 ? 'sm:grid-cols-2' : 'sm:grid-cols-1'}`}>

@@ -3,6 +3,12 @@ import { revalidatePath } from 'next/cache';
 import { PartnerFinancementForm } from '@/components/partner/PartnerFinancementForm';
 import { requirePartner } from '@/lib/auth/require';
 import { canAccessPartnerSection, getPartnerAccessRoleFromSession } from '@/lib/partner-access';
+import { parsePartnerCatalogRulesFromFormData } from '@/lib/partner-catalog-form';
+import {
+  getDefaultPartnerCatalogRules,
+  normalizePartnerCatalogRules,
+  parseAndValidatePartnerCatalogRules
+} from '@/lib/partner-catalog-rules';
 import { normalizePartnerFinanceMode } from '@/lib/partner-offers';
 import { readPartnerCollectivity } from '@/lib/partner.server';
 import {
@@ -11,6 +17,7 @@ import {
   isMissingColumnError
 } from '@/lib/supabase-schema-errors';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
+import type { PartnerCatalogRules } from '@/types/partner-catalog-rules';
 
 type PageProps = {
   searchParams?: Promise<{
@@ -86,6 +93,9 @@ export default async function FinancementPage({ searchParams }: PageProps) {
       finance_rules_text: string | null;
       updated_at: string;
       finance_fixed_cents?: number | null;
+      catalog_rules_draft?: PartnerCatalogRules;
+      catalog_rules_published?: PartnerCatalogRules;
+      catalog_rules_published_at?: string;
     } = {
       finance_mode: financeMode,
       finance_percent_value: financePercentValue,
@@ -94,6 +104,32 @@ export default async function FinancementPage({ searchParams }: PageProps) {
     };
     if (financeMode === 'FIXED') {
       updatePayload.finance_fixed_cents = financeFixedCents;
+    }
+
+    if (financeMode === 'MANUAL') {
+      const collectivity = await readPartnerCollectivity(collectivityId);
+      const existingRules = normalizePartnerCatalogRules(
+        collectivity.catalog_rules_draft ?? getDefaultPartnerCatalogRules()
+      );
+      const parsedFromForm = parsePartnerCatalogRulesFromFormData(formData);
+      const nextRules = normalizePartnerCatalogRules({
+        ...existingRules,
+        financialRules: {
+          ...existingRules.financialRules,
+          ...parsedFromForm.financialRules
+        },
+        qfScale: parsedFromForm.qfScale
+      });
+      updatePayload.catalog_rules_draft = nextRules;
+      try {
+        const validated = parseAndValidatePartnerCatalogRules(nextRules, {
+          skipFlatAidRateRequirement: true
+        });
+        updatePayload.catalog_rules_published = validated;
+        updatePayload.catalog_rules_published_at = updatePayload.updated_at;
+      } catch {
+        // Garde le draft même si la validation publication échoue (barème incomplet).
+      }
     }
 
     const supabase = getServerSupabaseClient();
@@ -141,10 +177,7 @@ export default async function FinancementPage({ searchParams }: PageProps) {
         redirect('/partenaire/financement?saved=1');
       }
 
-      if (
-        isMissingColumnError(error, 'finance_fixed_cents') &&
-        financeMode === 'FIXED'
-      ) {
+      if (isMissingColumnError(error, 'finance_fixed_cents') && financeMode === 'FIXED') {
         redirect(
           '/partenaire/financement?error=Le%20mode%20Forfait%20n%27est%20pas%20disponible%20sur%20cet%20environnement.%20Utilisez%20le%20mode%20Total%20ou%20Pourcentage.'
         );
@@ -160,11 +193,15 @@ export default async function FinancementPage({ searchParams }: PageProps) {
     }
 
     revalidatePath('/partenaire/financement');
+    revalidatePath('/partenaire/catalogue');
     revalidatePath('/partenaire/reservations');
     redirect('/partenaire/financement?saved=1');
   }
 
   const collectivity = await readPartnerCollectivity(collectivityId);
+  const catalogRules = normalizePartnerCatalogRules(
+    collectivity.catalog_rules_draft ?? getDefaultPartnerCatalogRules()
+  );
   const errorMessage = sanitizeRedirectQueryValue(params?.error);
   const isSaved = params?.saved === '1';
   const resetToken = `${params?.saved ?? ''}:${params?.error ?? ''}:${collectivity.updated_at}`;
@@ -195,6 +232,7 @@ export default async function FinancementPage({ searchParams }: PageProps) {
             typeof collectivity.finance_fixed_cents === 'number' ? collectivity.finance_fixed_cents / 100 : null
           }
           initialRulesText={collectivity.finance_rules_text}
+          catalogRules={catalogRules}
           saveAction={saveFinancingSettings}
           resetToken={resetToken}
         />

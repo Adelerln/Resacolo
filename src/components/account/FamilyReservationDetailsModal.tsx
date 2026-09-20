@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { Mail, X } from 'lucide-react';
 import { formatMoneyCentsFr } from '@/lib/format-money-fr';
 import type { FamilyReservation } from '@/types/family-profile';
@@ -128,8 +129,13 @@ export default function FamilyReservationDetailsModal({ reservation }: { reserva
               <div className="bg-slate-50/65 px-5 py-4 sm:px-7 sm:py-5">
                 {reservation.isLegacy ? (
                   <p className="rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-sm text-slate-600">
-                    Réservation historique importée depuis l&apos;ancien site Resacolo. Les détails de
-                    facturation et de paiement ne sont pas disponibles.
+                    Réservation effectuée avant octobre 2026, les détails de facturation et de
+                    paiement ne sont pas disponibles. Pour toute demande spécifique relative aux
+                    réservations antérieures à cette date, merci d&apos;adresser une demande via le{' '}
+                    <Link href="/contact" className="underline underline-offset-2 hover:text-slate-900">
+                      formulaire de contact
+                    </Link>
+                    .
                   </p>
                 ) : (
                   <>

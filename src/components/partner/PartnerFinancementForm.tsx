@@ -3,12 +3,16 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import PartnerProfileFormEnhancer from '@/components/partner/PartnerProfileFormEnhancer';
+import { PartnerFinancialRulesSection } from '@/components/partner/PartnerFinancialRulesSection';
 import {
   normalizePartnerFinanceMode,
   PARTNER_FINANCE_MODE_LABELS,
   PARTNER_FINANCE_MODE_VALUES,
   type PartnerFinanceModeValue
 } from '@/lib/partner-offers';
+import type { PartnerCatalogRules } from '@/types/partner-catalog-rules';
+
+const FINANCING_FORM_ID = 'partner-financing-form';
 
 function fieldClassName() {
   return 'mt-1 w-full rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-900 transition-colors';
@@ -19,6 +23,7 @@ export function PartnerFinancementForm({
   initialPercentValue,
   initialFixedEuros,
   initialRulesText,
+  catalogRules,
   saveAction,
   resetToken
 }: {
@@ -26,6 +31,7 @@ export function PartnerFinancementForm({
   initialPercentValue: number | null | undefined;
   initialFixedEuros: number | null | undefined;
   initialRulesText: string | null | undefined;
+  catalogRules: PartnerCatalogRules;
   saveAction: (formData: FormData) => void;
   resetToken: string;
 }) {
@@ -33,7 +39,7 @@ export function PartnerFinancementForm({
 
   return (
     <>
-      <form id="partner-financing-form" action={saveAction} className="space-y-4">
+      <form id={FINANCING_FORM_ID} action={saveAction} className="space-y-4">
         <label className="block text-sm font-medium text-slate-700">
           Mode de financement
           <select
@@ -68,14 +74,7 @@ export function PartnerFinancementForm({
           {mode === 'MANUAL' && (
             <>
               En calcul manuel, la prise en charge est déterminée par le barème QF et le quotient familial de
-              chaque ayant-droit. Configurez d&apos;abord les règles dans{' '}
-              <Link
-                href="/partenaire/catalogue"
-                className="font-semibold text-emerald-800 underline-offset-2 hover:underline"
-              >
-                Catalogue
-              </Link>
-              , puis saisissez les QF dans{' '}
+              chaque ayant-droit. Configurez les règles ci-dessous, puis saisissez les QF dans{' '}
               <Link
                 href="/partenaire/beneficiaires"
                 className="font-semibold text-emerald-800 underline-offset-2 hover:underline"
@@ -128,6 +127,15 @@ export function PartnerFinancementForm({
           </div>
         )}
 
+        {mode === 'MANUAL' ? (
+          <PartnerFinancialRulesSection
+            draftRules={catalogRules}
+            qfRows={catalogRules.qfScale}
+            fieldClassName={fieldClassName()}
+            formId={FINANCING_FORM_ID}
+          />
+        ) : null}
+
         <label className="block text-sm font-medium text-slate-700">
           Mémo Règles personnalisées
           <textarea
@@ -138,7 +146,7 @@ export function PartnerFinancementForm({
           />
         </label>
       </form>
-      <PartnerProfileFormEnhancer formId="partner-financing-form" resetToken={resetToken} />
+      <PartnerProfileFormEnhancer formId={FINANCING_FORM_ID} resetToken={resetToken} />
     </>
   );
 }

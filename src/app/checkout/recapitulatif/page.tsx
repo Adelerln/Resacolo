@@ -40,6 +40,12 @@ import {
   validateAncvConnectAmountAgainstOrderTotal,
   validateAncvConnectMatricule
 } from '@/lib/ancv-connect-matricule';
+import {
+  DEPOSIT_FULL_PAYMENT_REQUIRED_MESSAGE,
+  earliestIsoDate,
+  isAidOrOfflinePaymentMode,
+  isCardDepositAllowed
+} from '@/lib/checkout/deposit-eligibility';
 
 function formatBirthdateFr(iso: string | undefined) {
   if (!iso?.trim()) return '—';
@@ -73,14 +79,11 @@ const SECTION_CARD_CLASS =
   'rounded-[24px] border border-slate-200 bg-white px-5 py-5 shadow-[0_16px_44px_rgba(15,23,42,0.05)] sm:px-6';
 const COMPACT_LABEL_BOLD_CLASS = 'text-[11px] font-bold uppercase tracking-wide text-slate-900';
 
-const PAYMENT_MODES: Array<{ value: CheckoutContact['paymentMode']; label: string }> = [
+const PRIMARY_PAYMENT_MODES: Array<{ value: CheckoutContact['paymentMode']; label: string }> = [
   { value: 'FULL', label: 'Paiement de la totalité en CB' },
   { value: 'DEPOSIT_200', label: "Paiement d'un acompte (200 €) en CB" },
-  { value: 'CV_CONNECT', label: 'Paiement en ANCV Connect' },
-  { value: 'CV_PAPER', label: 'Paiement en ANCV papier' },
   { value: 'DEFERRED', label: 'Paiement différé' }
 ];
-const QUOTE_PAYMENT_MODES = new Set<CheckoutContact['paymentMode']>(['CV_CONNECT', 'CV_PAPER', 'DEFERRED']);
 
 type OrganizerCheckoutSettings = {
   acceptsAncvPaper: boolean;
@@ -90,7 +93,12 @@ type OrganizerCheckoutSettings = {
 
 function requiresOnlinePaymentStep(paymentMode: CheckoutContact['paymentMode'], isManualRequest: boolean) {
   if (isManualRequest) return false;
+  // ANCV Connect = demande organisateur (pas de TPE Limonetik / CB).
   return paymentMode === 'FULL' || paymentMode === 'DEPOSIT_200';
+}
+
+function isDeferredFamilySelection(paymentMode: CheckoutContact['paymentMode']) {
+  return isAidOrOfflinePaymentMode(paymentMode);
 }
 
 function parseAncvConnectAmount(value: string) {
@@ -160,13 +168,14 @@ export default function CheckoutRecapitulatifPage() {
           )
         : null;
       const groupIsPartnerTotalCoverage = !requestKind && isPartnerFullCoverageCheckout(groupPricing);
-      const availablePaymentModes = PAYMENT_MODES.filter((mode) => {
-        if (mode.value === 'CV_PAPER') return settings?.acceptsAncvPaper ?? false;
-        if (mode.value === 'CV_CONNECT') return settings?.acceptsAncvConnect ?? false;
+      const earliestSessionStartDate = earliestIsoDate(pricingItems.map((item) => item.sessionStartDate));
+      const cardDepositAllowed = isCardDepositAllowed({ earliestSessionStartDate });
+      const availablePaymentModes = PRIMARY_PAYMENT_MODES.filter((mode) => {
+        if (mode.value === 'DEPOSIT_200' && !cardDepositAllowed) return false;
         return true;
       });
       const displayedPaymentModes = groupPricing.financeRequiresQuote
-        ? availablePaymentModes.filter((mode) => QUOTE_PAYMENT_MODES.has(mode.value))
+        ? availablePaymentModes.filter((mode) => mode.value === 'DEFERRED')
         : availablePaymentModes;
 
       return {
@@ -177,6 +186,8 @@ export default function CheckoutRecapitulatifPage() {
         requestKind,
         pricing: groupPricing,
         isPartnerTotalCoverage: groupIsPartnerTotalCoverage,
+        earliestSessionStartDate,
+        cardDepositAllowed,
         availablePaymentModes,
         displayedPaymentModes,
         hasAidSelectionOptions:
@@ -197,6 +208,20 @@ export default function CheckoutRecapitulatifPage() {
       router.prefetch('/checkout/paiement');
     }
   }, [paymentRequiresOnlineStep, router]);
+
+  useEffect(() => {
+    let nextContact = contact;
+    let changed = false;
+    for (const group of organizerGroups) {
+      if (group.selection.paymentMode === 'DEPOSIT_200' && !group.cardDepositAllowed) {
+        nextContact = patchOrganizerSelection(nextContact, group.organizerId, { paymentMode: 'FULL' });
+        changed = true;
+      }
+    }
+    if (changed) {
+      setContact(nextContact);
+    }
+  }, [contact, organizerGroups, setContact]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -380,6 +405,21 @@ export default function CheckoutRecapitulatifPage() {
     setContact(patchOrganizerSelection(contact, organizerId, patch));
   }
 
+  function selectPrimaryPaymentMode(
+    organizerId: string,
+    mode: 'FULL' | 'DEPOSIT_200' | 'DEFERRED'
+  ) {
+    patchOrganizerPaymentSelection(organizerId, {
+      paymentMode: mode,
+      ancvConnectMatricule: '',
+      ancvConnectAmount: '',
+      ...(mode !== 'DEFERRED' ? { vacafNumber: '' } : {})
+    });
+    if (mode !== 'DEFERRED') {
+      setWantsVacafAidForOrganizer(organizerId, false);
+    }
+  }
+
   function setWantsVacafAidForOrganizer(organizerId: string, next: boolean) {
     setWantsVacafAidByOrganizer((prev) => ({
       ...prev,
@@ -405,6 +445,14 @@ export default function CheckoutRecapitulatifPage() {
       if (group.selection.vacafNumber.trim() && !settings.isVacafApproved) {
         setPaymentSubmitError(`L'organisme « ${group.organizerName} » n'est pas agréé VACAF National.`);
         return;
+      }
+      if (wantsVacafAidByOrganizer[group.organizerId]) {
+        if (!group.selection.vacafNumber.trim()) {
+          setPaymentSubmitError(
+            `Veuillez renseigner votre matricule allocataire VACAF/AVE pour « ${group.organizerName} ».`
+          );
+          return;
+        }
       }
       if (group.selection.vacafNumber.trim()) {
         const vacafError = validateVacafNumber(group.selection.vacafNumber);
@@ -752,7 +800,57 @@ export default function CheckoutRecapitulatifPage() {
                           </div>
                           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                             {group.displayedPaymentModes.map((mode) => {
-                              const isActive = group.selection.paymentMode === mode.value;
+                              const isActive = isDeferredFamilySelection(group.selection.paymentMode);
+                              return (
+                                <label
+                                  key={mode.value}
+                                  className={`flex cursor-pointer items-start gap-3 rounded-[18px] border px-4 py-4 text-sm font-semibold transition ${
+                                    isActive
+                                      ? 'border-accent-400 bg-accent-50 text-accent-700'
+                                      : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                                  }`}
+                                >
+                                  <span
+                                    className={`mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded border-2 transition ${
+                                      isActive
+                                        ? 'border-accent-500 bg-accent-500 text-white'
+                                        : 'border-slate-300 bg-white'
+                                    }`}
+                                    aria-hidden
+                                  >
+                                    {isActive ? <Check className="h-3 w-3 stroke-[3]" /> : null}
+                                  </span>
+                                  <input
+                                    type="radio"
+                                    name={`recap-payment-mode-${group.organizerId}`}
+                                    value={mode.value}
+                                    checked={isActive}
+                                    onChange={() => selectPrimaryPaymentMode(group.organizerId, 'DEFERRED')}
+                                    className="sr-only"
+                                  />
+                                  <span className="min-w-0 flex-1 leading-snug">{mode.label}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ) : group.isPartnerTotalCoverage ? (
+                        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+                          Aucun paiement n&apos;est demandé lors de cette réservation auprès de {group.organizerName} : votre partenaire prendra en charge la totalité auprès de ResaColo.
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          {!group.cardDepositAllowed ? (
+                            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                              {DEPOSIT_FULL_PAYMENT_REQUIRED_MESSAGE}
+                            </div>
+                          ) : null}
+                          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                            {group.displayedPaymentModes.map((mode) => {
+                              const isActive =
+                                mode.value === 'DEFERRED'
+                                  ? isDeferredFamilySelection(group.selection.paymentMode)
+                                  : group.selection.paymentMode === mode.value;
                               return (
                                 <label
                                   key={mode.value}
@@ -778,15 +876,9 @@ export default function CheckoutRecapitulatifPage() {
                                     value={mode.value}
                                     checked={isActive}
                                     onChange={() =>
-                                      patchOrganizerPaymentSelection(
+                                      selectPrimaryPaymentMode(
                                         group.organizerId,
-                                        mode.value === 'CV_CONNECT'
-                                          ? { paymentMode: mode.value }
-                                          : {
-                                              paymentMode: mode.value,
-                                              ancvConnectMatricule: '',
-                                              ancvConnectAmount: ''
-                                            }
+                                        mode.value as 'FULL' | 'DEPOSIT_200' | 'DEFERRED'
                                       )
                                     }
                                     className="sr-only"
@@ -797,57 +889,6 @@ export default function CheckoutRecapitulatifPage() {
                             })}
                           </div>
                         </div>
-                      ) : group.isPartnerTotalCoverage ? (
-                        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-                          Aucun paiement n&apos;est demandé lors de cette réservation auprès de {group.organizerName} : votre partenaire prendra en charge la totalité auprès de ResaColo.
-                        </div>
-                      ) : (
-                        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                          {group.displayedPaymentModes.map((mode) => {
-                            const isActive = group.selection.paymentMode === mode.value;
-                            return (
-                              <label
-                                key={mode.value}
-                                className={`flex cursor-pointer items-start gap-3 rounded-[18px] border px-4 py-4 text-sm font-semibold transition ${
-                                  isActive
-                                    ? 'border-accent-400 bg-accent-50 text-accent-700'
-                                    : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
-                                }`}
-                              >
-                                <span
-                                  className={`mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded border-2 transition ${
-                                    isActive
-                                      ? 'border-accent-500 bg-accent-500 text-white'
-                                      : 'border-slate-300 bg-white'
-                                  }`}
-                                  aria-hidden
-                                >
-                                  {isActive ? <Check className="h-3 w-3 stroke-[3]" /> : null}
-                                </span>
-                                <input
-                                  type="radio"
-                                  name={`recap-payment-mode-${group.organizerId}`}
-                                  value={mode.value}
-                                  checked={isActive}
-                                  onChange={() =>
-                                    patchOrganizerPaymentSelection(
-                                      group.organizerId,
-                                      mode.value === 'CV_CONNECT'
-                                        ? { paymentMode: mode.value }
-                                        : {
-                                            paymentMode: mode.value,
-                                            ancvConnectMatricule: '',
-                                            ancvConnectAmount: ''
-                                          }
-                                    )
-                                  }
-                                  className="sr-only"
-                                />
-                                <span className="min-w-0 flex-1 leading-snug">{mode.label}</span>
-                              </label>
-                            );
-                          })}
-                        </div>
                       )}
 
                       {group.hasAidSelectionOptions ? (
@@ -855,6 +896,7 @@ export default function CheckoutRecapitulatifPage() {
                           <p className="font-semibold text-slate-900">Aides ou règlements complémentaires</p>
                           <p className="mt-1.5 leading-relaxed text-slate-600">
                             Ces options seront transmises uniquement à {group.organizerName}. Le solde éventuel sera à régler par carte bancaire le cas échéant.
+                            Sélectionner une aide coche automatiquement le paiement différé.
                           </p>
                           <div className="mt-4 grid gap-3 md:grid-cols-3">
                             {group.settings?.acceptsAncvPaper ? (
@@ -862,20 +904,19 @@ export default function CheckoutRecapitulatifPage() {
                                 <input
                                   type="checkbox"
                                   checked={group.selection.paymentMode === 'CV_PAPER'}
-                                  onChange={(event) =>
-                                    patchOrganizerPaymentSelection(
-                                      group.organizerId,
-                                      event.target.checked
-                                        ? {
-                                            paymentMode: 'CV_PAPER',
-                                            ancvConnectMatricule: '',
-                                            ancvConnectAmount: ''
-                                          }
-                                        : {
-                                            paymentMode: group.pricing.financeRequiresQuote ? 'DEFERRED' : 'FULL'
-                                          }
-                                    )
-                                  }
+                                  onChange={(event) => {
+                                    if (event.target.checked) {
+                                      patchOrganizerPaymentSelection(group.organizerId, {
+                                        paymentMode: 'CV_PAPER',
+                                        ancvConnectMatricule: '',
+                                        ancvConnectAmount: ''
+                                      });
+                                      return;
+                                    }
+                                    patchOrganizerPaymentSelection(group.organizerId, {
+                                      paymentMode: 'DEFERRED'
+                                    });
+                                  }}
                                   className="mt-0.5 h-4 w-4 rounded border-slate-300"
                                 />
                                 <span className="font-medium text-slate-700">ANCV papier</span>
@@ -886,18 +927,19 @@ export default function CheckoutRecapitulatifPage() {
                                 <input
                                   type="checkbox"
                                   checked={group.selection.paymentMode === 'CV_CONNECT'}
-                                  onChange={(event) =>
-                                    patchOrganizerPaymentSelection(
-                                      group.organizerId,
-                                      event.target.checked
-                                        ? { paymentMode: 'CV_CONNECT' }
-                                        : {
-                                            paymentMode: group.pricing.financeRequiresQuote ? 'DEFERRED' : 'FULL',
-                                            ancvConnectMatricule: '',
-                                            ancvConnectAmount: ''
-                                          }
-                                    )
-                                  }
+                                  onChange={(event) => {
+                                    if (event.target.checked) {
+                                      patchOrganizerPaymentSelection(group.organizerId, {
+                                        paymentMode: 'CV_CONNECT'
+                                      });
+                                      return;
+                                    }
+                                    patchOrganizerPaymentSelection(group.organizerId, {
+                                      paymentMode: 'DEFERRED',
+                                      ancvConnectMatricule: '',
+                                      ancvConnectAmount: ''
+                                    });
+                                  }}
                                   className="mt-0.5 h-4 w-4 rounded border-slate-300"
                                 />
                                 <span className="font-medium text-slate-700">ANCV Connect</span>
@@ -910,9 +952,21 @@ export default function CheckoutRecapitulatifPage() {
                                   checked={wantsVacafAid}
                                   onChange={(event) => {
                                     setWantsVacafAidForOrganizer(group.organizerId, event.target.checked);
-                                    if (!event.target.checked) {
-                                      patchOrganizerPaymentSelection(group.organizerId, { vacafNumber: '' });
+                                    if (event.target.checked) {
+                                      // VACAF = parcours différé / demande organisme
+                                      if (
+                                        group.selection.paymentMode === 'FULL' ||
+                                        group.selection.paymentMode === 'DEPOSIT_200'
+                                      ) {
+                                        patchOrganizerPaymentSelection(group.organizerId, {
+                                          paymentMode: 'DEFERRED',
+                                          ancvConnectMatricule: '',
+                                          ancvConnectAmount: ''
+                                        });
+                                      }
+                                      return;
                                     }
+                                    patchOrganizerPaymentSelection(group.organizerId, { vacafNumber: '' });
                                   }}
                                   className="mt-0.5 h-4 w-4 rounded border-slate-300"
                                 />
@@ -921,99 +975,112 @@ export default function CheckoutRecapitulatifPage() {
                             ) : null}
                           </div>
 
-                          {group.settings?.isVacafApproved && wantsVacafAid ? (
-                            <div className="mt-4">
-                              <label
-                                htmlFor={`recap-vacaf-${group.organizerId}`}
-                                className="block text-sm font-medium text-slate-700"
-                              >
-                                Matricule allocataire
-                              </label>
-                              <p
-                                id={`recap-vacaf-hint-${group.organizerId}`}
-                                className="mt-1.5 text-sm leading-relaxed text-slate-500"
-                              >
-                                Format attendu : 7 chiffres, éventuellement une lettre à la fin (ex. 1234567 ou 1234567A).
-                              </p>
-                              <input
-                                id={`recap-vacaf-${group.organizerId}`}
-                                type="text"
-                                inputMode="numeric"
-                                autoComplete="off"
-                                maxLength={8}
-                                value={group.selection.vacafNumber}
-                                onChange={(event) =>
-                                  patchOrganizerPaymentSelection(group.organizerId, {
-                                    vacafNumber: normalizeVacafNumberInput(event.target.value)
-                                  })
-                                }
-                                className={INPUT_CLASS}
-                                placeholder="1234567A"
-                                aria-describedby={`recap-vacaf-hint-${group.organizerId}`}
-                              />
+                          {(group.settings?.isVacafApproved && wantsVacafAid) ||
+                          (group.selection.paymentMode === 'CV_CONNECT' && !group.isPartnerTotalCoverage) ? (
+                            <div className="mt-4 grid gap-4 md:grid-cols-2">
+                              {group.settings?.isVacafApproved && wantsVacafAid ? (
+                                <div className="md:col-span-2">
+                                  <label
+                                    htmlFor={`recap-vacaf-${group.organizerId}`}
+                                    className="block text-sm font-medium text-slate-700"
+                                  >
+                                    Matricule allocataire
+                                  </label>
+                                  <p
+                                    id={`recap-vacaf-hint-${group.organizerId}`}
+                                    className="mt-1.5 text-sm leading-relaxed text-slate-500"
+                                  >
+                                    Format attendu : 7 chiffres, éventuellement une lettre à la fin (ex. 1234567 ou
+                                    1234567A).
+                                  </p>
+                                  <input
+                                    id={`recap-vacaf-${group.organizerId}`}
+                                    type="text"
+                                    inputMode="numeric"
+                                    autoComplete="off"
+                                    maxLength={8}
+                                    value={group.selection.vacafNumber}
+                                    onChange={(event) =>
+                                      patchOrganizerPaymentSelection(group.organizerId, {
+                                        vacafNumber: normalizeVacafNumberInput(event.target.value)
+                                      })
+                                    }
+                                    className={INPUT_CLASS}
+                                    placeholder="1234567A"
+                                    aria-describedby={`recap-vacaf-hint-${group.organizerId}`}
+                                  />
+                                </div>
+                              ) : null}
+
+                              {group.selection.paymentMode === 'CV_CONNECT' && !group.isPartnerTotalCoverage ? (
+                                <>
+                                  <div>
+                                    <label
+                                      htmlFor={`recap-ancv-matricule-${group.organizerId}`}
+                                      className="block text-sm font-medium text-slate-700"
+                                    >
+                                      Matricule ANCV Connect
+                                    </label>
+                                    <p
+                                      id={`recap-ancv-matricule-hint-${group.organizerId}`}
+                                      className="mt-1.5 text-sm leading-relaxed text-slate-500"
+                                    >
+                                      {ANCV_CONNECT_MATRICULE_HINT}
+                                    </p>
+                                    <input
+                                      id={`recap-ancv-matricule-${group.organizerId}`}
+                                      type="text"
+                                      inputMode="numeric"
+                                      autoComplete="off"
+                                      maxLength={11}
+                                      value={group.selection.ancvConnectMatricule}
+                                      onChange={(event) =>
+                                        patchOrganizerPaymentSelection(group.organizerId, {
+                                          ancvConnectMatricule: normalizeAncvConnectMatriculeInput(
+                                            event.target.value
+                                          )
+                                        })
+                                      }
+                                      className={INPUT_CLASS}
+                                      placeholder="10003377487"
+                                      aria-describedby={`recap-ancv-matricule-hint-${group.organizerId}`}
+                                      required
+                                    />
+                                  </div>
+                                  <div>
+                                    <label
+                                      htmlFor={`recap-ancv-amount-${group.organizerId}`}
+                                      className="block text-sm font-medium text-slate-700"
+                                    >
+                                      Montant indicatif ANCV (€)
+                                    </label>
+                                    <p
+                                      id={`recap-ancv-amount-hint-${group.organizerId}`}
+                                      className="mt-1.5 text-sm leading-relaxed text-slate-500"
+                                    >
+                                      Montant que vous souhaitez régler en ANCV Connect. L’organisme finalisera le
+                                      règlement.
+                                    </p>
+                                    <input
+                                      id={`recap-ancv-amount-${group.organizerId}`}
+                                      type="text"
+                                      inputMode="decimal"
+                                      value={group.selection.ancvConnectAmount}
+                                      onChange={(event) =>
+                                        patchOrganizerPaymentSelection(group.organizerId, {
+                                          ancvConnectAmount: event.target.value
+                                        })
+                                      }
+                                      className={INPUT_CLASS}
+                                      placeholder="Ex. : 150"
+                                      aria-describedby={`recap-ancv-amount-hint-${group.organizerId}`}
+                                      required
+                                    />
+                                  </div>
+                                </>
+                              ) : null}
                             </div>
                           ) : null}
-                        </div>
-                      ) : null}
-
-                      {group.selection.paymentMode === 'CV_CONNECT' && !group.isPartnerTotalCoverage ? (
-                        <div className="grid gap-4 md:grid-cols-2">
-                          <div>
-                            <label
-                              htmlFor={`recap-ancv-matricule-${group.organizerId}`}
-                              className="block text-sm font-medium text-slate-700"
-                            >
-                              Matricule ANCV Connect *
-                            </label>
-                            <p
-                              id={`recap-ancv-matricule-hint-${group.organizerId}`}
-                              className="mt-1.5 text-sm leading-relaxed text-slate-500"
-                            >
-                              {ANCV_CONNECT_MATRICULE_HINT}
-                            </p>
-                            <input
-                              id={`recap-ancv-matricule-${group.organizerId}`}
-                              type="text"
-                              inputMode="numeric"
-                              autoComplete="off"
-                              maxLength={11}
-                              value={group.selection.ancvConnectMatricule}
-                              onChange={(event) =>
-                                patchOrganizerPaymentSelection(group.organizerId, {
-                                  ancvConnectMatricule: normalizeAncvConnectMatriculeInput(event.target.value)
-                                })
-                              }
-                              className={INPUT_CLASS}
-                              placeholder="10003377487"
-                              aria-describedby={`recap-ancv-matricule-hint-${group.organizerId}`}
-                              required
-                            />
-                          </div>
-                          <div>
-                            <label
-                              htmlFor={`recap-ancv-amount-${group.organizerId}`}
-                              className="block text-sm font-medium text-slate-700"
-                            >
-                              Montant souhaité en règlement (€) *
-                            </label>
-                            <p className="mt-1.5 text-sm leading-relaxed invisible" aria-hidden="true">
-                              {ANCV_CONNECT_MATRICULE_HINT}
-                            </p>
-                            <input
-                              id={`recap-ancv-amount-${group.organizerId}`}
-                              type="text"
-                              inputMode="decimal"
-                              value={group.selection.ancvConnectAmount}
-                              onChange={(event) =>
-                                patchOrganizerPaymentSelection(group.organizerId, {
-                                  ancvConnectAmount: event.target.value
-                                })
-                              }
-                              className={INPUT_CLASS}
-                              placeholder="Ex. : 150"
-                              required
-                            />
-                          </div>
                         </div>
                       ) : null}
 

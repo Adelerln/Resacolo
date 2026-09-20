@@ -117,7 +117,10 @@ export default function BalancePaiementPage() {
       sessionStorage.removeItem(cacheKey);
 
       const goLive = (psp: NonNullable<PaymentCache['monetico']>) => {
-        if (psp.provider === 'axepta') {
+        if (
+          psp.provider === 'axepta' &&
+          (psp.formMethod === 'GET' || !psp.formFields || Object.keys(psp.formFields).length === 0)
+        ) {
           window.location.assign(psp.paymentUrl);
           return;
         }

@@ -198,9 +198,12 @@ export const checkoutParticipantSchema = z.object({
     }),
   childFirstName: trimmedStringFromJson.pipe(z.string().min(2, 'Prénom requis.')),
   childLastName: trimmedStringFromJson.pipe(z.string().min(2, 'Nom requis.')),
-  childBirthdate: trimmedStringFromJson.pipe(
-    z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date de naissance invalide (AAAA-MM-JJ).')
-  ),
+  childBirthdate: trimmedStringFromJson
+    .transform((value) => {
+      const match = value.match(/^(\d{4}-\d{2}-\d{2})/);
+      return match?.[1] ?? value;
+    })
+    .pipe(z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date de naissance invalide (AAAA-MM-JJ).')),
   childGender: z
     .union([z.enum(['MASCULIN', 'FEMININ']), z.literal(''), z.null(), z.undefined()])
     .transform((v) => (v == null ? '' : v)),

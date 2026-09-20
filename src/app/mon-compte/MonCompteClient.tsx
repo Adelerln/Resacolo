@@ -7,6 +7,7 @@ import {
   MapPin,
   CalendarDays,
   UserRound,
+  UserPlus,
   ShieldCheck,
   Settings,
   Wallet,
@@ -26,6 +27,7 @@ import {
   detachFamilyCseAffiliation,
   fetchFamilyProfileSnapshot,
   fetchPendingAccountDeletionRequest,
+  inviteFamilyMember,
   requestAccountDeletion,
   updateFamilyChild
 } from '@/lib/account-profile/client';
@@ -44,6 +46,8 @@ type MonCompteClientProps = {
   initialCseAffiliation: FamilyCseAffiliation | null;
   favoriteStays: Stay[];
   profileLoadError?: string | null;
+  /** Si true : le SSR a échoué, recharger profil/résas côté client. */
+  deferAccountDataToClient?: boolean;
 };
 
 const ACCOUNT_PANEL_VISIBLE_ITEMS = 3;
@@ -101,23 +105,30 @@ export default function MonCompteClient({
   reservations,
   initialCseAffiliation,
   favoriteStays,
-  profileLoadError
+  profileLoadError,
+  deferAccountDataToClient = false
 }: MonCompteClientProps) {
   const router = useRouter();
   const [profile, setProfile] = useState<FamilyProfile>(initialProfile);
   const [reservationList, setReservationList] = useState<FamilyReservation[]>(reservations);
   const [cseAffiliation, setCseAffiliation] = useState<FamilyCseAffiliation | null>(initialCseAffiliation);
-  const [isLoadingAccountData, setIsLoadingAccountData] = useState(true);
+  const [isLoadingAccountData, setIsLoadingAccountData] = useState(deferAccountDataToClient);
   const [cseCodeInput, setCseCodeInput] = useState(initialCseAffiliation?.code ?? initialProfile.cseOrganization ?? '');
   const [cseSubmitError, setCseSubmitError] = useState<string | null>(null);
   const [cseSubmitSuccess, setCseSubmitSuccess] = useState<string | null>(null);
   const [isSubmittingCse, setIsSubmittingCse] = useState(false);
   const [childForm, setChildForm] = useState<FamilyProfileChildInput>(EMPTY_CHILD_FORM);
   const [editingChildId, setEditingChildId] = useState<string | null>(null);
-  const [childError, setChildError] = useState<string | null>(null);
+  const [childError, setChildError] = useState<string | null>(profileLoadError ?? null);
   const [childSuccess, setChildSuccess] = useState<string | null>(null);
   const [isSavingChild, setIsSavingChild] = useState(false);
   const [deletingChildId, setDeletingChildId] = useState<string | null>(null);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteFirstName, setInviteFirstName] = useState('');
+  const [inviteLastName, setInviteLastName] = useState('');
+  const [inviteError, setInviteError] = useState<string | null>(null);
+  const [inviteSuccess, setInviteSuccess] = useState<string | null>(null);
+  const [isSendingInvite, setIsSendingInvite] = useState(false);
   const [deletionReason, setDeletionReason] = useState('');
   const [deletionConfirm, setDeletionConfirm] = useState(false);
   const [deletionError, setDeletionError] = useState<string | null>(null);
@@ -138,26 +149,47 @@ export default function MonCompteClient({
 
   useEffect(() => {
     let cancelled = false;
-    setIsLoadingAccountData(true);
-    Promise.all([fetchFamilyProfileSnapshot(), fetchPendingAccountDeletionRequest()])
-      .then(([snapshot, deletion]) => {
+
+    async function loadAccountSideData() {
+      if (deferAccountDataToClient) {
+        setIsLoadingAccountData(true);
+        try {
+          const [snapshot, deletion] = await Promise.all([
+            fetchFamilyProfileSnapshot(),
+            fetchPendingAccountDeletionRequest()
+          ]);
+          if (cancelled) return;
+          setProfile(snapshot.profile);
+          setReservationList(snapshot.reservations);
+          setCseAffiliation(snapshot.cseAffiliation);
+          setCseCodeInput(snapshot.cseAffiliation?.code ?? snapshot.profile.cseOrganization ?? '');
+          setPendingDeletion(deletion.pending);
+          setChildError(null);
+        } catch (error) {
+          if (cancelled) return;
+          setChildError(
+            error instanceof Error ? error.message : 'Impossible de recharger le profil famille.'
+          );
+        } finally {
+          if (!cancelled) setIsLoadingAccountData(false);
+        }
+        return;
+      }
+
+      try {
+        const deletion = await fetchPendingAccountDeletionRequest();
         if (cancelled) return;
-        setProfile(snapshot.profile);
-        setReservationList(snapshot.reservations);
-        setCseAffiliation(snapshot.cseAffiliation);
-        setCseCodeInput(snapshot.cseAffiliation?.code ?? snapshot.profile.cseOrganization ?? '');
         setPendingDeletion(deletion.pending);
-      })
-      .catch(() => {
-        // Keep server-rendered profile as fallback.
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoadingAccountData(false);
-      });
+      } catch {
+        // Non bloquant
+      }
+    }
+
+    void loadAccountSideData();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [deferAccountDataToClient]);
 
   const parent2Identity = useMemo(() => splitName(profile.parent2Name), [profile.parent2Name]);
   const fullAddress = useMemo(
@@ -337,6 +369,29 @@ export default function MonCompteClient({
       setChildError(error instanceof Error ? error.message : "Impossible de supprimer l'enfant.");
     } finally {
       setDeletingChildId(null);
+    }
+  }
+
+  async function handleInviteMember(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setInviteError(null);
+    setInviteSuccess(null);
+    setIsSendingInvite(true);
+
+    try {
+      const response = await inviteFamilyMember({
+        email: inviteEmail.trim(),
+        firstName: inviteFirstName.trim(),
+        lastName: inviteLastName.trim()
+      });
+      setInviteSuccess(`Invitation envoyée à ${response.email}.`);
+      setInviteEmail('');
+      setInviteFirstName('');
+      setInviteLastName('');
+    } catch (error) {
+      setInviteError(error instanceof Error ? error.message : "Impossible d'envoyer l'invitation.");
+    } finally {
+      setIsSendingInvite(false);
     }
   }
 
@@ -583,6 +638,76 @@ export default function MonCompteClient({
           </div>
         </section>
 
+        <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h2 className="font-display text-lg font-semibold text-slate-900">Inviter quelqu’un</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Envoyez une invitation Resacolo pour qu’un proche crée son compte famille.
+              </p>
+            </div>
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-600">
+              <UserPlus className="h-3.5 w-3.5" />
+              Invitation
+            </span>
+          </div>
+
+          <form onSubmit={handleInviteMember} className="mt-5 rounded-xl border border-slate-200 bg-slate-50 px-4 py-4">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <label className="text-sm font-medium text-slate-700">
+                Prénom (optionnel)
+                <input
+                  type="text"
+                  value={inviteFirstName}
+                  onChange={(event) => setInviteFirstName(event.target.value)}
+                  className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+                  autoComplete="given-name"
+                />
+              </label>
+              <label className="text-sm font-medium text-slate-700">
+                Nom (optionnel)
+                <input
+                  type="text"
+                  value={inviteLastName}
+                  onChange={(event) => setInviteLastName(event.target.value)}
+                  className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+                  autoComplete="family-name"
+                />
+              </label>
+              <label className="text-sm font-medium text-slate-700 sm:col-span-2 lg:col-span-2">
+                E-mail *
+                <input
+                  type="email"
+                  required
+                  value={inviteEmail}
+                  onChange={(event) => setInviteEmail(event.target.value)}
+                  className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+                  placeholder="prenom@email.com"
+                  autoComplete="email"
+                />
+              </label>
+            </div>
+
+            {inviteError ? (
+              <p className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                {inviteError}
+              </p>
+            ) : null}
+            {inviteSuccess ? (
+              <p className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                {inviteSuccess}
+              </p>
+            ) : null}
+
+            <div className="mt-4">
+              <button type="submit" disabled={isSendingInvite} className="btn btn-primary btn-sm">
+                <UserPlus className="h-4 w-4" />
+                {isSendingInvite ? 'Envoi…' : 'Envoyer l’invitation'}
+              </button>
+            </div>
+          </form>
+        </section>
+
         <div className="mt-8 grid gap-8 xl:grid-cols-2 xl:items-stretch [&>*]:min-h-0">
           <section className="flex h-full min-h-0 flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <div className={ACCOUNT_PANEL_HEADER_CLASS}>
@@ -600,7 +725,9 @@ export default function MonCompteClient({
                 <CalendarDays className="h-8 w-8 shrink-0 text-accent-500" aria-hidden />
               </div>
 
-              {reservationList.length === 0 ? (
+              {isLoadingAccountData ? (
+                <p className="mt-4 text-sm text-slate-500">Chargement de vos réservations…</p>
+              ) : reservationList.length === 0 ? (
                 <p className="mt-4 text-sm text-slate-500">
                   Vous n&apos;avez pas encore de réservation. Parcourez les séjours et ajoutez-les à votre panier.
                 </p>

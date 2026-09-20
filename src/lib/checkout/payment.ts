@@ -1,9 +1,11 @@
 import { getSession } from '@/lib/auth/session';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { resolveCheckoutCollectivityForUser } from '@/lib/account-profile/server';
+import { resolveFamilyChildForCheckout } from '@/lib/account-children.server';
 import { markCheckoutCartConverted } from '@/lib/checkout/cart-tracking';
 import type { CartItem } from '@/types/cart';
 import {
+  formatEuroFromCents,
   getOrganizerSelection,
   type CheckoutContact,
   type CheckoutParticipant,
@@ -41,6 +43,8 @@ import {
   validateAncvConnectMatricule
 } from '@/lib/ancv-connect-matricule';
 import { isMissingAnyColumnError } from '@/lib/supabase-schema-errors';
+import { assertCardDepositAllowedOrThrow, earliestIsoDate } from '@/lib/checkout/deposit-eligibility';
+import { sendReservationNotificationEmails } from '@/lib/reservation-notifications.server';
 
 type PrepareCheckoutPaymentInput = {
   checkoutId: string;
@@ -163,34 +167,38 @@ async function readSelectedChildrenForCheckout(
   clientUserId: string,
   participants: CheckoutParticipant[]
 ) {
-  const childIds = Array.from(
-    new Set(
-      participants
-        .map((participant) => participant.childId?.trim() ?? '')
-        .filter((value): value is string => value.length > 0)
-    )
-  );
-  if (childIds.length === 0) {
-    return new Map<string, ClientChildRow>();
-  }
+  const byId = new Map<string, ClientChildRow>();
 
-  const supabase = getServerSupabaseClient();
-  const { data, error } = await supabase
-    .from('client_children')
-    .select('id,user_id,first_name,last_name,birthdate,gender,additional_info')
-    .eq('user_id', clientUserId)
-    .in('id', childIds);
+  for (const participant of participants) {
+    const resolved = await resolveFamilyChildForCheckout({
+      userId: clientUserId,
+      childId: participant.childId,
+      firstName: participant.childFirstName,
+      lastName: participant.childLastName,
+      birthdate: participant.childBirthdate
+    });
 
-  if (error) {
-    throw new Error(`Impossible de charger les enfants sélectionnés : ${error.message}`);
-  }
-
-  const rows = data ?? [];
-  const byId = new Map(rows.map((row) => [row.id, row]));
-  for (const childId of childIds) {
-    if (!byId.has(childId)) {
+    if (!resolved) {
       throw new CheckoutValidationError("Un enfant sélectionné n'est plus disponible sur votre compte.");
     }
+
+    // Réaligner l'id participant si un doublon / id obsolète a été résolu par identité.
+    participant.childId = resolved.id;
+    participant.childFirstName = resolved.firstName;
+    participant.childLastName = resolved.lastName;
+    participant.childBirthdate = resolved.birthdate;
+    participant.childGender = resolved.gender;
+    participant.additionalInfo = resolved.additionalInfo;
+
+    byId.set(resolved.id, {
+      id: resolved.id,
+      user_id: clientUserId,
+      first_name: resolved.firstName,
+      last_name: resolved.lastName,
+      birthdate: resolved.birthdate,
+      gender: resolved.gender,
+      additional_info: resolved.additionalInfo
+    });
   }
 
   return byId;
@@ -674,30 +682,48 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
     const transactionId =
       existingRows.find((row) => row.monetico_transaction_id)?.monetico_transaction_id ||
       createMoneticoMockTransactionId(input.checkoutId, primaryOnlineRow.id);
-    const moneticoPayload = await createProviderPayload({
-      checkoutId: input.checkoutId,
-      orderId: primaryOnlineRow.order_id,
-      paymentId: primaryOnlineRow.id,
-      reference,
-      transactionId,
-      amountCents: onlineRows.reduce((sum, row) => sum + Math.max(0, row.amount_cents ?? 0), 0),
-      currency: pricing.currency,
-      customerEmail: input.contact.email,
-      billingFirstName: input.contact.billingFirstName,
-      billingLastName: input.contact.billingLastName,
-      merchantCustomerId: clientUserId
-    });
+    const onlineAmountCents = onlineRows.reduce((sum, row) => sum + Math.max(0, row.amount_cents ?? 0), 0);
+    const moneticoPayload =
+      onlineAmountCents > 0
+        ? await createProviderPayload({
+            checkoutId: input.checkoutId,
+            orderId: primaryOnlineRow.order_id,
+            paymentId: primaryOnlineRow.id,
+            reference,
+            transactionId,
+            amountCents: onlineAmountCents,
+            currency: pricing.currency,
+            customerEmail: input.contact.email,
+            billingFirstName: input.contact.billingFirstName,
+            billingLastName: input.contact.billingLastName,
+            merchantCustomerId: clientUserId
+          })
+        : ({
+            provider: 'monetico' as const,
+            mode: 'mock' as const,
+            reference,
+            transactionId,
+            paymentUrl: `/checkout/confirmation/${primaryRow.order_id}`,
+            testMode: true,
+            formMethod: 'POST' as const,
+            formFields: {}
+          } satisfies MoneticoPayload & { provider: 'monetico' });
 
     const providerTransactionId =
       (moneticoPayload as { transId?: string }).transId || moneticoPayload.transactionId || transactionId;
 
-    await supabase
-      .from('payments')
-      .update({
-        monetico_transaction_id: providerTransactionId,
-        monetico_reference: moneticoPayload.reference || reference
-      })
-      .in('id', existingRows.map((row) => row.id));
+    if (onlineAmountCents > 0) {
+      await supabase
+        .from('payments')
+        .update({
+          monetico_transaction_id: providerTransactionId,
+          monetico_reference: moneticoPayload.reference || reference
+        })
+        .in(
+          'id',
+          onlineRows.map((row) => row.id)
+        );
+    }
 
     return {
       isBatch: existingRows.length > 1,
@@ -743,6 +769,10 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
     const effectiveContact = buildEffectiveContactForOrganizer(input.contact, organizerId);
     const requestKind = resolveOrderRequestKind(effectiveContact, organizerSettings);
     const organizerPricing = buildPricingForOrganizerGroup(organizerItems, pricing.currency);
+    assertCardDepositAllowedOrThrow({
+      earliestSessionStartDate: earliestIsoDate(organizerItems.map((item) => item.sessionStartDate)),
+      paymentMode: effectiveContact.paymentMode
+    });
     const isPartnerTotalCoverage = !requestKind && isPartnerFullCoverageCheckout(organizerPricing);
     const paidAt = isPartnerTotalCoverage ? requestedAt : null;
     const initialStatus = isPartnerTotalCoverage
@@ -945,6 +975,44 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
       }
     }
 
+    const notificationLines = organizerParticipants.map((participant, index) => {
+      const pricedItem = organizerItems[index];
+      const childName = [participant.childFirstName, participant.childLastName]
+        .filter(Boolean)
+        .join(' ')
+        .trim();
+      const sessionLabel =
+        pricedItem?.sessionStartDate && pricedItem?.sessionEndDate
+          ? `Du ${pricedItem.sessionStartDate} au ${pricedItem.sessionEndDate}`
+          : 'Session';
+      return {
+        stayTitle: pricedItem?.stayTitle ?? 'Séjour',
+        sessionLabel,
+        childName: childName || 'Participant',
+        amountLabel: pricedItem ? formatEuroFromCents(pricedItem.totalPriceCents) : null
+      };
+    });
+
+    void sendReservationNotificationEmails({
+      orderId: order.id,
+      organizerId,
+      organizerName: organizerSettings.name,
+      organizerEmail: organizerSettings.contact_email,
+      familyEmail: effectiveContact.email,
+      contact: effectiveContact,
+      paymentMode: effectiveContact.paymentMode,
+      requestKind,
+      isPartnerManualQuote: Boolean(organizerPricing.financeRequiresQuote),
+      lines: notificationLines,
+      organizerAcceptsAncvPaper: organizerSettings.accepts_ancv_paper,
+      organizerAcceptsAncvConnect: organizerSettings.accepts_ancv_connect,
+      organizerIsVacafApproved: organizerSettings.is_vacaf_approved,
+      stayCafEligible: true,
+      ancvPaperMailingAddress: organizerSettings.ancv_paper_mailing_address ?? null
+    }).catch((error) => {
+      console.error('checkout: envoi emails réservation échoué', error);
+    });
+
     groupResults.push({
       organizerId,
       organizerName: organizerSettings.name,
@@ -969,23 +1037,39 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
       ? createMoneticoBatchReference(input.checkoutId)
       : createMoneticoReference(input.checkoutId, primaryGroup.orderId);
   const transactionId = createMoneticoMockTransactionId(input.checkoutId, primaryOnlineGroup.paymentId);
-  const moneticoPayload = await createProviderPayload({
-    checkoutId: input.checkoutId,
-    orderId: primaryOnlineGroup.orderId,
-    paymentId: primaryOnlineGroup.paymentId,
-    reference,
-    transactionId,
-    amountCents: onlineGroups.reduce((sum, group) => sum + group.immediatePaymentAmountCents, 0),
-    currency: pricing.currency,
-    customerEmail: input.contact.email,
-    billingFirstName: input.contact.billingFirstName,
-    billingLastName: input.contact.billingLastName,
-    merchantCustomerId: clientUserId
-  });
-  const providerTransactionId =
-    (moneticoPayload as { transId?: string }).transId || moneticoPayload.transactionId || transactionId;
+  const onlineAmountCents = onlineGroups.reduce((sum, group) => sum + group.immediatePaymentAmountCents, 0);
   const allOrderIds = groupResults.map((group) => group.orderId);
   const allPaymentIds = groupResults.map((group) => group.paymentId);
+
+  // VACAF / ANCV / différé : pas de TPE — ne pas appeler Axepta/Monetico (évite erreurs config post-création).
+  const moneticoPayload =
+    onlineAmountCents > 0
+      ? await createProviderPayload({
+          checkoutId: input.checkoutId,
+          orderId: primaryOnlineGroup.orderId,
+          paymentId: primaryOnlineGroup.paymentId,
+          reference,
+          transactionId,
+          amountCents: onlineAmountCents,
+          currency: pricing.currency,
+          customerEmail: input.contact.email,
+          billingFirstName: input.contact.billingFirstName,
+          billingLastName: input.contact.billingLastName,
+          merchantCustomerId: clientUserId
+        })
+      : ({
+          provider: 'monetico' as const,
+          mode: 'mock' as const,
+          reference,
+          transactionId,
+          paymentUrl: `/checkout/confirmation/${primaryGroup.orderId}`,
+          testMode: true,
+          formMethod: 'POST' as const,
+          formFields: {}
+        } satisfies MoneticoPayload & { provider: 'monetico' });
+
+  const providerTransactionId =
+    (moneticoPayload as { transId?: string }).transId || moneticoPayload.transactionId || transactionId;
 
   for (const group of groupResults) {
     const shouldAttachMonetico = group.immediatePaymentAmountCents > 0;

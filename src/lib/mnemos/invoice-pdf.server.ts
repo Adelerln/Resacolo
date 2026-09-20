@@ -4,7 +4,7 @@ import { readFile } from 'fs/promises';
 import { join } from 'path';
 import { deflateSync, inflateSync } from 'zlib';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { RESACOLO_COMPANY } from '@/lib/resacolo-company';
+import { RESACOLO_COMPANY, RESACOLO_INVOICE_LATE_PAYMENT_MENTIONS } from '@/lib/resacolo-company';
 import { formatOrderReservationCode } from '@/lib/order-workflow';
 import { formatMnemosLedgerChannel } from '@/lib/mnemos-display';
 import type { Database } from '@/types/supabase';
@@ -477,11 +477,13 @@ function renderInvoicePdf(input: MnemosInvoicePdfInput, logo: PdfImage | null, f
   page.text('TOTAL TTC', 380, vatBoxY - 44, { size: 11, font: 'bold' });
   page.text(euros(totalCents), 545, vatBoxY - 44, { size: 11, font: 'bold', align: 'right' });
 
-  page.text('IBAN : FR76 1027 8023 3700 0202 7370 255', 40, 120, { size: 9 });
-  page.text('BIC : CMCIFR2A', 40, 106, { size: 9 });
-  page.line(40, 88, 555, 88);
-  page.text('Resacolo, SAS à associé unique au capital de 1 000 EUR, domiciliée au 24/26 rue Bichat 75010 PARIS', 40, 70, { size: 8 });
-  page.text('SIRET N° 904 862 158 00014 | Code APE 6311Z | TVA intracommunautaire n° FR67904862158', 40, 56, { size: 8 });
+  page.text('IBAN : FR76 1027 8023 3700 0202 7370 255', 40, 136, { size: 9 });
+  page.text('BIC : CMCIFR2A', 40, 122, { size: 9 });
+  page.text(RESACOLO_INVOICE_LATE_PAYMENT_MENTIONS[0], 40, 104, { size: 7, color: '0.35 0.38 0.42' });
+  page.text(RESACOLO_INVOICE_LATE_PAYMENT_MENTIONS[1], 40, 92, { size: 7, color: '0.35 0.38 0.42' });
+  page.line(40, 82, 555, 82);
+  page.text('Resacolo, SAS à associé unique au capital de 1 000 EUR, domiciliée au 24/26 rue Bichat 75010 PARIS', 40, 66, { size: 8 });
+  page.text('SIRET N° 904 862 158 00014 | Code APE 6311Z | TVA intracommunautaire n° FR67904862158', 40, 52, { size: 8 });
 
   return buildPdf([page.stream()], logo ? [logo] : [], fonts);
 }
@@ -611,17 +613,19 @@ function renderClientTravelInvoicePdf(
   }
 
   page.line(36, footerTop, 559, footerTop, '0.88 0.90 0.93');
+  page.text(RESACOLO_INVOICE_LATE_PAYMENT_MENTIONS[0], 40, 84, { size: 6.5, color: '0.35 0.38 0.42' });
+  page.text(RESACOLO_INVOICE_LATE_PAYMENT_MENTIONS[1], 40, 72, { size: 6.5, color: '0.35 0.38 0.42' });
   page.text(
     `${RESACOLO_COMPANY.legalName}, ${RESACOLO_COMPANY.legalForm} au capital de ${RESACOLO_COMPANY.shareCapitalLabel}, ${RESACOLO_COMPANY.addressLine1}, ${RESACOLO_COMPANY.postalCode} ${RESACOLO_COMPANY.city.toUpperCase()}`,
     40,
-    78,
-    { size: 7.5, color: '0.35 0.38 0.42' }
+    56,
+    { size: 7, color: '0.35 0.38 0.42' }
   );
   page.text(
     `RCS ${RESACOLO_COMPANY.rcsCity.toUpperCase()} ${RESACOLO_COMPANY.rcsNumber} | SIRET ${RESACOLO_COMPANY.siret} | TVA ${RESACOLO_COMPANY.vatNumber} | Atout France ${RESACOLO_COMPANY.atoutFranceRegistration}`,
     40,
-    64,
-    { size: 7.5, color: '0.35 0.38 0.42' }
+    44,
+    { size: 7, color: '0.35 0.38 0.42' }
   );
 
   return buildPdf([page.stream()], logo ? [logo] : [], fonts);

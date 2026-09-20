@@ -180,6 +180,17 @@ export async function detachFamilyCseAffiliation() {
   });
 }
 
+export async function inviteFamilyMember(input: {
+  email: string;
+  firstName?: string;
+  lastName?: string;
+}) {
+  return fetchJson<{ ok: true; email: string; userId: string | null }>('/api/account/invite', {
+    method: 'POST',
+    body: JSON.stringify(input)
+  });
+}
+
 export async function createOrderBalancePaymentIntent(
   orderId: string,
   options?: { amountCents?: number | null; amountEuros?: number | string | null }

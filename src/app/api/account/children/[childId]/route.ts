@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getSession } from '@/lib/auth/session';
 import { deleteFamilyChild, updateFamilyChild } from '@/lib/account-children.server';
+import { getApiErrorMessage } from '@/lib/checkout/api';
 
 const childPayloadSchema = z.object({
   firstName: z.string().trim().min(1, 'Prénom requis.'),
@@ -11,13 +12,13 @@ const childPayloadSchema = z.object({
   additionalInfo: z.string().trim().optional().default('')
 });
 
-function getApiErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : 'Erreur inconnue.';
+function canManageFamilyChildren(session: Awaited<ReturnType<typeof getSession>>) {
+  return Boolean(session && (session.role === 'CLIENT' || session.isClient));
 }
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ childId: string }> }) {
   const session = await getSession();
-  if (!session || session.role !== 'CLIENT') {
+  if (!canManageFamilyChildren(session)) {
     return NextResponse.json({ error: 'AUTH_REQUIRED' }, { status: 401 });
   }
 
@@ -25,7 +26,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ childI
     const { childId } = await params;
     const body = z.object({ child: childPayloadSchema }).parse(await req.json());
     const child = await updateFamilyChild({
-      userId: session.userId,
+      userId: session!.userId,
       childId,
       child: body.child
     });
@@ -37,14 +38,14 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ childI
 
 export async function DELETE(_: Request, { params }: { params: Promise<{ childId: string }> }) {
   const session = await getSession();
-  if (!session || session.role !== 'CLIENT') {
+  if (!canManageFamilyChildren(session)) {
     return NextResponse.json({ error: 'AUTH_REQUIRED' }, { status: 401 });
   }
 
   try {
     const { childId } = await params;
     await deleteFamilyChild({
-      userId: session.userId,
+      userId: session!.userId,
       childId
     });
     return NextResponse.json({ ok: true });

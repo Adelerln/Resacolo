@@ -1,0 +1,1073 @@
+"id","order_id","address_type","first_name","last_name","company","address_1","address_2","city","state","postcode","country","email","phone"
+"1","242057","billing","Aurélie","Mercier",NULL,"114 RUE GEORGES BRASSENS",NULL,"Merville",NULL,"31330",NULL,"aurelie.mercier1987@gmail.com","0622119396"
+"2","242423","billing","Bénédicte","REFFAY",NULL,"2 av François Mitterand APPTF108",NULL,"CUGNAUX",NULL,"31270",NULL,"benedicte.reffay@gmail.com","0663908635"
+"3","242463","billing","Hélène","Haritchabalet",NULL,"19 rue germinal",NULL,"Balma",NULL,"31130",NULL,"helene.haritchabalet@orange.fr","0679642396"
+"4","242570","billing","Catherine","Volkov",NULL,"94 avenue Pierre SEMARD",NULL,"St Maur des fossés",NULL,"94210",NULL,"catherinevolkov@yahoo.fr","0652802895"
+"5","242817","billing","Emilie","Darme",NULL,"1 RUE SAINTE-VICTOIRE",NULL,"13710 - FUVEAU",NULL,"13710",NULL,"darme.emilie.79@gmail.com","+33618460182"
+"6","242818","billing","Emilie","Darme",NULL,"1 RUE SAINTE-VICTOIRE",NULL,"13710 - FUVEAU",NULL,"13710",NULL,"darme.emilie.79@gmail.com","+33618460182"
+"7","242819","billing","Emilie","Darme",NULL,"1 RUE SAINTE-VICTOIRE",NULL,"13710 - FUVEAU",NULL,"13710",NULL,"darme.emilie.79@gmail.com","+33618460182"
+"8","243177","billing","Carine","LEFOL",NULL,"1355 Chemin de la Cordelière",NULL,"Saint Lattier",NULL,"38840",NULL,"carine.lefol@gmail.com","0603354212"
+"9","243247","billing","Martine","SOUET",NULL,"92 rue Edouard Vaillant",NULL,"VILLEURBANNE",NULL,"69100",NULL,"martine.souet@gmail.com","0682150293"
+"10","243248","billing","Martine","SOUET",NULL,"92 rue Edouard Vaillant",NULL,"VILLEURBANNE",NULL,"69100",NULL,"martine.souet@gmail.com","0682150293"
+"11","244417","billing","Michael","Derache",NULL,"6 Impasse de l'Orme",NULL,"Longecourt-en-Plaine",NULL,"21110",NULL,"michael.derache@laposte.net","0662510741"
+"12","244431","billing","jerome","DERACHE",NULL,"15 rue du pré galant",NULL,"JEU LES BOIS",NULL,"36120",NULL,"jeje.derache@laposte.net","0629390543"
+"13","244457","billing","Alexandre","Trémon",NULL,"Saint Assiscle",NULL,"Avignonet-Lauragais",NULL,"31290",NULL,"axtremon@yahoo.fr","0617505753"
+"14","244501","billing","KOuassi N'guessage Joël","KOUAKOU",NULL,"1b Place du 11 Novembre 1918",NULL,"Les Mureaux",NULL,"78130",NULL,"joel_kouak@yahoo.fr","0751935934"
+"15","244538","billing","Julien","Moreau",NULL,"226 Boulevard du Président Wilson",NULL,"Bordeaux",NULL,"33000",NULL,"julien.moreau@gmail.com","0682225949"
+"16","244541","billing","Marc","Le scour",NULL,"9 impasse des chenes",NULL,"Saint clar de riviere",NULL,"31600",NULL,"mlescour@club-internet.fr","0645741668"
+"17","244542","billing","Pierre","Hébrard-capdeville",NULL,"7 quai Lucien Lombard",NULL,"TOULOUSE",NULL,"31000",NULL,"pierre.hebrard-capdeville@enac.fr","0601014807"
+"18","244547","billing","MAHDI","BELAID",NULL,"46 RUE LAFFITTE",NULL,"PARIS",NULL,"75009",NULL,"mahdi.belaid@gmail.com","0672889325"
+"19","244548","billing","Christelle","Robert",NULL,"118 rue Molière",NULL,"Montreuil",NULL,"93100",NULL,"christelle.robert@gmail.com","0646471214"
+"20","244549","billing","ANGELIQUE","ROBIN",NULL,"RUE DU PARADIS",NULL,"CHALAMONT",NULL,"01320",NULL,"angelique.robin@orange.fr","0612883431"
+"21","244551","billing","Viviane","BAROLLO",NULL,"27 rue des chênes",NULL,"LHERM",NULL,"31600",NULL,"viviane.barollo@sfr.fr","0612494044"
+"22","244580","billing","Christelle","BODIT",NULL,"9 PLACE DE L'EUROPE",NULL,"VILLEFRANCHE DE LAURAGAIS",NULL,"31290",NULL,"christelle.bodit@gmail.com","0651819143"
+"23","244581","billing","Olivier","LEGLISE",NULL,"2133 route de Toulouse",NULL,"BERAT",NULL,"31370",NULL,"emekino@orange.fr","0682281046"
+"24","244607","billing","Carine","Manouvrier",NULL,"13 rue du vieux moulin",NULL,"Cugnaux",NULL,"31270",NULL,"c.theuret@laposte.net","0698408393"
+"25","244629","billing","BERTIN","GISELE",NULL,"135 RUE DANTON",NULL,"RUEIL-MALMAISON",NULL,"92500",NULL,"gisele.bertin@aviation-civile.gouv.fr","0682945862"
+"26","244645","billing","nathalie","CHAPRON-SFORZA",NULL,"6 rue du vieux four",NULL,"SONNAC",NULL,"17160",NULL,"nathaliechapronsforza@orange.fe","0645390461"
+"27","244648","billing","Nathalie","Eldin-Boyet",NULL,"33 rue du bel air",NULL,"Mennecy",NULL,"91540",NULL,"nathalieeldin@gmail.com","0662163122"
+"28","244649","billing","patrick","NOTERMAN",NULL,"1029 Route de Mimet 13109 Simiane-Collongue",NULL,"Simiane-Collongue",NULL,"13109",NULL,"patrick.noterman@wanadoo.fr","0652138582"
+"29","244651","billing","Elisa","Jutisz-Jacquart",NULL,"7 lotissement les iris",NULL,"L'Isle-sur-la-Sorgue",NULL,"84800",NULL,"elisa.jutisz@hotmail.com","0668066151"
+"30","244653","billing","Karine","Merour",NULL,"27 bis rue de Cornouaille",NULL,"Plougastel-Daoulas",NULL,"29470",NULL,"karine.merour@gmail.com","0662233052"
+"31","244656","billing","VINCENT","HYPPOLITE",NULL,"10 RUE GOUNOD",NULL,"DRAVEIL",NULL,"91210",NULL,"caleclercq@yahoo.fr","0609407886"
+"32","244706","billing","olivier","martinez",NULL,"7 rue corps francs pommies",NULL,"Tournefeuille",NULL,"31170",NULL,"olmartine@lilo.org","0561862803"
+"33","244710","billing","David","Fernandez",NULL,"107 impasse du Narbounes",NULL,"Salon de Provence",NULL,"13300",NULL,"be-blob-a-lula@hotmail.Fr","0699077962"
+"34","244711","billing","David","Fernandez",NULL,"107 impasse du Narbounes",NULL,"Salon de Provence",NULL,"13300",NULL,"be-blob-a-lula@hotmail.Fr","0699077962"
+"35","244712","billing","Arnaud","Paugam",NULL,"501 route de Tolvon",NULL,"Saint Etienne de Crossey",NULL,"38960",NULL,"arnaud.paugam@gmail.com","0681099706"
+"36","244747","billing","Les Roseaux","AAE",NULL,"59 Route de Furnes",NULL,"Coudekerque-Branche",NULL,"59210",NULL,"lesroseaux@aaedk.org","0328631500"
+"37","244790","billing","Evgenia","SAMCHENKO",NULL,"122 b route de Carrieres",NULL,"Chatou",NULL,"78400",NULL,"evgenia.samchenko@hotmail.Com","0678926762"
+"38","244792","billing","Evgenia","Houguenade",NULL,"122 b route de Carrieres",NULL,"Chatou",NULL,"78400",NULL,"evgenia.samchenko@hotmail.Com","0678926762"
+"39","244793","billing","Evgenia","Houguenade",NULL,"122 b route de Carrieres",NULL,"Chatou",NULL,"78400",NULL,"evgenia.samchenko@hotmail.Com","0678926762"
+"40","245202","billing","Lucie","Gonard",NULL,"13 rue des camélias",NULL,"Plaisance du Touch",NULL,"31830",NULL,"lucie.gonard@free.fr","0680366554"
+"41","245206","billing","Gisèle","BERTIN",NULL,"135 RUE DANTON",NULL,"RUEIL-MALMAISON",NULL,"92500",NULL,"sitra14@free.fr","0682945862"
+"42","245214","billing","Lucie","Gonard",NULL,"13 rue des camélias",NULL,"Plaisance du Touch",NULL,"31830",NULL,"lucie.gonard@free.fr","0680366554"
+"43","245235","billing","Vanessa","Boileau",NULL,"9 rue des adrets",NULL,"Unieux",NULL,"42240",NULL,"vanessa_lili@yahoo.fr","0768806142"
+"44","245236","billing","Vanessa","Boileau",NULL,"9 rue des adrets",NULL,"Unieux",NULL,"42240",NULL,"vanessa_lili@yahoo.fr","0768806142"
+"45","245237","billing","Nathalie","Gellereau",NULL,"11 rue Madeleine",NULL,"La Varenne Saint Hilaire",NULL,"94210",NULL,"nathaliepetitjean@ymail.com","0609416673"
+"46","245242","billing","léna","HAMDI",NULL,"10 lotissement le coteau",NULL,"SORBIERS",NULL,"42290",NULL,"lilou3006@yahoo.fr","0629413828"
+"47","245244","billing","Carine","BERSAT",NULL,"185 lotissement les solariales",NULL,"33260 - LA TESTE DE BUCH",NULL,"33260",NULL,"erma.bersat@groupecharbonnier.fr","0609776029"
+"48","245434","billing","Célia","TIXIER",NULL,"2 place du château",NULL,"LYON",NULL,"69003",NULL,"celia.tixier@laposte.net","0673396047"
+"49","245514","billing","Matthieu","BAYLES LORETTI",NULL,"332 chemin des cretes",NULL,"CLERMONT LE FORT",NULL,"31810",NULL,"matthieu.bayles-loretti@enac.fr","0618503831"
+"50","245535","billing","Sabrina","BLANC",NULL,"110 av Jean bartolini",NULL,"LA SEYNE SUR MER",NULL,"83500",NULL,"sab8350@live.fr","+33749860442"
+"51","245556","billing","benaiche","pascal",NULL,"115 rue de reuilly",NULL,"paris",NULL,"75012",NULL,"benpas1972@live.fr","0611454240"
+"52","245560","billing","Melanie","Roesch",NULL,"41 Bd des promenades",NULL,"St Amans Soult",NULL,"81240",NULL,"mel.amaral@yahoo.com","0652719495"
+"53","245564","billing","Anne-Sophie","Jacquemin",NULL,"10 Voie de la Croix",NULL,"Pont-Sainte-Marie",NULL,"10150",NULL,"asjacquemin@hotmail.fr","+33621265248"
+"54","245565","billing","My-Chanh","MACH",NULL,"14, rue du général de Gaulle, escalier 4",NULL,"Châtenay-Malabry",NULL,"92290",NULL,"barale.mach@gmail.com","0670291020"
+"55","245567","billing","Aurélie","Bioche",NULL,"222 avenue maurice Berteaux",NULL,"SARTROUVILLE",NULL,"78500",NULL,"aurelie.bioche@gmail.com","0626112647"
+"56","245574","billing","MATHIEU","LEMARIE",NULL,"53 RUE DES RIGOLES",NULL,"PARIS",NULL,"75020",NULL,"mathieu.lemarie@yahoo.fr","0663480226"
+"57","245578","billing","Philippe","Mazet",NULL,"17 rue d'Assas",NULL,"Paris",NULL,"75006",NULL,"Mazetphilippe@yahoo.fr","0661787976"
+"58","245594","billing","FONTEAU","Nathalie",NULL,"45 rue Des Carnets",NULL,"CLAMART",NULL,"92140",NULL,"nath.f1492@gmail.com","0661467742"
+"59","245595","billing","FONTEAU","Nathalie",NULL,"45 rue Des Carnets",NULL,"CLAMART",NULL,"92140",NULL,"nath.f1492@gmail.com","0661467742"
+"60","245598","billing","Ségolène","Chatillon",NULL,"6 Impasse Camille Desmoulins",NULL,"Palaiseau",NULL,"91120",NULL,"segolenevalente@hotmail.com","0664486653"
+"61","245814","billing","Laurent","THOMAS",NULL,"21 b chemin de maintenue",NULL,"Saint-Germain au mont d'or",NULL,"69650",NULL,"laurent_thomas@hotmail.com","+33661885665"
+"62","245903","billing","bettina","guidjali",NULL,"24 rue des beauregards",NULL,"breuil bois robert",NULL,"78930",NULL,"bettinoush@hotmail.com","0610150661"
+"63","245924","billing","Alice","Sztendera",NULL,"1 rue de l'Egalité",NULL,"Signes",NULL,"83870",NULL,"lemoine.alice@gmail.com","0610393398"
+"64","246556","billing","Samira","EL HADDAD",NULL,"12 avenue du Château",NULL,"MORANGIS",NULL,"91420",NULL,"samira.el-haddad@aviation-civile.gouv.fr","06 16 56 78 18"
+"65","246561","billing","sonia","meziane",NULL,"2 impasse de la voie romaine",NULL,"montereau fault yonne",NULL,"77130",NULL,"sonia.mezianee@icloud.com","0601096589"
+"66","246562","billing","Marie","BELLONE-ANGIONI",NULL,"RESIDENCE LE CEZANNE BAT B3 - 55 AVENUE DES AIRES",NULL,"GARDANNE",NULL,"13120",NULL,"beatrice.bellone@laposte.net","0612542196"
+"67","246563","billing","Marie","BELLONE-ANGIONI",NULL,"RESIDENCE LE CEZANNE BAT B3 - 55 AVENUE DES AIRES",NULL,"GARDANNE",NULL,"13120",NULL,"beatrice.bellone@laposte.net","0612542196"
+"68","246572","billing","Marie","BELLONE-ANGIONI",NULL,"RESIDENCE LE CEZANNE BAT B3 - 55 AVENUE DES AIRES",NULL,"GARDANNE",NULL,"13120",NULL,"beatrice.bellone@laposte.net","0612542196"
+"69","246613","billing","Marie","BELLONE-ANGIONI",NULL,"RESIDENCE LE CEZANNE BAT B3 - 55 AVENUE DES AIRES",NULL,"GARDANNE",NULL,"13120",NULL,"beatrice.bellone@laposte.net","0612542196"
+"70","246640","billing","Thierry","Lefort",NULL,"3 impasse darboussier",NULL,"Toulouse",NULL,"31100",NULL,"jinquxiaomei@hotmail.com","+33661318249"
+"71","246652","billing","Christian","Fleury",NULL,"8 rue du bocage",NULL,"Leguevin",NULL,"31490",NULL,"christianfly@free.fr","0625164420"
+"72","249388","billing","Lionel","GALLIERE",NULL,"10 chemin d'avalix",NULL,"SAINT NAZAIRE",NULL,"44600",NULL,"lgalliere@netcourrier.com","0673864566"
+"73","250894","billing","Marie","BELLONE-ANGIONI",NULL,"RESIDENCE LE CEZANNE BAT B3 - 55 AVENUE DES AIRES",NULL,"GARDANNE",NULL,"13120",NULL,"beatrice.bellone@laposte.net","0612542196"
+"74","250896","billing","Olivier","BORELY",NULL,"57 avenue du Maine",NULL,"Paris",NULL,"75014",NULL,"olivier.borely@gmail.com","0621768962"
+"75","250960","billing","Jeremy","Gobardhan",NULL,"8 rue Jean Jacques Rousseau",NULL,"Alfortville",NULL,"94140",NULL,"gobardhan.jeremy@hotmail.fr","0664973797"
+"76","250968","billing","Jeremy","Gobardhan",NULL,"8 rue Jean Jacques Rousseau",NULL,"Alfortville",NULL,"94140",NULL,"gobardhan.jeremy@hotmail.fr","0664973797"
+"77","251893","billing","ALICE","GLOAGUEN",NULL,"16 AVENUE BALCON DE LA SOULANE",NULL,"BOLQUERE",NULL,"66210",NULL,"alice_gloaguen@live.fr","0761327717"
+"78","251894","billing","Deborah","Gnech",NULL,"14 place de l eglise",NULL,"Puisserguier",NULL,"34620",NULL,"deborah.gnech@gmail.com","0760075496"
+"79","251895","billing","Ophelie","Bogni",NULL,"80 Impasse Raimu",NULL,"MANDELIEU LA NAPOULE",NULL,"06210",NULL,"ophelie.bogni15@gmail.com","+33658706044"
+"80","251921","billing","Christelle","Robert",NULL,"118 rue Molière",NULL,"Montreuil",NULL,"93100",NULL,"christelle.robert@gmail.com","0646471214"
+"81","252055","billing","Marie","Couchy",NULL,"46A ancien chemin de lasserre",NULL,"Pibrac",NULL,"31820",NULL,"marie1405@gmail.com","0623676154"
+"82","252056","billing","Marie","Couchy",NULL,"46A ancien chemin de lasserre",NULL,"Pibrac",NULL,"31820",NULL,"marie1405@gmail.com","0623676154"
+"83","252079","billing","DAVID","FELICIE",NULL,"146, Avenue Camille Laverdure",NULL,"Fosses",NULL,"95470",NULL,"david.felicie@gmail.com","+33627598185"
+"84","252368","billing","Patricia","ELO--GUILMARD",NULL,"205 Chemin de la Piscine Bâtiment A Appartement 102",NULL,"CESSY",NULL,"01170",NULL,"patriciaguilmard@hotmail.fr","+33673799336"
+"85","252389","billing","Quentin","BEILLARD",NULL,"123 rue du Billoir",NULL,"Savigny sur Orge",NULL,"91600",NULL,"quentin.beillard@aviation-civile.gouv.fr","0642495247"
+"86","252404","billing","Patricia","GUILMARD",NULL,"205 Chemin de la Piscine Bâtiment A Appartement 102",NULL,"CESSY",NULL,"01170",NULL,"patriciaguilmard@hotmail.fr","+33673799336"
+"87","252434","billing","Jean-Gabriel","HANNE",NULL,"27 rue Jean MICOUD",NULL,"Toulouse",NULL,"31500",NULL,"jghanne@gmail.com","0671260222"
+"88","252465","billing","Aurélie","Mercier",NULL,"114 RUE GEORGES BRASSENS",NULL,"Merville",NULL,"31330",NULL,"aurelie.mercier1987@gmail.com","0622119396"
+"89","252475","billing","Sophie","BAUM LE VARLET",NULL,"32 Clos des Cascades",NULL,"NOISY LE GRAND",NULL,"93160",NULL,"sblv0609@gmail.com","0698452020"
+"90","252476","billing","jessica","guennec",NULL,"12 route de la cave",NULL,"BEAUPUY",NULL,"47200",NULL,"j.sillet@icloud.com","0626315518"
+"91","252479","billing","John","HILAIRE",NULL,"14 rue Georges Bizet",NULL,"ANDRESY",NULL,"78570",NULL,"hilairejohn@orange.fr","0760838337"
+"92","252504","billing","Angela","Joly",NULL,"1450 route de castellane",NULL,"Thorenc",NULL,"06750",NULL,"ajoly@departement06.fr","+33663541905"
+"93","252561","billing","Lucie","Cheng Royer",NULL,"4 bis rue Henri Vel Durand",NULL,"Joinville le Pont",NULL,"94340",NULL,"lucie.cheng@gmail.com","0660524885"
+"94","252562","billing","Lucie","Cheng Royer",NULL,"4 bis rue Henri Vel Durand",NULL,"Joinville le Pont",NULL,"94340",NULL,"lucie.cheng@gmail.com","0660524885"
+"95","252574","billing","John","HILAIRE",NULL,"14 rue Georges Bizet",NULL,"ANDRESY",NULL,"78570",NULL,"hilairejohn@orange.fr","0760838337"
+"96","252575","billing","Matthieu","BAYLES LORETTI",NULL,"332 chemin des cretes",NULL,"CLERMONT LE FORT",NULL,"31810",NULL,"matthieu.bayles-loretti@enac.fr","0618503831"
+"97","252576","billing","Nathalie","FOURGEAUD",NULL,"38 rue du Prieuré",NULL,"Conflans-Sainte-Honorine",NULL,"78700",NULL,"nfourgeaud@hotmail.fr","0603307849"
+"98","252577","billing","CELINE","TOUZARD",NULL,"22",NULL,"MONTROUGE",NULL,"92120",NULL,"touzardce@yahoo.fr","0662727315"
+"99","252578","billing","Frédéric","COSTES",NULL,"12 Rue de l'Emporium",NULL,"Saint-Sulpice-la-Pointe",NULL,"81370",NULL,"frederic.costes@hotmail.fr","0671613824"
+"100","252580","billing","Catherine","Loth",NULL,"37 bis rue du maréchal foch",NULL,"Saint Geneviève des bois",NULL,"91700",NULL,"loth.catherine@neuf.fr","0601801684"
+"101","252581","billing","Mohammed","Sbihi",NULL,"30 rue du Faubourg Poissonnière",NULL,"Paris",NULL,"75010",NULL,"medsbihi@yahoo.fr","0608928330"
+"102","252582","billing","mylene","naigre bronde",NULL,"residence aviation civile Dugazon",NULL,"Les Abymes",NULL,"97139",NULL,"mylbre@gmail.com","0669588905"
+"103","252583","billing","Gaëlle","Ménielle",NULL,"8 rue Louis Chiron",NULL,"Dorlisheim",NULL,"67120",NULL,"gaelle.menielle@aviation-civile.gouv.fr","0689464432"
+"104","252584","billing","VINCENT","LEMAIRE",NULL,"5 ALLEE DES PEUPLIERS",NULL,"SAINTE FOY D'AIGREFEUILLE",NULL,"31570",NULL,"lem.vince31@free.fr","0603511597"
+"105","252585","billing","Maryse","DEBUCHY",NULL,"6 rue Maurice Champeau",NULL,"Issy les Moulineaux",NULL,"92130",NULL,"patrick.debuchy@free.fr","0614161382"
+"106","252754","billing","Cecile","Balle",NULL,"27 rue Albert Varnet",NULL,"Valence",NULL,"26000",NULL,"cballecourpron@gmail.com","0652562393"
+"107","252786","billing","Olivier","ETIENNE",NULL,"74 Rue D Angiviller",NULL,"RAMBOUILLET",NULL,"78120",NULL,"oetienne@orange.fr","06 84 43 28 48"
+"108","252787","billing","Pierre-Jean","MARROCQ",NULL,"50 BIS RUE BERNADETTE",NULL,"TOULOUSE",NULL,"31100",NULL,"pierrejean.marrocq@gmail.com","0641494277"
+"109","252788","billing","poli","anne laure",NULL,"59 avenue pey berland",NULL,"talence",NULL,"33400",NULL,"poliannelaure@yahoo.fr","0160031244"
+"110","252799","billing","Kheira","Boukhechba",NULL,"152 avenue de frais vallon, Bt B",NULL,"Marseille 13ème arrondissement",NULL,"13013",NULL,"kheira.bgs@gmail.com","0760867762"
+"111","252800","billing","Arnaud","Dauteuille",NULL,"42 rue vigneron",NULL,"CREPY",NULL,"02870",NULL,"dorivvaler@aol.com","0668449407"
+"112","252801","billing","CECILE","ALFONSI",NULL,"LYCEE HENRI DARRAS CHEMIN DES MANUFACTURES",NULL,"LIEVIN",NULL,"62800",NULL,"CECILE183@HOTMAIL.COM","0620821084"
+"113","252809","billing","Marie","Binon",NULL,"37 rue Gambetta",NULL,"Meaux",NULL,"77100",NULL,"marie_leroy94@hotmail.fr","0651003811"
+"114","252810","billing","Sandie","COLLEU",NULL,"2 rue les Hauts de Mérenvielle",NULL,"MERENVIELLE",NULL,"31530",NULL,"sandie.colleu@protonmail.com","0614227023"
+"115","252811","billing","Alexia","Moskura",NULL,"2?rue du château",NULL,"Villemandeur",NULL,"45700",NULL,"moskuralex@yahoo.fr","0688835652"
+"116","252812","billing","SERGE","RATSIMIALA",NULL,"4 rue fustel de Coulanges",NULL,"MASSY",NULL,"91300",NULL,"shc.ratsimiala@wanadoo.fr","0604051345"
+"117","252814","billing","Marie","Doreau",NULL,"1385 route d'Albi",NULL,"Bellegarde Marsal",NULL,"81430",NULL,"mariejeanne.doreau@gmail.fr","0688887195"
+"118","252816","billing","Christine","ANGOUANDE",NULL,"8 chemin du cap hail",NULL,"Mouledous",NULL,"65190",NULL,"pamelangouande@gmail.com","0617141076"
+"119","252836","billing","Sonia","De vlieger",NULL,"13 Rue de la Gare",NULL,"Tavaux-et-Pontséricourt",NULL,"02250",NULL,"sonia.devlieger@orange.fr","0674362929"
+"120","252850","billing","Michael","BIGOT",NULL,"Place de l'Amphore",NULL,"ISTRES",NULL,"13800",NULL,"michael.bigot@pm.me","0684189813"
+"121","252851","billing","Cécile","Phung",NULL,"3 avenue de Cheverny",NULL,"CARQUEFOU",NULL,"44470",NULL,"celedimeet@hotmail.com","+33663069044"
+"122","252855","billing","christophe","zimmer",NULL,"27 rue de la morandiere Apt D3 résidence Allée des magnolias",NULL,"le haillan",NULL,"33185",NULL,"christophe.zimmer@wanadoo.fr","0668244716"
+"123","252892","billing","Cécile","Croullebois",NULL,"64 Les Bessous",NULL,"Manses",NULL,"09500",NULL,"croullebois.nicolas@gmail.com","0632224312"
+"124","252896","billing","Anne-laure","Madelaine",NULL,"2716 route de croisonnaz",NULL,"Thusy",NULL,"74150",NULL,"nanou540@hotmail.fr","0618494717"
+"125","252897","billing","Chloé","COLLIN",NULL,"10 Bd Charles V",NULL,"NANCY",NULL,"54000",NULL,"chloe.collin@gmail.com","0685355595"
+"126","252898","billing","Florence","CERF",NULL,"7 chemin de bos",NULL,"Saint Médard en jalles",NULL,"33160",NULL,"flo_saumet@hotmail.fr","0660613691"
+"127","252899","billing","Florence","CERF",NULL,"7 chemin de bos",NULL,"Saint Médard en jalles",NULL,"33160",NULL,"flo_saumet@hotmail.fr","0660613691"
+"128","252900","billing","Florence","CERF",NULL,"7 chemin de bos",NULL,"Saint Médard en jalles",NULL,"33160",NULL,"flo_saumet@hotmail.fr","0660613691"
+"129","252902","billing","Celine","Rivera",NULL,"3 avenue Alsace Lorraine",NULL,"Eaubonne",NULL,"95600",NULL,"ainhoanazabal@hotmail.fr","0767240767"
+"130","252907","billing","Adila","HAMIMI",NULL,"6 Allée des Terrasses",NULL,"Torcy",NULL,"77200",NULL,"adila.hamimi1@ac-creteil.fr","0651685569"
+"131","252908","billing","LOUSTEAU","MAURINE",NULL,"10 rue du canal des 2 mers",NULL,"PECHABOU",NULL,"31320",NULL,"maurine.lousteau@gmail.com","0670956772"
+"132","252909","billing","LOUSTEAU","MAURINE",NULL,"10 rue du canal des 2 mers",NULL,"PECHABOU",NULL,"31320",NULL,"maurine.lousteau@gmail.com","0670956772"
+"133","252911","billing","Morgane","SIVERA",NULL,"16 chemin du vieux bourg",NULL,"Saint Didier au Mont d'Or",NULL,"69370",NULL,"morganesivera@hotmail.fr","0670984086"
+"134","252912","billing","Remy","Chouffot",NULL,"10 Allée de la Villa Antony",NULL,"94410 - ST MAURICE",NULL,"94410",NULL,"remy.chouffot@gmail.com","+33680873117"
+"135","252913","billing","Celine","Rivera",NULL,"3 avenue Alsace Lorraine",NULL,"Eaubonne",NULL,"95600",NULL,"ainhoanazabal@hotmail.fr","0767240767"
+"136","252914","billing","KARINE","RENARD",NULL,"37 BIS RUE PASTEUR",NULL,"SANNOIS",NULL,"95110",NULL,"karine.renard@aviation-civile.gouv.fr","0664543761"
+"137","252915","billing","Marion","Moalic",NULL,"41 rue Jules Ferry, Bât B",NULL,"Saint Maur des Fossés",NULL,"94100",NULL,"marion.moalic@bred.fr","+33628712496"
+"138","252916","billing","Sabine","NOEL",NULL,"17 Avenue Franklin Roosevelt",NULL,"La Ferté Sous Jouarre",NULL,"77260",NULL,"sabine.laloeuf@ac-creteil.fr","0687174500"
+"139","252932","billing","CYRILLE","RABILLARD",NULL,"82 avenue Pierre Lefaucheux",NULL,"BOULOGNE BILLANCOURT",NULL,"92100",NULL,"cyrillerabillard@yahoo.fr","0661756744"
+"140","252933","billing","KARINE","RENARD",NULL,"37 BIS RUE PASTEUR",NULL,"SANNOIS",NULL,"95110",NULL,"karine.renard@aviation-civile.gouv.fr","0664543761"
+"141","252934","billing","Angélique","Jagorel",NULL,"1 rue de biennouvienne",NULL,"Saint laurent la gatine",NULL,"28210",NULL,"Angelma75@gmail.com","0618101757"
+"142","252935","billing","Isabelle","Carrié",NULL,"2 rue de Gravigny",NULL,"Longjumeau",NULL,"91160",NULL,"ema.carrie12@gmail.com","0676306522"
+"143","252939","billing","Nicolas","Stein",NULL,"10, Rue Lançon",NULL,"Metz",NULL,"57000",NULL,"nicolas.stein71@gmail.com","0677445675"
+"144","252940","billing","Christelle","Boivin",NULL,"22",NULL,"romilly sur andelle",NULL,"27610",NULL,"christelleboivin5@gmail.com","0685327272"
+"145","252941","billing","muriel","beaujard",NULL,"12 rue blaise pascal",NULL,"Bordeaux",NULL,"33800",NULL,"pivoine.emoi@yahoo.fr","0625705247"
+"146","252942","billing","mylene","buathier",NULL,"2 plan de la fabrerie",NULL,"saint mathieu de treviers",NULL,"34270",NULL,"mylene.buathier@laposte.net","0664219861"
+"147","252943","billing","JEANNE D ARC","LOGONA",NULL,"25 Allée du Pré Mallard",NULL,"Chanteloup",NULL,"77600",NULL,"jeanne-d-arc.logona@bred.fr","+33622010808"
+"148","252945","billing","Amélie","DRIGET",NULL,"32 rue Gambetta",NULL,"54500 - VANDOEUVRE LES NANCY",NULL,"54500",NULL,"amelie.driget@gmail.com","0688885389"
+"149","252955","billing","Pierre","Engel",NULL,"33 Rue Gambetta",NULL,"Vandœuvre-lès-Nancy",NULL,"54500",NULL,"pierro_e@hotmail.com","+33607459363"
+"150","252957","billing","Antoine","de laage",NULL,"6 grande rue",NULL,"Mont Saint Aignan",NULL,"76130",NULL,"adlaage@gmail.com","0663618293"
+"151","252961","billing","Laure","BELLANGER",NULL,"365 route des Pradeaux",NULL,"24390 - CHERVEIX CUBAS",NULL,"24390",NULL,"bellangerlaure@yahoo.fr","0671085576"
+"152","252962","billing","Aide Sociale à l'Enfance","Morbihan",NULL,"6 rue Anita Conti BP 20514",NULL,"Vannes",NULL,"56000",NULL,"christian.danet@morbihan.fr","06 79 99 68 12"
+"153","252963","billing","Aide Sociale à l'Enfance","Morbihan",NULL,"6 rue Anita Conti BP 20514",NULL,"Vannes",NULL,"56000",NULL,"christian.danet@morbihan.fr","06 79 99 68 12"
+"154","252966","billing","Stéphanie","Kerbrat",NULL,"5 rue Marat",NULL,"Frouzins",NULL,"31270",NULL,"steph3144@gmail.com","0668903176"
+"155","252967","billing","Emmanuel","PY",NULL,"12 Rue Jean Jacques Juillac",NULL,"Talence",NULL,"33400",NULL,"py.elodie@neuf.fr","0033768444665"
+"156","252968","billing","Séverine","van TIL",NULL,"23 rue des Meuniers",NULL,"DOURDAN",NULL,"91410",NULL,"severine.vantil@gmail.com","0689344805"
+"157","252985","billing","Sebastien","Muraz",NULL,"1 Allée des Pinsons",NULL,"Aix en provence",NULL,"13080",NULL,"murazaurelie@gmail.com","0616735674"
+"158","252986","billing","Kathleen","Dunand",NULL,"738 rte de la roche sur foron",NULL,"La chapelle rambaud",NULL,"74800",NULL,"ket991@hotmail.fr","0778040768"
+"159","252987","billing","Sabrina","OUANELY",NULL,"Rue Amédée Fengarol",NULL,"Le Moule",NULL,"97160",NULL,"souanely@gmail.com","+590690836300"
+"160","252989","billing","Thierry","Rimbaud",NULL,"15 rue louis rouquier",NULL,"Levallois perret",NULL,"92300",NULL,"ilianrimbaud856@gmail.com","0652203609"
+"161","252990","billing","Sabrina","OUANELY",NULL,"Rue Amédée Fengarol",NULL,"Le Moule",NULL,"97160",NULL,"souanely@gmail.com","+590690836300"
+"162","252995","billing","Michael","BIGOT",NULL,"Place de l'Amphore",NULL,"ISTRES",NULL,"13800",NULL,"michael.bigot@pm.me","0684189813"
+"163","252996","billing","CLAIRE","DOIZON",NULL,"195 RUE DE VILLEVERT",NULL,"MARIGNY LES USAGES",NULL,"45760",NULL,"claire_doizon@yahoo.fr","0667694614"
+"164","252998","billing","christophe","pierre",NULL,"30 rue de l'avenir",NULL,"besançon",NULL,"25000",NULL,"christophepierre4792@free.fr","0685708978"
+"165","252999","billing","Philippe","MARC",NULL,"ROUTE DE PASCOUN",NULL,"ROUSSET (13)",NULL,"13790",NULL,"fontjuane@sfr.fr","+33682892734"
+"166","253000","billing","Jeanne d'Arc","Logona",NULL,"25 allée du pré mallard",NULL,"CHANTELOUP en brie",NULL,"77600",NULL,"logonakeylian@yahoo.fr","0622010808"
+"167","253001","billing","Elodie","NEGRE",NULL,"12 chemin de Hurguet",NULL,"MURET",NULL,"31600",NULL,"elodie-marie.negre@ac-toulouse.fr","0680552150"
+"168","253003","billing","Catherine","DEMANGE",NULL,"13 rue de l'abbaye de Clairlieu",NULL,"Villers-lès-Nancy",NULL,"54600",NULL,"demange.catherine@free.fr","0669355561"
+"169","253005","billing","ambroise","odi",NULL,"7 rue pierre de ronsard",NULL,"deuil la barre",NULL,"95170",NULL,"ambrozio@hotmail.fr","+33670323424"
+"170","253006","billing","Francis","Joulkva",NULL,"15 chemin du tartre",NULL,"Hery",NULL,"89550",NULL,"helenejoulkva@gmail.com","0611203037"
+"171","253007","billing","Marylene","CHITO",NULL,"15 allée du Port Larron",NULL,"BOUCHEMAINE",NULL,"49080",NULL,"marylene.chito@gmail.com","0610540570"
+"172","253008","billing","Delphine","Joseph",NULL,"4 rue francois gillet",NULL,"Lyon",NULL,"69003",NULL,"delphinejo73@gmail.com","+33634518857"
+"173","253009","billing","Vanessa","Maudet",NULL,"8 Lesonnais",NULL,"St Guyomard",NULL,"56460",NULL,"vanessa.maudet8@orange.fr","0616515328"
+"174","253010","billing","Estelle","Maudet",NULL,"18 rue des hêtres",NULL,"Saint guyomard",NULL,"56460",NULL,"estelle.maudet@orange.fr","0614769398"
+"175","253011","billing","Eugénie","Pestel",NULL,"17 rue Edouard Robert",NULL,"Arpajon",NULL,"91290",NULL,"eugenie.pestel@free.fr","0689934865"
+"176","253014","billing","Sandie","RAVONISON",NULL,"3, impasse Coluche - Appt 27",NULL,"Saint-Alban",NULL,"31140",NULL,"r.sandie@gmail.com","0624750644"
+"177","253015","billing","Séverine","Lévêque",NULL,"1 rue Ampère",NULL,"Saint-Nazaire",NULL,"44600",NULL,"severine.leveque@hotmail.fr","06.26.24.52.23"
+"178","253016","billing","CEDRIC","RENAUX",NULL,"26 RUE DU GUÉ",NULL,"Nanteuil-le-Haudouin",NULL,"60440",NULL,"cedric.renaux@aviation-civile.gouv.fr","+33609256710"
+"179","253017","billing","fleur","COLINEAU",NULL,"8 RUE PAUL FERRY",NULL,"PARMAIN",NULL,"95620",NULL,"fleur.colineau@ac-versailles.fr","0663739024"
+"180","253019","billing","JEAN MARC","SMAGGHE",NULL,"55 BIS avenue RAymond NAves",NULL,"Toulouse",NULL,"31500",NULL,"jmarcsmagghe@gmail.com","0667694476"
+"181","253020","billing","Christelle","Robert",NULL,"118 rue Molière",NULL,"Montreuil",NULL,"93100",NULL,"christelle.robert@gmail.com","0646471214"
+"182","253021","billing","fleur","COLINEAU",NULL,"8 RUE PAUL FERRY",NULL,"PARMAIN",NULL,"95620",NULL,"fleur.colineau@ac-versailles.fr","0663739024"
+"183","253049","billing","CATHERINE","DESFORGES",NULL,"13 RUE DES HUISSIERS",NULL,"NEUILLY SUR SEINE",NULL,"92200",NULL,"colombat.desforges@gmail.com","0686383279"
+"184","253112","billing","Yves","LE SAUX",NULL,"25 rue René Cassin",NULL,"MONTGERON",NULL,"91230",NULL,"y.lesaux@gmail.com","0626177218"
+"185","253113","billing","Nadine","Gomez",NULL,"107 Rue Marius Aufan",NULL,"LEVALLOIS PERRET",NULL,"92300",NULL,"phelia.gomez@gmail.com","0651530774"
+"186","253114","billing","Nadine","Gomez",NULL,"107 Rue Marius Aufan",NULL,"LEVALLOIS PERRET",NULL,"92300",NULL,"phelia.gomez@gmail.com","0651530774"
+"187","253117","billing","Yves","LE SAUX",NULL,"25 rue René Cassin",NULL,"MONTGERON",NULL,"91230",NULL,"y.lesaux@gmail.com","0626177218"
+"188","253118","billing","Nicolas","Lamballle",NULL,"6 rue des Pyrénées",NULL,"Saint Léon",NULL,"31560",NULL,"n_lamballe@yahoo.fr","0661954379"
+"189","253119","billing","antoine","DARGENT",NULL,"46 chemin du moulin",NULL,"HORNAINg",NULL,"59171",NULL,"dargentantoine@gmail.com","0783708273"
+"190","253122","billing","Marie louise","Sene",NULL,"49 avenue Georges Clemenceau",NULL,"ARGENTEUIL",NULL,"95100",NULL,"marielouisesene672@gmail.com","0624828947"
+"191","253132","billing","cecile","boivert",NULL,"18 Rue Haute",NULL,"MOUSSAN",NULL,"11120",NULL,"cessbk11@gmail.com","0606991922"
+"192","253166","billing","aude","amadon",NULL,"256 rue de la croix rose",NULL,"hermanville sur mer",NULL,"14880",NULL,"aaudefr@yahoo.fr","0620883983"
+"193","253177","billing","Marina","SIREIX",NULL,"17 rue des Piverts",NULL,"illzach",NULL,"68110",NULL,"marinasireix@gmail.com","+33675192526"
+"194","253178","billing","Emilie","Pincon",NULL,"9 rue des tournesols",NULL,"LA CHAPELLE LA REINE",NULL,"77760",NULL,"emily91820@orange.fr","+33658432624"
+"195","253180","billing","Philippe","Bassant",NULL,"11 Rue Du Pressoir",NULL,"Paris",NULL,"75020",NULL,"pbassant@gmail.com","0622194673"
+"196","253181","billing","Kausie","ADJAKLY",NULL,"41 RUE DU MARECHAL FOCH",NULL,"ANDRESY",NULL,"78570",NULL,"kausie.adjakly@gmail.com","0643323605"
+"197","253183","billing","karine","RICHARD",NULL,"6 RUE PIERRE BACHELET",NULL,"aix noulette",NULL,"62160",NULL,"karine6211@hotmail.fr","0677331386"
+"198","253196","billing","Laurence","De Pau",NULL,"5 rue de Versailles",NULL,"31120 - PORTET SUR GARONNE",NULL,"31120",NULL,"laulaudp31@gmail.com","+33611705568"
+"199","253197","billing","Sabrina","BAHOULI",NULL,"17 rue de Roubaix",NULL,"Nancy",NULL,"54000",NULL,"ssora251@gmail.com","+33667987617"
+"200","253204","billing","valérie","kocher",NULL,"443 avenue des chevreuils",NULL,"parentis en born",NULL,"40160",NULL,"valerie-kocher@orange.fr","0558785771"
+"201","253205","billing","Djeiny","Ba",NULL,"3 avenue des cosmonautes",NULL,"Palaiseau",NULL,"91120",NULL,"tiguide.kamara.01@gmail.com","0613139669"
+"202","253215","billing","Stoyanova","Petrana",NULL,"10 Rue Oscar Niemeyer",NULL,"Guyancourt",NULL,"78280",NULL,"petrana.stoyanova@yahoo.fr","0769566602"
+"203","253231","billing","Maryam","HOUSNI",NULL,"13 AVENUE MARCEL RAMOLFO GARNIER",NULL,"Massy",NULL,"91300",NULL,"maryam.housni@yahoo.com","0646480944"
+"204","253232","billing","Stoyanova","Petrana",NULL,"10 Rue Oscar Niemeyer",NULL,"Guyancourt",NULL,"78280",NULL,"petrana.stoyanova@yahoo.fr","0769566602"
+"205","253237","billing","Severine","Sorin",NULL,"127 rue de la republique",NULL,"SOLLIES PONT",NULL,"83210",NULL,"allanka@hotmail.fr","0646485581"
+"206","253238","billing","Lisa","Hodbert Meyer",NULL,"21 rue Eugène guillevic",NULL,"Bruz",NULL,"35170",NULL,"lisa.hodbertmeyer@gmail.com","0649455479"
+"207","253242","billing","Armel","Guclu-Tekneci",NULL,"5 square Raphaël",NULL,"Le chesnay",NULL,"78150",NULL,"armelg@hotmail.com","0671179522"
+"208","253306","billing","sylvain","sarrazin",NULL,"41 RUE D ARRAS",NULL,"GOUY SERVINS",NULL,"62530",NULL,"ssylvain1976@yahoo.fr","0766058058"
+"209","253362","billing","Géraldine","Michau",NULL,"3 cour Marie Noel",NULL,"Bussy saint Georges",NULL,"77600",NULL,"geraldine.michau@yahoo.fr","0635964063"
+"210","253381","billing","Bertrand","LAURO",NULL,"4 Rue de Bretagne",NULL,"CRETEIL",NULL,"94000",NULL,"bertrand.lauro@bred.fr","0623909623"
+"211","253387","billing","Lahcène","Ferguene",NULL,"5 place Nelson Mandela",NULL,"Chessy",NULL,"77700",NULL,"lahcene_fer@yahoo.fr","0699680239"
+"212","253388","billing","stephane","medus",NULL,"4 rue ninau",NULL,"TOULOUSE",NULL,"31000",NULL,"stephane.medus@gmail.com","0616154554"
+"213","253392","billing","Lucie","Cheng Royer",NULL,"4 bis rue Henri Vel Durand",NULL,"Joinville le Pont",NULL,"94340",NULL,"lucie.cheng@gmail.com","0660524885"
+"214","253560","billing","Belkacem","TLEMSANI",NULL,"1389 route de castelnau",NULL,"LE FOUSSERET",NULL,"31430",NULL,"b-tlemsani@orange.fr","0633940354"
+"215","253593","billing","Marie","BELLONE-ANGIONI",NULL,"RESIDENCE LE CEZANNE BAT B3 - 55 AVENUE DES AIRES",NULL,"GARDANNE",NULL,"13120",NULL,"beatrice.bellone@laposte.net","0612542196"
+"216","253596","billing","julien","trionnaire",NULL,"1 rue des vergers",NULL,"Carrieres sur seine",NULL,"78420",NULL,"julien.trionnaire@gmail.com","0625593273"
+"217","253597","billing","julien","trionnaire",NULL,"1 rue des vergers",NULL,"Carrieres sur seine",NULL,"78420",NULL,"julien.trionnaire@gmail.com","0625593273"
+"218","253606","billing","julien","trionnaire",NULL,"1 rue des vergers",NULL,"Carrieres sur seine",NULL,"78420",NULL,"julien.trionnaire@gmail.com","0625593273"
+"219","253607","billing","CLAIRE","MEILLAN",NULL,"102 Rue Pasteur",NULL,"FONTENAY-SOUS-BOIS",NULL,"94120",NULL,"claire.meillan@bred.fr","+33642773619"
+"220","253861","billing","Nadège","BURNS",NULL,"393 A bis la carraire des clos",NULL,"Seillons-source-d'Argens",NULL,"83470",NULL,"nadege.burns@hotmail.fr","0625739110"
+"221","254224","billing","Bénédicte","Bauzou",NULL,"Hameau La Coupiere",NULL,"Serres-sur-Arget",NULL,"09000",NULL,"benedicte.bauzou@orange.fr","+33664720705"
+"222","254365","billing","Adila","HAMIMI",NULL,"6 Allée des Terrasses",NULL,"Torcy",NULL,"77200",NULL,"adila.hamimi1@ac-creteil.fr","0651685569"
+"223","254366","billing","Nadia","LAIDOUNI",NULL,"18 rue des iles Gobet",NULL,"Torcy",NULL,"77200",NULL,"nadia.laidouni@yahoo.fr","0664570210"
+"224","254962","billing","Ludivine","Tribes",NULL,"19 rue jouet, A730",NULL,"Maisons-Alfort",NULL,"94700",NULL,"t-lu@hotmail.fr","+33611266448"
+"225","255563","billing","Belkacem","TLEMSANI",NULL,"1389 route de castelnau",NULL,"LE FOUSSERET",NULL,"31430",NULL,"b-tlemsani@orange.fr","0633940354"
+"226","255564","billing","Belkacem","TLEMSANI",NULL,"1389 route de castelnau",NULL,"LE FOUSSERET",NULL,"31430",NULL,"b-tlemsani@orange.fr","0633940354"
+"227","255574","billing","Belkacem","TLEMSANI",NULL,"1389 route de castelnau",NULL,"LE FOUSSERET",NULL,"31430",NULL,"b-tlemsani@orange.fr","0633940354"
+"228","255668","billing","Sonia","Sabour",NULL,"28 rue des Écoles",NULL,"Valenton",NULL,"94460",NULL,"sabour.sonia@hotmail.com","0621243681"
+"229","255904","billing","SABRINA","MESSARA",NULL,"46 RUE DEFRANCE",NULL,"VINCENNES",NULL,"94300",NULL,"messara.sabrina@gmail.com","+33650299620"
+"230","255966","billing","PIERRE","chasseignaux",NULL,"12 HAMEAU DE FONTAINE",NULL,"CHATEAU-LANDON",NULL,"77570",NULL,"lale.kern@gmail.com","+33622071261"
+"231","256017","billing","Emilie","MOREAU",NULL,"47 Rue de la Coutume",NULL,"Villeneuve-d'Ascq",NULL,"59650",NULL,"moreauemilie2003@yahoo.fr","+33675647320"
+"232","256258","billing","Laurent","Martinet",NULL,"10, ALLÉE MARINETTE",NULL,"CONFLANS-SAINTE-HONORINE",NULL,"78700",NULL,"lmartinet@gmail.com","+33642647576"
+"233","256281","billing","FredericFRE","GUAIS",NULL,"165 Route de Saint-Martin Lieu dit les placettes Lieu dit les placettes",NULL,"lavaurette",NULL,"82240",NULL,"frederic.guais@gmail.com","+33663396070"
+"234","256282","billing","Aurore","Storoge",NULL,"876 route de Montech",NULL,"Meauzac",NULL,"82290",NULL,"aurore_jouenne@hotmail.com","0623762913"
+"235","256321","billing","Quentin","BEILLARD",NULL,"123 rue du Billoir",NULL,"Savigny sur Orge",NULL,"91600",NULL,"quentin.beillard@aviation-civile.gouv.fr","0642495247"
+"236","256322","billing","Quentin","BEILLARD",NULL,"123 rue du Billoir",NULL,"Savigny sur Orge",NULL,"91600",NULL,"quentin.beillard@aviation-civile.gouv.fr","0642495247"
+"237","256366","billing","Nicolas","Baubillier",NULL,"22 allée Charrier",NULL,"Villemomble",NULL,"93250",NULL,"nbaubillier@yahoo.fr","0633680518"
+"238","256373","billing","Luce","Benassis",NULL,"8 lotissement les bastidons du vallat",NULL,"ventabren",NULL,"13122",NULL,"bena6luce@gmail.com","0688624629"
+"239","256374","billing","Luce","Benassis",NULL,"8 lotissement les bastidons du vallat",NULL,"ventabren",NULL,"13122",NULL,"bena6luce@gmail.com","0688624629"
+"240","256375","billing","Ophélie","BRUNEAU",NULL,"8 allée des Serins",NULL,"Limeil-Brévannes",NULL,"94450",NULL,"ophelie.bruneau@chevreuxmail.fr","0622052118"
+"241","256447","billing","Aliénor","VAN KALCK",NULL,"31 rue de la Bourse",NULL,"Lyon",NULL,"69002",NULL,"avankalck@orange.fr","0661468776"
+"242","256502","billing","PHILIPPE","DROUET",NULL,"27 rue ernest savart",NULL,"MONTREUIL",NULL,"93100",NULL,"drouet.phil@gmail.com","0682835860"
+"243","256503","billing","Christelle","Boisson",NULL,"1 allée saint Eloi",NULL,"Aigremont",NULL,"78240",NULL,"christelle.boisson@ac-versailles.fr","0661967685"
+"244","256585","billing","christine","GALTIER",NULL,"15 CHEMIN DU MOULIN DE NAUDIN - Villa n° 2",NULL,"BLAGNAC",NULL,"31700",NULL,"christine.galtier@sfr.fr","0609997896"
+"245","256591","billing","Stéphanie","MASCRE",NULL,"19 rue Le Nôtre",NULL,"Saint Cyr l'Ecole",NULL,"78210",NULL,"stephaniemascre@free.fr","0687267969"
+"246","256632","billing","Stéphanie","MASCRÉ",NULL,"19 rue Le Nôtre",NULL,"Saint Cyr l'Ecole",NULL,"78210",NULL,"stephaniemascre@free.fr","0687267969"
+"247","256679","billing","caroline","Melet",NULL,"26 rue du colombier",NULL,"Cébaza",NULL,"63118",NULL,"carohanae@live.fr","0664283341"
+"248","256680","billing","caroline","Melet",NULL,"26 rue du colombier",NULL,"Cébaza",NULL,"63118",NULL,"carohanae@live.fr","0664283341"
+"249","256685","billing","Marc Olivier","BRENAUD",NULL,"22 Rue Boieldieu",NULL,"PANTIN",NULL,"93500",NULL,"marcoliv002@gmail.com","+33662773998"
+"250","256690","billing","chloé","geffroy",NULL,"20 rue des épis",NULL,"SAINTE Pazanne",NULL,"44680",NULL,"chloe.geffroy@live.fr","0633190202"
+"251","242057","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"252","242423","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"253","242463","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"254","242570","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"255","242817","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"256","242818","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"257","242819","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"258","243177","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"259","243247","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"260","243248","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"261","244417","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"262","244431","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"263","244457","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"264","244501","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"265","244538","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"266","244541","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"267","244542","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"268","244547","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"269","244548","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"270","244549","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"271","244551","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"272","244580","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"273","244581","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"274","244607","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"275","244629","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"276","244645","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"277","244648","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"278","244649","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"279","244651","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"280","244653","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"281","244656","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"282","244706","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"283","244710","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"284","244711","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"285","244712","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"286","244747","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"287","244790","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"288","244792","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"289","244793","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"290","245202","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"291","245206","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"292","245214","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"293","245235","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"294","245236","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"295","245237","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"296","245242","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"297","245244","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"298","245434","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"299","245514","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"300","245535","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"301","245556","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"302","245560","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"303","245564","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"304","245565","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"305","245567","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"306","245574","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"307","245578","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"308","245594","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"309","245595","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"310","245598","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"311","245814","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"312","245903","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"313","245924","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"314","246556","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"315","246561","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"316","246562","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"317","246563","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"318","246572","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"319","246613","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"320","246640","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"321","246652","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"322","249388","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"323","250894","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"324","250896","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"325","250960","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"326","250968","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"327","251893","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"328","251894","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"329","251895","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"330","251921","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"331","252055","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"332","252056","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"333","252079","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"334","252368","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"335","252389","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"336","252404","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"337","252434","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"338","252465","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"339","252475","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"340","252476","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"341","252479","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"342","252504","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"343","252561","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"344","252562","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"345","252574","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"346","252575","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"347","252576","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"348","252577","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"349","252578","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"350","252580","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"351","252581","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"352","252582","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"353","252583","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"354","252584","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"355","252585","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"356","252754","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"357","252786","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"358","252787","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"359","252788","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"360","252799","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"361","252800","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"362","252801","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"363","252809","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"364","252810","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"365","252811","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"366","252812","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"367","252814","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"368","252816","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"369","252836","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"370","252850","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"371","252851","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"372","252855","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"373","252892","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"374","252896","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"375","252897","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"376","252898","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"377","252899","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"378","252900","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"379","252902","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"380","252907","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"381","252908","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"382","252909","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"383","252911","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"384","252912","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"385","252913","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"386","252914","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"387","252915","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"388","252916","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"389","252932","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"390","252933","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"391","252934","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"392","252935","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"393","252939","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"394","252940","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"395","252941","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"396","252942","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"397","252943","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"398","252945","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"399","252955","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"400","252957","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"401","252961","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"402","252962","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"403","252963","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"404","252966","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"405","252967","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"406","252968","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"407","252985","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"408","252986","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"409","252987","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"410","252989","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"411","252990","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"412","252995","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"413","252996","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"414","252998","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"415","252999","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"416","253000","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"417","253001","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"418","253003","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"419","253005","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"420","253006","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"421","253007","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"422","253008","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"423","253009","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"424","253010","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"425","253011","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"426","253014","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"427","253015","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"428","253016","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"429","253017","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"430","253019","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"431","253020","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"432","253021","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"433","253049","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"434","253112","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"435","253113","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"436","253114","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"437","253117","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"438","253118","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"439","253119","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"440","253122","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"441","253132","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"442","253166","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"443","253177","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"444","253178","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"445","253180","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"446","253181","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"447","253183","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"448","253196","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"449","253197","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"450","253204","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"451","253205","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"452","253215","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"453","253231","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"454","253232","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"455","253237","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"456","253238","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"457","253242","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"458","253306","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"459","253362","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"460","253381","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"461","253387","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"462","253388","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"463","253392","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"464","253560","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"465","253593","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"466","253596","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"467","253597","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"468","253606","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"469","253607","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"470","253861","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"471","254224","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"472","254365","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"473","254366","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"474","254962","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"475","255563","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"476","255564","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"477","255574","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"478","255668","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"479","255904","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"480","255966","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"481","256017","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"482","256258","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"483","256281","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"484","256282","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"485","256321","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"486","256322","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"487","256366","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"488","256373","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"489","256374","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"490","256375","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"491","256447","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"492","256502","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"493","256503","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"494","256585","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"495","256591","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"496","256632","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"497","256679","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"498","256680","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"499","256685","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"500","256690","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"501","257027","billing","Séverine","van TIL",NULL,"23 rue des Meuniers",NULL,"DOURDAN",NULL,"91410",NULL,"severine.vantil@gmail.com","0689344805"
+"502","257340","billing","Frédéric","NASRA",NULL,"13, allée Maurice Ravel Résidence Saint André",NULL,"Echirolles",NULL,"38130",NULL,"frederic.nasra@ac-grenoble.fr","0610998543"
+"503","257360","billing","Paméla","Brusq",NULL,"12 Ter rue de la fontaine froide",NULL,"Marolles En Brie",NULL,"94440",NULL,"pamelabrusq@yahoo.fr","0650737918"
+"504","257364","billing","Hakima","Mansouri",NULL,"14 rue Maurice Nilès",NULL,"Aulnay-sous-Bois",NULL,"93600",NULL,"manela93@yahoo.fr","0640871496"
+"505","257380","billing","Rodolphe","Dusseaux",NULL,"45 rue prunier",NULL,"Bordeaux",NULL,"33300",NULL,"ROLF0012@GMAIL.COM","+33616842877"
+"506","257381","billing","Claire","Langellier",NULL,"14 rue jean Paul alaux",NULL,"Bordeaux",NULL,"33100",NULL,"claire2281@msn.com","0615390592"
+"507","257460","billing","Christèle","AEGERTER",NULL,"3 rue de Larboust",NULL,"Nogent sur Marne",NULL,"94130",NULL,"c.aegerterolivier@outlook.fr","0664827666"
+"508","257591","billing","Richard","AUDRAN",NULL,"3 rue de Chanteloup",NULL,"ANDRESY",NULL,"78570",NULL,"raudran@gmail.com","+33615329565"
+"509","257592","billing","Gabrielle","JOIGNEAU",NULL,"5 rue des Tilleuls CHAMPAGNE",NULL,"GOUSSAINVILLE",NULL,"28410",NULL,"gabrielle.joigneau@gmail.com","+33664291787"
+"510","257593","billing","Emilie","Darme",NULL,"1 RUE SAINTE-VICTOIRE",NULL,"13710 - FUVEAU",NULL,"13710",NULL,"darme.emilie.79@gmail.com","+33618460182"
+"511","257594","billing","julie","jombart nogeant",NULL,"8 rue emile zola",NULL,"pontault combault",NULL,"77340",NULL,"juliewonkat@gmail.com","0612975147"
+"512","257595","billing","Gurvil","Cécile",NULL,"25, rue Principale",NULL,"Assenay",NULL,"10320",NULL,"cel.open.up@gmail.com","+33782541187"
+"513","257597","billing","Gabrielle","JOIGNEAU",NULL,"5 rue des Tilleuls CHAMPAGNE",NULL,"GOUSSAINVILLE",NULL,"28410",NULL,"gabrielle.joigneau@gmail.com","+33664291787"
+"514","257598","billing","KATIA","CARTESSE",NULL,"62 bis rue du lieutenant Dagorno",NULL,"villecresnes",NULL,"94440",NULL,"katcartesse@hotmail.fr","+33652035899"
+"515","257607","billing","David","Lienard",NULL,"13 boulevard Jean Gay",NULL,"Tournefeuille",NULL,"31170",NULL,"laurelienard31@gmail.com","0622221108"
+"516","257608","billing","Delphine","Pellegrin",NULL,"10 impasse de l'adret",NULL,"Tournefeuille",NULL,"31170",NULL,"delphine.tost@gmail.com","0770693309"
+"517","257640","billing","eLSA","Siguier",NULL,"133 chemin de la Verdanne",NULL,"CHAPAREILLAN",NULL,"38530",NULL,"elsasiguier@gmail.com","+33744709626"
+"518","257641","billing","eLSA","Siguier",NULL,"133 chemin de la Verdanne",NULL,"CHAPAREILLAN",NULL,"38530",NULL,"elsasiguier@gmail.com","+33744709626"
+"519","257642","billing","eLSA","Siguier",NULL,"133 chemin de la Verdanne",NULL,"CHAPAREILLAN",NULL,"38530",NULL,"elsasiguier@gmail.com","+33744709626"
+"520","257643","billing","Mehdi","Zafati",NULL,"8 rue Charles Gounod",NULL,"Saint Medard en Jalles",NULL,"33160",NULL,"mczafati@gmail.com","0617090196"
+"521","257644","billing","caroline","riviere",NULL,"2 avenue du saint-ouen",NULL,"PARIS 18",NULL,"75018",NULL,"caroguyader@yahoo.fr","0652396257"
+"522","257648","billing","Nacera","BOUZAR",NULL,"11 CHEMIN DES SOUPIRS",NULL,"EPINAY SUR SEINE",NULL,"93800",NULL,"nacerabouzar@hotmail.com","0646708752"
+"523","257709","billing","Aurore","Petithomme",NULL,"98 route de Cantalauze",NULL,"Fontenilles",NULL,"31470",NULL,"aurore.voldoire@gmail.com","0683503883"
+"524","257710","billing","Conraud","Sylvain",NULL,"15 BIs Rue Henri Prentout",NULL,"CAEN",NULL,"14000",NULL,"sylvainconraud@gmail.com","+33671851172"
+"525","257752","billing","Audrey","Flavier",NULL,"3 rue des poules",NULL,"Montignac",NULL,"24290",NULL,"audrey.flavier24@hotmail.fr","0781944124"
+"526","258019","billing","Sophie","Pedrosa",NULL,"11, Rue Jean Mermoz",NULL,"Arès",NULL,"33740",NULL,"sophie.grimond@hotmail.fr","+33664987507"
+"527","258023","billing","Mariam","Sissoko",NULL,"2 Parc D'Orgemont",NULL,"Gonesse",NULL,"95500",NULL,"mohameddoukoure2@outlook.fr","+33628061476"
+"528","258033","billing","Goundo","Sissoko",NULL,"20 Residence Les Mottes",NULL,"Congis Sur Therouanne",NULL,"77440",NULL,"Diana_024@hotmail.fr","0664683877"
+"529","258034","billing","John","HILAIRE",NULL,"18 quai de la Rapée 75012 PARIS",NULL,"75012 - Paris",NULL,"75012",NULL,"john.hilaire@bred.fr","+33763599172"
+"530","258037","billing","Belkacem","TLEMSANI",NULL,"1389 route de castelnau",NULL,"LE FOUSSERET",NULL,"31430",NULL,"tlemsani.belkacem@orange.fr","0633940354"
+"531","258089","billing","Clement","Pacaud",NULL,"22 avenue Raymond Boivin",NULL,"Pessac",NULL,"33600",NULL,"clempaco@hotmail.com","0689562150"
+"532","258090","billing","Maimouna","Diarra",NULL,"44 rue sedaine",NULL,"PARIS",NULL,"75011",NULL,"maimounadiarra18@yahoo.fr","+33669368454"
+"533","258104","billing","Aurélie","FORTIN",NULL,"38 route de Champagne",NULL,"SAMOREAU",NULL,"77210",NULL,"mecs77-secretariat@cognacq-jay.fr","+33160715040"
+"534","258113","billing","Maimouna","Diarra",NULL,"44 rue sedaine",NULL,"PARIS",NULL,"75011",NULL,"maimounadiarra18@yahoo.fr","+33669368454"
+"535","258114","billing","Maimouna","Diarra",NULL,"44 rue sedaine",NULL,"PARIS",NULL,"75011",NULL,"maimounadiarra18@yahoo.fr","+33669368454"
+"536","258117","billing","Maimouna","Diarra",NULL,"44 rue sedaine",NULL,"PARIS",NULL,"75011",NULL,"maimounadiarra18@yahoo.fr","+33669368454"
+"537","258118","billing","Maimouna","Diarra",NULL,"44 rue sedaine",NULL,"PARIS",NULL,"75011",NULL,"maimounadiarra18@yahoo.fr","+33669368454"
+"538","258120","billing","Maimouna","Diarra",NULL,"44 rue sedaine",NULL,"PARIS",NULL,"75011",NULL,"maimounadiarra18@yahoo.fr","+33669368454"
+"539","258142","billing","Elodie","Granger",NULL,"2 Chemin du Col",NULL,"L’Herm",NULL,"09000",NULL,"schoolreadingchallenge@gmail.com","0683475581"
+"540","258143","billing","Elodie","Granger",NULL,"2 Chemin du Col",NULL,"L’Herm",NULL,"09000",NULL,"schoolreadingchallenge@gmail.com","0683475581"
+"541","258214","billing","Mariam","Sissoko",NULL,"2 Parc D'Orgemont",NULL,"Gonesse",NULL,"95500",NULL,"mohameddoukoure2@outlook.fr","+33628061476"
+"542","258215","billing","Sabine","NOEL",NULL,"17 Avenue Franklin Roosevelt",NULL,"LA FERTE SOUS JOUARRE",NULL,"77260",NULL,"sabine.laloeuf@free.fr","0687174500"
+"543","258345","billing","Lucie","DESCHAMPS-SEVELINGE",NULL,"124 ROUTE DU ROUSSET",NULL,"BOURGVILAIN",NULL,"71520",NULL,"lucie_deschamps1@yahoo.fr","0633306291"
+"544","258374","billing","Leila","Aziri",NULL,"3 rue Garibaldi",NULL,"Eaubonne",NULL,"95600",NULL,"leila.aziri@gmail.com","0668679744"
+"545","258398","billing","Laurene","Quenais",NULL,"8 rue Jean Jacques Rousseau",NULL,"Alfortville",NULL,"94140",NULL,"laurenequenais@msn.com","0750848866"
+"546","258399","billing","Laurene","Quenais",NULL,"8 rue Jean Jacques Rousseau",NULL,"Alfortville",NULL,"94140",NULL,"laurenequenais@msn.com","0750848866"
+"547","258408","billing","Aieng","Bompoil",NULL,"14 Allée Billie Holiday",NULL,"Vern-sur-Seiche",NULL,"35770",NULL,"aieng_tang@yahoo.fr","+33781928335"
+"548","258446","billing","olivier","martinez",NULL,"7 rue corps francs pommies",NULL,"Tournefeuille",NULL,"31170",NULL,"olmartine@lilo.org","0561862803"
+"549","258449","billing","Audrey","Demanget",NULL,"1 Cité des Rameaux",NULL,"Saint Symphorien sur Coise",NULL,"69590",NULL,"iorhael@yahoo.fr","+33683914780"
+"550","258454","billing","Mickaelle","Taillefond",NULL,"37 chemin du bois badeau",NULL,"bretigny sur orge",NULL,"91220",NULL,"mily972@wanadoo.fr","0677911859"
+"551","258635","billing","Brad","Tue bi",NULL,"12 rue bonnet 1202 2 eme étage",NULL,"Clichy",NULL,"92110",NULL,"bradtuebi@gmail.com","+33781827459"
+"552","258673","billing","Raphael","Chabrier Breil",NULL,"870 Avenue Jean Moulin",NULL,"Alleins",NULL,"13980",NULL,"surtonnez@yahoo.fr","0676744937"
+"553","258679","billing","Yannick","Birrier",NULL,"113 avenue des chênes",NULL,"Saint-Jean d'Illac",NULL,"33127",NULL,"raspoutine.masque@orange.fr","0613644427"
+"554","258693","billing","Blaise","Casevitz",NULL,"5 rue Marceau",NULL,"Bourron-Marlotte",NULL,"77780",NULL,"bcasevitz@gmail.com","+33660815003"
+"555","258711","billing","Thomas","Jeanjean",NULL,"19 rue Lelégard",NULL,"Saint Cloud",NULL,"92210",NULL,"thjeanjean@gmail.com","0607435063"
+"556","258712","billing","Solene","GAUTIER",NULL,"67 Avenue Victor Hugo",NULL,"Mérignac",NULL,"33700",NULL,"solenegautier@yahoo.fr","0616070471"
+"557","258731","billing","Mireille","MAXIMIN",NULL,"80 rue charles chefson",NULL,"bois colombes",NULL,"92270",NULL,"mireille.maximin@bred.fr","+33617368999"
+"558","258745","billing","Armelle","FRAIS",NULL,"11 rue Jacques BOUBAS",NULL,"TRAPPES",NULL,"78190",NULL,"armdom@free.fr","+33684767270"
+"559","258761","billing","christelle","bavarot",NULL,"4 impasse des merles",NULL,"le grand lemps",NULL,"38690",NULL,"heliopsis@orange.fr","0685449347"
+"560","258764","billing","Annabelle","Tansele Witia",NULL,"1 Quater Impasse Terrier",NULL,"Neuilly-Sur-Seine",NULL,"92200",NULL,"beltans@yahoo.fr","0698935096"
+"561","258772","billing","Matthieu","BAYLES LORETTI",NULL,"332 chemin des cretes",NULL,"CLERMONT LE FORT",NULL,"31810",NULL,"matthieu.bayles-loretti@enac.fr","0618503831"
+"562","258788","billing","Marie Pierre","Edwige",NULL,"20 rue clément Pradeau",NULL,"Villiers sur marne",NULL,"94350",NULL,"edwigeleinie@hotmail.com","0662112549"
+"563","258790","billing","Xiaomei","Hong",NULL,"15, avenue clement pradeau",NULL,"Villiers sur marne",NULL,"94350",NULL,"lydiarobert18@gmail.com","0683286661"
+"564","258813","billing","Aurelie","GENDREAU",NULL,"135 avenue de versailles",NULL,"Paris",NULL,"75016",NULL,"aure_gendreau@hotmail.com","+33661948955"
+"565","258824","billing","Kobel","Diop",NULL,"14 avenue de la porte de Vincennes",NULL,"PARIS",NULL,"75012",NULL,"kobelfr@yahoo.fr","+33679911309"
+"566","258826","billing","Véronique","Issanbourg",NULL,"26, Rue Marcel Bontemps",NULL,"Boulogne",NULL,"92100",NULL,"veroissanbourg@gmail.com","0785069356"
+"567","258833","billing","Loïc","ROBERT",NULL,"31 avenue Ledru Rollin",NULL,"PARIS",NULL,"75012",NULL,"loic.robert0022@orange.fr","0630928927"
+"568","258839","billing","Yoan","Alins",NULL,"16 Ter rue des saules",NULL,"Saint-Gervais",NULL,"33240",NULL,"yoan.alins@gmail.com","0664179726"
+"569","258859","billing","ludovic","imberdis",NULL,"296, chemin du clos du cage",NULL,"La batie neuve (05230)",NULL,"05230",NULL,"ludovic-imberdis@orange.fr","+33687867456"
+"570","258890","billing","Justine","ALCARAZ",NULL,"29 Rue Daniel Tourneur",NULL,"Coulommiers",NULL,"77120",NULL,"alcaraz.justine@gmail.com","0650235400"
+"571","258967","billing","Nicolas","Cazenave-Tapie",NULL,"31 rue de Bordeaux",NULL,"Merignac",NULL,"33700",NULL,"nico64ct@yahoo.fr","0607084380"
+"572","258971","billing","Selia","Gil De Oliveira",NULL,"14 rue de la serre",NULL,"Villemomble",NULL,"93250",NULL,"sg@arlettie.fr","0619095190"
+"573","258977","billing","Claudia","Obou",NULL,"33 Bis Rue Georges Médéric",NULL,"Maisons-Alfort",NULL,"94700",NULL,"Claudia.obou@hotmail.com","+33625965594"
+"574","258987","billing","Clémence","Maglione",NULL,"12 rue louise michel",NULL,"cugnaux",NULL,"31270",NULL,"cleprout@yahoo.fr","0748900557"
+"575","258997","billing","Matthieu","BAYLES LORETTI",NULL,"332 chemin des cretes",NULL,"CLERMONT LE FORT",NULL,"31810",NULL,"matthieu.bayles-loretti@enac.fr","0618503831"
+"576","259020","billing","Michel","LAFONTAINE",NULL,"6 chemin de bratte",NULL,"Moivrons",NULL,"54760",NULL,"michel_lafontaine@orange.fr","0642464517"
+"577","259083","billing","Marco","Da Cunha",NULL,"48 rue Mary Besseyre",NULL,"Vanves",NULL,"92170",NULL,"marcodac@hotmail.com","+33647988900"
+"578","259115","billing","Morgane","Legal",NULL,"14 mail couperin",NULL,"Nangis",NULL,"77370",NULL,"morgane.legal18@gmail.com","+33669618196"
+"579","259120","billing","Morgane","Legal",NULL,"14 mail couperin",NULL,"Nangis",NULL,"77370",NULL,"morgane.legal18@gmail.com","+33669618196"
+"580","259122","billing","Marie","BARATGIN",NULL,"11 Cloutette",NULL,"CLARENS",NULL,"65300",NULL,"baratginmarie@gmail.com","0786147624"
+"581","259278","billing","Charifa","Roquebert",NULL,"481bplace de la Badassiere",NULL,"Manosque",NULL,"04100",NULL,"charifa.roquebert@laposte.net","+33768146498"
+"582","259301","billing","Stéphanie","PUZOS",NULL,"8 Le Hameau du Petit Pont",NULL,"Conflans-Sainte-Honorine",NULL,"78700",NULL,"spuzos@hotmail.com","0662425085"
+"583","259763","billing","Ruth","Kintsalimali Ngami",NULL,"15 rue d’Amsterdam",NULL,"Montevrain",NULL,"77144",NULL,"ngami.ruth@gmail.com","0617984933"
+"584","260096","billing","Brizita","GRANADO",NULL,"1 Clos Loustalet",NULL,"BALIROS",NULL,"64510",NULL,"b.domingues@live.fr","0629608888"
+"585","260101","billing","nathalie","david",NULL,"42 avenue des nouettes",NULL,"nantes",NULL,"44100",NULL,"natdavid@hotmail.fr","0661168444"
+"586","260407","billing","Claude","Kamdem Djoko",NULL,"15 rue Carlo Scarpa",NULL,"Les Herbiers",NULL,"85500",NULL,"claudevaleriekamdem@yahoo.fr","0685318782"
+"587","260507","billing","Claude","Kamdem Djoko",NULL,"15 rue Carlo Scarpa",NULL,"Les Herbiers",NULL,"85500",NULL,"claudevaleriekamdem@yahoo.fr","0685318782"
+"588","260691","billing","Jean-Philippe","SECHAO",NULL,"356 chemin de ponchou",NULL,"LABARTHE SUR LEZE",NULL,"31860",NULL,"jean-philippe.sechao@ac-toulouse.fr","0646902092"
+"589","260885","billing","Samira","Niar",NULL,"05 rue de la solidarité",NULL,"Argenteuil",NULL,"95100",NULL,"sam9.5@hotmail.fr","0769772167"
+"590","261034","billing","CODRUT","CONSTANTIN",NULL,"87 E Chemin des Codes",NULL,"Neuvecelle",NULL,"74500",NULL,"codrut.ctin@gmail.com","0762051582"
+"591","261251","billing","Amélie","Kamara",NULL,"49 rue de la Mairie",NULL,"Gouvieux",NULL,"60270",NULL,"kamara.amelie@orange.fr","0750756584"
+"592","261252","billing","Magali","LAURET",NULL,"10 impasse des tilleuls",NULL,"Chevilly",NULL,"45520",NULL,"magali.grazide@hotmail.fr","0670726591"
+"593","262308","billing","caroline","melet",NULL,"26 rue du colombier",NULL,"cebazat",NULL,"63118",NULL,"caroline.melet@ac-clermont.fr","0664283341"
+"594","262346","billing","Véronique","Issanbourg",NULL,"26, Rue Marcel Bontemps",NULL,"Boulogne-Billancourt",NULL,"92100",NULL,"veronique.issanbourg@ac-versailles.fr","0785069356"
+"595","262400","billing","Véronique","Issanbourg",NULL,"26, Rue Marcel Bontemps",NULL,"Boulogne-Billancourt",NULL,"92100",NULL,"veronique.issanbourg@ac-versailles.fr","0785069356"
+"596","262646","billing","Asmae","ANNABLI",NULL,"18 rue du télégraphe",NULL,"Paris",NULL,"75020",NULL,"anita_lavie@hotmail.fr","0609131457"
+"598","262662","billing","Marie","BELLONE-ANGIONI",NULL,"RESIDENCE LE CEZANNE BAT B3 - 55 AVENUE DES AIRES",NULL,"GARDANNE",NULL,"13120",NULL,"beatrice.bellone@laposte.net","0612542196"
+"599","262665","billing","sandrine","DUPORT",NULL,"9 Rue des Arnauds, La Copechagnière",NULL,"85260 - LA COPECHAGNIERE",NULL,"85260",NULL,"jaffresandrine@hotmail.fr","+33652696054"
+"600","257027","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"601","257340","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"602","257360","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"603","257364","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"604","257380","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"605","257381","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"606","257460","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"607","257591","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"608","257592","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"609","257593","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"610","257594","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"611","257595","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"612","257597","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"613","257598","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"614","257607","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"615","257608","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"616","257640","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"617","257641","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"618","257642","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"619","257643","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"620","257644","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"621","257648","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"622","257709","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"623","257710","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"624","257752","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"625","258019","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"626","258023","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"627","258033","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"628","258034","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"629","258037","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"630","258089","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"631","258090","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"632","258104","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"633","258113","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"634","258114","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"635","258117","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"636","258118","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"637","258120","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"638","258142","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"639","258143","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"640","258214","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"641","258215","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"642","258345","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"643","258374","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"644","258398","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"645","258399","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"646","258408","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"647","258446","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"648","258449","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"649","258454","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"650","258635","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"651","258673","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"652","258679","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"653","258693","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"654","258711","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"655","258712","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"656","258731","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"657","258745","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"658","258761","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"659","258764","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"660","258772","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"661","258788","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"662","258790","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"663","258813","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"664","258824","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"665","258826","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"666","258833","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"667","258839","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"668","258859","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"669","258890","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"670","258967","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"671","258971","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"672","258977","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"673","258987","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"674","258997","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"675","259020","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"676","259083","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"677","259115","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"678","259120","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"679","259122","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"680","259278","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"681","259301","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"682","259763","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"683","260096","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"684","260101","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"685","260407","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"686","260507","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"687","260691","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"688","260885","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"689","261034","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"690","261251","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"691","261252","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"692","262308","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"693","262346","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"694","262400","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"695","262646","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"697","262662","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"698","262665","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"701","262740","billing","Aurore","Petithomme",NULL,"98 route de Cantalauze",NULL,"Fontenilles",NULL,"31470",NULL,"aurore.voldoire@gmail.com","0683503883"
+"702","262740","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"703","262752","billing","Aurore","Petithomme",NULL,"98 route de Cantalauze",NULL,"Fontenilles",NULL,"31470",NULL,"aurore.voldoire@gmail.com","0683503883"
+"704","262752","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"705","262755","billing","Anne","Pavageau",NULL,"1, chemin de bos",NULL,"ST MEDARD EN JALLES",NULL,"33160",NULL,"annepavageau@yahoo.com","+33623802026"
+"706","262755","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"707","263116","billing","Delphine","Chevin",NULL,"45 rue des 16E et 22E Dragons",NULL,"Reims",NULL,"51100",NULL,"delphine.chevin@gmail.com","+33677704705"
+"708","263116","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"709","263126","billing","Eve","Engel",NULL,"11 Rue Delescluze",NULL,"Villejuif",NULL,"94800",NULL,"eveme@hotmail.fr","0664343123"
+"710","263126","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"711","263224","billing","Julie","DUFEIX",NULL,"15 rue du 4 septembre",NULL,"Tarbes",NULL,"65000",NULL,"dufeix@mailo.com","0649398753"
+"712","263224","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"803","263271","billing","Celine","MASSOLO",NULL,"42 rue eugene martin",NULL,"fontenay sous bois",NULL,"94120",NULL,"cel_mas@hotmail.com","0660958260"
+"804","263271","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"805","263272","billing","Regina","LAMARE",NULL,"1 Impasse de Santenay",NULL,"Boissise le Roi",NULL,"77310",NULL,"regina.jantarada@gmail.com","0623372129"
+"806","263272","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"807","263283","billing","Julie","MARTIN",NULL,"33 Rue Jean Monnet",NULL,"MERIGNAC",NULL,"33700",NULL,"julie.martin4718@gmail.com","+33686896391"
+"808","263283","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"809","263284","billing","Audrey","Dellavedova",NULL,"9 ALLEE CAMILLE CLAUDEL",NULL,"MÉRIGNAC",NULL,"33700",NULL,"audrey_lamarque@yahoo.fr","+33659734722"
+"810","263284","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"811","263285","billing","Marc","SALTON",NULL,"109, rue de Ville d'Avray",NULL,"SEVRES",NULL,"92310",NULL,"marc.salton@laposte.net","0783063009"
+"812","263285","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"813","263286","billing","Marc","SALTON",NULL,"109, rue de Ville d'Avray",NULL,"SEVRES",NULL,"92310",NULL,"marc.salton@laposte.net","0783063009"
+"814","263286","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"815","263287","billing","Marc","SALTON",NULL,"109, rue de Ville d'Avray",NULL,"SEVRES",NULL,"92310",NULL,"marc.salton@laposte.net","0783063009"
+"816","263287","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"817","263288","billing","Marc","SALTON",NULL,"109, rue de Ville d'Avray",NULL,"SEVRES",NULL,"92310",NULL,"marc.salton@laposte.net","0783063009"
+"818","263288","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"819","263477","billing","Frédéric","BIGNON",NULL,"12 Avenue De Porchefontaine - Hall 15",NULL,"VERSAILLES",NULL,"78000",NULL,"bignon_frederic@hotmail.com","+33695445152"
+"820","263477","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"821","263478","billing","Marc","SALTON",NULL,"109, rue de Ville d'Avray",NULL,"SEVRES",NULL,"92310",NULL,"marc.salton@laposte.net","0783063009"
+"822","263478","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"823","263887","billing","Jean","BERNARD",NULL,"29, Avenue Georges Brassens",NULL,"Sainte-Foy-d'Aigrefeuille",NULL,"31570",NULL,"jean.bernard.1084@gmail.com","+33682839802"
+"824","263887","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"825","263888","billing","Jean","BERNARD",NULL,"29, Avenue Georges Brassens",NULL,"Sainte-Foy-d'Aigrefeuille",NULL,"31570",NULL,"jean.bernard.1084@gmail.com","+33682839802"
+"826","263888","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"827","263889","billing","VIRGINIE","SECCO",NULL,"7 allée des cèpes",NULL,"ST MARCEL LES VALENCE",NULL,"26320",NULL,"seccovirginie026@gmail.com","0699285587"
+"828","263889","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"829","264037","billing","Alan","ROBIC",NULL,"6 BIS Rue de la Bouline",NULL,"Saint-Sébastien-sur-Loire",NULL,"44230",NULL,"coulon.robic@orange.fr","+33676998958"
+"830","264037","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"831","264038","billing","Valerie","Legros",NULL,"13 Rue du Château",NULL,"Blainville-sur-Orne",NULL,"14550",NULL,"seb.3640@gmail.com","0784802374"
+"832","264038","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"833","264039","billing","Véronique","Issanbourg",NULL,"26, Rue Marcel Bontemps",NULL,"Boulogne-Billancourt",NULL,"92100",NULL,"veronique.issanbourg@ac-versailles.fr","0785069356"
+"834","264039","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"835","264040","billing","cecile","viallon",NULL,"27 rue boris vian",NULL,"tournefeuille",NULL,"31170",NULL,"cecilecastilloviallon@gmail.com","0782142249"
+"836","264040","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"837","264041","billing","Hari","Diawara",NULL,"22 rue Agnès Varda",NULL,"Vaureal",NULL,"95490",NULL,"h.diawara@senat.fr","0684742173"
+"838","264041","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"839","264042","billing","Hari","Diawara",NULL,"22 rue Agnès Varda",NULL,"Vaureal",NULL,"95490",NULL,"h.diawara@senat.fr","0684742173"
+"840","264042","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"841","264044","billing","Laetitia","Blache",NULL,"147 Rue de la République",NULL,"Rives",NULL,"38140",NULL,"blache-laetitia@orange.fr","0607255447"
+"842","264044","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"843","264046","billing","Association","POINT DE SUSPENSION",NULL,"86 vieille route de Noyers",NULL,"NOYERS",NULL,"45260",NULL,"lvapointdesuspension@gmail.com","+33683252554"
+"844","264046","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"845","264047","billing","Morgane","Calmes",NULL,"34 impasse de l esquirou",NULL,"Fuveau",NULL,"13710",NULL,"morgane.chabriercalmes@gmail.com","0617115368"
+"846","264047","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"847","264048","billing","PHILIPPE","GONCALVES",NULL,"15 IMPASSE CECILIA KELLERMANN",NULL,"ANNET SUR MARNE",NULL,"77410",NULL,"maridou09@ymail.com","+33618566813"
+"848","264048","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"849","264049","billing","Eléonore","Morère",NULL,"3 rue Annie de Pene",NULL,"Tours",NULL,"37100",NULL,"eleonore.morere@gmail.com","0766225669"
+"850","264049","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"851","264050","billing","Laetitia","Balthazard",NULL,"23 Rue Henri Drevon",NULL,"Meyzieu",NULL,"69330",NULL,"lbalthazard@laposte.net","0782812111"
+"852","264050","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"853","264051","billing","Véronique","Issanbourg",NULL,"26, Rue Marcel Bontemps",NULL,"Boulogne-Billancourt",NULL,"92100",NULL,"veronique.issanbourg@ac-versailles.fr","0785069356"
+"854","264051","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"855","264054","billing","DAVID","BARTHEZ",NULL,"75 BIS RUE JEAN GAYRAL",NULL,"TOULOUSE",NULL,"31200",NULL,"mymy.bar31@gmail.com","+33626309852"
+"856","264054","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"857","264055","billing","Morgane","Calmes",NULL,"34 impasse de l esquirou",NULL,"Fuveau",NULL,"13710",NULL,"morgane.chabriercalmes@gmail.com","0617115368"
+"858","264055","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"859","264056","billing","Morgane","Calmes",NULL,"34 impasse de l esquirou",NULL,"Fuveau",NULL,"13710",NULL,"morgane.chabriercalmes@gmail.com","0617115368"
+"860","264056","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"875","264322","billing","Elizabeth","Prigian",NULL,"11 bis Rue de Bel Air",NULL,"NANGIS",NULL,"77370",NULL,"stellashaina06@outlook.fr","+33658314070"
+"876","264322","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"877","264482","billing","Delphine","Toulgoat",NULL,"3 rue Masséna",NULL,"Bouffémont",NULL,"95570",NULL,"delphine.killian@gmail.com","+33781599514"
+"878","264695","billing","Mariam","Sissoko",NULL,"2 Parc D'Orgemont, Porte 36",NULL,"Gonesse",NULL,"95500",NULL,"Oumoudoukoure2@outlook.com","+33628061476"
+"879","264790","billing","Secretariat service ASE","MDS",NULL,"20 Avenue Edouard Herriot",NULL,"Champagnole",NULL,"39300",NULL,"cvaubourg@jura.fr","03.84.52.13.35"
+"880","265120","billing","GAELLE","LEBLANC",NULL,"525 Rue des Canadiens",NULL,"BOOS",NULL,"76520",NULL,"gaelleleblanc76@gmail.com","+33761817100"
+"881","265180","billing","Maguy","AJAX ALDEGON",NULL,"6 Place du Reveil Matin",NULL,"Savigny-le-Temple",NULL,"77176",NULL,"didier.maguotte@gmail.com","+33650952411"
+"882","265315","billing","Cécile","GRIS",NULL,"Batiment B, 975 chemin de la Laurelle",NULL,"Montbonnot-Saint-Martin",NULL,"38330",NULL,"cecilegris@gmail.com","+33613251499"
+"883","265378","billing","Floriane","Rovir1",NULL,"6 rue louison bobet",NULL,"Saleilles",NULL,"66280",NULL,"floriane.rovira73@gmail.com","0628770819"
+"884","265380","billing","Floriane","Rovir1",NULL,"6 rue louison bobet",NULL,"Saleilles",NULL,"66280",NULL,"floriane.rovira73@gmail.com","0628770819"
+"885","265489","billing","Christelle","BERTHELEMY",NULL,"50 clos de l'ormeteau",NULL,"Savigny-le-Temple",NULL,"77176",NULL,"berthelemyc@yahoo.fr","0683452009"
+"886","265599","billing","Audrey","Weinling",NULL,"22 rue des Ardrières",NULL,"Angers",NULL,"49100",NULL,"audreyweinling@gmail.com","0682978578"
+"887","266084","billing","Luce","Benassis",NULL,"8 lotissement les bastidons du vallat",NULL,"ventabren",NULL,"13122",NULL,"bena6luce@gmail.com","0688624629"
+"888","266085","billing","Luce","Benassis",NULL,"8 lotissement les bastidons du vallat",NULL,"ventabren",NULL,"13122",NULL,"bena6luce@gmail.com","0688624629"
+"889","266086","billing","Anne-Laure","Fauré",NULL,"125c chemin de surville",NULL,"Eguilles",NULL,"13510",NULL,"faure.lfml@gmail.com","+33679409696"
+"890","266087","billing","Anne-Laure","Fauré",NULL,"125c chemin de surville",NULL,"Eguilles",NULL,"13510",NULL,"faure.lfml@gmail.com","+33679409696"
+"891","266122","billing","Elizabeth","Ringuet",NULL,"1, rue de Rocquillon",NULL,"Château-Larcher",NULL,"86370",NULL,"elizabeth@ringuet.net","+33662696572"
+"892","264482","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"893","264695","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"894","264790","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"895","265120","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"896","265180","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"897","265315","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"898","265378","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"899","265380","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"900","265489","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"901","265599","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"902","266084","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"903","266085","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"904","266086","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"905","266087","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"906","266122","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"907","266665","billing","Carine","Fuentes",NULL,"'A Padula' Lieu dit Annonciade",NULL,"Aregno",NULL,"20220",NULL,"carine.fuentes@laposte.net","0621630920"
+"908","266665","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"931","266745","billing","Fanélie","Viallon",NULL,"75 rue des bienvenus",NULL,"Villeurbanne",NULL,"69100",NULL,"fanelivia@gmail.com","+33677918441"
+"932","266745","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"933","267338","billing","Aurelie","Esposito",NULL,"33 AVENUE DE MURET",NULL,"TOULOUSE",NULL,"31300",NULL,"aurelieesposito29@gmail.com","+33617191463"
+"934","267338","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"935","267345","billing","ANNABELLE","GUERREIRO",NULL,"18 Rue rochefort",NULL,"Toulouse",NULL,"31100",NULL,"annabelle.guerreiro@gmail.com","+33618114459"
+"936","267345","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"937","267469","billing","Johanna","AZEAU",NULL,"1 route de neufchef",NULL,"hayange",NULL,"57700",NULL,"johanna.azeau@ac-nancy-metz.fr","+33625610436"
+"938","267469","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"941","267957","billing","VERONIQUE","ISSANBOURG",NULL,"26 RUE MARCEL BONTEMPS",NULL,"BOULOGNE BILLANCOURT",NULL,"92100",NULL,"mballaclara340@gmail.com","+33785069356"
+"942","267957","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"943","268002","billing","Melanie","Briand",NULL,"44 rue de la Nanté",NULL,"Le champ saint père",NULL,"85540",NULL,"briandmelanie@orange.fr","0638188795"
+"944","268002","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"945","268007","billing","thierry","LOUVET",NULL,"26 Rue du Commandant l'Herminier",NULL,"TOULOUSE",NULL,"31400",NULL,"thie.louvet@gmail.com","+33668924929"
+"946","268007","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"951","268113","billing","Inthy","DIARRA",NULL,"4 AVENUE DU MARECHAL FOCH",NULL,"CONFLANS ST HONORINE",NULL,"78700",NULL,"inthy99@gmail.com","+33614053518"
+"952","268113","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1005","268425","billing","Mireille","Pelissou",NULL,"8 Rue de Lomagne",NULL,"Léguevin",NULL,"31490",NULL,"mimiburu@hotmail.com","06 61 475375"
+"1006","268425","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1009","268430","billing","Yoanan","Bournazel",NULL,"11 Route de Paris",NULL,"Jouars-Pontchartrain",NULL,"78760",NULL,"yoananbournazel@icloud.com","0628357944"
+"1010","268430","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1011","268436","billing","Fanélie","Viallon",NULL,"75 rue des bienvenus",NULL,"Villeurbanne",NULL,"69100",NULL,"fanelie.viallon@ac-lyon.fr","0677918441"
+"1012","268436","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1031","268516","billing","Juliette","PRATTICO",NULL,"110 route de houdan",NULL,"AUFFREVILLE-BRASSEUIL",NULL,"78930",NULL,"juliette1105@gmail.com","+33617295512"
+"1032","268516","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1035","268543","billing","Aurélien","GILLIER",NULL,"9 impasse des Clos Marys",NULL,"GUICHAINVILLE",NULL,"27930",NULL,"a_gillier@yahoo.fr","0642185923"
+"1036","268543","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1037","268587","billing","emmanuelle","tieu",NULL,"14 allée du Chemin vert maison",NULL,"Romainville",NULL,"93230",NULL,"emmanuelletieu@gmail.com","+33617737411"
+"1038","268587","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1039","268616","billing","Alexandra","Barroso",NULL,"9 impasse des clos Marys",NULL,"Guichainville",NULL,"27930",NULL,"a.barroso@gmx.com","0621152563"
+"1040","268616","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1043","268654","billing","Candy","Monot",NULL,"1 allée Paul Cezanne",NULL,"Champs sur marne",NULL,"77420",NULL,"cyreivax@gmail.com","0622414557"
+"1044","268654","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1061","268803","billing","Sophie","Ducasse",NULL,"95 Route De Saint Sever",NULL,"Horsarrieu",NULL,"40700",NULL,"SOFT005@HOTMAIL.FR","+33630814321"
+"1062","268803","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1075","268906","billing","Claire","Baylac",NULL,"6 bis impasse marcel pendanx",NULL,"Toulouse",NULL,"31100",NULL,"clairecourtellemont@hotmail.com","0674786815"
+"1076","268906","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1089","269060","billing","Aurelie","GENDREAU",NULL,"135 avenue de versailles",NULL,"Paris",NULL,"75016",NULL,"aure_gendreau@hotmail.com","+33661948955"
+"1090","269060","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1091","269061","billing","Dispositif CAPADOS","PEA 37",NULL,"75 rue du colombier",NULL,"Tours",NULL,"37100",NULL,"secretariat.capados-pea37@croix-rouge.fr","0247200902"
+"1092","269061","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1093","269086","billing","Frédéric","NASRA",NULL,"13, allée Maurice Ravel Résidence Saint André",NULL,"Echirolles",NULL,"38130",NULL,"frederic.nasra@ac-grenoble.fr","0610998543"
+"1094","269086","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1103","269281","billing","NABIL","MESSARA",NULL,"46 RUE DEFRANCE",NULL,"VINCENNES",NULL,"94300",NULL,"messara.nabil@gmail.com","0601995223"
+"1104","269281","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1105","269282","billing","NABIL","MESSARA",NULL,"46 RUE DEFRANCE",NULL,"VINCENNES",NULL,"94300",NULL,"messara.nabil@gmail.com","0601995223"
+"1106","269282","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1107","269283","billing","EVA","MUNOZ",NULL,"5 chemin des bois de prunay",NULL,"Tacoignières",NULL,"78910",NULL,"evamunoz75@gmail.com","0675847052"
+"1108","269283","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1121","269353","billing","loane","souprayen",NULL,"23 rue pasteur",NULL,"bonnieres sur seine",NULL,"78270",NULL,"souprayenloane@gmail.com","0699429694"
+"1122","269353","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1123","269548","billing","Julien","REIMON",NULL,"67 rue Henri Richaume",NULL,"Montesson",NULL,"78360",NULL,"julien.reimon@gmail.com","0623361397"
+"1124","269548","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1125","269604","billing","Jean-Thomas","Paradowski",NULL,"21 Rue de Villiers",NULL,"Voulangis",NULL,"77580",NULL,"jtparadowski@yahoo.fr","+33664969008"
+"1126","269604","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1127","269613","billing","Katia","COSNARD",NULL,"75 rue de Cochet",NULL,"Lardy",NULL,"91510",NULL,"kcosnard@free.fr","0680906362"
+"1128","269613","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1129","269614","billing","Jennifer","Lefort",NULL,"13 AVENUE GUICHARD - BAT K4",NULL,"VERSAILLES",NULL,"78000",NULL,"bulle.lft@gmail.com","+33658372570"
+"1130","269614","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1131","269615","billing","Mélanie","Audrin",NULL,"21 rue des pins",NULL,"Sète (34200)",NULL,"34200",NULL,"melanie.audrin@gmail.com","+33670553474"
+"1132","269615","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1133","269616","billing","EMILIE","FETTER",NULL,"48 TER ROUTE DE ST GERMAIN",NULL,"Neauphle-le-Château",NULL,"78640",NULL,"fetter.emilie@gmail.com","+33668450445"
+"1134","269616","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1135","269619","billing","Julie","Bordenave",NULL,"95 bis route des escloupes",NULL,"Colayrac Saint Cirq",NULL,"47450",NULL,"julie.bordenave@yahoo.fr","+33673862029"
+"1136","269619","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1137","269620","billing","Lorvelie","DOLCE",NULL,"12 B rue charles suisse",NULL,"Dijon",NULL,"21000",NULL,"dolodolce@gmail.com","0641439937"
+"1138","269620","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1139","269621","billing","Caroline","Moreau",NULL,"56 Rue Mathilda Gray",NULL,"Buc",NULL,"78530",NULL,"caroline.behar@yahoo.fr","0662268986"
+"1140","269621","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1141","269622","billing","Christelle","Brocard",NULL,"6 Rue de la Juvinière",NULL,"Les Loges-en-Josas",NULL,"78350",NULL,"christelle.dherart@free.fr","+33751833464"
+"1142","269622","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1143","269623","billing","DELPHINE","MEUNIER",NULL,"2 chemin de duc",NULL,"GAROS",NULL,"64410",NULL,"delphmeunier@hotmail.fr","+33616842360"
+"1144","269623","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1145","269624","billing","yelena","STOJANOVIC",NULL,"44 AVENUE JAMIN",NULL,"joinville le pont",NULL,"94340",NULL,"stojanovicy@yahoo.fr","0630924013"
+"1146","269624","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1147","269626","billing","Tarik","Tifour",NULL,"22 rue Emile Zola",NULL,"Villejuif",NULL,"94800",NULL,"tarik.tifour@gmail.com","0685224024"
+"1148","269626","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1149","269627","billing","veronique","fabregas",NULL,"35, Rue Louis Massé",NULL,"Toulouse",NULL,"31500",NULL,"verofabregas.0@gmail.com","+33661113002"
+"1150","269627","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1151","269628","billing","Stéphane","Oria",NULL,"71 rue des loriots",NULL,"Sete",NULL,"34200",NULL,"so@uniti-habitat.fr","+33642531052"
+"1152","269628","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1153","269629","billing","Marc","SALTON",NULL,"109, rue de Ville d'Avray",NULL,"SEVRES",NULL,"92310",NULL,"marc.salton@laposte.net","0783063009"
+"1154","269629","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1155","269630","billing","Josselin","Damerose",NULL,"1 square du Val d'Anjou",NULL,"Maurepas",NULL,"78310",NULL,"damerose-serrurerie@live.fr","0626578262"
+"1156","269630","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1159","269657","billing","Josselin","DAMEROSE",NULL,"1 square du val d’Anjou",NULL,"maurepas",NULL,"78310",NULL,"laurinadamerose@icloud.com","0626578262"
+"1160","269657","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1161","269662","billing","Thomas","Faure",NULL,"266 route des Angonnes - Villa 7",NULL,"Brié-et-Angonnes",NULL,"38320",NULL,"thomasfaure2@gmail.com","+33761686028"
+"1162","269662","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1163","269663","billing","Alexandra","Meyer-Robin",NULL,"20 rue Victor Hugo",NULL,"Montigny le Bretonneux",NULL,"78180",NULL,"alexandra@almero.fr","0622823385"
+"1164","269663","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1173","269668","billing","Axelle","BARNAS",NULL,"6 rue des pinsons",NULL,"VIVONNE",NULL,"86370",NULL,"axelle.barnas@orange.fr","0687532378"
+"1174","269668","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1175","269669","billing","Ophélia","Levallois",NULL,"9 rue du stade",NULL,"CASTANET-TOLOSAN",NULL,"31320",NULL,"ophelia.levallois@yahoo.com","+33679707969"
+"1176","269669","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1177","269670","billing","Chakir","Briouel",NULL,"30 Allée de l’Angouaire",NULL,"La Chapelle Saint Ursin",NULL,"18570",NULL,"shaymabriouel24@icloud.com","0764819166"
+"1178","269670","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1179","269683","billing","sebastien","fagis",NULL,"32 rue corot",NULL,"LA ROCHETTE",NULL,"77000",NULL,"christel.fagis@free.fr","0783843212"
+"1180","269683","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1181","269684","billing","Nelly","BONNIN",NULL,"3 IMPASSE COUR BADET",NULL,"MARCILLY LES BUXY",NULL,"71390",NULL,"nelly.bonnin71@gmail.com","0662083296"
+"1182","269684","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1183","269731","billing","VALERIE CHRISTELLE","VITOUX",NULL,"13 RUE ANTOINE ARNAUD",NULL,"fleury d'aude",NULL,"11560",NULL,"claravalerie.vitoux@gmail.com","+33652325269"
+"1184","269731","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1185","269733","billing","VALERIE CHRISTELLE","VITOUX",NULL,"13 RUE ANTOINE ARNAUD",NULL,"fleury d'aude",NULL,"11560",NULL,"claravalerie.vitoux@gmail.com","+33652325269"
+"1186","269733","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1187","269750","billing","Hari","Diawara",NULL,"22 rue Agnès Varda",NULL,"Vaureal",NULL,"95490",NULL,"h.diawara@senat.fr","0684742173"
+"1188","269750","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1189","269751","billing","Hari","Diawara",NULL,"22 rue Agnès Varda",NULL,"Vaureal",NULL,"95490",NULL,"h.diawara@senat.fr","0684742173"
+"1190","269751","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1191","269752","billing","Macha","Trioullier",NULL,"18 Rue Victor Hugo",NULL,"Montreuil",NULL,"93100",NULL,"rivbecky7@yahoo.fr","0688991152"
+"1192","269752","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1193","269755","billing","Macha","Trioullier",NULL,"18 Rue Victor Hugo",NULL,"Montreuil",NULL,"93100",NULL,"rivbecky7@yahoo.fr","0688991152"
+"1194","269755","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1197","269760","billing","Matthieu","Eyraud Kowalski",NULL,"18 Rue des Chênes",NULL,"Pomponne",NULL,"77400",NULL,"eyski.matthieu@gmail.com","+33767142133"
+"1198","269760","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1199","269761","billing","Matthieu","Eyraud Kowalski",NULL,"18 Rue des Chênes",NULL,"Pomponne",NULL,"77400",NULL,"eyski.matthieu@gmail.com","+33767142133"
+"1200","269761","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1201","269762","billing","LAETITIA","FARRON",NULL,"7 BIS RUE DU GENERAL DE NEGRIER",NULL,"BELFORT",NULL,"90000",NULL,"laetitia.farron@orange.fr","+33683031265"
+"1202","269762","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1203","269763","billing","Sandra","MATHIS",NULL,"50 RUE DU MARECHAL FOCH",NULL,"ST MAX",NULL,"54130",NULL,"sandrabbm@me.com","0782206089"
+"1204","269763","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1205","269809","billing","Romain","Cuvillier",NULL,"185 chemin de planquesse",NULL,"VALFLAUNES",NULL,"34270",NULL,"cuvillier.romain@gmail.com","0601770652"
+"1206","269809","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1209","270074","billing","Geraldine","Ferrand",NULL,"8 chemin des oiseaux",NULL,"Argeles sur mer",NULL,"66700",NULL,"ferrandgeraldine@hotmail.fr","0627249795"
+"1210","270074","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1211","270272","billing","CHRISTELLE","LIROY",NULL,"16 rue des calville",NULL,"MAULETTE",NULL,"78550",NULL,"christelle.liroy@free.fr","+33630261012"
+"1212","270272","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1213","270421","billing","Estelle widfane","David",NULL,"7 square du gast",NULL,"Rennes",NULL,"35700",NULL,"davidestellewidfane@gmail.com","0627014144"
+"1214","270421","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1215","270531","billing","LAURE","BISCHOFF",NULL,"4 bis rue du Fayel",NULL,"MONTCHEVREUIL",NULL,"60240",NULL,"laure.bischoff@gmail.com","0663126813"
+"1216","270531","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1217","270577","billing","FRANCOIS","MARTINS DE OLIVEIRA",NULL,"26 RUE DE L ABBE GREGOIRE",NULL,"PARIS",NULL,"75006",NULL,"francois.martins300@orange.fr","0684829150"
+"1218","270577","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1219","270633","billing","Coralie","Brault",NULL,"33 rue de la Rondonnerie",NULL,"Corquilleroy",NULL,"45120",NULL,"cocomelsasa@gmail.com","0611107790"
+"1220","270633","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1221","270757","billing","Mayliss","DAVID",NULL,"83 rue grillon",NULL,"PREIGNAC",NULL,"33210",NULL,"mayliss.david@ac-bordeaux.fr","0661943461"
+"1222","270757","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1223","270758","billing","Mayliss","DAVID",NULL,"83 rue grillon",NULL,"PREIGNAC",NULL,"33210",NULL,"mayliss.david@ac-bordeaux.fr","0661943461"
+"1224","270758","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1225","270769","billing","Virginie","Matheu",NULL,"28 d rue de l union",NULL,"Anglet",NULL,"64600",NULL,"v.matheu@yahoo.fr","0618255629"
+"1226","270769","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1227","270779","billing","Jessica","aberouette",NULL,"55 chemin de northon",NULL,"Ondres",NULL,"40440",NULL,"Charles.hennequin@effhygie.com","+33638101862"
+"1228","270779","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1229","270780","billing","RONAN","LAGADEC",NULL,"9 Allée du Labourd",NULL,"Anglet",NULL,"64600",NULL,"thelagadec@gmail.com","+33787385512"
+"1230","270780","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1231","270973","billing","Delphine","Turpault-Soudans",NULL,"4 impasse Edmond About",NULL,"Niort",NULL,"79000",NULL,"soudansdelphine@gmail.com","0650062513"
+"1232","270973","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1233","270974","billing","Louise Vanissa","IME DOUNDEMBO",NULL,"Avenue d'indépendance",NULL,"Bangui (RCA )",NULL,"99050",NULL,"benjamineursulaime@gmail.com","+23675227259"
+"1234","270974","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1235","271066","billing","Frederika","Yace",NULL,"41 rue du Reverend pere Christian Gilbert",NULL,"Asnières sur Seine",NULL,"92600",NULL,"frederika.yace@yahoo.com","+41766345515"
+"1236","271066","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1237","271201","billing","Adeline","Racle",NULL,"6 bis Boulevard Clemenceau",NULL,"Grenoble",NULL,"38100",NULL,"racle.adeline@gmail.com","0750057557"
+"1238","271201","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1243","271273","billing","Carole","Barrau",NULL,"33 ter Rue de Paris",NULL,"Montlignon",NULL,"95680",NULL,"karolnoiret@yahoo.fr","+33662387966"
+"1244","271273","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1245","271274","billing","Lou-Anne","DOU",NULL,"29 Boulevard du Petit Chateau",NULL,"EAUBONNE",NULL,"95600",NULL,"riyuloume@gmail.com","0667629814"
+"1246","271274","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1253","271285","billing","Delphine","Bazas",NULL,"20 avenue de Gascogne",NULL,"Fontenilles",NULL,"31470",NULL,"delfi312@yahoo.fr","+33687500300"
+"1254","271285","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1255","271286","billing","Delphine","Bazas",NULL,"20 avenue de Gascogne",NULL,"Fontenilles",NULL,"31470",NULL,"delfi312@yahoo.fr","+33687500300"
+"1256","271286","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1257","271295","billing","Cecile","Martineau",NULL,"19 rue Émile boisseau",NULL,"Gournay sur marne",NULL,"93460",NULL,"cecilemartineau@live.fr","0781922419"
+"1258","271295","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1259","271299","billing","Lise","Bachmann",NULL,"71 avenue Marceau",NULL,"Courbevoie",NULL,"92400",NULL,"lise.bachmann.paris@gmail.com","0765239250"
+"1260","271299","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1263","271339","billing","Frederika","Yace",NULL,"41 rue du Reverend pere Christian Gilbert",NULL,"Asnières sur Seine",NULL,"92600",NULL,"frederika.yace@yahoo.com","+41766345515"
+"1264","271339","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1265","271340","billing","Lise","Bachmann",NULL,"71 avenue Marceau",NULL,"Courbevoie",NULL,"92400",NULL,"lise.bachmann.paris@gmail.com","0670761684"
+"1266","271340","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1267","271341","billing","Rémi","Bonnefont",NULL,"17, rue de l'Artense",NULL,"TAUVES",NULL,"63690",NULL,"bonnefont.remi@wanadoo.fr","+33672137249"
+"1268","271341","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1269","271342","billing","Lise","Bachmann",NULL,"71 avenue Marceau",NULL,"Courbevoie",NULL,"92400",NULL,"lise.bachmann.paris@gmail.com","0670761684"
+"1270","271342","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1271","271343","billing","Jeanne gabrielle","Negrier",NULL,"38 Boulevard Gouvion-St-Cyr",NULL,"Paris",NULL,"75017",NULL,"jg.negrier@gmail.com","766581699"
+"1272","271343","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1273","271356","billing","Lise","Bachmann",NULL,"71 avenue Marceau",NULL,"Courbevoie",NULL,"92400",NULL,"lise.bachmann.paris@gmail.com","0670761684"
+"1274","271356","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1275","271357","billing","Lise","Bachmann",NULL,"71 avenue Marceau",NULL,"Courbevoie",NULL,"92400",NULL,"lise.bachmann.paris@gmail.com","0670761684"
+"1276","271357","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1277","271358","billing","Jeanne gabrielle","Negrier",NULL,"38 Boulevard Gouvion-St-Cyr",NULL,"Paris",NULL,"75017",NULL,"jg.negrier@gmail.com","766581699"
+"1278","271358","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1279","271359","billing","Jeanne gabrielle","Negrier",NULL,"38 Boulevard Gouvion-St-Cyr",NULL,"Paris",NULL,"75017",NULL,"jg.negrier@gmail.com","766581699"
+"1280","271359","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1281","271360","billing","Julie","Yamba",NULL,"121 rue des bercheres",NULL,"Pontault combault",NULL,"77340",NULL,"julieyamba@gmail.com","0769575275"
+"1282","271360","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1283","271362","billing","Valérie","SOSSET-RALUY",NULL,"61 Quater rue des Garies",NULL,"MERIGNAC",NULL,"33700",NULL,"corentin@raluy.fr","0676830434"
+"1284","271362","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1285","271363","billing","Bruno","Ruffié",NULL,"6 Boulevard De Grenelle",NULL,"Paris",NULL,"75015",NULL,"bruno.ruffie@gmail.com","609921101"
+"1286","271363","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1287","271366","billing","Julie","Yamba",NULL,"121 rue des bercheres",NULL,"Pontault combault",NULL,"77340",NULL,"julieyamba@gmail.com","0769575275"
+"1288","271366","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1291","271379","billing","Viviane","Younes",NULL,"7 AVENUE VERDIER 92120 MONTROUGE",NULL,"MONTROUGE",NULL,"92120",NULL,"Viviane.younes@gmail.com","+33612442696"
+"1292","271379","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1293","271383","billing","Margot","Dupland-Maurel",NULL,"13 bd des Cerisiers",NULL,"Marseille",NULL,"13012",NULL,"duplandmaurel@icloud.com","0641389446"
+"1294","271383","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1295","271388","billing","Tokonta","DIARRA",NULL,"2 allée de la Constitution",NULL,"noisy le grand",NULL,"93160",NULL,"tokonta.diarra@gmail.com","+33622008897"
+"1296","271388","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1297","271655","billing","Armelle","Kraweryk",NULL,"11 rue Camille Dramart",NULL,"Le Bourget",NULL,"93350",NULL,"akraweryk@gmail.com","0622063286"
+"1298","271655","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1299","272131","billing","Delphine","Couronné",NULL,"20 rue des plâtrières",NULL,"Paris",NULL,"75020",NULL,"olivier.couronne@gmail.com","0630617218"
+"1300","272131","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1301","272132","billing","Ingrid","Charlier",NULL,"80 allée de Quéronne",NULL,"Noyon",NULL,"60400",NULL,"ingrid0706a@gmail.com","+33650308119"
+"1302","272132","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1303","272154","billing","Marion","Mouret",NULL,"17 avenue du général de gaulle",NULL,"Saint Magne de Castillon",NULL,"33350",NULL,"marion.mouret@wanadoo.fr","+33676162549"
+"1304","272154","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1305","272269","billing","Delphine","Couronné",NULL,"Appt 57, 20 rue des plâtrières",NULL,"Paris",NULL,"75020",NULL,"olivier.couronne@gmail.com","0630617218"
+"1306","272269","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1307","272382","billing","Benedicte","LUSSET",NULL,"2 rue aux moines",NULL,"Conflans ste Honorine",NULL,"78700",NULL,"benedicte.niemec@hotmail.fr","+33629678202"
+"1308","272382","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1309","272383","billing","Anne","pouliquen",NULL,"58 bd de la liberté",NULL,"les Lilas",NULL,"93260",NULL,"anne.pouliquen@distinguo.eu","0610104743"
+"1310","272383","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1311","272412","billing","Herve","KEOU",NULL,"7 impass du pèlerin",NULL,"Paris",NULL,"75017",NULL,"kaylakeou@icloud.com","0665653126"
+"1312","272412","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1313","272413","billing","Christophe","Cathala",NULL,"7 Rue André Massip",NULL,"COMPS",NULL,"30300",NULL,"cathala-christophe@hotmail.fr","+33629706260"
+"1314","272413","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1315","272420","billing","Stéphanie Véronique","BRIALON",NULL,"4 rue le clos Marie 26",NULL,"Mours-Saint-Eusèbe",NULL,"26540",NULL,"sbrialon@gmail.com","+33638948162"
+"1316","272420","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1317","272421","billing","valerie","STRACK",NULL,"270 rue du dauphine batiment 3",NULL,"séte",NULL,"34200",NULL,"strackval@gmx.fr","0688842111"
+"1318","272421","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1319","272423","billing","Véronique","Defiolle",NULL,"34 rue Haute",NULL,"Meulan-En-Yvelines",NULL,"78250",NULL,"v.defiolle@orange.fr","0616827851"
+"1320","272423","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1321","272424","billing","Véronique","Defiolle",NULL,"34 rue Haute",NULL,"Meulan-En-Yvelines",NULL,"78250",NULL,"v.defiolle@orange.fr","0616827851"
+"1322","272424","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1323","272427","billing","Véronique","Defiolle",NULL,"34 rue Haute",NULL,"Meulan-En-Yvelines",NULL,"78250",NULL,"angelique.defiolle@gmail.com","0785199245"
+"1324","272427","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1325","272429","billing","Sandra","Guiheux",NULL,"4 Route de thelien",NULL,"Monestier",NULL,"03140",NULL,"sm.gauvin@gmail.com","+33649014553"
+"1326","272429","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1327","272430","billing","clothilde","lebegue",NULL,"2 Rte de Bazemont",NULL,"Flins-sur-Seine",NULL,"78410",NULL,"clo.osteo@gmail.com","+33650640532"
+"1328","272430","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1329","272434","billing","Sandra","Guiheux",NULL,"4 Route de thelien",NULL,"Monestier",NULL,"03140",NULL,"sm.gauvin@gmail.com","+33649014553"
+"1330","272434","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1331","272435","billing","Sandra","Guiheux",NULL,"4 Route de thelien",NULL,"Monestier",NULL,"03140",NULL,"sm.gauvin@gmail.com","+33649014553"
+"1332","272435","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1333","272436","billing","Yannick","DEVOS",NULL,"29 boulevard Marceau Faure",NULL,"CASTELSARRASIN",NULL,"82100",NULL,"ylc.78@orange.fr","0674363238"
+"1334","272436","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1335","272472","billing","Richard","TOGBE",NULL,"1 square du Var",NULL,"Paris",NULL,"75020",NULL,"ribauto@yahoo.com","0667404232"
+"1336","272472","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1337","272564","billing","frederique","pasquet",NULL,"48 rue du courtil cabot",NULL,"villemandeur",NULL,"45700",NULL,"frederique.p80@orange.fr","06 73 78 13 18"
+"1338","272564","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1339","272586","billing","Vincent","Petit",NULL,"46 avenue poincaré",NULL,"Villeneuve Le Roi",NULL,"94290",NULL,"Vincentpetit354@gmail.com","+33604451281"
+"1340","272586","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1341","272883","billing","Séverine","Placé",NULL,"41 chemin de l'ancienne école",NULL,"Voissant",NULL,"38620",NULL,"severine_place@hotmail.com","0672738428"
+"1342","272883","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1343","272884","billing","Association","Orgn sport santé soxial",NULL,"20 Rue saint Martin",NULL,"Bouafle",NULL,"78410",NULL,"orgnsportsantesocial@gmail.com","0651221872"
+"1344","272884","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1345","272887","billing","Alexandre","LUCAS",NULL,"13ter Rue lavoisier Rue lavoisier",NULL,"CARCASSONNE",NULL,"11000",NULL,"alex.lucas34@free.fr","+33664051023"
+"1346","272887","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1347","272889","billing","claire","OBERLE",NULL,"72 AVENUE DE CHOISY",NULL,"Paris",NULL,"75013",NULL,"claire.alkhatib@gmail.com","0662838370"
+"1348","272889","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1349","272890","billing","AUDREY","MAMPOUYA",NULL,"4 RUE JEAN BAPTISTE BERNADOTTE",NULL,"SAVIGNY LE TEMPLE",NULL,"77176",NULL,"audreyfdm@gmail.com","0652875891"
+"1350","272890","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1351","272891","billing","AUDREY","MAMPOUYA",NULL,"4 RUE JEAN BAPTISTE BERNADOTTE",NULL,"SAVIGNY LE TEMPLE",NULL,"77176",NULL,"audreyfdm@gmail.com","0652875891"
+"1352","272891","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1355","272893","billing","Carole","Barrau",NULL,"33 ter Rue de Paris",NULL,"Montlignon",NULL,"95680",NULL,"karolnoiret@yahoo.fr","+33662387966"
+"1356","272893","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1357","272894","billing","Julian","Maurel",NULL,"1 lotissement les loups",NULL,"Thil",NULL,"01120",NULL,"juliiiiian@gmail.com","0610584383"
+"1358","272894","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1359","272895","billing","Sandra","Guiheux",NULL,"4 Route de thelien",NULL,"Monestier",NULL,"03140",NULL,"sm.gauvin@gmail.com","+33649014553"
+"1360","272895","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1363","272897","billing","Elizabete Poliana","Souza Santos",NULL,"5 Impasse de Wattignies",NULL,"Paris",NULL,"75012",NULL,"elizabete.polianas@gmail.com","789550327"
+"1364","272897","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1365","272898","billing","Carole","Barrau",NULL,"33 ter Rue de Paris",NULL,"Montlignon",NULL,"95680",NULL,"karolnoiret@yahoo.fr","+33662387966"
+"1366","272898","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1367","272899","billing","Stephanie","Velaye",NULL,"34 BD. Pierre Mendès France",NULL,"Paris",NULL,"77500",NULL,"stephanie.velaye@gmail.com","+33661328586"
+"1368","272899","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1369","272900","billing","Richard","Diallo",NULL,"29 Boulevard du Petit Château",NULL,"Eaubonne",NULL,"95600",NULL,"riouf1202@gmail.com","0629714367"
+"1370","272900","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1371","272901","billing","Carole","Fisseux",NULL,"15 rue Philippe de commynes",NULL,"Amiens",NULL,"80000",NULL,"carole.fisseux@orange.fr","0680725075"
+"1372","272901","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1373","272936","billing","Helend","Fie",NULL,"16 Rue Broussais",NULL,"Paris",NULL,"75014",NULL,"fie.flavie@yahoo.fr","0767926283"
+"1374","272936","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL
+"1375","272980","billing","ALISON","GIRRES",NULL,"23 RUE DE LA PAIX",NULL,"SOTTEVILLE LES ROUEN",NULL,"76300",NULL,"alison.girres@icloud.com","+33762027656"
+"1376","272980","shipping",NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL

@@ -8,6 +8,7 @@ export type OrganizerCheckoutSettings = {
   accepts_ancv_paper: boolean;
   accepts_ancv_connect: boolean;
   is_vacaf_approved: boolean;
+  ancv_paper_mailing_address?: string | null;
 };
 
 export const CHECKOUT_MANUAL_REQUEST_PAYMENT_MODES = new Set<CheckoutContact['paymentMode']>(['CV_CONNECT']);

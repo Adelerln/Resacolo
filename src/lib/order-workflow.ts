@@ -29,6 +29,7 @@ export const FAMILY_ORDER_STATUS_LABELS = {
   PARTIALLY_PAID: 'Partiellement payée',
   PAID: 'Payée',
   CANCELLED: 'Annulée',
+  FAILED: 'Échec de paiement',
   TRANSFERRED: 'Transférée',
   CART: 'Panier'
 } as const satisfies Record<string, string>;
@@ -39,6 +40,15 @@ export function normalizeOrderStatus(status: OrderStatus | string | null | undef
   if (status === 'VALIDATED' || status === 'BOOKED') return 'PENDING_PAYMENT';
   if (status === 'CONFIRMED') return 'PAID';
   return status as OrderStatus;
+}
+
+/** Échec CB : statut FAILED, ou ancien couple CANCELLED + PAYMENT_FAILED. */
+export function isPaymentFailedOrder(input: {
+  status?: string | null;
+  cancellationReason?: string | null;
+}) {
+  if (input.status === 'FAILED') return true;
+  return input.status === 'CANCELLED' && input.cancellationReason === 'PAYMENT_FAILED';
 }
 
 /** Modes de paiement choisis au checkout (info complémentaire, pas un statut). */
@@ -172,7 +182,11 @@ export function resolveOrderStatusLabel(input: {
   remainingBalanceCents: number;
   onlinePaidCents?: number | null;
   externalPaidCents?: number | null;
+  cancellationReason?: string | null;
 }) {
+  if (isPaymentFailedOrder({ status: input.status, cancellationReason: input.cancellationReason })) {
+    return FAMILY_ORDER_STATUS_LABELS.FAILED;
+  }
   return orderStatusLabel(
     reconcileOrderStatusWithBalance({
       status: input.status,
@@ -342,6 +356,9 @@ export function resolveCheckoutConfirmationPaymentStatusLabel(input: {
     if (context.paymentStatus === 'PENDING') return 'En attente de paiement en ligne';
     if (context.paymentStatus === 'FAILED') return 'Paiement échoué';
   }
+  if (context.orderStatus === 'FAILED' || context.paymentStatus === 'FAILED') {
+    return 'Échec de paiement';
+  }
   if (context.orderStatus === 'REQUESTED') {
     return resolveOfflineSettlementLabel(context);
   }
@@ -486,7 +503,7 @@ export function resolveCheckoutConfirmationFollowUpMessage(input: {
     };
   }
 
-  if (context.paymentStatus === 'FAILED') {
+  if (context.paymentStatus === 'FAILED' || context.orderStatus === 'FAILED') {
     return {
       tone: 'warning',
       message:
@@ -531,13 +548,25 @@ export function resolveCheckoutConfirmationSubtitle(input: {
   return 'Votre commande est en cours de traitement.';
 }
 
-export function orderStatusLabel(status: OrderStatus | string | null | undefined) {
+export function orderStatusLabel(
+  status: OrderStatus | string | null | undefined,
+  options?: { cancellationReason?: string | null }
+) {
+  if (isPaymentFailedOrder({ status, cancellationReason: options?.cancellationReason })) {
+    return FAMILY_ORDER_STATUS_LABELS.FAILED;
+  }
   const normalized = normalizeOrderStatus(status);
   if (!normalized) return '-';
   return FAMILY_ORDER_STATUS_LABELS[normalized as keyof typeof FAMILY_ORDER_STATUS_LABELS] ?? normalized;
 }
 
-export function orderStatusBadgeClassName(status: OrderStatus | string | null | undefined) {
+export function orderStatusBadgeClassName(
+  status: OrderStatus | string | null | undefined,
+  options?: { cancellationReason?: string | null }
+) {
+  if (isPaymentFailedOrder({ status, cancellationReason: options?.cancellationReason })) {
+    return 'bg-rose-100 text-rose-900';
+  }
   switch (normalizeOrderStatus(status)) {
     case 'REQUESTED':
       return 'bg-amber-100 text-amber-900';
@@ -548,6 +577,8 @@ export function orderStatusBadgeClassName(status: OrderStatus | string | null | 
     case 'PAID':
       return 'bg-emerald-100 text-emerald-900';
     case 'CANCELLED':
+      return 'bg-rose-100 text-rose-900';
+    case 'FAILED':
       return 'bg-rose-100 text-rose-900';
     case 'TRANSFERRED':
       return 'bg-violet-100 text-violet-900';

@@ -52,7 +52,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
   if (!order) {
     return NextResponse.json({ error: 'Commande introuvable.' }, { status: 404 });
   }
-  if (order.status === 'CART' || order.status === 'CANCELLED') {
+  if (order.status === 'CART' || order.status === 'CANCELLED' || order.status === 'FAILED') {
     return NextResponse.json(
       { error: 'La facture n’est pas disponible pour cette commande.' },
       { status: 409 }

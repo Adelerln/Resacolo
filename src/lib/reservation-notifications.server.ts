@@ -16,6 +16,8 @@ export type OrganizerReservationAction = {
   description: string;
 };
 
+export type ReservationOnlinePaymentStatus = 'PENDING' | 'SUCCEEDED' | 'FAILED';
+
 export type ReservationNotificationInput = {
   orderId: string;
   organizerId: string;
@@ -37,6 +39,8 @@ export type ReservationNotificationInput = {
   requestKind: OrderRequestKind;
   /** True only when a partner affiliation requires a manual finance quote. */
   isPartnerManualQuote?: boolean;
+  /** Statut du paiement CB en ligne, si un TPE a été initié. */
+  onlinePaymentStatus?: ReservationOnlinePaymentStatus | null;
   lines: ReservationNotificationLine[];
   organizerAcceptsAncvPaper: boolean;
   organizerAcceptsAncvConnect: boolean;
@@ -46,6 +50,21 @@ export type ReservationNotificationInput = {
   dashboardUrl?: string;
   familyAccountUrl?: string;
 };
+
+export type ReservationNotificationRecipients = 'all' | 'family' | 'organizer';
+
+function onlinePaymentStatusLabel(status: ReservationOnlinePaymentStatus) {
+  switch (status) {
+    case 'SUCCEEDED':
+      return 'Confirmé';
+    case 'FAILED':
+      return 'Échoué';
+    case 'PENDING':
+      return 'En attente de confirmation bancaire';
+    default:
+      return status;
+  }
+}
 
 function escapeHtml(value: string) {
   return value
@@ -77,6 +96,7 @@ export function buildOrganizerReservationActions(input: {
   paymentMode: CheckoutPaymentMode;
   requestKind: OrderRequestKind;
   isPartnerManualQuote?: boolean;
+  onlinePaymentStatus?: ReservationOnlinePaymentStatus | null;
   organizerAcceptsAncvPaper: boolean;
   organizerAcceptsAncvConnect: boolean;
   organizerIsVacafApproved: boolean;
@@ -85,11 +105,34 @@ export function buildOrganizerReservationActions(input: {
   ancvConnectMatricule?: string | null;
   ancvConnectAmount?: string | null;
 }): OrganizerReservationAction[] {
+  if (input.onlinePaymentStatus === 'FAILED') {
+    return [
+      {
+        title: 'Paiement carte échoué — demande annulée',
+        description:
+          'Le paiement par carte bancaire de la famille a échoué. La réservation a été annulée automatiquement : aucune place n’est à retenir et aucune action n’est requise de votre côté.'
+      }
+    ];
+  }
+
   const actions: OrganizerReservationAction[] = [];
   const hasVacaf =
     input.requestKind === 'VACAF' ||
     (input.hasVacafNumber && input.organizerIsVacafApproved && input.stayCafEligible);
   const hasAncvConnect = input.requestKind === 'ANCV_CONNECT' || input.paymentMode === 'CV_CONNECT';
+
+  if (input.onlinePaymentStatus === 'SUCCEEDED' && (input.paymentMode === 'FULL' || input.paymentMode === 'DEPOSIT_200')) {
+    actions.push({
+      title:
+        input.paymentMode === 'DEPOSIT_200'
+          ? 'Paiement acompte confirmé'
+          : 'Paiement carte confirmé',
+      description:
+        input.paymentMode === 'DEPOSIT_200'
+          ? 'L’acompte en ligne a bien été encaissé. Traitez l’inscription ; le solde restant pourra être réglé ensuite.'
+          : 'Le règlement par carte bancaire a bien été encaissé. Traitez l’inscription comme une réservation payée.'
+    });
+  }
 
   if (hasVacaf) {
     actions.push({
@@ -254,10 +297,12 @@ export function renderOrganizerReservationEmail(input: ReservationNotificationIn
   const reservationCode = formatOrderReservationCode(input.orderId);
   const ancvConnectMatricule = input.contact.ancvConnectMatricule?.trim() || null;
   const ancvConnectAmount = input.contact.ancvConnectAmount?.trim() || null;
+  const paymentFailed = input.onlinePaymentStatus === 'FAILED';
   const actions = buildOrganizerReservationActions({
     paymentMode: input.paymentMode,
     requestKind: input.requestKind,
     isPartnerManualQuote: input.isPartnerManualQuote,
+    onlinePaymentStatus: input.onlinePaymentStatus,
     organizerAcceptsAncvPaper: input.organizerAcceptsAncvPaper,
     organizerAcceptsAncvConnect: input.organizerAcceptsAncvConnect,
     organizerIsVacafApproved: input.organizerIsVacafApproved,
@@ -273,6 +318,13 @@ export function renderOrganizerReservationEmail(input: ReservationNotificationIn
   const dashboardUrl = input.dashboardUrl ?? 'https://resacolo.com/organisme';
   const showAncvConnectIds =
     input.requestKind === 'ANCV_CONNECT' || input.paymentMode === 'CV_CONNECT';
+  const paymentModeDisplay = paymentModeLabel(input.paymentMode, input.requestKind);
+  const title = paymentFailed
+    ? 'Paiement échoué — demande annulée'
+    : 'Nouvelle demande de réservation';
+  const introHtml = paymentFailed
+    ? `Bonjour <strong>${escapeHtml(input.organizerName)}</strong>, une tentative de réservation vient d’échouer au paiement carte.`
+    : `Bonjour <strong>${escapeHtml(input.organizerName)}</strong>, une famille vient de transmettre une demande via Resacolo.`;
 
   const actionsHtml = actions
     .map(
@@ -298,8 +350,12 @@ export function renderOrganizerReservationEmail(input: ReservationNotificationIn
                     <p style="margin:0 0 4px;font-size:14px;color:#1d1f25;"><strong>Famille :</strong> ${escapeHtml(familyName || '—')}</p>
                     <p style="margin:0 0 4px;font-size:14px;color:#1d1f25;"><strong>E-mail :</strong> ${escapeHtml(input.contact.email)}</p>
                     <p style="margin:0 0 4px;font-size:14px;color:#1d1f25;"><strong>Téléphone :</strong> ${escapeHtml(input.contact.phone || '—')}</p>
-                    <p style="margin:0 0 4px;font-size:14px;color:#1d1f25;"><strong>Mode de règlement :</strong> ${escapeHtml(paymentModeLabel(input.paymentMode, input.requestKind))}</p>
-                    <p style="margin:0 0 4px;font-size:14px;color:#1d1f25;"><strong>Mode de règlement :</strong> ${escapeHtml(paymentModeLabel(input.paymentMode))}</p>
+                    <p style="margin:0 0 4px;font-size:14px;color:#1d1f25;"><strong>Mode de règlement :</strong> ${escapeHtml(paymentModeDisplay)}</p>
+                    ${
+                      input.onlinePaymentStatus
+                        ? `<p style="margin:0 0 4px;font-size:14px;color:#1d1f25;"><strong>Paiement carte :</strong> ${escapeHtml(onlinePaymentStatusLabel(input.onlinePaymentStatus))}</p>`
+                        : ''
+                    }
                     ${
                       showAncvConnectIds
                         ? `<p style="margin:0 0 4px;font-size:14px;color:#1d1f25;"><strong>Identifiant client ANCV Connect :</strong> ${escapeHtml(ancvConnectMatricule || '—')}</p>
@@ -330,21 +386,23 @@ export function renderOrganizerReservationEmail(input: ReservationNotificationIn
 
   const html = renderEmailShell({
     eyebrow: 'Espace organisateur',
-    title: 'Nouvelle demande de réservation',
-    introHtml: `Bonjour <strong>${escapeHtml(input.organizerName)}</strong>, une famille vient de transmettre une demande via Resacolo.`,
+    title,
+    introHtml,
     bodyHtml,
     ctaUrl: dashboardUrl,
     ctaLabel: 'Ouvrir mon espace organisateur'
   });
 
   const text = [
-    `Nouvelle demande de réservation — ${input.organizerName}`,
+    `${title} — ${input.organizerName}`,
     `Référence : ${reservationCode}`,
     `Famille : ${familyName || '—'}`,
     `E-mail : ${input.contact.email}`,
     `Téléphone : ${input.contact.phone || '—'}`,
-    `Mode de règlement : ${paymentModeLabel(input.paymentMode, input.requestKind)}`,
-    `Mode de règlement : ${paymentModeLabel(input.paymentMode)}`,
+    `Mode de règlement : ${paymentModeDisplay}`,
+    ...(input.onlinePaymentStatus
+      ? [`Paiement carte : ${onlinePaymentStatusLabel(input.onlinePaymentStatus)}`]
+      : []),
     ...(showAncvConnectIds
       ? [
           `Identifiant client ANCV Connect : ${ancvConnectMatricule || '—'}`,
@@ -364,8 +422,12 @@ export function renderOrganizerReservationEmail(input: ReservationNotificationIn
     `Espace organisateur : ${dashboardUrl}`
   ].join('\n');
 
+  const subject = paymentFailed
+    ? `[Resacolo] Paiement échoué — demande annulée (${input.organizerName})`
+    : `[Resacolo] Nouvelle réservation — action${actions.some((a) => a.title.startsWith('Action')) ? ' requise' : ''} (${input.organizerName})`;
+
   return {
-    subject: `[Resacolo] Nouvelle réservation — action${actions.some((a) => a.title.startsWith('Action')) ? ' requise' : ''} (${input.organizerName})`,
+    subject,
     html,
     text
   };
@@ -463,7 +525,6 @@ export function renderFamilyReservationEmail(input: ReservationNotificationInput
                     <p style="margin:0 0 4px;font-size:14px;color:#1d1f25;"><strong>Référence :</strong> ${escapeHtml(reservationCode)}</p>
                     <p style="margin:0 0 4px;font-size:14px;color:#1d1f25;"><strong>Organisateur :</strong> ${escapeHtml(input.organizerName)}</p>
                     <p style="margin:0;font-size:14px;color:#1d1f25;"><strong>Mode de règlement :</strong> ${escapeHtml(paymentModeLabel(input.paymentMode, input.requestKind))}</p>
-                    <p style="margin:0;font-size:14px;color:#1d1f25;"><strong>Mode de règlement :</strong> ${escapeHtml(paymentModeLabel(input.paymentMode))}</p>
                   </td>
                 </tr>
               </table>
@@ -499,7 +560,6 @@ export function renderFamilyReservationEmail(input: ReservationNotificationInput
     `Référence : ${reservationCode}`,
     `Organisateur : ${input.organizerName}`,
     `Mode de règlement : ${paymentModeLabel(input.paymentMode, input.requestKind)}`,
-    `Mode de règlement : ${paymentModeLabel(input.paymentMode)}`,
     '',
     ...input.lines.map(
       (line) =>
@@ -519,37 +579,46 @@ export function renderFamilyReservationEmail(input: ReservationNotificationInput
   };
 }
 
-export async function sendReservationNotificationEmails(input: ReservationNotificationInput) {
-  const familyMail = renderFamilyReservationEmail(input);
-  const organizerMail = renderOrganizerReservationEmail(input);
+export async function sendReservationNotificationEmails(
+  input: ReservationNotificationInput,
+  options?: { recipients?: ReservationNotificationRecipients }
+) {
+  const recipients = options?.recipients ?? 'all';
+  const tasks: Array<Promise<unknown>> = [];
 
-  const tasks: Array<Promise<unknown>> = [
-    sendSmtpEmail({
-      to: input.familyEmail,
-      subject: familyMail.subject,
-      text: familyMail.text,
-      html: familyMail.html
-    }).catch((error) => {
-      console.error('[reservation-notifications] family email failed', error);
-    })
-  ];
-
-  const organizerEmail = input.organizerEmail?.trim().toLowerCase();
-  if (organizerEmail) {
+  if (recipients === 'all' || recipients === 'family') {
+    const familyMail = renderFamilyReservationEmail(input);
     tasks.push(
       sendSmtpEmail({
-        to: organizerEmail,
-        subject: organizerMail.subject,
-        text: organizerMail.text,
-        html: organizerMail.html
+        to: input.familyEmail,
+        subject: familyMail.subject,
+        text: familyMail.text,
+        html: familyMail.html
       }).catch((error) => {
-        console.error('[reservation-notifications] organizer email failed', error);
+        console.error('[reservation-notifications] family email failed', error);
       })
     );
-  } else {
-    console.warn('[reservation-notifications] organizer email missing', {
-      organizerId: input.organizerId
-    });
+  }
+
+  if (recipients === 'all' || recipients === 'organizer') {
+    const organizerMail = renderOrganizerReservationEmail(input);
+    const organizerEmail = input.organizerEmail?.trim().toLowerCase();
+    if (organizerEmail) {
+      tasks.push(
+        sendSmtpEmail({
+          to: organizerEmail,
+          subject: organizerMail.subject,
+          text: organizerMail.text,
+          html: organizerMail.html
+        }).catch((error) => {
+          console.error('[reservation-notifications] organizer email failed', error);
+        })
+      );
+    } else {
+      console.warn('[reservation-notifications] organizer email missing', {
+        organizerId: input.organizerId
+      });
+    }
   }
 
   await Promise.all(tasks);

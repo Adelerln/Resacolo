@@ -27,6 +27,52 @@ const MAJOR_CITY_TO_DEPT: Record<string, string> = {
   montpellier: '34'
 };
 
+/** Liste déroulante départements (code + libellé), triée par code. */
+export const FRENCH_DEPARTMENT_OPTIONS: Array<{ code: string; label: string }> = Object.entries(
+  FRENCH_DEPARTMENT_NAME_TO_CODE
+)
+  .map(([name, code]) => {
+    const pretty = name
+      .split(' ')
+      .map((part) =>
+        part
+          .split('-')
+          .map((chunk) => {
+            if (chunk === "d'" || chunk === "l'") return chunk;
+            return chunk.charAt(0).toUpperCase() + chunk.slice(1);
+          })
+          .join('-')
+      )
+      .join(' ');
+    return { code, label: `${code} — ${pretty}` };
+  })
+  .sort((a, b) => a.code.localeCompare(b.code, 'fr', { numeric: true }));
+
+const VALID_DEPARTMENT_CODES = new Set(FRENCH_DEPARTMENT_OPTIONS.map((option) => option.code));
+
+export function isValidFrenchDepartmentCode(code: string | null | undefined) {
+  return Boolean(code && VALID_DEPARTMENT_CODES.has(code));
+}
+
+/** Suggestion depuis un code postal français (ex. 75017 → 75, 20100 → 2A). */
+export function suggestDepartmentCodeFromPostalCode(postalCode: string | null | undefined) {
+  const digits = String(postalCode ?? '').replace(/\D/g, '');
+  if (digits.length < 2) return null;
+  const prefix2 = digits.slice(0, 2);
+  if (prefix2 === '20') {
+    // Corse : 200/201 → 2A, 202/206 → 2B (approx.)
+    const prefix3 = digits.slice(0, 3);
+    if (prefix3.startsWith('200') || prefix3.startsWith('201')) return '2A';
+    if (prefix3.startsWith('202') || prefix3.startsWith('206')) return '2B';
+    return '2A';
+  }
+  if (prefix2 === '97' || prefix2 === '98') {
+    const prefix3 = digits.slice(0, 3);
+    return isValidFrenchDepartmentCode(prefix3) ? prefix3 : null;
+  }
+  return isValidFrenchDepartmentCode(prefix2) ? prefix2 : null;
+}
+
 export function resolveDepartmentCodeFromFrenchName(fragment: string): string | null {
   const stripped = fragment
     .replace(/^les?\s+/i, '')

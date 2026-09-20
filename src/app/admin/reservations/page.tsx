@@ -20,6 +20,7 @@ const ADMIN_ORDER_STATUSES: OrderStatus[] = [
   'PENDING_PAYMENT',
   'PARTIALLY_PAID',
   'PAID',
+  'FAILED',
   'CANCELLED',
   'TRANSFERRED'
 ];
@@ -57,7 +58,7 @@ function buildOrderStatusUpdate(
   const now = new Date().toISOString();
   const update: OrderUpdate = {
     status: nextStatus,
-    cancelled_at: nextStatus === 'CANCELLED' ? now : null,
+    cancelled_at: nextStatus === 'CANCELLED' || nextStatus === 'FAILED' ? now : null,
     transferred_at: nextStatus === 'TRANSFERRED' ? now : null
   };
 

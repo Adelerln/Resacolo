@@ -40,14 +40,19 @@ import {
   assertCardDepositAllowedOrThrow,
   earliestIsoDate
 } from '@/lib/checkout/deposit-eligibility';
-import { normalizeVacafNumberInput, validateVacafNumber } from '@/lib/vacaf-number';
+import { normalizeVacafNumberInput, validateVacafNumber, validateVacafDepartmentCode } from '@/lib/vacaf-number';
+import { isValidFrenchDepartmentCode } from '@/lib/french-department-codes';
 import {
   normalizeAncvConnectMatriculeInput,
   resolveAncvConnectOrderPayableTotalCents,
   validateAncvConnectAmountAgainstOrderTotal,
   validateAncvConnectMatricule
 } from '@/lib/ancv-connect-matricule';
-import { sendReservationNotificationEmails } from '@/lib/reservation-notifications.server';
+import {
+  sendReservationNotificationEmails,
+  type ReservationNotificationInput,
+  type ReservationOnlinePaymentStatus
+} from '@/lib/reservation-notifications.server';
 import { isMissingAnyColumnError } from '@/lib/supabase-schema-errors';
 
 type PrepareCheckoutPaymentInput = {
@@ -155,6 +160,74 @@ function parsePaymentModeFromPayload(rawPayload: Json | null | undefined): Check
     return paymentMode;
   }
   return 'FULL';
+}
+
+function parseReservationNotificationFromPayload(
+  rawPayload: Json | null | undefined
+): ReservationNotificationInput | null {
+  const snapshot = asJsonRecord(rawPayload).reservationNotification;
+  if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) {
+    return null;
+  }
+  const record = snapshot as Record<string, unknown>;
+  if (typeof record.orderId !== 'string' || typeof record.organizerId !== 'string') {
+    return null;
+  }
+  return snapshot as unknown as ReservationNotificationInput;
+}
+
+async function notifyOrganizerFromPaymentPayload(input: {
+  rawPayload: Json | null | undefined;
+  onlinePaymentStatus: ReservationOnlinePaymentStatus;
+  markNotifiedOnPaymentId?: { paymentId: string; orderId: string };
+}) {
+  const notification = parseReservationNotificationFromPayload(input.rawPayload);
+  if (!notification) return;
+
+  const initialPayload = asJsonRecord(input.rawPayload);
+  if (initialPayload.organizerNotifiedAt) {
+    // Déjà notifié (succès) : ne pas renvoyer un second mail, sauf en cas d'échec explicite.
+    if (input.onlinePaymentStatus !== 'FAILED') {
+      return;
+    }
+    if (initialPayload.organizerNotificationStatus === 'FAILED') {
+      return;
+    }
+  }
+
+  await sendReservationNotificationEmails(
+    {
+      ...notification,
+      onlinePaymentStatus: input.onlinePaymentStatus
+    },
+    { recipients: 'organizer' }
+  );
+
+  if (!input.markNotifiedOnPaymentId) return;
+
+  const supabase = getServerSupabaseClient();
+  const { data: currentPayment } = await supabase
+    .from('payments')
+    .select('raw_payload')
+    .eq('id', input.markNotifiedOnPaymentId.paymentId)
+    .eq('order_id', input.markNotifiedOnPaymentId.orderId)
+    .maybeSingle();
+
+  const currentRecord = asJsonRecord(currentPayment?.raw_payload ?? input.rawPayload);
+  const mergedPayload: Json = {
+    ...currentRecord,
+    organizerNotifiedAt: new Date().toISOString(),
+    organizerNotificationStatus: input.onlinePaymentStatus
+  };
+  const { error } = await supabase
+    .from('payments')
+    .update({ raw_payload: mergedPayload })
+    .eq('id', input.markNotifiedOnPaymentId.paymentId)
+    .eq('order_id', input.markNotifiedOnPaymentId.orderId);
+
+  if (error) {
+    console.error('checkout: marquage notification organisateur échoué', error);
+  }
 }
 
 function validateParticipants(items: CartItem[], participants: CheckoutParticipant[]) {
@@ -270,6 +343,7 @@ function buildEffectiveContactForOrganizer(
     ...contact,
     paymentMode: selection.paymentMode,
     vacafNumber: selection.vacafNumber,
+    vacafDepartmentCode: selection.vacafDepartmentCode,
     ancvConnectMatricule: selection.ancvConnectMatricule,
     ancvConnectAmount: selection.ancvConnectAmount
   };
@@ -574,12 +648,14 @@ async function insertOrderWithCompatibilityFallback(input: {
   financeFamilyPayableTotalCents: number | null | undefined;
 }) {
   const supabase = getServerSupabaseClient();
-  const fullInsertPayload = {
+  const basePayload = {
     client_user_id: input.clientUserId,
     collectivity_id: input.collectivityId,
     status: input.initialStatus,
     requested_at: input.initialStatus === 'REQUESTED' ? input.requestedAt : null,
-    paid_at: input.paidAt,
+    paid_at: input.paidAt
+  };
+  const workflowPayload = {
     vacaf_number_snapshot: normalizeVacafNumberInput(input.contact.vacafNumber) || null,
     ancv_connect_matricule: normalizeAncvConnectMatriculeInput(input.contact.ancvConnectMatricule) || null,
     ancv_connect_requested_amount_cents:
@@ -587,77 +663,86 @@ async function insertOrderWithCompatibilityFallback(input: {
     request_kind: input.requestKind
   };
 
-  const { data: order, error } = await supabase.from('orders').insert(fullInsertPayload).select('id').single();
+  const attemptInsert = async (payload: Record<string, unknown>) => {
+    const { data, error } = await supabase.from('orders').insert(payload).select('id').single();
+    return { order: data, error };
+  };
 
-  if (!error && order) {
-    return order;
+  // 1) Payload complet (bases à jour).
+  const fullAttempt = await attemptInsert({ ...basePayload, ...workflowPayload });
+  if (!fullAttempt.error && fullAttempt.order) return fullAttempt.order;
+
+  const fullError = fullAttempt.error;
+  if (
+    fullError &&
+    !isMissingAnyColumnError(fullError, [...ORDER_WORKFLOW_COLUMNS]) &&
+    !isInvalidOrderStatusEnumError(fullError)
+  ) {
+    console.error('checkout: insertion orders échouée', fullError);
+    throw new Error(`Impossible de créer la commande: ${fullError.message}`);
   }
 
-  // Enum not migrated yet (PENDING_PAYMENT missing): retry full payload with a compatible status.
-  if (isInvalidOrderStatusEnumError(error)) {
+  // 2) Enum workflow v2 manquant → statut compatible + workflow.
+  if (isInvalidOrderStatusEnumError(fullError)) {
     const compatibleStatus = mapStatusForPreWorkflowV2Enum(input.initialStatus);
     if (compatibleStatus !== input.initialStatus) {
-      const { data: compatibleOrder, error: compatibleError } = await supabase
-        .from('orders')
-        .insert({
-          ...fullInsertPayload,
-          status: compatibleStatus,
-          requested_at:
-            compatibleStatus === 'REQUESTED' || input.initialStatus === 'PENDING_PAYMENT'
-              ? input.requestedAt
-              : fullInsertPayload.requested_at
-        })
-        .select('id')
-        .single();
-
-      if (!compatibleError && compatibleOrder) {
-        return compatibleOrder;
-      }
-
-      if (compatibleError && !isMissingAnyColumnError(compatibleError, [...ORDER_WORKFLOW_COLUMNS])) {
-        console.error('checkout: insertion orders (statut compatible) échouée', compatibleError);
-        throw new Error(`Impossible de créer la commande: ${compatibleError.message}`);
+      const compatibleAttempt = await attemptInsert({
+        ...basePayload,
+        ...workflowPayload,
+        status: compatibleStatus,
+        requested_at:
+          compatibleStatus === 'REQUESTED' || input.initialStatus === 'PENDING_PAYMENT'
+            ? input.requestedAt
+            : basePayload.requested_at
+      });
+      if (!compatibleAttempt.error && compatibleAttempt.order) return compatibleAttempt.order;
+      if (
+        compatibleAttempt.error &&
+        !isMissingAnyColumnError(compatibleAttempt.error, [...ORDER_WORKFLOW_COLUMNS])
+      ) {
+        console.error('checkout: insertion orders (statut compatible) échouée', compatibleAttempt.error);
+        throw new Error(`Impossible de créer la commande: ${compatibleAttempt.error.message}`);
       }
     }
   }
 
-  const shouldRetryLegacyInsert =
-    isMissingAnyColumnError(error, [...ORDER_WORKFLOW_COLUMNS]) || isInvalidOrderStatusEnumError(error);
-
-  if (!shouldRetryLegacyInsert) {
-    if (error) {
-      console.error('checkout: insertion orders échouée', error);
-      throw new Error(`Impossible de créer la commande: ${error.message}`);
-    }
-    throw new Error('Impossible de créer la commande.');
+  // 3) Colonnes VACAF/ANCV absentes : garder au moins request_kind si disponible.
+  const requestKindAttempt = await attemptInsert({
+    ...basePayload,
+    request_kind: input.requestKind
+  });
+  if (!requestKindAttempt.error && requestKindAttempt.order) return requestKindAttempt.order;
+  if (
+    requestKindAttempt.error &&
+    !isMissingAnyColumnError(requestKindAttempt.error, [...ORDER_WORKFLOW_COLUMNS])
+  ) {
+    console.error('checkout: insertion orders (request_kind) échouée', requestKindAttempt.error);
+    throw new Error(`Impossible de créer la commande: ${requestKindAttempt.error.message}`);
   }
 
+  // 4) Dernier recours : insert minimal.
   const legacyStatus = resolveLegacyOrderStatus({
     requestKind: input.requestKind,
     financeFamilyPayableTotalCents: input.financeFamilyPayableTotalCents
   });
 
-  const { data: legacyOrder, error: legacyError } = await supabase
-    .from('orders')
-    .insert({
-      client_user_id: input.clientUserId,
-      collectivity_id: input.collectivityId,
-      status: legacyStatus,
-      requested_at: legacyStatus === 'REQUESTED' ? input.requestedAt : null,
-      paid_at: legacyStatus === 'PAID' ? input.paidAt ?? input.requestedAt : null
-    })
-    .select('id')
-    .single();
+  const legacyAttempt = await attemptInsert({
+    client_user_id: input.clientUserId,
+    collectivity_id: input.collectivityId,
+    status: legacyStatus,
+    requested_at: legacyStatus === 'REQUESTED' ? input.requestedAt : null,
+    paid_at: legacyStatus === 'PAID' ? input.paidAt ?? input.requestedAt : null
+  });
 
-  if (legacyError || !legacyOrder) {
-    if (legacyError) {
-      console.error('checkout: insertion legacy orders échouée', legacyError);
-      throw new Error(`Impossible de créer la commande: ${legacyError.message}`);
+  if (legacyAttempt.error || !legacyAttempt.order) {
+    if (legacyAttempt.error) {
+      console.error('checkout: insertion legacy orders échouée', legacyAttempt.error);
+      throw new Error(`Impossible de créer la commande: ${legacyAttempt.error.message}`);
     }
     throw new Error('Impossible de créer la commande.');
   }
 
-  return legacyOrder;
+  return legacyAttempt.order;
 }
 
 export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput): Promise<PrepareCheckoutPaymentResult> {
@@ -689,6 +774,7 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
     .eq('orders.client_user_id', clientUserId)
     .neq('status', 'FAILED')
     .neq('orders.status', 'CANCELLED')
+    .neq('orders.status', 'FAILED')
     .filter('raw_payload->>checkoutId', 'eq', input.checkoutId)
     .order('updated_at', { ascending: true });
 
@@ -827,6 +913,14 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
       const vacafError = validateVacafNumber(effectiveContact.vacafNumber);
       if (vacafError) {
         throw new CheckoutValidationError(vacafError);
+      }
+      const vacafDepartmentError = validateVacafDepartmentCode({
+        vacafNumber: effectiveContact.vacafNumber,
+        vacafDepartmentCode: effectiveContact.vacafDepartmentCode,
+        isValidDepartmentCode: isValidFrenchDepartmentCode
+      });
+      if (vacafDepartmentError) {
+        throw new CheckoutValidationError(vacafDepartmentError);
       }
     }
     if (effectiveContact.paymentMode === 'CV_CONNECT') {
@@ -971,6 +1065,50 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
       orderItemIds,
       orderItemSnapshots
     };
+
+    const notificationLines = organizerParticipants.map((participant, index) => {
+      const pricedItem = organizerItems[index];
+      const childName = [participant.childFirstName, participant.childLastName]
+        .filter(Boolean)
+        .join(' ')
+        .trim();
+      const sessionLabel =
+        pricedItem?.sessionStartDate && pricedItem?.sessionEndDate
+          ? formatSessionDateRangeFr(pricedItem.sessionStartDate, pricedItem.sessionEndDate)
+          : 'Session';
+      return {
+        stayTitle: pricedItem?.stayTitle ?? 'Séjour',
+        sessionLabel,
+        childName: childName || 'Participant',
+        amountLabel: pricedItem ? formatEuroFromCents(pricedItem.totalPriceCents) : null
+      };
+    });
+
+    const deferOrganizerNotification =
+      immediatePaymentAmountCents > 0 && !isPartnerTotalCoverage;
+    const notificationInput: ReservationNotificationInput = {
+      orderId: order.id,
+      organizerId,
+      organizerName: organizerSettings.name,
+      organizerEmail: organizerSettings.contact_email,
+      familyEmail: effectiveContact.email,
+      contact: effectiveContact,
+      paymentMode: effectiveContact.paymentMode,
+      requestKind,
+      isPartnerManualQuote: Boolean(organizerPricing.financeRequiresQuote),
+      onlinePaymentStatus: deferOrganizerNotification
+        ? 'PENDING'
+        : isPartnerTotalCoverage
+          ? 'SUCCEEDED'
+          : null,
+      lines: notificationLines,
+      organizerAcceptsAncvPaper: organizerSettings.accepts_ancv_paper,
+      organizerAcceptsAncvConnect: organizerSettings.accepts_ancv_connect,
+      organizerIsVacafApproved: organizerSettings.is_vacaf_approved,
+      stayCafEligible,
+      ancvPaperMailingAddress: organizerSettings.ancv_paper_mailing_address ?? null
+    };
+
     const { data: payment, error: paymentInsertError } = await supabase
       .from('payments')
       .insert({
@@ -978,7 +1116,11 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
         amount_cents: immediatePaymentAmountCents,
         currency: pricing.currency,
         status: isPartnerTotalCoverage ? 'SUCCEEDED' : 'PENDING',
-        raw_payload: paymentRawPayload
+        raw_payload: {
+          ...paymentRawPayload,
+          reservationNotification: notificationInput,
+          organizerEmailPending: deferOrganizerNotification
+        }
       })
       .select('id')
       .single();
@@ -1011,40 +1153,8 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
       }
     }
 
-    const notificationLines = organizerParticipants.map((participant, index) => {
-      const pricedItem = organizerItems[index];
-      const childName = [participant.childFirstName, participant.childLastName]
-        .filter(Boolean)
-        .join(' ')
-        .trim();
-      const sessionLabel =
-        pricedItem?.sessionStartDate && pricedItem?.sessionEndDate
-          ? formatSessionDateRangeFr(pricedItem.sessionStartDate, pricedItem.sessionEndDate)
-          : 'Session';
-      return {
-        stayTitle: pricedItem?.stayTitle ?? 'Séjour',
-        sessionLabel,
-        childName: childName || 'Participant',
-        amountLabel: pricedItem ? formatEuroFromCents(pricedItem.totalPriceCents) : null
-      };
-    });
-
-    void sendReservationNotificationEmails({
-      orderId: order.id,
-      organizerId,
-      organizerName: organizerSettings.name,
-      organizerEmail: organizerSettings.contact_email,
-      familyEmail: effectiveContact.email,
-      contact: effectiveContact,
-      paymentMode: effectiveContact.paymentMode,
-      requestKind,
-      isPartnerManualQuote: Boolean(organizerPricing.financeRequiresQuote),
-      lines: notificationLines,
-      organizerAcceptsAncvPaper: organizerSettings.accepts_ancv_paper,
-      organizerAcceptsAncvConnect: organizerSettings.accepts_ancv_connect,
-      organizerIsVacafApproved: organizerSettings.is_vacaf_approved,
-      stayCafEligible,
-      ancvPaperMailingAddress: organizerSettings.ancv_paper_mailing_address ?? null
+    await sendReservationNotificationEmails(notificationInput, {
+      recipients: deferOrganizerNotification ? 'family' : 'all'
     }).catch((error) => {
       console.error('checkout: envoi emails réservation échoué', error);
     });
@@ -1058,7 +1168,11 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
       isPartnerTotalCoverage,
       requestKind,
       paymentMode: effectiveContact.paymentMode,
-      paymentRawPayload
+      paymentRawPayload: {
+        ...paymentRawPayload,
+        reservationNotification: notificationInput as unknown as Json,
+        organizerEmailPending: deferOrganizerNotification
+      }
     });
   }
 
@@ -1306,6 +1420,17 @@ export async function markOrderPaid(input: {
     }
   }
 
+  const payloadRecord = asJsonRecord(existingPayment?.raw_payload);
+  if (payloadRecord.organizerEmailPending && !payloadRecord.organizerNotifiedAt) {
+    await notifyOrganizerFromPaymentPayload({
+      rawPayload: existingPayment?.raw_payload,
+      onlinePaymentStatus: 'SUCCEEDED',
+      markNotifiedOnPaymentId: { paymentId: input.paymentId, orderId: input.orderId }
+    }).catch((error) => {
+      console.error('checkout: envoi email organisateur après paiement échoué', error);
+    });
+  }
+
   return {
     orderId: input.orderId,
     status: appliedStatus,
@@ -1352,17 +1477,49 @@ export async function failOrderPayment(input: {
     };
   }
 
-  const cancelledAt = new Date().toISOString();
-  const { error: orderError } = await supabase
-    .from('orders')
-    .update({
+  const failedAt = new Date().toISOString();
+  const failedUpdateAttempts: Array<{
+    status: Database['public']['Enums']['order_status'];
+    payload: Record<string, string | null>;
+  }> = [
+    {
+      status: 'FAILED',
+      payload: {
+        status: 'FAILED',
+        cancelled_at: failedAt,
+        cancellation_reason: 'PAYMENT_FAILED'
+      }
+    },
+    {
       status: 'CANCELLED',
-      cancelled_at: cancelledAt,
-      cancellation_reason: 'PAYMENT_FAILED'
-    })
-    .eq('id', input.orderId);
+      payload: {
+        status: 'CANCELLED',
+        cancelled_at: failedAt,
+        cancellation_reason: 'PAYMENT_FAILED'
+      }
+    }
+  ];
 
-  if (orderError) {
+  let orderMarked = false;
+  for (const attempt of failedUpdateAttempts) {
+    const { error: orderError } = await supabase
+      .from('orders')
+      .update(attempt.payload)
+      .eq('id', input.orderId);
+
+    if (!orderError) {
+      orderMarked = true;
+      break;
+    }
+
+    if (attempt.status === 'FAILED' && isInvalidOrderStatusEnumError(orderError)) {
+      continue;
+    }
+
+    throw new Error('Impossible de marquer la commande en échec.');
+  }
+
+  if (!orderMarked) {
     throw new Error('Impossible de marquer la commande en échec.');
   }
 
@@ -1382,6 +1539,17 @@ export async function failOrderPayment(input: {
     if (holdsError) {
       throw new Error('Impossible de libérer les holds de session.');
     }
+  }
+
+  const payloadRecord = asJsonRecord(existingPayment?.raw_payload);
+  if (payloadRecord.organizerEmailPending || payloadRecord.organizerNotifiedAt) {
+    await notifyOrganizerFromPaymentPayload({
+      rawPayload: existingPayment?.raw_payload,
+      onlinePaymentStatus: 'FAILED',
+      markNotifiedOnPaymentId: { paymentId: input.paymentId, orderId: input.orderId }
+    }).catch((error) => {
+      console.error('checkout: envoi email organisateur après échec paiement échoué', error);
+    });
   }
 
   return {

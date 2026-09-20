@@ -15,6 +15,7 @@ import { isMissingAnyColumnError } from '@/lib/supabase-schema-errors';
 import { normalizeVacafNumberInput } from '@/lib/vacaf-number';
 import {
   computeRemainingBalanceCents as computeOrderRemainingBalanceCents,
+  isPaymentFailedOrder,
   reconcileOrderStatusWithBalance,
   resolveOrderStatusLabel
 } from '@/lib/order-workflow';
@@ -154,8 +155,9 @@ function shouldHideFailedCheckoutOrder(input: {
   latestPaymentStatus?: string | null | undefined;
   hasSuccessfulPayment?: boolean;
 }) {
-  if (input.status === 'CANCELLED' && input.cancellationReason === 'PAYMENT_FAILED') {
-    return true;
+  // Les échecs CB restent visibles avec le libellé « Échec de paiement » (plus « Annulée »).
+  if (isPaymentFailedOrder(input)) {
+    return false;
   }
 
   return input.latestPaymentStatus === 'FAILED' && !input.hasSuccessfulPayment;
@@ -773,7 +775,8 @@ async function assertFamilyCanDetachFromCse(userId: string, collectivity: Collec
     .eq('client_user_id', userId)
     .eq('collectivity_id', collectivity.id)
     .neq('status', 'CART')
-    .neq('status', 'CANCELLED');
+    .neq('status', 'CANCELLED')
+    .neq('status', 'FAILED');
 
   if (ordersError || !orders?.length) {
     return;
@@ -1834,7 +1837,8 @@ async function readReservations(
           status: order.status,
           remainingBalanceCents,
           onlinePaidCents,
-          externalPaidCents
+          externalPaidCents,
+          cancellationReason: order.cancellation_reason
         }),
         sessionStartDate: session?.start_date ?? null,
         sessionEndDate: session?.end_date ?? null,

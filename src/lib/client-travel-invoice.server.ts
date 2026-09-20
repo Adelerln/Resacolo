@@ -145,7 +145,7 @@ async function buildClientTravelInvoiceModel(orderId: string) {
   if (orderError || !order) {
     throw new Error(orderError?.message || 'Commande introuvable pour la facture.');
   }
-  if (order.status === 'CART' || order.status === 'CANCELLED') {
+  if (order.status === 'CART' || order.status === 'CANCELLED' || order.status === 'FAILED') {
     throw new Error('Cette commande ne permet pas encore de générer une facture.');
   }
 

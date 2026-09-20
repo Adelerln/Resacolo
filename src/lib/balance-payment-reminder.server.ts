@@ -115,7 +115,7 @@ export async function listBalanceReminderCandidates(
     if (normalized === 'PENDING_PAYMENT' || normalized === 'REQUESTED') {
       continue;
     }
-    if (normalized === 'PAID' || normalized === 'CANCELLED' || normalized === 'CART') {
+    if (normalized === 'PAID' || normalized === 'CANCELLED' || normalized === 'FAILED' || normalized === 'CART') {
       // PAID avec remaining>0 sera écarté plus bas ; CANCELLED/CART exclus.
       if (normalized !== 'PAID') continue;
     }
@@ -208,7 +208,7 @@ export async function sendBalanceReminder(
   options?: { toOverride?: string | null }
 ): Promise<{ sent: boolean; skipped?: string; email?: string }> {
   const balance = await computeOrderClientBalance(candidate.orderId);
-  if (balance.order.status === 'CANCELLED' || balance.order.status === 'CART') {
+  if (balance.order.status === 'CANCELLED' || balance.order.status === 'FAILED' || balance.order.status === 'CART') {
     return { sent: false, skipped: 'cancelled_or_cart' };
   }
   if (balance.order.status === 'PAID' || balance.remainingBalanceCents <= 0) {

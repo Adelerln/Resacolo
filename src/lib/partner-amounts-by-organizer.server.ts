@@ -78,7 +78,10 @@ export async function buildPartnerAmountsByOrganizerModel(input: {
   }
 
   const orderRows = (orders ?? []).filter(
-    (order) => order.status !== 'CANCELLED' && order.status !== 'TRANSFERRED'
+    (order) =>
+      order.status !== 'CANCELLED' &&
+      order.status !== 'FAILED' &&
+      order.status !== 'TRANSFERRED'
   );
   if (orderRows.length === 0) {
     return {
@@ -130,7 +133,7 @@ export async function buildPartnerAmountsByOrganizerModel(input: {
     orderRows
       .filter((order) => {
         const latestPaymentStatus = latestPaymentStatusByOrderId.get(order.id) ?? null;
-        if (order.status === 'CANCELLED' && order.cancellation_reason === 'PAYMENT_FAILED') {
+        if (order.status === 'FAILED' || (order.status === 'CANCELLED' && order.cancellation_reason === 'PAYMENT_FAILED')) {
           return false;
         }
         return latestPaymentStatus !== 'FAILED';

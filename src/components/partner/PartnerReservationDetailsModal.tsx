@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
+import { formatVacafNumberWithDepartment } from '@/lib/vacaf-number';
 
 type PartnerReservationDetails = {
   id: string;
@@ -19,6 +20,7 @@ type PartnerReservationDetails = {
   paymentMode: string;
   paymentModeLabel: string;
   vacafNumberSnapshot: string | null;
+  vacafDepartmentCode: string | null;
   ancvConnectMatricule: string | null;
   ancvConnectRequestedAmountLabel: string | null;
   externalAidLabel: string | null;
@@ -185,7 +187,17 @@ export function PartnerReservationDetailsModal({ reservation }: { reservation: P
                   }
                 />
                 {reservation.requestKind === 'VACAF' ? (
-                  <DetailRow label="Numéro allocataire CAF" value={reservation.vacafNumberSnapshot} />
+                  <DetailRow
+                    label="Numéro allocataire CAF"
+                    value={
+                      reservation.vacafNumberSnapshot
+                        ? formatVacafNumberWithDepartment(
+                            reservation.vacafNumberSnapshot,
+                            reservation.vacafDepartmentCode
+                          )
+                        : reservation.vacafNumberSnapshot
+                    }
+                  />
                 ) : null}
                 {reservation.requestKind === 'ANCV_CONNECT' ? (
                   <>

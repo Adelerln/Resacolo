@@ -178,7 +178,7 @@ export async function sendDepositReminder(
   options?: { toOverride?: string | null }
 ): Promise<{ sent: boolean; skipped?: string; email?: string }> {
   const balance = await computeOrderClientBalance(candidate.orderId);
-  if (balance.order.status === 'CANCELLED' || balance.order.status === 'CART') {
+  if (balance.order.status === 'CANCELLED' || balance.order.status === 'FAILED' || balance.order.status === 'CART') {
     return { sent: false, skipped: 'cancelled_or_cart' };
   }
   if (normalizeOrderStatus(balance.order.status) !== 'PENDING_PAYMENT') {

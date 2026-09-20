@@ -5,6 +5,8 @@ export type CheckoutPaymentMode = 'FULL' | 'DEPOSIT_200' | 'CV_CONNECT' | 'CV_PA
 export type CheckoutOrganizerSelection = {
   paymentMode: CheckoutPaymentMode;
   vacafNumber: string;
+  /** Code département CAF (ex. 75), saisi avec le matricule. */
+  vacafDepartmentCode: string;
   ancvConnectMatricule: string;
   ancvConnectAmount: string;
 };
@@ -27,6 +29,7 @@ export type CheckoutContact = {
   billingCountry: string;
   cseOrganization: string;
   vacafNumber: string;
+  vacafDepartmentCode: string;
   ancvConnectMatricule: string;
   ancvConnectAmount: string;
   paymentMode: CheckoutPaymentMode;
@@ -120,6 +123,7 @@ export const EMPTY_CONTACT: CheckoutContact = {
   billingCountry: 'France',
   cseOrganization: '',
   vacafNumber: '',
+  vacafDepartmentCode: '',
   ancvConnectMatricule: '',
   ancvConnectAmount: '',
   paymentMode: 'FULL',
@@ -136,6 +140,7 @@ export function createDefaultOrganizerSelection(
   return {
     paymentMode: 'FULL',
     vacafNumber: '',
+    vacafDepartmentCode: '',
     ancvConnectMatricule: '',
     ancvConnectAmount: '',
     ...overrides
@@ -165,7 +170,12 @@ export function normalizeCheckoutContact(contact: Partial<CheckoutContact> | nul
 export function getOrganizerSelection(
   contact: Pick<
     CheckoutContact,
-    'paymentMode' | 'vacafNumber' | 'ancvConnectMatricule' | 'ancvConnectAmount' | 'organizerSelections'
+    | 'paymentMode'
+    | 'vacafNumber'
+    | 'vacafDepartmentCode'
+    | 'ancvConnectMatricule'
+    | 'ancvConnectAmount'
+    | 'organizerSelections'
   >,
   organizerId: string
 ): CheckoutOrganizerSelection {
@@ -177,6 +187,7 @@ export function getOrganizerSelection(
   return createDefaultOrganizerSelection({
     paymentMode: contact.paymentMode,
     vacafNumber: contact.vacafNumber,
+    vacafDepartmentCode: contact.vacafDepartmentCode,
     ancvConnectMatricule: contact.ancvConnectMatricule,
     ancvConnectAmount: contact.ancvConnectAmount
   });
@@ -202,7 +213,15 @@ export function patchOrganizerSelection(
 }
 
 export function hasAnyOnlineOrganizerSelection(
-  contact: Pick<CheckoutContact, 'paymentMode' | 'vacafNumber' | 'ancvConnectMatricule' | 'ancvConnectAmount' | 'organizerSelections'>
+  contact: Pick<
+    CheckoutContact,
+    | 'paymentMode'
+    | 'vacafNumber'
+    | 'vacafDepartmentCode'
+    | 'ancvConnectMatricule'
+    | 'ancvConnectAmount'
+    | 'organizerSelections'
+  >
 ) {
   const selections = Object.values(normalizeOrganizerSelections(contact.organizerSelections));
   if (selections.length === 0) {

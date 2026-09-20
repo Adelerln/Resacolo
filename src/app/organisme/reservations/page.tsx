@@ -7,6 +7,7 @@ import { OrganizerCancellationForm } from '@/components/organisme/OrganizerCance
 import { canAccessOrganizerSection } from '@/lib/organizer-access';
 import { requireOrganizerPageAccess } from '@/lib/organizer-backoffice-access.server';
 import {
+  formatOrderReservationCode,
   orderStatusBadgeClassName,
   orderStatusLabel,
   parseAmountEurosToCents,
@@ -16,6 +17,7 @@ import { computePartnerContributionSnapshotCents } from '@/lib/partner-offers';
 import { withOrganizerQuery } from '@/lib/organizers.server';
 import { isMissingAnyColumnError } from '@/lib/supabase-schema-errors';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
+import { formatVacafNumberWithDepartment } from '@/lib/vacaf-number';
 import type { Database } from '@/types/supabase';
 
 type PageProps = {
@@ -64,6 +66,47 @@ function parsePaymentModeFromPayload(rawPayload: unknown) {
     return paymentMode;
   }
   return 'FULL';
+}
+
+function parseContactStringFromPayload(rawPayload: unknown, key: string) {
+  if (!rawPayload || typeof rawPayload !== 'object' || Array.isArray(rawPayload)) return null;
+  const contact = (rawPayload as Record<string, unknown>).contact;
+  if (!contact || typeof contact !== 'object' || Array.isArray(contact)) return null;
+  const value = (contact as Record<string, unknown>)[key];
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed || null;
+}
+
+function firstNonEmpty(...values: Array<string | null | undefined>) {
+  for (const value of values) {
+    const trimmed = String(value ?? '').trim();
+    if (trimmed) return trimmed;
+  }
+  return null;
+}
+
+function parseVacafDepartmentFromPayload(rawPayload: unknown, organizerId?: string | null) {
+  const fromContact = parseContactStringFromPayload(rawPayload, 'vacafDepartmentCode');
+  if (fromContact) return fromContact;
+  if (!rawPayload || typeof rawPayload !== 'object' || Array.isArray(rawPayload)) return null;
+  const contact = (rawPayload as Record<string, unknown>).contact;
+  if (!contact || typeof contact !== 'object' || Array.isArray(contact)) return null;
+  const selections = (contact as Record<string, unknown>).organizerSelections;
+  if (!selections || typeof selections !== 'object' || Array.isArray(selections)) return null;
+  if (organizerId) {
+    const selection = (selections as Record<string, unknown>)[organizerId];
+    if (selection && typeof selection === 'object' && !Array.isArray(selection)) {
+      const code = (selection as Record<string, unknown>).vacafDepartmentCode;
+      if (typeof code === 'string' && code.trim()) return code.trim();
+    }
+  }
+  for (const selection of Object.values(selections as Record<string, unknown>)) {
+    if (!selection || typeof selection !== 'object' || Array.isArray(selection)) continue;
+    const code = (selection as Record<string, unknown>).vacafDepartmentCode;
+    if (typeof code === 'string' && code.trim()) return code.trim();
+  }
+  return null;
 }
 
 function formatDate(value: string | null | undefined) {
@@ -133,13 +176,55 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
     const supabase = getServerSupabaseClient();
     const { data: orderRow, error: orderError } = await supabase
       .from('orders')
-      .select('id,status,request_kind,external_aid_cents,external_paid_cents')
+      .select('id,status,request_kind,vacaf_number_snapshot,ancv_connect_matricule,external_aid_cents,external_paid_cents')
       .eq('id', orderId)
       .maybeSingle();
 
-    if (orderError || !orderRow || orderRow.request_kind !== requestKind) {
+    let resolvedOrder = orderRow;
+    if (orderError && isMissingAnyColumnError(orderError, ['vacaf_number_snapshot', 'ancv_connect_matricule'])) {
+      const { data: legacyOrder } = await supabase
+        .from('orders')
+        .select('id,status,request_kind,external_aid_cents,external_paid_cents')
+        .eq('id', orderId)
+        .maybeSingle();
+      resolvedOrder = legacyOrder
+        ? {
+            ...legacyOrder,
+            vacaf_number_snapshot: null,
+            ancv_connect_matricule: null
+          }
+        : null;
+    } else if (orderError || !orderRow) {
       redirect(withOrganizerQuery('/organisme/reservations', organizerId));
     }
+
+    if (!resolvedOrder) {
+      redirect(withOrganizerQuery('/organisme/reservations', organizerId));
+    }
+
+    const hasVacafSnapshot = Boolean(String(resolvedOrder.vacaf_number_snapshot ?? '').trim());
+    const hasAncvMatricule = Boolean(String(resolvedOrder.ancv_connect_matricule ?? '').trim());
+    const canResolveVacaf =
+      requestKind === 'VACAF' &&
+      (resolvedOrder.request_kind === 'VACAF' || hasVacafSnapshot || resolvedOrder.request_kind == null);
+    const canResolveAncv =
+      requestKind === 'ANCV_CONNECT' &&
+      (resolvedOrder.request_kind === 'ANCV_CONNECT' || hasAncvMatricule || resolvedOrder.request_kind == null);
+
+    if (!canResolveVacaf && !canResolveAncv) {
+      redirect(withOrganizerQuery('/organisme/reservations', organizerId));
+    }
+
+    if (amountCents <= 0) {
+      redirect(
+        withOrganizerQuery(
+          `/organisme/reservations?error=${encodeURIComponent('Indiquez un montant de prise en charge valide.')}`,
+          organizerId
+        )
+      );
+    }
+
+    const orderRowForResolution = resolvedOrder;
 
     const { data: orderItemsRaw, error: itemsError } = await supabase
       .from('order_items')
@@ -195,8 +280,8 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
       );
     }, 0);
     const familyPayableTotalCents = Math.max(0, totalCents - partnerContributionCents);
-    const nextExternalAidCents = requestKind === 'VACAF' ? amountCents : orderRow.external_aid_cents ?? 0;
-    const nextExternalPaidCents = requestKind === 'ANCV_CONNECT' ? amountCents : orderRow.external_paid_cents ?? 0;
+    const nextExternalAidCents = requestKind === 'VACAF' ? amountCents : orderRowForResolution.external_aid_cents ?? 0;
+    const nextExternalPaidCents = requestKind === 'ANCV_CONNECT' ? amountCents : orderRowForResolution.external_paid_cents ?? 0;
     const nextStatus = resolveStatusAfterRequestResolution({
       totalCents: familyPayableTotalCents,
       externalAidCents: nextExternalAidCents,
@@ -208,6 +293,7 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
     const { error: updateError } = await supabase
       .from('orders')
       .update({
+        request_kind: requestKind,
         external_aid_cents: nextExternalAidCents,
         external_paid_cents: nextExternalPaidCents,
         request_resolved_at: now,
@@ -530,7 +616,7 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
   const reservations = orders
     .filter((order) => {
       const payment = paymentsByOrderId.get(order.id);
-      if (order.status === 'CANCELLED' && order.cancellation_reason === 'PAYMENT_FAILED') {
+      if (order.status === 'FAILED' || (order.status === 'CANCELLED' && order.cancellation_reason === 'PAYMENT_FAILED')) {
         return false;
       }
       // Ne pas masquer une demande VACAF/ANCV si un paiement CB a échoué à côté.
@@ -551,9 +637,59 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
       .map((item) => [item.child_first_name, item.child_last_name].filter(Boolean).join(' ').trim())
       .filter(Boolean);
     const paymentMode = parsePaymentModeFromPayload(payment?.raw_payload);
+    const cafNumberFromOrder = firstNonEmpty(
+      order.vacaf_number_snapshot,
+      parseContactStringFromPayload(payment?.raw_payload, 'vacafNumber')
+    );
+    const cafDepartmentCode = parseVacafDepartmentFromPayload(
+      payment?.raw_payload,
+      selectedOrganizerId
+    );
+    const cafNumber = firstNonEmpty(
+      cafNumberFromOrder,
+      order.request_kind === 'VACAF' ? profile?.vacaf_number : null
+    );
+    const cafNumberLabel = cafNumber
+      ? formatVacafNumberWithDepartment(cafNumber, cafDepartmentCode)
+      : null;
+    const ancvConnectMatricule = firstNonEmpty(
+      order.ancv_connect_matricule,
+      parseContactStringFromPayload(payment?.raw_payload, 'ancvConnectMatricule')
+    );
+    const isAncvConnect =
+      order.request_kind === 'ANCV_CONNECT' ||
+      paymentMode === 'CV_CONNECT' ||
+      Boolean(ancvConnectMatricule);
+    const isVacafRequest = order.request_kind === 'VACAF' || Boolean(cafNumberFromOrder);
+    const reservationCode = formatOrderReservationCode(order.id);
+    const canEnterVacafCoverage =
+      isVacafRequest &&
+      order.status !== 'CANCELLED' &&
+      order.status !== 'FAILED' &&
+      order.status !== 'PAID';
+    const canEnterAncvCoverage =
+      isAncvConnect &&
+      order.status !== 'CANCELLED' &&
+      order.status !== 'FAILED' &&
+      order.status !== 'PAID';
+    const externalAidLabel =
+      typeof order.external_aid_cents === 'number' && order.external_aid_cents > 0
+        ? formatEuroFromCents(order.external_aid_cents, payment?.currency ?? 'EUR')
+        : null;
+    const externalPaidLabel =
+      typeof order.external_paid_cents === 'number' && order.external_paid_cents > 0
+        ? formatEuroFromCents(order.external_paid_cents, payment?.currency ?? 'EUR')
+        : null;
+    const ancvConnectRequestedAmountLabel =
+      typeof order.ancv_connect_requested_amount_cents === 'number'
+        ? formatEuroFromCents(order.ancv_connect_requested_amount_cents, payment?.currency ?? 'EUR')
+        : firstNonEmpty(parseContactStringFromPayload(payment?.raw_payload, 'ancvConnectAmount'))
+          ? `${firstNonEmpty(parseContactStringFromPayload(payment?.raw_payload, 'ancvConnectAmount'))} €`
+          : null;
 
       return {
         id: order.id,
+        reservationCode,
         stayTitle: stay?.title ?? 'Séjour inconnu',
         sessionLabel: formatDateRange(session?.start_date, session?.end_date),
         clientName:
@@ -567,37 +703,37 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
           ? collectivitiesById.get(order.collectivity_id) ?? 'Collectivité inconnue'
           : 'Famille directe',
         status: order.status,
+        cancellationReason: order.cancellation_reason,
         requestKind: order.request_kind,
-        requestReference:
-          order.request_kind === 'VACAF'
-            ? formatText(order.vacaf_number_snapshot)
-            : order.request_kind === 'ANCV_CONNECT'
-              ? formatText(order.ancv_connect_matricule)
-              : null,
-        requestedAmountLabel:
-          order.request_kind === 'ANCV_CONNECT' && typeof order.ancv_connect_requested_amount_cents === 'number'
-            ? formatEuroFromCents(order.ancv_connect_requested_amount_cents, payment?.currency ?? 'EUR')
+        isVacafRequest,
+        isAncvConnect,
+        cafNumber: cafNumberLabel,
+        requestReference: isVacafRequest
+          ? cafNumberLabel
+          : isAncvConnect
+            ? ancvConnectMatricule
             : null,
-        externalAidLabel:
-          typeof order.external_aid_cents === 'number' && order.external_aid_cents > 0
-            ? formatEuroFromCents(order.external_aid_cents, payment?.currency ?? 'EUR')
-            : null,
-        externalPaidLabel:
-          typeof order.external_paid_cents === 'number' && order.external_paid_cents > 0
-            ? formatEuroFromCents(order.external_paid_cents, payment?.currency ?? 'EUR')
-            : null,
+        requestedAmountLabel: isAncvConnect ? ancvConnectRequestedAmountLabel : null,
+        externalAidLabel,
+        externalPaidLabel,
+        canEnterVacafCoverage,
+        canEnterAncvCoverage,
         totalCents,
         onlinePaidCents: onlinePaidCentsByOrderId.get(order.id) ?? 0,
         details: {
           id: order.id,
+          reservationCode,
           clientName:
             (order.client_user_id ? clientsByUserId.get(order.client_user_id) : undefined) ??
             participantNames[0] ??
             'Client inconnu',
           participantName: participantNames[0] ?? 'Participant inconnu',
           paymentModeLabel: PAYMENT_MODE_LABELS[paymentMode] ?? 'Non renseigné',
-          cafLabel: formatText(order.vacaf_number_snapshot),
-          ancvConnectLabel: order.request_kind === 'ANCV_CONNECT' ? 'Oui' : 'Non',
+          cafNumber: cafNumberLabel,
+          ancvConnectMatricule: isAncvConnect ? ancvConnectMatricule : null,
+          ancvConnectRequestedAmountLabel: isAncvConnect ? ancvConnectRequestedAmountLabel : null,
+          externalAidLabel,
+          externalPaidLabel,
           email: formatText(profile?.parent1_email),
           primaryPhone: formatText(profile?.parent1_phone),
           secondaryPhone: formatText(profile?.parent2_phone),
@@ -622,7 +758,34 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
                 profile?.postal_code,
                 profile?.city,
                 profile?.country
-              ])
+              ]),
+          coverageForm: canEnterVacafCoverage
+            ? {
+                organizerId: selectedOrganizerId,
+                orderId: order.id,
+                requestKind: 'VACAF' as const,
+                referenceLabel: cafNumberLabel
+                  ? `N° allocataire : ${cafNumberLabel}`
+                  : 'Saisissez le montant CAF réellement appliqué.',
+                amountPlaceholder: 'Montant de prise en charge CAF (€)',
+                submitLabel: 'Enregistrer la prise en charge CAF',
+                currentAmountLabel: externalAidLabel
+              }
+            : canEnterAncvCoverage
+              ? {
+                  organizerId: selectedOrganizerId,
+                  orderId: order.id,
+                  requestKind: 'ANCV_CONNECT' as const,
+                  referenceLabel: ancvConnectMatricule
+                    ? `Matricule : ${ancvConnectMatricule}${
+                        ancvConnectRequestedAmountLabel ? ` · demandé ${ancvConnectRequestedAmountLabel}` : ''
+                      }`
+                    : 'Saisissez le montant ANCV Connect effectivement reçu.',
+                  amountPlaceholder: 'Montant ANCV reçu (€)',
+                  submitLabel: 'Enregistrer le montant ANCV',
+                  currentAmountLabel: externalPaidLabel
+                }
+              : null
         }
       };
     });
@@ -645,9 +808,10 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
       ) : null}
       <div className="organizer-table-shell">
         <div className="overflow-x-auto">
-          <table className="organizer-table min-w-[1120px] w-full table-fixed">
+          <table className="organizer-table min-w-[1200px] w-full table-fixed">
             <thead>
               <tr>
+                <th className="px-4 py-3">Réf.</th>
                 <th className="px-4 py-3">Client</th>
                 <th className="px-4 py-3">Séjour</th>
                 <th className="px-4 py-3">Session</th>
@@ -662,6 +826,11 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
             <tbody>
               {reservations.map((reservation) => (
                 <tr key={reservation.id} className="border-t border-slate-100 align-top">
+                  <td className="px-4 py-3">
+                    <div className="font-mono text-sm font-semibold tracking-wide text-slate-900">
+                      {reservation.reservationCode.replace(/^#/, '')}
+                    </div>
+                  </td>
                   <td className="px-4 py-3">
                     <div className="text-slate-900">{reservation.clientName}</div>
                   </td>
@@ -678,19 +847,26 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
                   <td className="px-4 py-3">
                     <span
                       className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${orderStatusBadgeClassName(
-                        reservation.status
+                        reservation.status,
+                        { cancellationReason: reservation.cancellationReason }
                       )}`}
                     >
-                      {orderStatusLabel(reservation.status)}
+                      {orderStatusLabel(reservation.status, {
+                        cancellationReason: reservation.cancellationReason
+                      })}
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    {reservation.requestKind === 'VACAF' && reservation.status === 'REQUESTED' ? (
+                    {reservation.canEnterVacafCoverage ? (
                       <form action={resolveRequest} className="space-y-2">
                         <input type="hidden" name="organizer_id" value={selectedOrganizerId} />
                         <input type="hidden" name="order_id" value={reservation.id} />
                         <input type="hidden" name="request_kind" value="VACAF" />
-                        <div className="text-xs text-slate-500">N° allocataire : {reservation.requestReference}</div>
+                        {reservation.requestReference ? (
+                          <div className="text-xs text-slate-500">
+                            N° allocataire : {reservation.requestReference}
+                          </div>
+                        ) : null}
                         <input
                           name="resolved_amount_euros"
                           type="text"
@@ -702,13 +878,15 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
                           Enregistrer le montant CAF
                         </button>
                       </form>
-                    ) : reservation.requestKind === 'ANCV_CONNECT' && reservation.status === 'REQUESTED' ? (
+                    ) : reservation.canEnterAncvCoverage ? (
                       <form action={resolveRequest} className="space-y-2">
                         <input type="hidden" name="organizer_id" value={selectedOrganizerId} />
                         <input type="hidden" name="order_id" value={reservation.id} />
                         <input type="hidden" name="request_kind" value="ANCV_CONNECT" />
                         <div className="text-xs text-slate-500">
-                          Matricule : {reservation.requestReference}
+                          {reservation.requestReference
+                            ? `Matricule : ${reservation.requestReference}`
+                            : 'ANCV Connect'}
                           {reservation.requestedAmountLabel ? ` · demandé ${reservation.requestedAmountLabel}` : ''}
                         </div>
                         <input
@@ -734,8 +912,11 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
                   <td className="px-4 py-3 text-slate-600">{reservation.collectivityName}</td>
                   <td className="px-4 py-3 text-right font-medium text-slate-900">{reservation.amountLabel}</td>
                   <td className="w-[140px] px-4 py-3 text-right">
-                    <OrganizerReservationDetailsModal reservation={reservation.details} />
-                    {reservation.status !== 'CANCELLED' ? (
+                    <OrganizerReservationDetailsModal
+                      reservation={reservation.details}
+                      resolveAction={resolveRequest}
+                    />
+                    {reservation.status !== 'CANCELLED' && reservation.status !== 'FAILED' ? (
                       <OrganizerCancellationForm
                         organizerId={selectedOrganizerId}
                         orderId={reservation.id}
@@ -747,7 +928,7 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
               ))}
               {reservations.length === 0 && (
                 <tr>
-                  <td className="px-4 py-8 text-slate-500" colSpan={9}>
+                  <td className="px-4 py-8 text-slate-500" colSpan={10}>
                     {ordersLoadError ? (
                       <p className="text-red-700">
                         Impossible de charger les réservations : {ordersLoadError}

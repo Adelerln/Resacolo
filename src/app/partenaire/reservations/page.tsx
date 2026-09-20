@@ -260,6 +260,7 @@ export default async function PartnerReservationsPage() {
                           paymentMode: reservation.paymentMode,
                           paymentModeLabel: reservation.paymentModeLabel,
                           vacafNumberSnapshot: reservation.vacafNumberSnapshot,
+                          vacafDepartmentCode: reservation.vacafDepartmentCode ?? null,
                           ancvConnectMatricule: reservation.ancvConnectMatricule,
                           ancvConnectRequestedAmountLabel:
                             typeof reservation.ancvConnectRequestedAmountCents === 'number'

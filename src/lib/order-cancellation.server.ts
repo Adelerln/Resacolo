@@ -125,7 +125,7 @@ export async function createOrganizerCancellationRequest(input: {
   if (orderError || !order) {
     throw new Error('Réservation introuvable.');
   }
-  if (order.status === 'CANCELLED' || order.status === 'CART') {
+  if (order.status === 'CANCELLED' || order.status === 'FAILED' || order.status === 'CART') {
     throw new Error('Cette réservation est déjà annulée.');
   }
 

@@ -31,8 +31,14 @@ import { formatNoPaymentAsBeneficiaryMessage } from '@/lib/partner-beneficiary-c
 import { fetchFamilyProfileSnapshot } from '@/lib/account-profile/client';
 import {
   normalizeVacafNumberInput,
-  validateVacafNumber
+  validateVacafNumber,
+  validateVacafDepartmentCode
 } from '@/lib/vacaf-number';
+import {
+  FRENCH_DEPARTMENT_OPTIONS,
+  isValidFrenchDepartmentCode,
+  suggestDepartmentCodeFromPostalCode
+} from '@/lib/french-department-codes';
 import {
   ANCV_CONNECT_MATRICULE_HINT,
   normalizeAncvConnectMatriculeInput,
@@ -413,7 +419,7 @@ export default function CheckoutRecapitulatifPage() {
       paymentMode: mode,
       ancvConnectMatricule: '',
       ancvConnectAmount: '',
-      ...(mode !== 'DEFERRED' ? { vacafNumber: '' } : {})
+      ...(mode !== 'DEFERRED' ? { vacafNumber: '', vacafDepartmentCode: '' } : {})
     });
     if (mode !== 'DEFERRED') {
       setWantsVacafAidForOrganizer(organizerId, false);
@@ -453,11 +459,29 @@ export default function CheckoutRecapitulatifPage() {
           );
           return;
         }
+        const vacafDepartmentError = validateVacafDepartmentCode({
+          vacafNumber: group.selection.vacafNumber,
+          vacafDepartmentCode: group.selection.vacafDepartmentCode,
+          isValidDepartmentCode: isValidFrenchDepartmentCode
+        });
+        if (vacafDepartmentError) {
+          setPaymentSubmitError(`${group.organizerName} : ${vacafDepartmentError}`);
+          return;
+        }
       }
       if (group.selection.vacafNumber.trim()) {
         const vacafError = validateVacafNumber(group.selection.vacafNumber);
         if (vacafError) {
           setPaymentSubmitError(`${group.organizerName} : ${vacafError}`);
+          return;
+        }
+        const vacafDepartmentError = validateVacafDepartmentCode({
+          vacafNumber: group.selection.vacafNumber,
+          vacafDepartmentCode: group.selection.vacafDepartmentCode,
+          isValidDepartmentCode: isValidFrenchDepartmentCode
+        });
+        if (vacafDepartmentError) {
+          setPaymentSubmitError(`${group.organizerName} : ${vacafDepartmentError}`);
           return;
         }
       }
@@ -516,6 +540,7 @@ export default function CheckoutRecapitulatifPage() {
             {
               ...selection,
               vacafNumber: normalizeVacafNumberInput(selection.vacafNumber ?? ''),
+              vacafDepartmentCode: String(selection.vacafDepartmentCode ?? '').trim(),
               ancvConnectMatricule: normalizeAncvConnectMatriculeInput(selection.ancvConnectMatricule ?? '')
             }
           ];
@@ -526,6 +551,9 @@ export default function CheckoutRecapitulatifPage() {
         email: contact.email.trim().toLowerCase(),
         paymentMode: primarySelection?.paymentMode ?? contact.paymentMode,
         vacafNumber: normalizeVacafNumberInput(primarySelection?.vacafNumber ?? contact.vacafNumber ?? ''),
+        vacafDepartmentCode: String(
+          primarySelection?.vacafDepartmentCode ?? contact.vacafDepartmentCode ?? ''
+        ).trim(),
         ancvConnectMatricule: normalizeAncvConnectMatriculeInput(
           primarySelection?.ancvConnectMatricule ?? contact.ancvConnectMatricule ?? ''
         ),
@@ -953,6 +981,10 @@ export default function CheckoutRecapitulatifPage() {
                                   onChange={(event) => {
                                     setWantsVacafAidForOrganizer(group.organizerId, event.target.checked);
                                     if (event.target.checked) {
+                                      const suggestedDepartment =
+                                        group.selection.vacafDepartmentCode ||
+                                        suggestDepartmentCodeFromPostalCode(contact.postalCode) ||
+                                        '';
                                       // VACAF = parcours différé / demande organisme
                                       if (
                                         group.selection.paymentMode === 'FULL' ||
@@ -961,12 +993,20 @@ export default function CheckoutRecapitulatifPage() {
                                         patchOrganizerPaymentSelection(group.organizerId, {
                                           paymentMode: 'DEFERRED',
                                           ancvConnectMatricule: '',
-                                          ancvConnectAmount: ''
+                                          ancvConnectAmount: '',
+                                          vacafDepartmentCode: suggestedDepartment
+                                        });
+                                      } else if (!group.selection.vacafDepartmentCode && suggestedDepartment) {
+                                        patchOrganizerPaymentSelection(group.organizerId, {
+                                          vacafDepartmentCode: suggestedDepartment
                                         });
                                       }
                                       return;
                                     }
-                                    patchOrganizerPaymentSelection(group.organizerId, { vacafNumber: '' });
+                                    patchOrganizerPaymentSelection(group.organizerId, {
+                                      vacafNumber: '',
+                                      vacafDepartmentCode: ''
+                                    });
                                   }}
                                   className="mt-0.5 h-4 w-4 rounded border-slate-300"
                                 />
@@ -979,37 +1019,72 @@ export default function CheckoutRecapitulatifPage() {
                           (group.selection.paymentMode === 'CV_CONNECT' && !group.isPartnerTotalCoverage) ? (
                             <div className="mt-4 grid gap-4 md:grid-cols-2">
                               {group.settings?.isVacafApproved && wantsVacafAid ? (
-                                <div className="md:col-span-2">
-                                  <label
-                                    htmlFor={`recap-vacaf-${group.organizerId}`}
-                                    className="block text-sm font-medium text-slate-700"
-                                  >
-                                    Matricule allocataire
-                                  </label>
-                                  <p
-                                    id={`recap-vacaf-hint-${group.organizerId}`}
-                                    className="mt-1.5 text-sm leading-relaxed text-slate-500"
-                                  >
-                                    Format attendu : 7 chiffres, éventuellement une lettre à la fin (ex. 1234567 ou
-                                    1234567A).
-                                  </p>
-                                  <input
-                                    id={`recap-vacaf-${group.organizerId}`}
-                                    type="text"
-                                    inputMode="numeric"
-                                    autoComplete="off"
-                                    maxLength={8}
-                                    value={group.selection.vacafNumber}
-                                    onChange={(event) =>
-                                      patchOrganizerPaymentSelection(group.organizerId, {
-                                        vacafNumber: normalizeVacafNumberInput(event.target.value)
-                                      })
-                                    }
-                                    className={INPUT_CLASS}
-                                    placeholder="1234567A"
-                                    aria-describedby={`recap-vacaf-hint-${group.organizerId}`}
-                                  />
-                                </div>
+                                <>
+                                  <div>
+                                    <label
+                                      htmlFor={`recap-vacaf-${group.organizerId}`}
+                                      className="block text-sm font-medium text-slate-700"
+                                    >
+                                      Matricule allocataire
+                                    </label>
+                                    <p
+                                      id={`recap-vacaf-hint-${group.organizerId}`}
+                                      className="mt-1.5 text-sm leading-relaxed text-slate-500"
+                                    >
+                                      Format attendu : 7 chiffres, éventuellement une lettre à la fin (ex. 1234567 ou
+                                      1234567A).
+                                    </p>
+                                    <input
+                                      id={`recap-vacaf-${group.organizerId}`}
+                                      type="text"
+                                      inputMode="numeric"
+                                      autoComplete="off"
+                                      maxLength={8}
+                                      value={group.selection.vacafNumber}
+                                      onChange={(event) =>
+                                        patchOrganizerPaymentSelection(group.organizerId, {
+                                          vacafNumber: normalizeVacafNumberInput(event.target.value)
+                                        })
+                                      }
+                                      className={INPUT_CLASS}
+                                      placeholder="1234567A"
+                                      aria-describedby={`recap-vacaf-hint-${group.organizerId}`}
+                                    />
+                                  </div>
+                                  <div>
+                                    <label
+                                      htmlFor={`recap-vacaf-department-${group.organizerId}`}
+                                      className="block text-sm font-medium text-slate-700"
+                                    >
+                                      Département de votre CAF
+                                    </label>
+                                    <p
+                                      id={`recap-vacaf-department-hint-${group.organizerId}`}
+                                      className="mt-1.5 text-sm leading-relaxed text-slate-500"
+                                    >
+                                      Indiquez le département de la CAF qui gère votre dossier (ex. Paris = 75).
+                                    </p>
+                                    <select
+                                      id={`recap-vacaf-department-${group.organizerId}`}
+                                      value={group.selection.vacafDepartmentCode}
+                                      onChange={(event) =>
+                                        patchOrganizerPaymentSelection(group.organizerId, {
+                                          vacafDepartmentCode: event.target.value
+                                        })
+                                      }
+                                      className={INPUT_CLASS}
+                                      aria-describedby={`recap-vacaf-department-hint-${group.organizerId}`}
+                                      required
+                                    >
+                                      <option value="">Sélectionnez un département</option>
+                                      {FRENCH_DEPARTMENT_OPTIONS.map((option) => (
+                                        <option key={option.code} value={option.code}>
+                                          {option.label}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                </>
                               ) : null}
 
                               {group.selection.paymentMode === 'CV_CONNECT' && !group.isPartnerTotalCoverage ? (

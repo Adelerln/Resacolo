@@ -155,7 +155,7 @@ export async function prepareOrderBalancePayment(input: {
   if (balance.order.client_user_id !== input.clientUserId) {
     throw new Error('Commande introuvable.');
   }
-  if (balance.order.status === 'CART' || balance.order.status === 'CANCELLED') {
+  if (balance.order.status === 'CART' || balance.order.status === 'CANCELLED' || balance.order.status === 'FAILED') {
     throw new Error('Cette commande ne peut pas être réglée en ligne.');
   }
   if (balance.remainingBalanceCents <= 0) {

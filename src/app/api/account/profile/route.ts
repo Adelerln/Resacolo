@@ -90,6 +90,7 @@ const checkoutProfileContactSchema = z
       .regex(VACAF_NUMBER_OPTIONAL_REGEX, VACAF_NUMBER_MESSAGE)
       .optional()
       .default(''),
+    vacafDepartmentCode: z.string().trim().optional().default(''),
     ancvConnectMatricule: z.string().trim().optional().default(''),
     ancvConnectAmount: z.string().trim().optional().default(''),
     paymentMode: z
@@ -107,6 +108,7 @@ const checkoutProfileContactSchema = z
             .regex(VACAF_NUMBER_OPTIONAL_REGEX, VACAF_NUMBER_MESSAGE)
             .optional()
             .default(''),
+          vacafDepartmentCode: z.string().trim().optional().default(''),
           ancvConnectMatricule: z.string().trim().optional().default(''),
           ancvConnectAmount: z.string().trim().optional().default('')
         })

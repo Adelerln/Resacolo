@@ -3452,6 +3452,7 @@ export type Database = {
         | "PAID"
         | "CONFIRMED"
         | "CANCELLED"
+        | "FAILED"
         | "TRANSFERRED"
       session_status: "OPEN" | "FULL" | "COMPLETED" | "ARCHIVED"
       stay_status: "DRAFT" | "PUBLISHED" | "HIDDEN" | "ARCHIVED"
@@ -3594,6 +3595,7 @@ export const Constants = {
         "PAID",
         "CONFIRMED",
         "CANCELLED",
+        "FAILED",
         "TRANSFERRED",
       ],
       session_status: ["OPEN", "FULL", "COMPLETED", "ARCHIVED"],

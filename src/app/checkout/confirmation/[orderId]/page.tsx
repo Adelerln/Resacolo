@@ -258,6 +258,7 @@ export default function CheckoutConfirmationPage() {
     mode === 'axepta-failed' ||
     mode === 'monetico-failed' ||
     order?.status === 'CANCELLED' ||
+    order?.status === 'FAILED' ||
     order?.paymentStatus === 'FAILED';
 
   useEffect(() => {
@@ -307,6 +308,7 @@ export default function CheckoutConfirmationPage() {
             </p>
             {order.organizerContactEmail &&
             order.status !== 'CANCELLED' &&
+            order.status !== 'FAILED' &&
             order.paymentStatus !== 'FAILED' ? (
               <a
                 href={`mailto:${encodeURIComponent(order.organizerContactEmail)}?subject=${encodeURIComponent(

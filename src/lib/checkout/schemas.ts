@@ -64,6 +64,7 @@ const organizerSelectionSchema = z.object({
   vacafNumber: trimmedStringFromJson.pipe(
     z.string().regex(VACAF_NUMBER_OPTIONAL_REGEX, VACAF_NUMBER_MESSAGE)
   ),
+  vacafDepartmentCode: trimmedStringFromJson,
   ancvConnectMatricule: trimmedStringFromJson,
   ancvConnectAmount: trimmedStringFromJson
 });
@@ -126,6 +127,7 @@ export const checkoutContactSchema = z.object({
   vacafNumber: trimmedStringFromJson.pipe(
     z.string().regex(VACAF_NUMBER_OPTIONAL_REGEX, VACAF_NUMBER_MESSAGE)
   ),
+  vacafDepartmentCode: trimmedStringFromJson,
   ancvConnectMatricule: trimmedStringFromJson,
   ancvConnectAmount: trimmedStringFromJson,
   paymentMode: checkoutPaymentModeSchema,

@@ -40,6 +40,7 @@ function canPayBalance(reservation: FamilyReservation) {
   return (
     reservation.remainingBalanceCents > 0 &&
     reservation.orderStatus !== 'CANCELLED' &&
+    reservation.orderStatus !== 'FAILED' &&
     reservation.orderStatus !== 'CART'
   );
 }
@@ -58,6 +59,7 @@ function canDownloadInvoice(reservation: FamilyReservation) {
   return (
     reservation.orderStatus !== 'CART' &&
     reservation.orderStatus !== 'CANCELLED' &&
+    reservation.orderStatus !== 'FAILED' &&
     reservation.clientPaidCents > 0
   );
 }

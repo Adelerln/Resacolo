@@ -93,7 +93,8 @@ export async function recalculateOpenOrdersAfterBeneficiaryQfUpdate(input: {
     .eq('client_user_id', input.beneficiaryUserId)
     .eq('collectivity_id', input.collectivityId)
     .neq('status', 'CART')
-    .neq('status', 'CANCELLED');
+    .neq('status', 'CANCELLED')
+    .neq('status', 'FAILED');
 
   if (ordersError) {
     throw new Error(`Impossible de charger les commandes à recalculer : ${ordersError.message}`);

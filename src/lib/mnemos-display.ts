@@ -18,6 +18,7 @@ const STATUS_LABELS: Record<string, string> = {
   ISSUED: 'Émise',
   DRAFT: 'Brouillon',
   CANCELLED: 'Annulée',
+  FAILED: 'Échec de paiement',
   PAID: 'Payée',
   pending: 'En attente',
   processed: 'Traité',

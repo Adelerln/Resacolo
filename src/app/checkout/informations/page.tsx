@@ -73,6 +73,7 @@ function mapFamilyProfileToCheckoutContact(profile: FamilyProfile): CheckoutCont
     billingCountry: profile.billingCountry || 'France',
     cseOrganization: profile.cseOrganization,
     vacafNumber: profile.vacafNumber,
+    vacafDepartmentCode: '',
     ancvConnectMatricule: '',
     ancvConnectAmount: '',
     paymentMode: profile.paymentMode,

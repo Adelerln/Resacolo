@@ -158,6 +158,7 @@ function partnerReservationStatusLabel(
   }
   if (status === 'PARTIALLY_PAID') return 'Paiement partiel reçu';
   if (status === 'PAID') return 'Réservation payée';
+  if (status === 'FAILED') return 'Échec de paiement';
   if (status === 'CANCELLED') return 'Réservation annulée';
   if (status === 'TRANSFERRED') return 'Réservation transférée';
 
@@ -676,7 +677,7 @@ export async function listPartnerReservations(collectivityId: string, excludedUs
   return orderRows
     .filter((order) => {
       const latestPaymentStatus = latestPaymentStatusByOrderId.get(order.id) ?? null;
-      if (order.status === 'CANCELLED' && order.cancellation_reason === 'PAYMENT_FAILED') {
+      if (order.status === 'FAILED' || (order.status === 'CANCELLED' && order.cancellation_reason === 'PAYMENT_FAILED')) {
         return false;
       }
       return latestPaymentStatus !== 'FAILED';
@@ -778,6 +779,13 @@ export async function listPartnerReservations(collectivityId: string, excludedUs
         paymentMode,
         paymentModeLabel: PAYMENT_MODE_LABELS[paymentMode],
         vacafNumberSnapshot: order.vacaf_number_snapshot,
+        vacafDepartmentCode: (() => {
+          const contact = paymentRawPayload?.contact;
+          if (!contact || typeof contact !== 'object' || Array.isArray(contact)) return null;
+          const direct = (contact as { vacafDepartmentCode?: unknown }).vacafDepartmentCode;
+          if (typeof direct === 'string' && direct.trim()) return direct.trim();
+          return null;
+        })(),
         ancvConnectMatricule: order.ancv_connect_matricule,
         ancvConnectRequestedAmountCents: order.ancv_connect_requested_amount_cents,
         externalAidCents: order.external_aid_cents ?? 0,

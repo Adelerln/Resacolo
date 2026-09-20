@@ -1,10 +1,23 @@
 export function getPublicSiteOrigin(req?: Request) {
+  const onVercel = Boolean(process.env.VERCEL || process.env.VERCEL_URL);
   const fromEnv = process.env.NEXT_PUBLIC_SITE_URL?.trim();
   if (fromEnv) {
     try {
-      return new URL(fromEnv).origin;
+      const origin = new URL(fromEnv).origin;
+      const host = new URL(fromEnv).hostname.toLowerCase();
+      const isLocal = host === 'localhost' || host === '127.0.0.1' || host === '::1';
+      if (!(onVercel && isLocal)) {
+        return origin;
+      }
     } catch {
       // fall through
+    }
+  }
+  if (onVercel) {
+    const vercelUrl = process.env.VERCEL_URL?.trim();
+    if (vercelUrl) {
+      const host = vercelUrl.replace(/^https?:\/\//i, '').replace(/\/$/, '');
+      if (host) return `https://${host}`;
     }
   }
   if (req) {

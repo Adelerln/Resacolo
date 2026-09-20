@@ -14,6 +14,7 @@ import {
 } from '@/lib/order-workflow';
 import { computePartnerContributionSnapshotCents } from '@/lib/partner-offers';
 import { withOrganizerQuery } from '@/lib/organizers.server';
+import { isMissingAnyColumnError } from '@/lib/supabase-schema-errors';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import type { Database } from '@/types/supabase';
 
@@ -256,36 +257,163 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
   const sessions = sessionsRaw ?? [];
   const sessionsById = new Map(sessions.map((session) => [session.id, session]));
   const staysById = new Map(stays.map((stay) => [stay.id, stay]));
+  const sessionIds = sessions.map((session) => session.id);
 
-  // Source de vérité : order_items.organizer_id (pas le parcours stays→sessions,
-  // qui masque les commandes si un séjour/session est absent du catalogue).
-  let orderItems: Array<{
+  type OrderItemRow = {
     order_id: string;
     session_id: string | null;
     child_first_name: string | null;
     child_last_name: string | null;
     total_price_cents: number | null;
-  }> = [];
+  };
 
-  const { data: orderItemsByOrganizer, error: orderItemsByOrganizerError } = await supabase
+  const orderItemsByKey = new Map<string, OrderItemRow>();
+  function addOrderItems(rows: OrderItemRow[] | null | undefined) {
+    for (const row of rows ?? []) {
+      if (!row.order_id) continue;
+      const key = `${row.order_id}:${row.session_id ?? ''}:${row.child_first_name ?? ''}:${row.child_last_name ?? ''}:${row.total_price_cents ?? 0}`;
+      orderItemsByKey.set(key, row);
+    }
+  }
+
+  // 1) Lignes explicitement rattachées à l’organisme
+  const byOrganizerResult = await supabase
     .from('order_items')
     .select('order_id,session_id,child_first_name,child_last_name,total_price_cents')
     .eq('organizer_id', selectedOrganizerId);
-
-  if (!orderItemsByOrganizerError && orderItemsByOrganizer) {
-    orderItems = orderItemsByOrganizer;
+  if (byOrganizerResult.error) {
+    console.error('organisme/reservations: order_items by organizer_id', byOrganizerResult.error);
   } else {
-    const sessionIds = sessions.map((session) => session.id);
-    const { data: orderItemsRaw } = sessionIds.length
-      ? await supabase
-          .from('order_items')
-          .select('order_id,session_id,child_first_name,child_last_name,total_price_cents')
-          .in('session_id', sessionIds)
-      : { data: [] };
-    orderItems = orderItemsRaw ?? [];
+    addOrderItems(byOrganizerResult.data);
   }
 
-  // Compléter les sessions/séjours manquants pour l’affichage
+  // 2) Lignes via sessions des séjours de l’organisme (filet de sécurité si organizer_id absent / faux)
+  if (sessionIds.length > 0) {
+    const bySessionResult = await supabase
+      .from('order_items')
+      .select('order_id,session_id,child_first_name,child_last_name,total_price_cents')
+      .in('session_id', sessionIds);
+    if (bySessionResult.error) {
+      console.error('organisme/reservations: order_items by session_id', bySessionResult.error);
+    } else {
+      addOrderItems(bySessionResult.data);
+    }
+  }
+
+  // 3) Commandes dont le paiement pointe encore vers cet organisme (payload checkout)
+  const orderIdsFromPayments = new Set<string>();
+  const paymentsByOrganizerFilter = await supabase
+    .from('payments')
+    .select('order_id')
+    .filter('raw_payload->>organizerId', 'eq', selectedOrganizerId)
+    .order('created_at', { ascending: false })
+    .limit(300);
+
+  if (!paymentsByOrganizerFilter.error && paymentsByOrganizerFilter.data?.length) {
+    for (const payment of paymentsByOrganizerFilter.data) {
+      if (payment.order_id) orderIdsFromPayments.add(payment.order_id);
+    }
+  } else if (paymentsByOrganizerFilter.error) {
+    console.error('organisme/reservations: payments by organizerId filter', paymentsByOrganizerFilter.error);
+  }
+
+  const knownOrderIds = Array.from(
+    new Set([
+      ...Array.from(orderItemsByKey.values()).map((item) => item.order_id),
+      ...Array.from(orderIdsFromPayments)
+    ])
+  );
+
+  // Compléter les lignes manquantes pour les commandes trouvées seulement via payments
+  const orderIdsMissingItems = knownOrderIds.filter(
+    (orderId) => !Array.from(orderItemsByKey.values()).some((item) => item.order_id === orderId)
+  );
+  if (orderIdsMissingItems.length > 0) {
+    const { data: missingItems, error: missingItemsError } = await supabase
+      .from('order_items')
+      .select('order_id,session_id,child_first_name,child_last_name,total_price_cents')
+      .in('order_id', orderIdsMissingItems);
+    if (missingItemsError) {
+      console.error('organisme/reservations: order_items by order_id', missingItemsError);
+    } else {
+      addOrderItems(missingItems);
+    }
+  }
+
+  const orderItems = Array.from(orderItemsByKey.values());
+  const orderIds = Array.from(
+    new Set([...orderItems.map((item) => item.order_id).filter(Boolean), ...knownOrderIds])
+  );
+
+  const ordersSelectFull =
+    'id,status,created_at,cancellation_reason,client_user_id,collectivity_id,request_kind,vacaf_number_snapshot,ancv_connect_matricule,ancv_connect_requested_amount_cents,external_aid_cents,external_paid_cents';
+
+  let orders: Array<{
+    id: string;
+    status: Database['public']['Enums']['order_status'];
+    created_at: string;
+    cancellation_reason: string | null;
+    client_user_id: string | null;
+    collectivity_id: string | null;
+    request_kind: string | null;
+    vacaf_number_snapshot: string | null;
+    ancv_connect_matricule: string | null;
+    ancv_connect_requested_amount_cents: number | null;
+    external_aid_cents: number | null;
+    external_paid_cents: number | null;
+  }> = [];
+  let ordersLoadError: string | null = null;
+
+  if (orderIds.length > 0) {
+    const ordersResult = await supabase
+      .from('orders')
+      .select(ordersSelectFull)
+      .in('id', orderIds)
+      .neq('status', 'CART')
+      .order('created_at', { ascending: false });
+
+    if (
+      ordersResult.error &&
+      isMissingAnyColumnError(ordersResult.error, [
+        'request_kind',
+        'vacaf_number_snapshot',
+        'ancv_connect_matricule',
+        'ancv_connect_requested_amount_cents',
+        'external_aid_cents',
+        'external_paid_cents',
+        'cancellation_reason'
+      ])
+    ) {
+      const legacy = await supabase
+        .from('orders')
+        .select('id,status,created_at,client_user_id,collectivity_id')
+        .in('id', orderIds)
+        .neq('status', 'CART')
+        .order('created_at', { ascending: false });
+      if (legacy.error) {
+        ordersLoadError = legacy.error.message;
+        console.error('organisme/reservations: orders legacy', legacy.error);
+      } else {
+        orders = (legacy.data ?? []).map((order) => ({
+          ...order,
+          cancellation_reason: null,
+          request_kind: null,
+          vacaf_number_snapshot: null,
+          ancv_connect_matricule: null,
+          ancv_connect_requested_amount_cents: null,
+          external_aid_cents: 0,
+          external_paid_cents: 0
+        }));
+      }
+    } else if (ordersResult.error) {
+      ordersLoadError = ordersResult.error.message;
+      console.error('organisme/reservations: orders', ordersResult.error);
+    } else {
+      orders = (ordersResult.data ?? []) as typeof orders;
+    }
+  }
+
+  // Compléter sessions/séjours manquants pour l’affichage
   const missingSessionIds = Array.from(
     new Set(
       orderItems
@@ -316,20 +444,6 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
     }
   }
 
-  const orderIds = Array.from(new Set(orderItems.map((item) => item.order_id).filter(Boolean)));
-
-  const { data: ordersRaw } = orderIds.length
-    ? await supabase
-        .from('orders')
-        .select(
-          'id,status,created_at,cancellation_reason,client_user_id,collectivity_id,request_kind,vacaf_number_snapshot,ancv_connect_matricule,ancv_connect_requested_amount_cents,external_aid_cents,external_paid_cents'
-        )
-        .in('id', orderIds)
-        .neq('status', 'CART')
-        .order('created_at', { ascending: false })
-    : { data: [] };
-
-  const orders = ordersRaw ?? [];
   const clientUserIds = Array.from(
     new Set(orders.map((order) => order.client_user_id).filter((value): value is string => Boolean(value)))
   );
@@ -442,7 +556,10 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
         id: order.id,
         stayTitle: stay?.title ?? 'Séjour inconnu',
         sessionLabel: formatDateRange(session?.start_date, session?.end_date),
-        clientName: clientsByUserId.get(order.client_user_id) ?? participantNames[0] ?? 'Client inconnu',
+        clientName:
+          (order.client_user_id ? clientsByUserId.get(order.client_user_id) : undefined) ??
+          participantNames[0] ??
+          'Client inconnu',
         participantName: participantNames[0] ?? 'Participant inconnu',
         participantCount: items.length,
         amountLabel: formatEuroFromCents(totalCents, payment?.currency ?? 'EUR'),
@@ -473,7 +590,10 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
         onlinePaidCents: onlinePaidCentsByOrderId.get(order.id) ?? 0,
         details: {
           id: order.id,
-          clientName: clientsByUserId.get(order.client_user_id) ?? participantNames[0] ?? 'Client inconnu',
+          clientName:
+            (order.client_user_id ? clientsByUserId.get(order.client_user_id) : undefined) ??
+            participantNames[0] ??
+            'Client inconnu',
           participantName: participantNames[0] ?? 'Participant inconnu',
           paymentModeLabel: PAYMENT_MODE_LABELS[paymentMode] ?? 'Non renseigné',
           cafLabel: formatText(order.vacaf_number_snapshot),
@@ -628,7 +748,13 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
               {reservations.length === 0 && (
                 <tr>
                   <td className="px-4 py-8 text-slate-500" colSpan={9}>
-                    <p>Aucune réservation liée à cet organisme pour le moment.</p>
+                    {ordersLoadError ? (
+                      <p className="text-red-700">
+                        Impossible de charger les réservations : {ordersLoadError}
+                      </p>
+                    ) : (
+                      <p>Aucune réservation liée à cet organisme pour le moment.</p>
+                    )}
                     {canAccessStays ? (
                       <p className="mt-2 text-sm">
                         <Link

@@ -182,11 +182,27 @@ export function resolveOrderStatusLabel(input: {
   remainingBalanceCents: number;
   onlinePaidCents?: number | null;
   externalPaidCents?: number | null;
+  externalAidCents?: number | null;
   cancellationReason?: string | null;
+  requestKind?: OrderRequestKind | string | null;
+  hasVacafNumber?: boolean;
 }) {
   if (isPaymentFailedOrder({ status: input.status, cancellationReason: input.cancellationReason })) {
     return FAMILY_ORDER_STATUS_LABELS.FAILED;
   }
+
+  const normalized = normalizeOrderStatus(input.status);
+  const hasVacaf =
+    input.requestKind === 'VACAF' || Boolean(input.hasVacafNumber);
+  const awaitingCafAmount =
+    hasVacaf &&
+    (input.externalAidCents ?? 0) <= 0 &&
+    (normalized === 'REQUESTED' || input.status === 'REQUESTED');
+
+  if (awaitingCafAmount) {
+    return 'En attente du montant CAF';
+  }
+
   return orderStatusLabel(
     reconcileOrderStatusWithBalance({
       status: input.status,

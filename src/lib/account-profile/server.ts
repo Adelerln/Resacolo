@@ -147,6 +147,7 @@ type ReservationOrderRow = {
   collectivity_id: string | null;
   external_aid_cents: number;
   external_paid_cents: number;
+  request_kind: string | null;
 };
 
 function shouldHideFailedCheckoutOrder(input: {
@@ -437,6 +438,33 @@ function parsePaymentModeFromPayload(rawPayload: Json | null | undefined): Famil
   }
 
   return 'FULL';
+}
+
+function hasVacafNumberInPaymentPayload(rawPayload: Json | null | undefined) {
+  if (!rawPayload || typeof rawPayload !== 'object' || Array.isArray(rawPayload)) {
+    return false;
+  }
+
+  const contact = (rawPayload as Record<string, unknown>).contact;
+  if (!contact || typeof contact !== 'object' || Array.isArray(contact)) {
+    return false;
+  }
+
+  const vacafNumber = (contact as Record<string, unknown>).vacafNumber;
+  if (typeof vacafNumber === 'string' && vacafNumber.trim()) {
+    return true;
+  }
+
+  const selections = (contact as Record<string, unknown>).organizerSelections;
+  if (!selections || typeof selections !== 'object' || Array.isArray(selections)) {
+    return false;
+  }
+
+  return Object.values(selections as Record<string, unknown>).some((selection) => {
+    if (!selection || typeof selection !== 'object' || Array.isArray(selection)) return false;
+    const value = (selection as Record<string, unknown>).vacafNumber;
+    return typeof value === 'string' && Boolean(value.trim());
+  });
 }
 
 function parsePartnerFinanceMessageFromPayload(rawPayload: Json | null | undefined) {
@@ -1213,12 +1241,12 @@ async function readReservations(
   async function readOrdersForClientUserIds(clientUserIds: string[]) {
     const { data, error } = await supabase
       .from('orders')
-      .select('id,status,created_at,paid_at,partially_paid_at,cancellation_reason,collectivity_id,external_aid_cents,external_paid_cents')
+      .select('id,status,created_at,paid_at,partially_paid_at,cancellation_reason,collectivity_id,external_aid_cents,external_paid_cents,request_kind')
       .in('client_user_id', clientUserIds)
       .order('created_at', { ascending: false })
       .neq('status', 'CART');
 
-    if (error && isMissingAnyColumnError(error, ['partially_paid_at', 'external_aid_cents', 'external_paid_cents'])) {
+    if (error && isMissingAnyColumnError(error, ['partially_paid_at', 'external_aid_cents', 'external_paid_cents', 'request_kind'])) {
       const legacyResult = await supabase
         .from('orders')
         .select('id,status,created_at,paid_at,cancellation_reason,collectivity_id')
@@ -1232,7 +1260,8 @@ async function readReservations(
           partially_paid_at: null,
           cancellation_reason: order.cancellation_reason ?? null,
           external_aid_cents: 0,
-          external_paid_cents: 0
+          external_paid_cents: 0,
+          request_kind: null
         })) as ReservationOrderRow[],
         error: legacyResult.error
       };
@@ -1294,12 +1323,12 @@ async function readReservations(
 
     let { data, error } = await supabase
       .from('orders')
-      .select('id,status,created_at,paid_at,partially_paid_at,cancellation_reason,collectivity_id,external_aid_cents,external_paid_cents')
+      .select('id,status,created_at,paid_at,partially_paid_at,cancellation_reason,collectivity_id,external_aid_cents,external_paid_cents,request_kind')
       .in('id', orderIds)
       .order('created_at', { ascending: false })
       .neq('status', 'CART');
 
-    if (error && isMissingAnyColumnError(error, ['partially_paid_at', 'external_aid_cents', 'external_paid_cents'])) {
+    if (error && isMissingAnyColumnError(error, ['partially_paid_at', 'external_aid_cents', 'external_paid_cents', 'request_kind'])) {
       const legacyResult = await supabase
         .from('orders')
         .select('id,status,created_at,paid_at,cancellation_reason,collectivity_id')
@@ -1312,7 +1341,8 @@ async function readReservations(
         partially_paid_at: null,
         cancellation_reason: order.cancellation_reason ?? null,
         external_aid_cents: 0,
-        external_paid_cents: 0
+        external_paid_cents: 0,
+        request_kind: null
       })) as ReservationOrderRow[];
       error = legacyResult.error;
     }
@@ -1838,7 +1868,10 @@ async function readReservations(
           remainingBalanceCents,
           onlinePaidCents,
           externalPaidCents,
-          cancellationReason: order.cancellation_reason
+          externalAidCents: order.external_aid_cents ?? 0,
+          cancellationReason: order.cancellation_reason,
+          requestKind: order.request_kind,
+          hasVacafNumber: hasVacafNumberInPaymentPayload(payment?.raw_payload)
         }),
         sessionStartDate: session?.start_date ?? null,
         sessionEndDate: session?.end_date ?? null,

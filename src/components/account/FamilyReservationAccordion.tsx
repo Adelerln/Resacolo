@@ -141,6 +141,11 @@ export default function FamilyReservationAccordion({
               <ShieldCheck className="h-3 w-3 shrink-0" />
               {reservation.status}
             </span>
+            {reservation.status === 'En attente du montant CAF' ? (
+              <p className="max-w-xs text-xs leading-snug text-slate-500">
+                L’organisateur vérifie vos droits et doit saisir le montant CAF avant la suite du règlement.
+              </p>
+            ) : null}
             {reservation.isLegacy ? null : reservation.remainingBalanceCents > 0 ? (
               <span className="inline-flex w-fit max-w-full items-center gap-1.5 whitespace-nowrap rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-700">
                 <Wallet className="h-3 w-3 shrink-0" />

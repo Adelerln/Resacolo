@@ -44,7 +44,7 @@
     },
     {
       "path": "/api/cron/cart-abandonment-reminder",
-      "schedule": "20 * * * *"
+      "schedule": "20 9 * * *"
     },
     {
       "path": "/api/cron/deposit-payment-reminder",

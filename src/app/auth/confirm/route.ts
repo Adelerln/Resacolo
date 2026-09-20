@@ -76,3 +76,37 @@ export async function GET(req: Request) {
   return NextResponse.redirect(successUrl, { status: 303 });
 }
 
+export async function POST(req: Request) {
+  const formData = await req.formData();
+  const tokenHash = String(formData.get('token_hash') ?? '').trim();
+  const type = String(formData.get('type') ?? '').trim();
+  const next = sanitizeRelativePath(String(formData.get('next') ?? ''), '/confirmation-mail');
+
+  if (!tokenHash || !type || !ALLOWED_TYPES.includes(type as EmailOtpType)) {
+    return NextResponse.redirect(buildConfirmationUrl(req, 'error'), { status: 303 });
+  }
+
+  const cookieStore = await cookies();
+  const cookieAccess = (() => cookieStore) as unknown as typeof cookies;
+  const supabase = createRouteHandlerClient<Database>({ cookies: cookieAccess });
+  const { data, error } = await supabase.auth.verifyOtp({
+    token_hash: tokenHash,
+    type: type as EmailOtpType
+  });
+
+  if (error) {
+    console.error('[auth/confirm] POST verifyOtp failed:', error.message);
+    return NextResponse.redirect(buildConfirmationUrl(req, 'error'), { status: 303 });
+  }
+
+  if (type === 'email_change' && data.user) {
+    await syncClientProfileEmailFromAuthUser({
+      userId: data.user.id,
+      email: data.user.email
+    });
+  }
+
+  const successUrl = new URL(next, req.url);
+  successUrl.searchParams.set('status', 'success');
+  return NextResponse.redirect(successUrl, { status: 303 });
+}

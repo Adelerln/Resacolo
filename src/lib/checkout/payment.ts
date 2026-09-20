@@ -35,6 +35,7 @@ import {
   normalizePartnerFinanceMode
 } from '@/lib/partner-offers';
 import { isBalancePaymentPayload } from '@/lib/order-balance-payment';
+import { formatSessionDateRangeFr } from '@/lib/cart/formatSessionRange';
 import {
   assertCardDepositAllowedOrThrow,
   earliestIsoDate
@@ -1038,7 +1039,7 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
         .trim();
       const sessionLabel =
         pricedItem?.sessionStartDate && pricedItem?.sessionEndDate
-          ? `Du ${pricedItem.sessionStartDate} au ${pricedItem.sessionEndDate}`
+          ? formatSessionDateRangeFr(pricedItem.sessionStartDate, pricedItem.sessionEndDate)
           : 'Session';
       return {
         stayTitle: pricedItem?.stayTitle ?? 'Séjour',

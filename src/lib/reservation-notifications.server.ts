@@ -2,7 +2,7 @@ import 'server-only';
 
 import { sendSmtpEmail } from '@/lib/rag/smtp';
 import type { CheckoutContact, CheckoutPaymentMode } from '@/types/checkout';
-import type { OrderRequestKind } from '@/lib/order-workflow';
+import { formatOrderReservationCode, type OrderRequestKind } from '@/lib/order-workflow';
 
 export type ReservationNotificationLine = {
   stayTitle: string;
@@ -271,6 +271,7 @@ function renderLinesBlock(lines: ReservationNotificationLine[]) {
 }
 
 export function renderOrganizerReservationEmail(input: ReservationNotificationInput) {
+  const reservationCode = formatOrderReservationCode(input.orderId);
   const ancvConnectMatricule = input.contact.ancvConnectMatricule?.trim() || null;
   const ancvConnectAmount = input.contact.ancvConnectAmount?.trim() || null;
   const actions = buildOrganizerReservationActions({
@@ -313,7 +314,7 @@ export function renderOrganizerReservationEmail(input: ReservationNotificationIn
                 <tr>
                   <td style="padding:16px;">
                     <p style="margin:0 0 8px;font-size:13px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.03em;">Réservation</p>
-                    <p style="margin:0 0 4px;font-size:14px;color:#1d1f25;"><strong>Référence :</strong> ${escapeHtml(input.orderId)}</p>
+                    <p style="margin:0 0 4px;font-size:14px;color:#1d1f25;"><strong>Référence :</strong> ${escapeHtml(reservationCode)}</p>
                     <p style="margin:0 0 4px;font-size:14px;color:#1d1f25;"><strong>Famille :</strong> ${escapeHtml(familyName || '—')}</p>
                     <p style="margin:0 0 4px;font-size:14px;color:#1d1f25;"><strong>E-mail :</strong> ${escapeHtml(input.contact.email)}</p>
                     <p style="margin:0 0 4px;font-size:14px;color:#1d1f25;"><strong>Téléphone :</strong> ${escapeHtml(input.contact.phone || '—')}</p>
@@ -358,7 +359,7 @@ export function renderOrganizerReservationEmail(input: ReservationNotificationIn
 
   const text = [
     `Nouvelle demande de réservation — ${input.organizerName}`,
-    `Référence : ${input.orderId}`,
+    `Référence : ${reservationCode}`,
     `Famille : ${familyName || '—'}`,
     `E-mail : ${input.contact.email}`,
     `Téléphone : ${input.contact.phone || '—'}`,
@@ -391,6 +392,7 @@ export function renderOrganizerReservationEmail(input: ReservationNotificationIn
 }
 
 export function renderFamilyReservationEmail(input: ReservationNotificationInput) {
+  const reservationCode = formatOrderReservationCode(input.orderId);
   const familyName = [input.contact.billingFirstName, input.contact.billingLastName]
     .filter(Boolean)
     .join(' ')
@@ -457,7 +459,7 @@ export function renderFamilyReservationEmail(input: ReservationNotificationInput
   }
 
   nextSteps.push(
-    `Conservez la référence ${input.orderId} et suivez l’avancée depuis votre espace « Mon compte ».`
+    `Conservez la référence ${reservationCode} et suivez l’avancée depuis votre espace « Mon compte ».`
   );
 
   const nextStepsHtml = nextSteps
@@ -479,7 +481,7 @@ export function renderFamilyReservationEmail(input: ReservationNotificationInput
                 <tr>
                   <td style="padding:16px;">
                     <p style="margin:0 0 8px;font-size:13px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.03em;">Votre demande</p>
-                    <p style="margin:0 0 4px;font-size:14px;color:#1d1f25;"><strong>Référence :</strong> ${escapeHtml(input.orderId)}</p>
+                    <p style="margin:0 0 4px;font-size:14px;color:#1d1f25;"><strong>Référence :</strong> ${escapeHtml(reservationCode)}</p>
                     <p style="margin:0 0 4px;font-size:14px;color:#1d1f25;"><strong>Organisateur :</strong> ${escapeHtml(input.organizerName)}</p>
                     <p style="margin:0;font-size:14px;color:#1d1f25;"><strong>Mode de règlement :</strong> ${escapeHtml(paymentModeLabel(input.paymentMode, input.requestKind))}</p>
                     <p style="margin:0;font-size:14px;color:#1d1f25;"><strong>Mode de règlement :</strong> ${escapeHtml(paymentModeLabel(input.paymentMode))}</p>
@@ -515,7 +517,7 @@ export function renderFamilyReservationEmail(input: ReservationNotificationInput
 
   const text = [
     'Votre demande de réservation est bien enregistrée',
-    `Référence : ${input.orderId}`,
+    `Référence : ${reservationCode}`,
     `Organisateur : ${input.organizerName}`,
     `Mode de règlement : ${paymentModeLabel(input.paymentMode, input.requestKind)}`,
     `Mode de règlement : ${paymentModeLabel(input.paymentMode)}`,

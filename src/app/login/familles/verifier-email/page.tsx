@@ -55,7 +55,7 @@ export default async function VerifyEmailPage({
         </p>
         <ul className="mt-5 space-y-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           <li>Pensez à vérifier vos spams / courriers indésirables.</li>
-          <li>Le lien est valable 24 heures.</li>
+          <li>Le lien est valable 1 heure.</li>
         </ul>
         <div className="mt-6 space-y-3">
           <Link

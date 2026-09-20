@@ -36,14 +36,14 @@
                 Merci d'avoir créé votre compte. Confirmez votre adresse e-mail pour accéder à notre catalogue de séjours.
               </p>
               <p style="margin:0 0 28px;font-family:'Raleway',Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;color:#64748b;text-align:center;">
-                Ce lien est valable 24 heures.
+                Ce lien est valable 1 heure.
               </p>
 
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto 28px;">
                 <tr>
                   <td align="center" bgcolor="#f48200" style="border-radius:8px;background-color:#f48200;">
                     <a
-                      href="{{ .ConfirmationURL }}"
+                      href="{{ .RedirectTo }}&amp;token_hash={{ .TokenHash }}&amp;type=email"
                       target="_blank"
                       style="display:inline-block;padding:14px 36px;font-family:'Raleway',Arial,Helvetica,sans-serif;font-size:16px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;"
                     >
@@ -57,7 +57,7 @@
                 Le bouton ne fonctionne pas ?
               </p>
               <p style="margin:0;font-family:'Raleway',Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#94a3b8;text-align:center;word-break:break-all;">
-                <a href="{{ .ConfirmationURL }}" style="color:#52b0ea;text-decoration:underline;">{{ .ConfirmationURL }}</a>
+                <a href="{{ .RedirectTo }}&amp;token_hash={{ .TokenHash }}&amp;type=email" style="color:#52b0ea;text-decoration:underline;">Confirmer mon adresse e-mail</a>
               </p>
             </td>
           </tr>

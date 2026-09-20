@@ -58,12 +58,17 @@ Variables optionnelles : `{{ .Data.invited_by_name }}`.
 
 - `https://resacolo.com/auth/callback`
 - `https://resacolo.com/auth/confirm`
+- `https://resacolo.com/confirmation-mail/valider`
+- `https://resacolo.vercel.app/confirmation-mail/valider`
 - `http://localhost:3000/auth/callback`
 - `http://localhost:3000/auth/confirm`
+- `http://localhost:3000/confirmation-mail/valider`
 
 Site URL : `https://resacolo.com` (prod) ou `http://localhost:3000` (dev).
 
 ## Confirmation de compte
 
-Le signup famille envoie `emailRedirectTo` vers `/auth/confirm?next=/confirmation-mail`.
-Coller `confirm-signup.html` dans le template **Confirm signup** (garder `{{ .ConfirmationURL }}`).
+Le signup famille envoie `emailRedirectTo` vers `/confirmation-mail/valider?next=/confirmation-mail`.
+Coller `confirm-signup.html` dans le template **Confirm signup**. Le modèle utilise `{{ .RedirectTo }}` et
+`{{ .TokenHash }}` afin qu’un analyseur automatique d’e-mails ne puisse pas consommer le jeton : seule la
+validation explicite du formulaire sur la page intermédiaire appelle `/auth/confirm`.

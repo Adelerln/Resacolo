@@ -34,6 +34,10 @@ import {
   normalizePartnerFinanceMode
 } from '@/lib/partner-offers';
 import { isBalancePaymentPayload } from '@/lib/order-balance-payment';
+import {
+  assertCardDepositAllowedOrThrow,
+  earliestIsoDate
+} from '@/lib/checkout/deposit-eligibility';
 import { normalizeVacafNumberInput, validateVacafNumber } from '@/lib/vacaf-number';
 import {
   normalizeAncvConnectMatriculeInput,
@@ -773,6 +777,11 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
     const requestKind = resolveOrderRequestKind(effectiveContact, organizerSettings, { stayCafEligible });
     const organizerPricing = buildPricingForOrganizerGroup(organizerItems, pricing.currency);
     const isPartnerTotalCoverage = !requestKind && isPartnerFullCoverageCheckout(organizerPricing);
+    assertCardDepositAllowedOrThrow({
+      earliestSessionStartDate: earliestIsoDate(organizerItems.map((item) => item.sessionStartDate)),
+      paymentMode: effectiveContact.paymentMode,
+      vacafNumber: effectiveContact.vacafNumber
+    });
     const paidAt = isPartnerTotalCoverage ? requestedAt : null;
     const initialStatus = isPartnerTotalCoverage
       ? ('PAID' as Database['public']['Enums']['order_status'])

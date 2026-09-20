@@ -17,6 +17,13 @@ type InvoiceRow = Pick<
 
 type InvoiceLineDraft = {
   label: string;
+  quantity: number;
+  amountCents: number;
+};
+
+type InvoicePaymentDraft = {
+  date: string;
+  label: string;
   amountCents: number;
 };
 
@@ -145,7 +152,7 @@ async function buildClientTravelInvoiceModel(orderId: string) {
   const [{ data: payments }, { data: orderItems }, { data: clientRow }, { data: collectivityRow }] = await Promise.all([
     supabase
       .from('payments')
-      .select('amount_cents,currency,status,raw_payload,updated_at')
+      .select('amount_cents,currency,status,raw_payload,updated_at,created_at')
       .eq('order_id', orderId)
       .order('updated_at', { ascending: false }),
     supabase
@@ -250,6 +257,7 @@ async function buildClientTravelInvoiceModel(orderId: string) {
 
     return {
       label: labelParts.join(' - '),
+      quantity: 1,
       amountCents: item.total_price_cents ?? 0
     };
   });
@@ -259,6 +267,7 @@ async function buildClientTravelInvoiceModel(orderId: string) {
       label: collectivityRow?.name
         ? `Prise en charge partenaire - ${collectivityRow.name}`
         : 'Prise en charge partenaire',
+      quantity: 1,
       amountCents: -partnerContributionCents
     });
   }
@@ -266,6 +275,7 @@ async function buildClientTravelInvoiceModel(orderId: string) {
   if (externalAidCents > 0) {
     lines.push({
       label: buildExternalAidLabel(order.request_kind),
+      quantity: 1,
       amountCents: -externalAidCents
     });
   }
@@ -274,7 +284,33 @@ async function buildClientTravelInvoiceModel(orderId: string) {
   if (linesTotalCents !== clientTotalCents) {
     lines.push({
       label: 'Ajustement de facturation',
+      quantity: 1,
       amountCents: clientTotalCents - linesTotalCents
+    });
+  }
+
+  const paymentRows: InvoicePaymentDraft[] = (payments ?? [])
+    .filter((payment) => payment.status === 'SUCCEEDED' && payment.amount_cents !== 0)
+    .sort((a, b) => {
+      const aTime = new Date(a.created_at ?? a.updated_at ?? 0).getTime();
+      const bTime = new Date(b.created_at ?? b.updated_at ?? 0).getTime();
+      return aTime - bTime;
+    })
+    .map((payment) => {
+      const modeLabel = resolveFamilyPaymentModeLabel(asRecord(payment.raw_payload));
+      const paidAt = payment.updated_at ?? payment.created_at ?? order.paid_at ?? order.created_at;
+      return {
+        date: new Date(paidAt).toLocaleDateString('fr-FR'),
+        label: modeLabel,
+        amountCents: payment.amount_cents
+      };
+    });
+
+  if (externalPaidCents > 0) {
+    paymentRows.push({
+      date: new Date(order.paid_at ?? order.created_at).toLocaleDateString('fr-FR'),
+      label: buildExternalAidLabel(order.request_kind),
+      amountCents: externalPaidCents
     });
   }
 
@@ -286,6 +322,7 @@ async function buildClientTravelInvoiceModel(orderId: string) {
     order,
     isProvisional: order.status !== 'PAID',
     lines,
+    payments: paymentRows,
     totalCents: clientTotalCents,
     issuedAt: order.paid_at ?? order.created_at,
     paidAt: order.paid_at ?? null,
@@ -383,7 +420,8 @@ export async function ensureClientTravelInvoiceForOrder(orderId: string) {
       totalCents: model.totalCents,
       paidCents: model.paidCents,
       remainingBalanceCents: model.remainingBalanceCents,
-      lines: model.lines
+      lines: model.lines,
+      payments: model.payments
     });
 
     const { error: updateError } = await supabase

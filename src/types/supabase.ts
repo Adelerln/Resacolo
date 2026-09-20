@@ -247,6 +247,7 @@ export type Database = {
       }
       checkout_carts: {
         Row: {
+          abandonment_reminder_sent_at: string | null
           client_user_id: string | null
           contact_snapshot: Json | null
           converted_order_id: string | null
@@ -261,6 +262,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          abandonment_reminder_sent_at?: string | null
           client_user_id?: string | null
           contact_snapshot?: Json | null
           converted_order_id?: string | null
@@ -275,6 +277,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          abandonment_reminder_sent_at?: string | null
           client_user_id?: string | null
           contact_snapshot?: Json | null
           converted_order_id?: string | null
@@ -1209,6 +1212,9 @@ export type Database = {
           id: string
           paid_at: string | null
           partially_paid_at: string | null
+          deposit_reminder_sent_at: string | null
+          balance_reminder_sent_at: string | null
+          payment_reminder_missing_email_alerted_at: string | null
           request_kind: string | null
           request_resolved_at: string | null
           requested_at: string | null
@@ -1233,6 +1239,9 @@ export type Database = {
           id?: string
           paid_at?: string | null
           partially_paid_at?: string | null
+          deposit_reminder_sent_at?: string | null
+          balance_reminder_sent_at?: string | null
+          payment_reminder_missing_email_alerted_at?: string | null
           request_kind?: string | null
           request_resolved_at?: string | null
           requested_at?: string | null
@@ -1257,6 +1266,9 @@ export type Database = {
           id?: string
           paid_at?: string | null
           partially_paid_at?: string | null
+          deposit_reminder_sent_at?: string | null
+          balance_reminder_sent_at?: string | null
+          payment_reminder_missing_email_alerted_at?: string | null
           request_kind?: string | null
           request_resolved_at?: string | null
           requested_at?: string | null
@@ -1273,6 +1285,72 @@ export type Database = {
             columns: ["collectivity_id"]
             isOneToOne: false
             referencedRelation: "collectivities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      order_cancellation_requests: {
+        Row: {
+          id: string
+          created_at: string
+          updated_at: string
+          order_id: string
+          organizer_id: string
+          kind: string
+          status: string
+          reason: string
+          attachment_path: string | null
+          amount_cents: number | null
+          created_by_user_id: string | null
+          reviewed_by_user_id: string | null
+          reviewed_at: string | null
+          review_note: string | null
+        }
+        Insert: {
+          id?: string
+          created_at?: string
+          updated_at?: string
+          order_id: string
+          organizer_id: string
+          kind: string
+          status?: string
+          reason: string
+          attachment_path?: string | null
+          amount_cents?: number | null
+          created_by_user_id?: string | null
+          reviewed_by_user_id?: string | null
+          reviewed_at?: string | null
+          review_note?: string | null
+        }
+        Update: {
+          id?: string
+          created_at?: string
+          updated_at?: string
+          order_id?: string
+          organizer_id?: string
+          kind?: string
+          status?: string
+          reason?: string
+          attachment_path?: string | null
+          amount_cents?: number | null
+          created_by_user_id?: string | null
+          reviewed_by_user_id?: string | null
+          reviewed_at?: string | null
+          review_note?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_cancellation_requests_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_cancellation_requests_organizer_id_fkey"
+            columns: ["organizer_id"]
+            isOneToOne: false
+            referencedRelation: "organizers"
             referencedColumns: ["id"]
           },
         ]

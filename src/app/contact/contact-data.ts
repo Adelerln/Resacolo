@@ -10,6 +10,105 @@ export const CONTACT_HERO_VISUAL = {
   height: 183
 } as const;
 
+export type ContactSubjectOption = {
+  value: string;
+  label: string;
+  /** Affiche le champ organisateur (obligatoire si true). */
+  requiresOrganizer: boolean;
+  /** Affiche le champ organisateur en facultatif. */
+  suggestOrganizer?: boolean;
+};
+
+export const CONTACT_SUBJECT_OPTIONS = [
+  {
+    value: 'organizer_info',
+    label: 'Demande d’informations à destination d’un organisateur',
+    requiresOrganizer: true
+  },
+  {
+    value: 'reservation_question',
+    label: 'J’ai effectué une réservation et j’ai une question',
+    requiresOrganizer: false,
+    suggestOrganizer: true
+  },
+  {
+    value: 'confirmation_email',
+    label: 'Je n’ai pas reçu mon e-mail de confirmation',
+    requiresOrganizer: false,
+    suggestOrganizer: true
+  },
+  {
+    value: 'modify_cancel',
+    label: 'Modifier ou annuler une réservation',
+    requiresOrganizer: false,
+    suggestOrganizer: true
+  },
+  {
+    value: 'payment',
+    label: 'Question sur le paiement, la facturation ou un remboursement',
+    requiresOrganizer: false,
+    suggestOrganizer: true
+  },
+  {
+    value: 'tech_issue',
+    label: 'J’ai un problème technique sur le site',
+    requiresOrganizer: false
+  },
+  {
+    value: 'account',
+    label: 'Compte, connexion ou mot de passe',
+    requiresOrganizer: false
+  },
+  {
+    value: 'personal_data',
+    label: 'Données personnelles / suppression de compte (RGPD)',
+    requiresOrganizer: false
+  },
+  {
+    value: 'catalog',
+    label: 'Question générale sur un séjour ou le catalogue',
+    requiresOrganizer: false,
+    suggestOrganizer: true
+  },
+  {
+    value: 'platform',
+    label: 'Question générale sur Resacolo',
+    requiresOrganizer: false
+  },
+  {
+    value: 'press',
+    label: 'Presse, média ou communication',
+    requiresOrganizer: false
+  },
+  {
+    value: 'other',
+    label: 'Autre demande',
+    requiresOrganizer: false
+  }
+] as const satisfies readonly ContactSubjectOption[];
+
+export type ContactSubjectValue = (typeof CONTACT_SUBJECT_OPTIONS)[number]['value'];
+
+export const CONTACT_SUBJECT_VALUES = CONTACT_SUBJECT_OPTIONS.map((option) => option.value) as [
+  ContactSubjectValue,
+  ...ContactSubjectValue[]
+];
+
+export function getContactSubjectOption(value: string) {
+  return CONTACT_SUBJECT_OPTIONS.find((option) => option.value === value) ?? null;
+}
+
+export function formatContactInquirySubject(input: {
+  subjectValue: string;
+  organizerName?: string | null;
+}) {
+  const option = getContactSubjectOption(input.subjectValue);
+  const label = option?.label ?? input.subjectValue;
+  const organizerName = input.organizerName?.trim();
+  if (!organizerName) return label;
+  return `${label} — ${organizerName}`;
+}
+
 export type ContactFaqItem = {
   question: string;
   answer: string;

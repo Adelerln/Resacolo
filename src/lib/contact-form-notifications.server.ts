@@ -95,6 +95,7 @@ export async function notifyContactFormRecipients(input: {
   lastName: string;
   email: string;
   phone?: string;
+  subject?: string;
   recipient: string;
   message: string;
 }) {
@@ -105,14 +106,18 @@ export async function notifyContactFormRecipients(input: {
   }
 
   const contactName = [input.firstName, input.lastName].filter(Boolean).join(' ').trim() || 'Contact';
+  const inquirySubject = input.subject?.trim() || '';
   const inquiryUrl = `${SITE_URL}/mnemos/inquiries/${input.inquiryId}`;
-  const subject = `[Resacolo] Nouvelle demande de contact — ${contactName}`;
+  const subject = inquirySubject
+    ? `[Resacolo] Contact — ${inquirySubject}`
+    : `[Resacolo] Nouvelle demande de contact — ${contactName}`;
   const text = [
     'Une nouvelle demande a été reçue via le formulaire de contact Resacolo.',
     '',
     `Nom : ${contactName}`,
     `E-mail : ${input.email}`,
     input.phone?.trim() ? `Téléphone : ${input.phone.trim()}` : null,
+    inquirySubject ? `Objet : ${inquirySubject}` : null,
     `Destinataire du formulaire : ${input.recipient}`,
     '',
     'Message :',
@@ -141,6 +146,11 @@ export async function notifyContactFormRecipients(input: {
               ${
                 input.phone?.trim()
                   ? `<p style="margin:0 0 6px;font-size:14px;"><strong>Téléphone :</strong> ${escapeHtml(input.phone.trim())}</p>`
+                  : ''
+              }
+              ${
+                inquirySubject
+                  ? `<p style="margin:0 0 6px;font-size:14px;"><strong>Objet :</strong> ${escapeHtml(inquirySubject)}</p>`
                   : ''
               }
               <p style="margin:0 0 16px;font-size:14px;"><strong>Destinataire :</strong> ${escapeHtml(input.recipient)}</p>

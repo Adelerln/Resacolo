@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
+import { TurnstileField } from '@/components/turnstile/TurnstileField';
 
 const ORANGE = '#FA8500';
 const BLUE = '#52B0EA';
@@ -25,11 +26,24 @@ export function PartnerContactForm() {
   const [phone, setPhone] = useState('');
   const [formule, setFormule] = useState<Formule>('');
   const [message, setMessage] = useState('');
+  const [turnstileToken, setTurnstileToken] = useState('');
+  const [turnstileResetKey, setTurnstileResetKey] = useState(0);
   const [status, setStatus] = useState<SubmitStatus>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  const resetCaptcha = () => {
+    setTurnstileToken('');
+    setTurnstileResetKey((value) => value + 1);
+  };
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+
+    if (!turnstileToken) {
+      setStatus('error');
+      setErrorMessage('Merci de valider le captcha avant l’envoi.');
+      return;
+    }
 
     setStatus('loading');
     setErrorMessage(null);
@@ -44,7 +58,8 @@ export function PartnerContactForm() {
           email,
           phone,
           formula: formule,
-          message
+          message,
+          turnstileToken
         })
       });
 
@@ -53,6 +68,7 @@ export function PartnerContactForm() {
       if (!response.ok) {
         setStatus('error');
         setErrorMessage(parseApiErrorMessage(payload) ?? 'Impossible d’envoyer la demande pour le moment.');
+        resetCaptcha();
         return;
       }
 
@@ -63,9 +79,11 @@ export function PartnerContactForm() {
       setPhone('');
       setFormule('');
       setMessage('');
+      resetCaptcha();
     } catch {
       setStatus('error');
       setErrorMessage('Impossible d’envoyer la demande pour le moment.');
+      resetCaptcha();
     }
   };
 
@@ -157,6 +175,12 @@ export function PartnerContactForm() {
             />
             <p className="mt-1.5 text-xs text-slate-500">10 caractères minimum.</p>
           </div>
+
+          <TurnstileField
+            key={turnstileResetKey}
+            onTokenChange={setTurnstileToken}
+            onErrorMessage={setErrorMessage}
+          />
 
           {errorMessage && <p className="rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-600">{errorMessage}</p>}
           {status === 'success' && (

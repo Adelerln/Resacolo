@@ -10,5 +10,9 @@ export const RESACOLO_COMPANY = {
   rcsCity: 'Paris',
   rcsNumber: '904 862 158',
   vatNumber: 'FR67904862158',
-  atoutFranceRegistration: 'IM075220017'
+  atoutFranceRegistration: 'IM075220017',
+  professionalInsurance: {
+    insurer: 'HISCOX SA',
+    address: "49 AVENUE DE L'OPÉRA, 75002 PARIS, FRANCE"
+  }
 } as const;

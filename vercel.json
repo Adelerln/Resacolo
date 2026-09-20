@@ -16,6 +16,15 @@
     "app/api/cron/weekly-stock-report/route.ts": {
       "maxDuration": 300
     },
+    "app/api/cron/cart-abandonment-reminder/route.ts": {
+      "maxDuration": 300
+    },
+    "app/api/cron/deposit-payment-reminder/route.ts": {
+      "maxDuration": 300
+    },
+    "app/api/cron/balance-payment-reminder/route.ts": {
+      "maxDuration": 300
+    },
     "app/api/import-stay/route.ts": {
       "maxDuration": 60
     }
@@ -32,6 +41,18 @@
     {
       "path": "/api/cron/weekly-stock-report",
       "schedule": "0 8 * * 1"
+    },
+    {
+      "path": "/api/cron/cart-abandonment-reminder",
+      "schedule": "20 * * * *"
+    },
+    {
+      "path": "/api/cron/deposit-payment-reminder",
+      "schedule": "15 7 * * *"
+    },
+    {
+      "path": "/api/cron/balance-payment-reminder",
+      "schedule": "30 7 * * *"
     }
   ],
   "redirects": [

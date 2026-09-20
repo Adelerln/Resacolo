@@ -2,15 +2,23 @@ import type { Metadata } from 'next';
 import Image from 'next/image';
 import { MapPin, ClipboardList } from 'lucide-react';
 import { OrganizerJoinForm } from '@/components/rejoindre-resacolo/OrganizerJoinForm';
+import { buildPageMetadata } from '@/lib/seo-meta';
 
 const ORANGE = '#FA8500';
 const ORIGIN_GRAY = '#505050';
 
-export const metadata: Metadata = {
-  title: 'Rejoindre Resacolo | Resacolo',
+export const metadata: Metadata = buildPageMetadata({
+  title: 'Rejoindre Resacolo en tant qu’organisateur',
   description:
-    'Rejoignez le collectif Resacolo en tant qu’organisateur de séjours et valorisez vos colonies de vacances.'
-};
+    'Organisateur de colonies de vacances ? Rejoignez le collectif Resacolo pour gagner en visibilité et référencer vos séjours enfants et ados.',
+  path: '/rejoindre-resacolo',
+  keywords: [
+    'devenir organisateur colo',
+    'référencer colonie de vacances',
+    'collectif organisateurs',
+    'rejoindre Resacolo'
+  ]
+});
 
 export default function RejoindreResacoloPage() {
   return (

@@ -1,5 +1,6 @@
 import Image from 'next/image';
 import { PourquoiChoisirTabs } from '@/components/concept/PourquoiChoisirTabs';
+import { buildPageMetadata } from '@/lib/seo-meta';
 
 const BLUE = '#52B0EA';
 const ORIGIN_BLUE = '#37B5F5';
@@ -39,11 +40,18 @@ const strengths = [
   }
 ];
 
-export const metadata = {
-  title: 'Notre Concept | ResaColo',
+export const metadata = buildPageMetadata({
+  title: 'Notre concept — collectif de colonies de vacances',
   description:
-    'Découvrez l’origine, les valeurs et les garanties de la plateforme ResaColo.'
-};
+    'Resacolo, plateforme mutualiste d’organisateurs de colonies de vacances : valeurs, garanties et offre de séjours pour enfants et ados.',
+  path: '/notre-concept',
+  keywords: [
+    'concept Resacolo',
+    'collectif organisateurs colo',
+    'plateforme colonies de vacances',
+    'séjours mutualistes'
+  ]
+});
 
 export default function NotreConceptPage() {
   return (

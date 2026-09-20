@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { CheckCircle2, ShieldCheck, UserRound } from 'lucide-react';
 import { getCurrentUser } from '@/lib/auth/session';
 import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton';
+import { FacebookSignInButton } from '@/components/auth/FacebookSignInButton';
 import { PasswordInput } from '@/components/auth/PasswordInput';
 import { RegisterSubmitButton } from '@/components/auth/RegisterSubmitButton';
 import {
@@ -131,11 +132,20 @@ export default async function FamilyRegisterPage({
             ) : null}
 
             <div className="mt-5 space-y-3">
-              <GoogleSignInButton
-                redirectTo={safeRedirectTo}
-                loginMode="family"
-                label="Créer un compte avec Google"
-              />
+              <div className="flex items-center justify-center gap-3">
+                <GoogleSignInButton
+                  redirectTo={safeRedirectTo}
+                  loginMode="family"
+                  label="Créer un compte avec Google"
+                  iconOnly
+                />
+                <FacebookSignInButton
+                  redirectTo={safeRedirectTo}
+                  loginMode="family"
+                  label="Créer un compte avec Facebook"
+                  iconOnly
+                />
+              </div>
               <div className="flex items-center gap-3">
                 <div className="h-px flex-1 bg-slate-200" />
                 <span className="text-xs font-medium uppercase tracking-wide text-slate-400">ou</span>

@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, KeyRound, Mail } from 'lucide-react';
 import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton';
+import { FacebookSignInButton } from '@/components/auth/FacebookSignInButton';
 import { PasswordInput } from '@/components/auth/PasswordInput';
 
 type LoginMode = 'family' | 'pro';
@@ -69,7 +70,10 @@ export function LoginStepsForm({
         <div className="space-y-4">
           {isFamily ? (
             <>
-              <GoogleSignInButton redirectTo={redirectTo} loginMode="family" />
+              <div className="flex items-center justify-center gap-3">
+                <GoogleSignInButton redirectTo={redirectTo} loginMode="family" iconOnly />
+                <FacebookSignInButton redirectTo={redirectTo} loginMode="family" iconOnly />
+              </div>
               <div className="flex items-center gap-3">
                 <div className="h-px flex-1 bg-slate-200" />
                 <span className="text-xs font-medium uppercase tracking-wide text-slate-400">ou</span>

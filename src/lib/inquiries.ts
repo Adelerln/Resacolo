@@ -24,6 +24,7 @@ export function buildContactInquiryInsert(input: {
   lastName: string;
   email: string;
   phone?: string;
+  subject: string;
   message: string;
 }) {
   return {
@@ -34,7 +35,7 @@ export function buildContactInquiryInsert(input: {
     first_name: input.firstName,
     last_name: input.lastName,
     phone: input.phone?.trim() || null,
-    subject: 'Demande de contact depuis le formulaire public',
+    subject: input.subject.trim(),
     message: input.message,
     organizer_id: null
   };

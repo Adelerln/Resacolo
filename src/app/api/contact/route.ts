@@ -1,5 +1,10 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import {
+  CONTACT_SUBJECT_VALUES,
+  formatContactInquirySubject,
+  getContactSubjectOption
+} from '@/app/contact/contact-data';
 import { notifyContactFormRecipients } from '@/lib/contact-form-notifications.server';
 import { buildContactInquiryInsert } from '@/lib/inquiries';
 import { getRagEnv } from '@/lib/rag/env';
@@ -11,14 +16,27 @@ export const runtime = 'nodejs';
 
 const CONTACT_EMAIL_RECIPIENTS = ['jeanne@thalie.org', 'adele.rolin@gmail.com'] as const;
 
-const contactSchema = z.object({
-  firstName: z.string().trim().min(1).max(120),
-  lastName: z.string().trim().min(1).max(120),
-  email: z.string().trim().email().max(180),
-  phone: z.string().trim().max(50).optional().default(''),
-  message: z.string().trim().min(1).max(4000),
-  turnstileToken: z.string().trim().min(1)
-});
+const contactSchema = z
+  .object({
+    firstName: z.string().trim().min(1).max(120),
+    lastName: z.string().trim().min(1).max(120),
+    email: z.string().trim().email().max(180),
+    phone: z.string().trim().max(50).optional().default(''),
+    subject: z.enum(CONTACT_SUBJECT_VALUES),
+    organizerName: z.string().trim().max(200).optional().default(''),
+    message: z.string().trim().min(1).max(4000),
+    turnstileToken: z.string().trim().min(1)
+  })
+  .superRefine((value, ctx) => {
+    const option = getContactSubjectOption(value.subject);
+    if (option?.requiresOrganizer && !value.organizerName.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['organizerName'],
+        message: 'Indiquez le nom de l’organisateur concerné.'
+      });
+    }
+  });
 
 function formatContactValidationError(issues: z.ZodIssue[]): string {
   const field = issues[0]?.path[0];
@@ -31,6 +49,10 @@ function formatContactValidationError(issues: z.ZodIssue[]): string {
       return 'Saisissez une adresse e-mail valide.';
     case 'phone':
       return 'Le numéro de téléphone est trop long.';
+    case 'subject':
+      return 'Choisissez l’objet de votre demande.';
+    case 'organizerName':
+      return issues[0]?.message || 'Indiquez le nom de l’organisateur concerné.';
     case 'message':
       return issues[0]?.code === 'too_big'
         ? 'Votre message ne peut pas dépasser 4 000 caractères.'
@@ -45,6 +67,10 @@ function formatContactValidationError(issues: z.ZodIssue[]): string {
 export async function POST(request: Request) {
   try {
     const input = contactSchema.parse(await request.json());
+    const inquirySubject = formatContactInquirySubject({
+      subjectValue: input.subject,
+      organizerName: input.organizerName
+    });
 
     const verification = await verifyTurnstileToken(input.turnstileToken, getClientIp(request), request);
     if (!verification.success) {
@@ -76,6 +102,7 @@ export async function POST(request: Request) {
           lastName: input.lastName,
           email: input.email,
           phone: input.phone,
+          subject: inquirySubject,
           message: input.message
         })
       )
@@ -91,17 +118,21 @@ export async function POST(request: Request) {
         CONTACT_EMAIL_RECIPIENTS.map((to) =>
           sendSmtpEmail({
             to,
-            subject: '[Resacolo] Nouvelle demande de contact',
+            subject: `[Resacolo] Contact — ${inquirySubject}`,
             replyTo: input.email,
             text: [
               `Référence de la demande : ${data.id}`,
               `Nom : ${input.firstName} ${input.lastName}`,
               `Email : ${input.email}`,
               `Téléphone : ${input.phone || 'Non renseigné'}`,
+              `Objet : ${inquirySubject}`,
+              input.organizerName.trim() ? `Organisateur : ${input.organizerName.trim()}` : null,
               '',
               'Message :',
               input.message
-            ].join('\n')
+            ]
+              .filter((line) => line !== null)
+              .join('\n')
           })
         )
       );
@@ -125,6 +156,7 @@ export async function POST(request: Request) {
         lastName: input.lastName,
         email: input.email,
         phone: input.phone,
+        subject: inquirySubject,
         recipient: 'Formulaire de contact',
         message: input.message
       });

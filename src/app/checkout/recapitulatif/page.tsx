@@ -40,6 +40,11 @@ import {
   validateAncvConnectAmountAgainstOrderTotal,
   validateAncvConnectMatricule
 } from '@/lib/ancv-connect-matricule';
+import {
+  DEPOSIT_FULL_PAYMENT_REQUIRED_MESSAGE,
+  earliestIsoDate,
+  isCardDepositAllowed
+} from '@/lib/checkout/deposit-eligibility';
 
 function formatBirthdateFr(iso: string | undefined) {
   if (!iso?.trim()) return '—';
@@ -156,9 +161,16 @@ export default function CheckoutRecapitulatifPage() {
           )
         : null;
       const groupIsPartnerTotalCoverage = !requestKind && isPartnerFullCoverageCheckout(groupPricing);
+      const earliestSessionStartDate = earliestIsoDate(pricingItems.map((item) => item.sessionStartDate));
+      const cardDepositAllowed = isCardDepositAllowed({
+        earliestSessionStartDate,
+        paymentMode: selection.paymentMode,
+        vacafNumber: selection.vacafNumber
+      });
       const availablePaymentModes = PAYMENT_MODES.filter((mode) => {
         if (mode.value === 'CV_PAPER') return settings?.acceptsAncvPaper ?? false;
         if (mode.value === 'CV_CONNECT') return settings?.acceptsAncvConnect ?? false;
+        if (mode.value === 'DEPOSIT_200' && !cardDepositAllowed) return false;
         return true;
       });
       const displayedPaymentModes = groupPricing.financeRequiresQuote
@@ -174,6 +186,8 @@ export default function CheckoutRecapitulatifPage() {
         stayCafEligible,
         pricing: groupPricing,
         isPartnerTotalCoverage: groupIsPartnerTotalCoverage,
+        earliestSessionStartDate,
+        cardDepositAllowed,
         availablePaymentModes,
         displayedPaymentModes,
         hasAidSelectionOptions:
@@ -198,6 +212,20 @@ export default function CheckoutRecapitulatifPage() {
       router.prefetch('/checkout/paiement');
     }
   }, [paymentRequiresOnlineStep, router]);
+
+  useEffect(() => {
+    let nextContact = contact;
+    let changed = false;
+    for (const group of organizerGroups) {
+      if (group.selection.paymentMode === 'DEPOSIT_200' && !group.cardDepositAllowed) {
+        nextContact = patchOrganizerSelection(nextContact, group.organizerId, { paymentMode: 'FULL' });
+        changed = true;
+      }
+    }
+    if (changed) {
+      setContact(nextContact);
+    }
+  }, [contact, organizerGroups, setContact]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -800,7 +828,13 @@ export default function CheckoutRecapitulatifPage() {
                           Aucun paiement n&apos;est demandé lors de cette réservation auprès de {group.organizerName} : votre partenaire prendra en charge la totalité auprès de ResaColo.
                         </div>
                       ) : (
-                        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                        <div className="space-y-3">
+                          {!group.cardDepositAllowed ? (
+                            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                              {DEPOSIT_FULL_PAYMENT_REQUIRED_MESSAGE}
+                            </div>
+                          ) : null}
+                          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                           {group.displayedPaymentModes.map((mode) => {
                             const isActive = group.selection.paymentMode === mode.value;
                             return (
@@ -845,6 +879,7 @@ export default function CheckoutRecapitulatifPage() {
                               </label>
                             );
                           })}
+                          </div>
                         </div>
                       )}
 

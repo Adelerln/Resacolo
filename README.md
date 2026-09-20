@@ -57,6 +57,7 @@ SMTP_USER=user
 SMTP_PASS=pass
 SMTP_FROM=chatbot@resacolo.com
 CRON_WEEKLY_STOCK_TOKEN=change-me
+CRON_CART_ABANDONMENT_TOKEN=change-me
 ```
 
 Le formulaire `/contact` utilise également ces variables SMTP. Après validation du captcha, il enregistre la demande puis envoie un même email à `jeanne@thalie.org` et `adele.rolin@gmail.com`. Sans configuration SMTP, le formulaire affiche une erreur et n'enregistre pas la demande.
@@ -67,6 +68,7 @@ Le formulaire `/devenir-partenaire` utilise aussi SMTP. Après avoir appliqué l
 
 La migration `supabase/migrations/202609132200_remove_legacy_order_statuses.sql` remplace les anciens statuts de commande `VALIDATED` et `BOOKED` par `PENDING_PAYMENT`, et `CONFIRMED` par `PAID`. Elle interdit ensuite de réutiliser ces trois valeurs dans `orders`.
 Rapport stocks organisateurs (lundi 9h Paris, dès le 2026-09-28) : cron `GET /api/cron/weekly-stock-report` — test `?token=...&dryRun=1`. Voir `docs/guides/email-templates/README.md`.
+Relance panier famille (horaire) : cron `GET /api/cron/cart-abandonment-reminder` — test `?token=...&dryRun=1`. Migration `20260919_checkout_cart_abandonment_reminder.sql`.
 
 URL canonique du site (SEO, sitemap, métadonnées) :
 

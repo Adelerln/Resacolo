@@ -13,6 +13,29 @@ Brouillons par mode de règlement / statut : voir le dossier [`reservation/`](./
 - Env : `SMTP_*` + `CRON_WEEKLY_STOCK_TOKEN` (ou `CRON_SECRET`)
 - Test : `?token=...&dryRun=1` (calcule sans envoyer) ; `?token=...&force=1` pour forcer hors créneau
 
+## Relance panier famille (app)
+
+- Brouillon visuel : `cart-abandonment-reminder-draft.html`
+- Objet : `[Resacolo] Votre séjour vous attend encore dans le panier — …`
+- Envoi réel : cron horaire `GET /api/cron/cart-abandonment-reminder` (minute 20)
+- Règle : panier `checkout_carts` encore `ACTIVE`, au moins 1 séjour, e-mail contact présent, référence (`addedAt` article ou `created_at`) entre **24 h** et **14 j**, et `abandonment_reminder_sent_at` vide
+- Env : `SMTP_*` + `CRON_CART_ABANDONMENT_TOKEN` (ou `CRON_SECRET`)
+- Migration : `20260919_checkout_cart_abandonment_reminder.sql`
+- Test : `?token=...&dryRun=1` ; `?token=...&to=toi@exemple.fr` pour forcer le destinataire
+
+## Relances paiement famille (app)
+
+- Brouillons : `deposit-payment-reminder-draft.html` (acompte J+7), `balance-payment-reminder-draft.html` (solde J-30)
+- Crons quotidiens :
+  - `GET /api/cron/deposit-payment-reminder` (07:15 UTC)
+  - `GET /api/cron/balance-payment-reminder` (07:30 UTC)
+- Flags : `orders.deposit_reminder_sent_at`, `orders.balance_reminder_sent_at`
+- Email manquant → alerte interne + liste Mnemos `/mnemos/payment-reminder-alerts`
+- Checkout : acompte CB interdit si départ &lt; 30 j (sauf VACAF / ANCV)
+- Migration : `20260920_payment_reminders_and_cancellations.sql`
+- Env : `SMTP_*` + `CRON_PAYMENT_REMINDER_TOKEN` (ou `CRON_SECRET`)
+- Test : `?token=...&dryRun=1`
+
 | Template Supabase | Subject | Fichier |
 |---|---|---|
 | Confirm signup | Confirmez votre compte Resacolo | `confirm-signup.html` |

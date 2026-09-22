@@ -18,9 +18,9 @@ const playwrightRuntimeIncludes = [
 ];
 const stayImportRouteTracing = {
   '/api/import-stay': playwrightRuntimeIncludes,
-  '/api/import-stay/route': playwrightRuntimeIncludes,
-  '/api/stay-drafts/[id]/run-import': playwrightRuntimeIncludes,
-  '/api/stay-drafts/[id]/run-import/route': playwrightRuntimeIncludes
+  '/api/stay-drafts/\\[id\\]/run-import': playwrightRuntimeIncludes,
+  '/api/internal/stay-import-worker': playwrightRuntimeIncludes,
+  '/api/cron/stay-import-worker': playwrightRuntimeIncludes
 };
 
 /** @type {import('next').NextConfig} */

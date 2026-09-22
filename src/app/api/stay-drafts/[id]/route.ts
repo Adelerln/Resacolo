@@ -300,6 +300,7 @@ async function updateDraftPublicationMetadata(input: {
   ];
 
   let lastError: { message?: string } | null = null;
+  let legacyStatusFallbackAdded = false;
 
   for (const attempt of attempts) {
     const { data, error } = await (input.supabase.from('stay_drafts') as unknown as {
@@ -324,6 +325,12 @@ async function updateDraftPublicationMetadata(input: {
     }
 
     lastError = error;
+    if (!legacyStatusFallbackAdded && error?.message?.includes('stay_drafts_status_check')) {
+      // Les anciennes bases refusent « published ». Conserver leur statut valide,
+      // tout en enregistrant live_publication, qui identifie déjà les séjours publiés.
+      legacyStatusFallbackAdded = true;
+      attempts.push({ raw_payload: input.rawPayload, updated_at: now });
+    }
   }
 
   throw new PublishStayDraftError(

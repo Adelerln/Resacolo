@@ -53,6 +53,7 @@ function toRecord(value: unknown): Record<string, unknown> {
 }
 
 function toNumberOrNull(value: unknown): number | null {
+  if (value == null || (typeof value === 'string' && !value.trim())) return null;
   const parsed = typeof value === 'number' ? value : Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 }
@@ -426,6 +427,9 @@ export async function buildStayPreviewFromDraft(draft: StayDraftRow, organizerId
     parsedTransportOptions
   );
   const previewSessions = buildPreviewSessions(draft.sessions_json, parsedTransportOptions);
+  const sessionPrices = previewSessions
+    .map((session) => session.price)
+    .filter((price): price is number => price != null && price > 0);
   const accommodations = await loadPreviewAccommodations(draft, organizerId, rawPayload);
   const videoUrls = readVideoUrls(rawPayload);
 
@@ -467,7 +471,7 @@ export async function buildStayPreviewFromDraft(draft: StayDraftRow, organizerId
     ageMax,
     ageRange: ageRangeLabel,
     duration: durationLabel,
-    priceFrom: null,
+    priceFrom: sessionPrices.length > 0 ? Math.min(...sessionPrices) : null,
     period: [],
     categories: [],
     highlights: [],

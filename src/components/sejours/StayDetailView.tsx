@@ -1538,7 +1538,9 @@ export function StayDetailView({
                       </span>
                     </span>
                   ) : (
-                    `À partir de ${formatPrice(getStayDisplayedPrice(stay))}`
+                    getStayDisplayedPrice(stay) == null
+                      ? 'Sur demande'
+                      : `À partir de ${formatPrice(getStayDisplayedPrice(stay))}`
                   )}
                 </p>
                 {partnerDiscountAmount != null ? (

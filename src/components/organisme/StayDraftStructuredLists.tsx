@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import {
   draftSessionStableKey,
@@ -234,25 +234,27 @@ export function DraftSessionsEditor({
   containerClassName
 }: {
   value: Array<Record<string, unknown>>;
-  onChange: (next: Array<Record<string, unknown>>) => void;
+  onChange: Dispatch<SetStateAction<Array<Record<string, unknown>>>>;
   error?: string;
   containerClassName?: string;
 }) {
   const rows = value.map(sessionFromRecord);
 
   function updateRow(index: number, patch: Partial<SessionRow>) {
-    const nextRows = [...rows];
-    nextRows[index] = { ...nextRows[index], ...patch };
-    onChange(nextRows.map(sessionToRecord));
+    onChange((current) => {
+      const nextRows = current.map(sessionFromRecord);
+      if (!nextRows[index]) return current;
+      nextRows[index] = { ...nextRows[index], ...patch };
+      return nextRows.map(sessionToRecord);
+    });
   }
 
   function addRow() {
-    onChange([...value, sessionToRecord(emptySessionRow())]);
+    onChange((current) => [...current, sessionToRecord(emptySessionRow())]);
   }
 
   function removeRow(index: number) {
-    const next = value.filter((_, i) => i !== index);
-    onChange(next);
+    onChange((current) => current.filter((_, currentIndex) => currentIndex !== index));
   }
 
   return (
@@ -288,6 +290,7 @@ export function DraftSessionsEditor({
                 </span>
                 <button
                   type="button"
+                  onPointerDown={(event) => event.preventDefault()}
                   onClick={() => removeRow(index)}
                   className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-rose-600 hover:bg-rose-50"
                   aria-label={`Supprimer la session ${index + 1}`}

@@ -4146,6 +4146,15 @@ type ThaliePbOption = {
   selected: boolean;
 };
 
+type ThaliePbOptionRole = 'date' | 'outbound' | 'return' | 'insurance' | 'unknown';
+
+type ThaliePbOptionGroup = {
+  name: string;
+  label: string;
+  role: ThaliePbOptionRole;
+  options: ThaliePbOption[];
+};
+
 export type ThalieOptionUrlPricingResult = {
   sessionBaselines: ThalieSessionBaseline[];
   transportVariants: DraftTransportVariant[];
@@ -4153,26 +4162,72 @@ export type ThalieOptionUrlPricingResult = {
   transportMode: 'Aller/Retour similaire' | 'Aller/Retour différencié' | '';
 };
 
-function parseThaliePbOptions(html: string, pageUrl: string, selectName: string): ThaliePbOption[] {
-  const $ = load(html);
-  const select = $(`select[name="${selectName}"]`).first();
-  if (!select.length) return [];
+function classifyThaliePbOptionRole(label: string): ThaliePbOptionRole {
+  const key = simplifyForMatch(label);
+  if (/\bassurance\b/.test(key)) return 'insurance';
+  if (/\b(transport retour|ville retour|retour)\b/.test(key)) return 'return';
+  if (/\b(transport aller|ville depart|depart|aller)\b/.test(key)) return 'outbound';
+  if (/\b(date|dates|periode|session)\b/.test(key)) return 'date';
+  return 'unknown';
+}
 
-  return select
-    .find('option')
+/**
+ * Oxatis numérote ses options dans l'ordre propre à chaque produit. Le premier
+ * select peut donc être une date, un transport aller ou une assurance. On se
+ * base sur le libellé visible de la ligne plutôt que sur le suffixe numérique.
+ */
+export function parseThaliePbOptionGroups(
+  html: string,
+  pageUrl: string
+): ThaliePbOptionGroup[] {
+  const $ = load(html);
+  return $('select[name^="PDTOPTVALUEID"]')
     .toArray()
-    .map((option) => {
-      const node = $(option);
-      const label = normalizeWhitespace(node.text());
-      const rawUrl = normalizeWhitespace(node.attr('url') ?? '');
+    .map((selectNode) => {
+      const select = $(selectNode);
+      const name = normalizeWhitespace(select.attr('name') ?? '');
+      const row = select.closest('tr');
+      const label = normalizeWhitespace(
+        row.length > 0
+          ? row.find('td').first().text()
+          : select.parent().prev().text()
+      );
+      const options = select
+        .find('option')
+        .toArray()
+        .map((option) => {
+          const node = $(option);
+          const optionLabel = normalizeWhitespace(node.text());
+          const rawUrl = normalizeWhitespace(node.attr('url') ?? '');
+          return {
+            value: normalizeWhitespace(node.attr('value') ?? ''),
+            label: optionLabel,
+            url: rawUrl ? toAbsoluteUrl(rawUrl, pageUrl) : null,
+            selected: node.attr('selected') !== undefined
+          };
+        })
+        .filter((option) => option.label.length > 0);
+
       return {
-        value: normalizeWhitespace(node.attr('value') ?? ''),
+        name,
         label,
-        url: rawUrl ? toAbsoluteUrl(rawUrl, pageUrl) : null,
-        selected: node.attr('selected') !== undefined
+        role: classifyThaliePbOptionRole(label),
+        options
       };
     })
-    .filter((option) => option.label.length > 0);
+    .filter((group) => group.name.length > 0 && group.options.length > 0);
+}
+
+async function fetchHtmlWithReaderFallback(url: string): Promise<FetchedHtml> {
+  try {
+    return await fetchHtml(url);
+  } catch (directError) {
+    try {
+      return await fetchHtmlViaReaderProxy(url);
+    } catch {
+      throw directError;
+    }
+  }
 }
 
 function parseThalieOfferTotalCents(html: string): number | null {
@@ -4226,12 +4281,14 @@ export async function extractThalieOptionUrlPricing(
   sourceHtml: string,
   sourceUrl: string
 ): Promise<ThalieOptionUrlPricingResult> {
-  const dateOptions = parseThaliePbOptions(sourceHtml, sourceUrl, 'PDTOPTVALUEID0');
+  const sourceGroups = parseThaliePbOptionGroups(sourceHtml, sourceUrl);
+  const dateOptions = sourceGroups.find((group) => group.role === 'date')?.options ?? [];
+  const sourceHasOutbound = sourceGroups.some((group) => group.role === 'outbound');
+  const sourceHasReturn = sourceGroups.some((group) => group.role === 'return');
   const transportMode =
-    parseThaliePbOptions(sourceHtml, sourceUrl, 'PDTOPTVALUEID1').length > 0 &&
-    parseThaliePbOptions(sourceHtml, sourceUrl, 'PDTOPTVALUEID2').length > 0
+    sourceHasOutbound && sourceHasReturn
       ? 'Aller/Retour différencié'
-      : parseThaliePbOptions(sourceHtml, sourceUrl, 'PDTOPTVALUEID1').length > 0
+      : sourceHasOutbound || sourceHasReturn
         ? 'Aller/Retour similaire'
         : '';
 
@@ -4264,7 +4321,7 @@ export async function extractThalieOptionUrlPricing(
     let datePage: FetchedHtml | null = null;
 
     try {
-      datePage = await fetchHtml(dateUrl);
+      datePage = await fetchHtmlWithReaderFallback(dateUrl);
     } catch {
       sessionBaselines.push({
         date_index: dateIndex,
@@ -4281,7 +4338,9 @@ export async function extractThalieOptionUrlPricing(
       baseline_total_cents: baselineTotalCents
     });
 
-    const outboundOptions = parseThaliePbOptions(datePage.html, datePage.finalUrl, 'PDTOPTVALUEID1');
+    const datePageGroups = parseThaliePbOptionGroups(datePage.html, datePage.finalUrl);
+    const outboundOptions =
+      datePageGroups.find((group) => group.role === 'outbound')?.options ?? [];
     for (const outboundOption of outboundOptions) {
       const city = normalizeTransportCityLabel(outboundOption.label);
       if (!city || isTransportBaseReference(city)) continue;
@@ -4289,7 +4348,7 @@ export async function extractThalieOptionUrlPricing(
 
       let cityPage: FetchedHtml | null = null;
       try {
-        cityPage = await fetchHtml(outboundOption.url);
+        cityPage = await fetchHtmlWithReaderFallback(outboundOption.url);
       } catch {
         transportPriceDebug.push({
           variant_url: outboundOption.url,

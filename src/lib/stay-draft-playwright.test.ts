@@ -27,6 +27,35 @@ test('classifyBrowserLaunchFailure falls back to launch_failed', () => {
   );
 });
 
+function buildSnapshot(html: string) {
+  return {
+    html,
+    finalUrl: 'https://example.com/sejour',
+    imageUrls: [],
+    videoUrls: [],
+    browserEngine: 'chromium' as const,
+    transportVariants: [],
+    transportPriceDebug: [],
+    transportDetected: false,
+    ceslSessionsFromPlaywright: [],
+    zigotoursSessionsFromPlaywright: [],
+    tableSessionsFromPlaywright: [],
+    tableTransportOptionsFromPlaywright: [],
+    tableDepartureRowCount: 0,
+    thalieSessionBaselines: []
+  };
+}
+
+test('browserSnapshotHasUsefulContent accepts a rendered stay page without dynamic transport', () => {
+  const html = `<html><body><main><h1>Séjour Hip Hop</h1>${'Programme du séjour. '.repeat(40)}</main></body></html>`;
+  assert.equal(__testables__.browserSnapshotHasUsefulContent(buildSnapshot(html)), true);
+});
+
+test('browserSnapshotHasUsefulContent rejects a Cloudflare challenge page', () => {
+  const html = `<html><head><title>Just a moment...</title></head><body>${'Loading '.repeat(100)}</body></html>`;
+  assert.equal(__testables__.browserSnapshotHasUsefulContent(buildSnapshot(html)), false);
+});
+
 test('isUsableExecutablePath accepts serverless chromium resolved path before extraction', () => {
   assert.equal(
     __testables__.isUsableExecutablePath(

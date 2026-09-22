@@ -28,6 +28,8 @@ const IMAGE_MIN_WIDTH = 420;
 const IMAGE_MIN_HEIGHT = 260;
 const IMAGE_MIN_AREA = 420 * 260;
 const IMAGE_MIN_BYTES = 18_000;
+export const STAY_IMPORT_BROWSER_USER_AGENT =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0 Safari/537.36';
 
 const NON_FOREIGN_REGIONS = STAY_REGION_OPTIONS.filter((region) => region !== 'Étranger');
 
@@ -3218,8 +3220,7 @@ export async function fetchPaginatedDepartureTableData(
       redirect: 'follow',
       signal: controller.signal,
       headers: {
-        'user-agent':
-          'Mozilla/5.0 (compatible; ResacoloImportBot/1.0; +https://resacolo.com)',
+        'user-agent': STAY_IMPORT_BROWSER_USER_AGENT,
         accept: 'application/json,text/plain,*/*',
         'accept-language': 'fr-FR,fr;q=0.9,en;q=0.8',
         'x-requested-with': 'XMLHttpRequest'
@@ -3369,8 +3370,7 @@ export async function fetchZigotoursDepartureData(
       redirect: 'follow',
       signal: controller.signal,
       headers: {
-        'user-agent':
-          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0 Safari/537.36',
+        'user-agent': STAY_IMPORT_BROWSER_USER_AGENT,
         accept: 'application/json,text/plain,*/*',
         'accept-language': 'fr-FR,fr;q=0.9,en;q=0.8',
         referer: sourceUrl,
@@ -4889,8 +4889,7 @@ export async function fetchHtml(sourceUrl: string): Promise<FetchedHtml> {
       redirect: 'follow',
       signal: controller.signal,
       headers: {
-        'user-agent':
-          'Mozilla/5.0 (compatible; ResacoloImportBot/1.0; +https://resacolo.com)',
+        'user-agent': STAY_IMPORT_BROWSER_USER_AGENT,
         accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'accept-language': 'fr-FR,fr;q=0.9,en;q=0.8'
       }

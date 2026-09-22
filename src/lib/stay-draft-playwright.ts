@@ -1,4 +1,5 @@
 import {
+  STAY_IMPORT_BROWSER_USER_AGENT,
   type DraftSessionItem,
   type DraftTransportPriceDebug,
   type DraftTransportVariant,
@@ -1811,8 +1812,7 @@ async function createContext(browser: Browser): Promise<BrowserContext> {
   const videoDir = process.env.PLAYWRIGHT_IMPORT_VIDEO_DIR?.trim();
   return browser.newContext({
     viewport: { width: 1440, height: 1800 },
-    userAgent:
-      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0 Safari/537.36',
+    userAgent: STAY_IMPORT_BROWSER_USER_AGENT,
     ...(videoDir
       ? {
           recordVideo: {
@@ -2145,6 +2145,40 @@ function classifyBrowserLaunchFailure(error: unknown): BrowserRuntimeAvailabilit
   return 'launch_failed';
 }
 
+function browserSnapshotHasUsefulContent(snapshot: DynamicStayPageSnapshot | null): boolean {
+  if (!snapshot) return false;
+
+  const normalizedHtml = snapshot.html.slice(0, 20_000).toLowerCase();
+  const blockedPagePatterns = [
+    '<title>403 forbidden',
+    '<title>access denied',
+    '<title>just a moment',
+    'attention required!',
+    'cf-browser-verification',
+    '/cdn-cgi/challenge-platform/',
+    'verify you are human',
+    'error code: 1020'
+  ];
+  if (blockedPagePatterns.some((pattern) => normalizedHtml.includes(pattern))) {
+    return false;
+  }
+
+  const hasStructuredContent =
+    snapshot.imageUrls.length > 0 ||
+    snapshot.videoUrls.length > 0 ||
+    snapshot.transportVariants.length > 0 ||
+    snapshot.transportDetected ||
+    snapshot.ceslSessionsFromPlaywright.length > 0 ||
+    snapshot.zigotoursSessionsFromPlaywright.length > 0 ||
+    snapshot.tableSessionsFromPlaywright.length > 0 ||
+    snapshot.tableDepartureRowCount > 0;
+
+  // Le HTML rendu reste exploitable pour l'import général même si la page
+  // ne contient ni transport dynamique ni sessions reconnues par le navigateur.
+  const hasRenderedDocument = snapshot.html.trim().length >= 500 && /<body(?:\s|>)/i.test(snapshot.html);
+  return hasStructuredContent || hasRenderedDocument;
+}
+
 async function loadPlaywrightRuntime(): Promise<PlaywrightRuntime | null> {
   try {
     if (shouldUseServerlessChromiumRuntime()) {
@@ -2318,28 +2352,7 @@ async function renderStayPageWithLocalPlaywrightDetailed(
         snapshotOptions,
         executablePath
       );
-      const hasUsefulSessions =
-        (snapshot?.ceslSessionsFromPlaywright.length ?? 0) > 0 ||
-        (snapshot?.zigotoursSessionsFromPlaywright.length ?? 0) > 0 ||
-        (snapshot?.tableSessionsFromPlaywright.length ?? 0) > 0;
-      const hasUsefulTransport =
-        !snapshotOptions.collectTransport ||
-        (snapshot?.transportVariants.length ?? 0) > 0 ||
-        (snapshot?.tableTransportOptionsFromPlaywright.length ?? 0) > 0 ||
-        snapshot?.transportDetected === true;
-      if (
-        snapshot &&
-        (hasUsefulTransport || hasUsefulSessions) &&
-        (snapshot.html.length > 0 ||
-          snapshot.imageUrls.length > 0 ||
-          snapshot.videoUrls.length > 0 ||
-          snapshot.transportVariants.length > 0 ||
-          snapshot.transportDetected ||
-          snapshot.ceslSessionsFromPlaywright.length > 0 ||
-          snapshot.zigotoursSessionsFromPlaywright.length > 0 ||
-          snapshot.tableSessionsFromPlaywright.length > 0 ||
-          snapshot.tableDepartureRowCount > 0)
-      ) {
+      if (browserSnapshotHasUsefulContent(snapshot)) {
         return {
           status: 'available',
           snapshot,
@@ -2438,29 +2451,7 @@ async function renderStayPageWithRemotePlaywrightDetailed(
 
     const browser = await playwrightCoreModule.chromium.connect(endpoint, { timeout: PLAYWRIGHT_TIMEOUT_MS });
     const snapshot = await snapshotWithBrowser(browser, 'chromium', sourceUrl, snapshotOptions);
-    const hasUsefulSessions =
-      (snapshot?.ceslSessionsFromPlaywright.length ?? 0) > 0 ||
-      (snapshot?.zigotoursSessionsFromPlaywright.length ?? 0) > 0 ||
-      (snapshot?.tableSessionsFromPlaywright.length ?? 0) > 0;
-    const hasUsefulTransport =
-      !snapshotOptions.collectTransport ||
-      (snapshot?.transportVariants.length ?? 0) > 0 ||
-      (snapshot?.tableTransportOptionsFromPlaywright.length ?? 0) > 0 ||
-      snapshot?.transportDetected === true;
-
-    if (
-      snapshot &&
-      (hasUsefulTransport || hasUsefulSessions) &&
-      (snapshot.html.length > 0 ||
-        snapshot.imageUrls.length > 0 ||
-        snapshot.videoUrls.length > 0 ||
-        snapshot.transportVariants.length > 0 ||
-        snapshot.transportDetected ||
-        snapshot.ceslSessionsFromPlaywright.length > 0 ||
-        snapshot.zigotoursSessionsFromPlaywright.length > 0 ||
-        snapshot.tableSessionsFromPlaywright.length > 0 ||
-        snapshot.tableDepartureRowCount > 0)
-    ) {
+    if (browserSnapshotHasUsefulContent(snapshot)) {
       return {
         status: 'available',
         snapshot,
@@ -2551,6 +2542,7 @@ export async function renderStayPageWithPlaywrightDetailed(
 
 export const __testables__ = {
   classifyBrowserLaunchFailure,
+  browserSnapshotHasUsefulContent,
   isUsableExecutablePath,
   buildRemotePlaywrightEndpoint,
   resolvePlaywrightProviderOrder

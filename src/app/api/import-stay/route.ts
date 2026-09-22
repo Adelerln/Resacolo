@@ -13,7 +13,7 @@ export const runtime = 'nodejs';
 /** L'import lourd est lancé par le client via POST /api/stay-drafts/[id]/run-import (after() est peu fiable sur Vercel). */
 export const maxDuration = 60;
 type ImportAction = 'created' | 'existing' | 'restarted';
-type ExistingDraftContext = 'visible' | 'validated' | 'published';
+type ExistingDraftContext = 'visible' | 'published';
 
 type ImportableDraftRow = {
   id: string;
@@ -23,7 +23,6 @@ type ImportableDraftRow = {
   source_url_canonical?: string | null;
   sessions_json?: unknown;
   transport_options_json?: unknown;
-  validated_at?: string | null;
 };
 type ExistingStayRow = {
   id: string;
@@ -322,9 +321,11 @@ function hasLivePublication(rawPayload: unknown): boolean {
 }
 
 function getExistingDraftContext(existingDraft: ImportableDraftRow): ExistingDraftContext {
-  if (hasLivePublication(existingDraft.raw_payload)) return 'published';
-  if (existingDraft.validated_at || normalizeStatus(existingDraft.status) === 'validated') {
-    return 'validated';
+  if (
+    hasLivePublication(existingDraft.raw_payload) ||
+    normalizeStatus(existingDraft.status) === 'published'
+  ) {
+    return 'published';
   }
   return 'visible';
 }

@@ -651,18 +651,6 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
               <span className="font-medium text-slate-700">Mis à jour le :</span>{' '}
               {new Date(draft.updated_at).toLocaleString('fr-FR')}
             </p>
-            {draft.validated_at ? (
-              <p>
-                <span className="font-medium text-slate-700">Validé le :</span>{' '}
-                {new Date(draft.validated_at).toLocaleString('fr-FR')}
-              </p>
-            ) : null}
-            {draft.validated_by_user_id ? (
-              <p>
-                <span className="font-medium text-slate-700">Validé par :</span>{' '}
-                {draft.validated_by_user_id}
-              </p>
-            ) : null}
           </div>
         </div>
       ) : null}
@@ -673,8 +661,6 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
         initialPayload={initialPayload}
         seasonOptions={seasonOptions}
         initialStatus={draft.status}
-        initialValidatedAt={draft.validated_at}
-        initialValidatedByUserId={draft.validated_by_user_id}
         hideTopStatusCard={manualDraft}
         saveSuccessRedirectHref={backHref}
         linkedAccommodation={

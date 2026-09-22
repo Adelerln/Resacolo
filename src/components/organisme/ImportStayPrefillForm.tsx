@@ -29,7 +29,7 @@ type ImportProgressState = {
   error: string | null;
 };
 type ImportAction = 'created' | 'existing' | 'restarted';
-type ExistingDraftContext = 'visible' | 'validated' | 'published';
+type ExistingDraftContext = 'visible' | 'published';
 
 async function requestStayImportRun(draftId: string, organizerId: string) {
   const response = await fetch(
@@ -377,14 +377,14 @@ export default function ImportStayPrefillForm({
       <div>
         {createdDraftId && importAction === 'existing' ? (
           <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-            {existingDraftContext === 'published' || existingDraftContext === 'validated'
+            {existingDraftContext === 'published'
               ? 'Une ancienne version liée à cette URL a été retrouvée en base. Elle a été rouverte automatiquement.'
               : 'Un brouillon est déjà disponible pour cette URL. Il a été rouvert automatiquement.'}
           </p>
         ) : null}
         {createdDraftId && importAction === 'restarted' ? (
           <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-            {existingDraftContext === 'published' || existingDraftContext === 'validated'
+            {existingDraftContext === 'published'
               ? 'Une ancienne version liée à cette URL a été retrouvée en base. L’import a été relancé dessus pour la remettre à jour.'
               : 'Un brouillon existait déjà pour cette URL. L’import a été relancé sur ce même brouillon pour le remettre à jour.'}
           </p>

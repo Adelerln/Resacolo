@@ -42,10 +42,6 @@ export function stayDraftHasLivePublicationInRawPayload(rawPayload: unknown): bo
   return readStayIdFromLivePublication(o.live_publication) != null;
 }
 
-export function normalizeStayDraftStatus(value: string | null | undefined): string {
-  return (value ?? '').trim().toLowerCase();
-}
-
 export function isPublishedStayStatus(status: string | null | undefined): boolean {
   return String(status ?? '').trim().toUpperCase() === 'PUBLISHED';
 }
@@ -54,13 +50,11 @@ type DraftRowForImportList = {
   raw_payload: unknown;
   source_url: string;
   status: string;
-  validated_at: string | null;
 };
 
 /**
  * Masque le brouillon de la liste « imports » si :
  * - raw_payload contient une publication live (`live_publication.stay_id`), ou
- * - le brouillon est déjà validé (plus considéré comme brouillon d’import), ou
  * - un séjour publié existe pour la même source_url (filet).
  */
 export function stayDraftShouldAppearInImportList(
@@ -71,9 +65,7 @@ export function stayDraftShouldAppearInImportList(
     return false;
   }
 
-  const validated =
-    Boolean(draft.validated_at) || normalizeStayDraftStatus(draft.status) === 'validated';
-  if (validated) {
+  if (draft.status.trim().toLowerCase() === 'published') {
     return false;
   }
 

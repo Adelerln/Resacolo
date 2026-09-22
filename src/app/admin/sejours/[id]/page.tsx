@@ -187,8 +187,6 @@ export default async function AdminStayDetailPage({ params }: PageProps) {
         seasonOptions={seasonOptions}
         initialPayload={initialPayload}
         initialStatus={stay.status}
-        initialValidatedAt={null}
-        initialValidatedByUserId={null}
         hideTopStatusCard
         variant="published"
         publishedReviewEndpoint={`/api/admin/stays/${stay.id}/review-bundle`}

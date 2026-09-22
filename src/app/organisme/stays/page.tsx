@@ -71,7 +71,7 @@ export default async function OrganizerStaysPage({ searchParams }: PageProps) {
   const { data: organizerStayDrafts } = organizerId
     ? await supabase
         .from('stay_drafts')
-        .select('id,title,status,updated_at,raw_payload,source_url,validated_at')
+        .select('id,title,status,updated_at,raw_payload,source_url')
         .eq('organizer_id', organizerId)
         .order('updated_at', { ascending: false })
         .limit(100)
@@ -106,8 +106,7 @@ export default async function OrganizerStaysPage({ searchParams }: PageProps) {
           {
             raw_payload: draft.raw_payload,
             source_url: draft.source_url,
-            status: draft.status,
-            validated_at: draft.validated_at
+            status: draft.status
           },
           publishedStaySourceUrls
         )

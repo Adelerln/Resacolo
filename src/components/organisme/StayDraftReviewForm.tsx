@@ -88,9 +88,7 @@ type StayDraftReviewFormProps = {
   }>;
   initialPayload: StayDraftReviewPayload;
   initialStatus: string;
-  initialValidatedAt: string | null;
-  initialValidatedByUserId: string | null;
-  /** Saisie manuelle : masque la carte Statut / validé en tête du tunnel. */
+  /** Saisie manuelle : masque la carte de statut en tête du tunnel. */
   hideTopStatusCard?: boolean;
   variant?: 'draft' | 'published';
   publishedReviewEndpoint?: string;
@@ -310,8 +308,6 @@ export default function StayDraftReviewForm({
   seasonOptions = [],
   initialPayload,
   initialStatus,
-  initialValidatedAt,
-  initialValidatedByUserId,
   hideTopStatusCard = false,
   variant = 'draft',
   publishedReviewEndpoint,
@@ -450,8 +446,6 @@ export default function StayDraftReviewForm({
     })
   );
   const [status, setStatus] = useState(initialStatus);
-  const [validatedAt, setValidatedAt] = useState(initialValidatedAt);
-  const [validatedByUserId, setValidatedByUserId] = useState(initialValidatedByUserId);
   const [fieldErrors, setFieldErrors] = useState<StayDraftReviewFieldErrors>({});
   const [globalError, setGlobalError] = useState<string | null>(null);
   const [publishBlockHint, setPublishBlockHint] = useState<PublishBlockHint | null>(null);
@@ -1376,8 +1370,6 @@ export default function StayDraftReviewForm({
             draft?: {
               organizer_id?: string | null;
               status?: string;
-              validated_at?: string | null;
-              validated_by_user_id?: string | null;
             };
           }
         | null;
@@ -1394,8 +1386,6 @@ export default function StayDraftReviewForm({
         if (data?.draftSaved) {
           setSuccessMessage('Brouillon enregistré, mais publication live échouée.');
           setStatus(data?.draft?.status ?? status);
-          setValidatedAt(data?.draft?.validated_at ?? validatedAt);
-          setValidatedByUserId(data?.draft?.validated_by_user_id ?? validatedByUserId);
           router.refresh();
         }
         return;
@@ -1405,7 +1395,7 @@ export default function StayDraftReviewForm({
         isPublishedVariant
           ? 'Modifications enregistrées.'
           : mode === 'validate'
-          ? 'Brouillon validé avec succès.'
+          ? 'Brouillon enregistré. Vérifiez l’aperçu avant de le publier.'
           : data?.published
             ? 'Séjour enregistré et publié.'
             : 'Brouillon enregistré avec succès.'
@@ -1413,8 +1403,6 @@ export default function StayDraftReviewForm({
       setPublishBlockHint(null);
       if (!isPublishedVariant) {
         setStatus(data?.draft?.status ?? status);
-        setValidatedAt(data?.draft?.validated_at ?? validatedAt);
-        setValidatedByUserId(data?.draft?.validated_by_user_id ?? validatedByUserId);
         const signature = JSON.stringify(result.payload);
         autosavePayloadSignatureRef.current = signature;
         initialAutosaveSnapshotRef.current = signature;
@@ -1630,25 +1618,13 @@ export default function StayDraftReviewForm({
 
   return (
     <div className="space-y-6">
-      {!hideTopStatusCard && (showStatusInTopCard || validatedAt || validatedByUserId) ? (
+      {!hideTopStatusCard && showStatusInTopCard ? (
         <div className="rounded-2xl border border-slate-200 bg-white p-6">
           <div className="flex flex-wrap items-center gap-3">
-            {showStatusInTopCard ? (
-              <>
-                <span className="text-sm font-medium text-slate-500">Statut :</span>
-                <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700">
-                  {status}
-                </span>
-              </>
-            ) : null}
-            {validatedAt && (
-              <span className="text-xs text-slate-500">
-                Validé le {new Date(validatedAt).toLocaleString('fr-FR')}
-              </span>
-            )}
-            {validatedByUserId && (
-              <span className="text-xs text-slate-500">par {validatedByUserId}</span>
-            )}
+            <span className="text-sm font-medium text-slate-500">Statut :</span>
+            <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700">
+              {String(status).trim().toLowerCase() === 'validated' ? 'Brouillon' : status}
+            </span>
           </div>
         </div>
       ) : null}
@@ -3174,7 +3150,7 @@ export default function StayDraftReviewForm({
                   disabled={!publishAllowed || isSubmitting || isGeneratingSeo}
                   className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  Valider le visuel
+                  Prévisualiser avant publication
                 </button>
               ) : null}
             </div>

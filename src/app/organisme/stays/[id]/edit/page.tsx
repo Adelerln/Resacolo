@@ -207,8 +207,6 @@ export default async function OrganizerStayEditTunnelPage({ params: paramsPromis
         seasonOptions={seasonOptions}
         initialPayload={initialPayload}
         initialStatus={stay.status}
-        initialValidatedAt={null}
-        initialValidatedByUserId={null}
         hideTopStatusCard
         variant="published"
         saveSuccessRedirectHref={saveSuccessRedirectHref}

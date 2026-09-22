@@ -34,9 +34,9 @@ export function stayDraftStatusLabel(status?: string | null) {
     case 'pending':
       return 'Import en cours';
     case 'validated':
-      return 'Validé (import)';
+      return 'Brouillon';
     case 'draft':
-      return 'Brouillon import';
+      return 'Brouillon';
     default:
       return status ? `Import : ${status}` : 'Import';
   }

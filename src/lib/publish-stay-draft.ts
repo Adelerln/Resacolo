@@ -1755,7 +1755,7 @@ export async function replaceAccommodationVideoOnlyMedia(
     .order('position', { ascending: false })
     .limit(1);
   const tail = tailRows?.[0];
-  let start = (typeof tail?.position === 'number' ? tail.position : 0) + 1;
+  const start = (typeof tail?.position === 'number' ? tail.position : 0) + 1;
 
   const { error: insertError } = await supabase.from('accommodation_media').insert(
     normalized.map((url, index) => ({
@@ -2272,16 +2272,8 @@ export async function publishStayDraftToLive(
   console.info('[publish-stay-draft] entrée', {
     draftId: draft.id,
     organizerId: draft.organizer_id,
-    status: draft.status,
-    validatedAt: draft.validated_at
+    status: draft.status
   });
-
-  if (draft.status !== 'validated') {
-    throw new PublishStayDraftError(
-      'validate-draft-status',
-      "Le draft doit être validé avant la publication live."
-    );
-  }
 
   const hasCgv = await organizerHasUploadedCgv(supabase, draft.organizer_id);
   if (!hasCgv) {
@@ -2365,7 +2357,7 @@ export async function publishStayDraftToLive(
       draftCategories: categoryMapping.draftReceived
     });
   }
-  console.info('[publish-stay-draft] draft validé, parsing terminé', {
+  console.info('[publish-stay-draft] brouillon analysé, parsing terminé', {
     draftId: draft.id,
     categories: categories.map((value) => categoryValueToLogLabel(value)),
     ages: ages.length,

@@ -92,11 +92,6 @@ type StayDraftRow = Database['public']['Tables']['stay_drafts']['Row'];
 
 const REVIEW_DRAFT_SELECT = '*';
 
-function isUuid(value: string | null | undefined): value is string {
-  if (!value) return false;
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
-}
-
 function normalizeString(value: string | null | undefined): string {
   if (!value) return '';
   return value.trim();
@@ -291,12 +286,14 @@ async function updateDraftPublicationMetadata(input: {
   const now = new Date().toISOString();
   const attempts: Record<string, unknown>[] = [
     {
+      status: input.publishedAt ? 'published' : 'draft',
       raw_payload: input.rawPayload,
       published_at: input.publishedAt,
       publish_error: input.publishError,
       updated_at: now
     },
     {
+      status: input.publishedAt ? 'published' : 'draft',
       raw_payload: input.rawPayload,
       updated_at: now
     }
@@ -474,14 +471,6 @@ async function handlePublishOnly(req: Request, params: { id: string }) {
     );
   }
 
-  const isValidated = normalizeStatus(draft.status) === 'validated' || Boolean(draft.validated_at);
-  if (!isValidated) {
-    return NextResponse.json(
-      { error: 'Le brouillon doit être validé visuellement avant publication.' },
-      { status: 400 }
-    );
-  }
-
   let workingDraft = draft as StayDraftRow;
   try {
     workingDraft = await syncStayDraftPreviewAccommodation(supabase, workingDraft);
@@ -578,13 +567,12 @@ async function handleUpdate(req: Request, params: { id: string }, mode: 'save' |
   if (!access.ok) {
     return NextResponse.json({ error: access.error }, { status: access.status });
   }
-  const { selectedOrganizerId, session } = access.context;
+  const { selectedOrganizerId } = access.context;
 
   const supabase = getServerSupabaseClient();
   const now = new Date().toISOString();
   const ages = expandDraftAges(parsedBody.payload.ages);
   const categories = normalizeStayDraftCategories(parsedBody.payload.categories).categories;
-  const validatedByUserId = isUuid(session?.userId) ? session?.userId : null;
   const { data: currentDraft } = await supabase
     .from('stay_drafts')
     .select('raw_payload')
@@ -638,6 +626,9 @@ async function handleUpdate(req: Request, params: { id: string }, mode: 'save' |
       destination_itinerary_label: parsedBody.payload.destination_itinerary_label,
       destination_countries: parsedBody.payload.destination_countries
     }),
+    status: 'draft',
+    validated_at: null,
+    validated_by_user_id: null,
     updated_at: now
   };
 
@@ -656,12 +647,6 @@ async function handleUpdate(req: Request, params: { id: string }, mode: 'save' |
       partner_discount_percent: parsedBody.payload.partner_discount_percent,
       is_caf_eligible: parsedBody.payload.is_caf_eligible !== false
   };
-
-  if (mode === 'validate') {
-    updatePayload.status = 'validated';
-    updatePayload.validated_at = now;
-    updatePayload.validated_by_user_id = validatedByUserId;
-  }
 
   let { data: updatedDraft, error } = await supabase
     .from('stay_drafts')
@@ -699,8 +684,7 @@ async function handleUpdate(req: Request, params: { id: string }, mode: 'save' |
     draftId: updatedDraft.id,
     organizerId: selectedOrganizerId,
     mode,
-    status: updatedDraft.status,
-    validatedAt: updatedDraft.validated_at
+    status: updatedDraft.status
   });
 
   revalidatePath('/organisme/sejours');
@@ -740,15 +724,14 @@ async function handleUpdate(req: Request, params: { id: string }, mode: 'save' |
       }
     | null = null;
 
-  // Important: ne republie pas automatiquement sur une simple sauvegarde.
-  // Un draft déjà validé/publié peut être ré-enregistré (PATCH) sans déclencher de publication live.
+  // Important : une prévisualisation ne publie pas le séjour.
+  // Le brouillon reste un brouillon jusqu'au clic explicite sur « Publier maintenant ».
   const shouldAttemptPublish = mode === 'validate' && parsedBody.action === 'publish';
 
   console.info('[stay-drafts/review] décision publication', {
     draftId: workingDraft.id,
     mode,
     status: workingDraft.status,
-    validatedAt: workingDraft.validated_at,
     shouldAttemptPublish
   });
 

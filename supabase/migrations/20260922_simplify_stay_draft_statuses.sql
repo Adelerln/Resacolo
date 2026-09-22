@@ -4,6 +4,6 @@ update public.stay_drafts
 set status = case
   when nullif(trim(coalesce(raw_payload #>> '{live_publication,stay_id}', '')), '') is not null
     then 'published'
-  else 'draft'
+  else 'pending'
 end
 where lower(trim(status)) = 'validated';

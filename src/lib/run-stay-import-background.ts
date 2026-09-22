@@ -7,6 +7,7 @@ import {
   extractJsonLdOfferPricesFromHtml,
   extractStayData,
   extractThalieOptionUrlPricing,
+  extractThalieParentSessions,
   extractTransportVariants,
   extractVideoUrls,
   fetchHtml,
@@ -1533,10 +1534,20 @@ export async function runStayImportInBackground(params: {
       fetchedHtml.html,
       fetchedHtml.finalUrl
     ).catch(() => null);
-    const mergedStaticAndDomSessions = mergeExtractedSessions(
+    let mergedStaticAndDomSessions = mergeExtractedSessions(
       extracted.sessionsJson,
       extractedWithDynamicDom.sessionsJson
     );
+    if (isThalieImport && countDatedDraftSessions(mergedStaticAndDomSessions) === 0) {
+      const parentSessions = await extractThalieParentSessions(fetchedHtml.html, fetchedHtml.finalUrl)
+        .catch((error) => {
+          console.warn('[import-stay] Thalie parent sessions failed', {
+            error: error instanceof Error ? error.message : 'unknown-error'
+          });
+          return null;
+        });
+      if (parentSessions?.length) mergedStaticAndDomSessions = parentSessions;
+    }
     const mergedWithCeslPlaywrightSessions = mergeExtractedSessions(
       mergedStaticAndDomSessions,
       dynamicSnapshot?.ceslSessionsFromPlaywright ?? null

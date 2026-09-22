@@ -286,14 +286,14 @@ async function updateDraftPublicationMetadata(input: {
   const now = new Date().toISOString();
   const attempts: Record<string, unknown>[] = [
     {
-      status: input.publishedAt ? 'published' : 'draft',
+      status: input.publishedAt ? 'published' : 'pending',
       raw_payload: input.rawPayload,
       published_at: input.publishedAt,
       publish_error: input.publishError,
       updated_at: now
     },
     {
-      status: input.publishedAt ? 'published' : 'draft',
+      status: input.publishedAt ? 'published' : 'pending',
       raw_payload: input.rawPayload,
       updated_at: now
     }
@@ -626,7 +626,8 @@ async function handleUpdate(req: Request, params: { id: string }, mode: 'save' |
       destination_itinerary_label: parsedBody.payload.destination_itinerary_label,
       destination_countries: parsedBody.payload.destination_countries
     }),
-    status: 'draft',
+    // Même statut que lors de la création ; « draft » est refusé par la contrainte SQL.
+    status: 'pending',
     validated_at: null,
     validated_by_user_id: null,
     updated_at: now

@@ -4277,6 +4277,24 @@ function chooseAggregatedThalieAmount(samples: number[]): { amountCents: number 
  * - prix transport aller = total de la ville - prix session
  * - prix transport global = aller * 2
  */
+export async function extractThalieParentSessions(
+  html: string,
+  sourceUrl: string
+): Promise<DraftSessionItem[] | null> {
+  const source = new URL(sourceUrl);
+  if (!/(^|\.)thalie\.eu$/i.test(source.hostname)) return null;
+  const $ = load(html);
+  const parentId = $('input[name="HVParentID"]').attr('value')
+    ?? $('[data-pdt-parent-id]').first().attr('data-pdt-parent-id');
+  if (!parentId || !/^[1-9]\d*$/.test(parentId)) return null;
+  const parentUrl = new URL('/PBSCProduct.asp', source);
+  parentUrl.searchParams.set('ItmID', parentId);
+  const parent = await fetchHtmlWithReaderFallback(parentUrl.toString());
+  const extracted = extractStayData(parent.html, parent.finalUrl);
+  return extracted.sessionsJson?.filter((session) => session.start_date && session.end_date)
+    .map((session) => ({ ...session, price: session.price ?? extracted.priceFrom })) ?? null;
+}
+
 export async function extractThalieOptionUrlPricing(
   sourceHtml: string,
   sourceUrl: string
@@ -4323,7 +4341,7 @@ export async function extractThalieOptionUrlPricing(
     try {
       datePage = await fetchHtmlWithReaderFallback(dateUrl);
     } catch {
-      sessionBaselines.push({
+      if (dateOptions.length > 0) sessionBaselines.push({
         date_index: dateIndex,
         date_label: dateOption.label,
         baseline_total_cents: null
@@ -4332,7 +4350,9 @@ export async function extractThalieOptionUrlPricing(
     }
 
     const baselineTotalCents = parseThalieOfferTotalCents(datePage.html);
-    sessionBaselines.push({
+    // Sans option de date, cette URL sert uniquement au calcul des transports.
+    // Son slug ne constitue pas une session et son prix peut inclure l'assurance.
+    if (dateOptions.length > 0) sessionBaselines.push({
       date_index: dateIndex,
       date_label: dateOption.label,
       baseline_total_cents: baselineTotalCents

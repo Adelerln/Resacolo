@@ -5,6 +5,7 @@ import { runStayImportForDraftRow } from '@/lib/stay-import-run';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 
 export const runtime = 'nodejs';
+export const preferredRegion = 'cdg1';
 export const maxDuration = 300;
 
 export async function POST(

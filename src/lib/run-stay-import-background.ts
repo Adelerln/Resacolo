@@ -10,6 +10,7 @@ import {
   extractTransportVariants,
   extractVideoUrls,
   fetchHtml,
+  fetchHtmlViaReaderProxy,
   isZigotoursTarifPage,
   buildDraftTransportOptionsFromVariants,
   mergeDraftSessionItems,
@@ -1329,27 +1330,52 @@ export async function runStayImportInBackground(params: {
             fetch_final_url: fetchedHtml.finalUrl
           });
         } else {
-          const combinedError = buildBrowserFallbackErrorMessage({
-            fetchStatus: blockedFetchStatus,
-            browserProvider: fallbackResult.provider,
-            browserRuntimeStatus: fallbackResult.status,
-            browserExecutablePath: fallbackResult.executablePath,
-            fallbackError: fallbackResult.error
-          });
-          if (draftColumns.has('raw_payload')) {
-            await supabase
-              .from('stay_drafts')
-              .update({
-                raw_payload: {
-                  source_url: sourceUrl,
-                  fetch_error: combinedError,
-                  fetched_at: new Date().toISOString(),
-                  import_progress: buildImportProgress('failed', { error: combinedError })
-                }
-              })
-              .eq('id', draftId);
+          let readerFetchedHtml: Awaited<ReturnType<typeof fetchHtmlViaReaderProxy>> | null = null;
+          let readerFallbackError: string | null = null;
+          try {
+            readerFetchedHtml = await fetchHtmlViaReaderProxy(sourceUrl);
+            await mergeImportDebugPatch(draftId, {
+              provider_selected: 'reader',
+              reader_fallback_attempted: true,
+              reader_fallback_status: 'available',
+              reader_fallback_error: null,
+              fetch_final_url: sourceUrl
+            });
+          } catch (readerError) {
+            readerFallbackError =
+              readerError instanceof Error ? readerError.message : 'Fallback Reader indisponible.';
+            await mergeImportDebugPatch(draftId, {
+              reader_fallback_attempted: true,
+              reader_fallback_status: 'failed',
+              reader_fallback_error: readerFallbackError
+            });
           }
-          return;
+
+          if (readerFetchedHtml) {
+            fetchedHtml = readerFetchedHtml;
+          } else {
+            const combinedError = buildBrowserFallbackErrorMessage({
+              fetchStatus: blockedFetchStatus,
+              browserProvider: fallbackResult.provider,
+              browserRuntimeStatus: fallbackResult.status,
+              browserExecutablePath: fallbackResult.executablePath,
+              fallbackError: `${fallbackResult.error ?? 'browser-fallback-failed'}; reader: ${readerFallbackError ?? 'unknown-error'}`
+            });
+            if (draftColumns.has('raw_payload')) {
+              await supabase
+                .from('stay_drafts')
+                .update({
+                  raw_payload: {
+                    source_url: sourceUrl,
+                    fetch_error: combinedError,
+                    fetched_at: new Date().toISOString(),
+                    import_progress: buildImportProgress('failed', { error: combinedError })
+                  }
+                })
+                .eq('id', draftId);
+            }
+            return;
+          }
         }
       } else {
         if (draftColumns.has('raw_payload')) {

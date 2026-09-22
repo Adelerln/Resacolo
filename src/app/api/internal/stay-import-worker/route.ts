@@ -5,6 +5,7 @@ import {
 } from '@/lib/stay-import-jobs';
 
 export const runtime = 'nodejs';
+export const preferredRegion = 'cdg1';
 export const maxDuration = 300;
 
 export async function POST(req: Request) {

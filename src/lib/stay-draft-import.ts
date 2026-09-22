@@ -10,6 +10,8 @@ import {
 } from '@/lib/stay-draft-url-extract';
 
 const REQUEST_TIMEOUT_MS = 15_000;
+const READER_PROXY_TIMEOUT_MS = 30_000;
+const READER_PROXY_MAX_BYTES = 5 * 1024 * 1024;
 const MAX_TEXT_SCAN_LENGTH = 140_000;
 const MAX_RAW_TEXT_LENGTH = 35_000;
 const MAX_IMAGES = 8;
@@ -4915,6 +4917,65 @@ export async function fetchHtml(sourceUrl: string): Promise<FetchedHtml> {
   } catch (error) {
     const message =
       error instanceof Error ? error.message : 'Impossible de récupérer la page source.';
+    throw new Error(message);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/**
+ * Dernier recours pour les sites publics qui bloquent les adresses IP des fonctions Vercel.
+ * Jina Reader charge la page depuis son propre réseau et renvoie le document HTML rendu.
+ */
+export async function fetchHtmlViaReaderProxy(sourceUrl: string): Promise<FetchedHtml> {
+  const parsedSourceUrl = new URL(sourceUrl);
+  if (parsedSourceUrl.protocol !== 'http:' && parsedSourceUrl.protocol !== 'https:') {
+    throw new Error('URL source non compatible avec le fallback Reader.');
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), READER_PROXY_TIMEOUT_MS);
+  const readerUrl = `https://r.jina.ai/${sourceUrl}`;
+
+  try {
+    const response = await fetch(readerUrl, {
+      method: 'GET',
+      redirect: 'follow',
+      signal: controller.signal,
+      headers: {
+        accept: 'text/html,text/plain;q=0.9,*/*;q=0.8',
+        'x-respond-with': 'html'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Reader a échoué (HTTP ${response.status}).`);
+    }
+
+    const contentLength = Number(response.headers.get('content-length') ?? 0);
+    if (Number.isFinite(contentLength) && contentLength > READER_PROXY_MAX_BYTES) {
+      throw new Error('La page renvoyée par Reader est trop volumineuse.');
+    }
+
+    const htmlBuffer = Buffer.from(await response.arrayBuffer());
+    if (htmlBuffer.byteLength > READER_PROXY_MAX_BYTES) {
+      throw new Error('La page renvoyée par Reader est trop volumineuse.');
+    }
+
+    const html = htmlBuffer.toString('utf8');
+    if (html.trim().length < 500 || !/<body(?:\s|>)/i.test(html)) {
+      throw new Error('Reader a renvoyé une page vide ou inutilisable.');
+    }
+
+    return {
+      html,
+      finalUrl: sourceUrl,
+      fetchedAt: new Date().toISOString(),
+      contentType: 'text/html; charset=utf-8',
+      status: 200
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Fallback Reader indisponible.';
     throw new Error(message);
   } finally {
     clearTimeout(timeout);

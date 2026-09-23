@@ -1,4 +1,4 @@
-import Image from 'next/image';
+import Image from '@/components/sejours/StayImage';
 import Link from 'next/link';
 import { MapPin } from 'lucide-react';
 import type { ReactNode } from 'react';

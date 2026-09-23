@@ -7,6 +7,7 @@ import {
   extractJsonLdOfferPricesFromHtml,
   extractStayData,
   extractThalieOptionUrlPricing,
+  extractThalieCancellationInsurance,
   extractThalieParentContent,
   extractTransportVariants,
   extractVideoUrls,
@@ -1613,7 +1614,7 @@ export async function runStayImportInBackground(params: {
       import_progress: buildImportProgress('collecting_assets')
     });
 
-    const [selectedImages, staticTransportExtraction, effectiveTransportExtraction] = await Promise.all([
+    const [selectedImages, staticTransportExtraction, effectiveTransportExtraction, importedInsuranceOptions] = await Promise.all([
       selectBestStayImages(thalieParentContent?.html || effectiveHtml, thalieParentContent?.finalUrl || effectiveFinalUrl, mergedExtractedImages, {
         title: extractedAfterThalieSessions.title,
         description: extractedAfterThalieSessions.description,
@@ -1631,7 +1632,13 @@ export async function runStayImportInBackground(params: {
               ? Promise.resolve({ transportVariants: [], transportPriceDebug: [] })
               : extractTransportVariants(effectiveHtml, effectiveFinalUrl)
           )
-        : Promise.resolve({ transportVariants: [], transportPriceDebug: [] })
+        : Promise.resolve({ transportVariants: [], transportPriceDebug: [] }),
+      includePricing && isThalieImport
+        ? extractThalieCancellationInsurance(fetchedHtml.html, fetchedHtml.finalUrl).catch((error) => {
+            console.warn('[import-stay] Thalie insurance failed', { error: error instanceof Error ? error.message : 'unknown-error' });
+            return [];
+          })
+        : Promise.resolve([])
     ]);
     const extractedWithSmartImages = {
       ...extractedAfterThalieSessions,
@@ -2028,6 +2035,10 @@ export async function runStayImportInBackground(params: {
         colosTransportOptionsOverride ??
         null
     );
+    if (importedInsuranceOptions.length > 0 && draftColumns.has('extra_options_json')) {
+      updatePayload.extra_options_json = importedInsuranceOptions;
+      rawPayload.imported_insurance_options = importedInsuranceOptions;
+    }
     const updateError = await updateDraftWithFallbacks(draftId, updatePayload);
 
     if (updateError) {

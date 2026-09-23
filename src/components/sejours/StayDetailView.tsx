@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import Image from 'next/image';
+import Image from '@/components/sejours/StayImage';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { User } from 'lucide-react';
@@ -321,10 +321,12 @@ function getVideoEmbedConfig(url: string) {
 
 function ScrollablePhotoGallery({
   title,
-  imageUrls
+  imageUrls,
+  unoptimized = false
 }: {
   title: string;
   imageUrls: string[];
+  unoptimized?: boolean;
 }) {
   if (imageUrls.length === 0) return null;
   const displayImageUrls = imageUrls.map((src) => getHighQualityImageUrl(src));
@@ -343,7 +345,8 @@ function ScrollablePhotoGallery({
             loading={index === 0 ? 'eager' : 'lazy'}
             className="object-cover transition-transform duration-300 group-hover:scale-[1.02]"
             sizes="(max-width: 640px) 11rem, (max-width: 1024px) 13rem, 15rem"
-            quality={STAY_IMAGE_DISPLAY_QUALITY}
+            quality={unoptimized ? undefined : STAY_IMAGE_DISPLAY_QUALITY}
+            unoptimized={unoptimized}
           />
           <div className="absolute inset-0 bg-gradient-to-t from-slate-950/22 via-transparent to-transparent" />
         </div>
@@ -517,11 +520,13 @@ const VISIT_TRACKING_DEDUP_MS = 60_000;
 export function StayDetailView({
   stay,
   disableGalleryFallback = false,
+  unoptimizedImages = false,
   seoH1Title,
   relatedStayLinks = []
 }: {
   stay: Stay;
   disableGalleryFallback?: boolean;
+  unoptimizedImages?: boolean;
   seoH1Title?: string;
   relatedStayLinks?: Array<{ href: string; anchorText: string; title: string }>;
 }) {
@@ -1034,7 +1039,8 @@ export function StayDetailView({
           className="object-cover"
           sizes="100vw"
           priority
-          quality={STAY_IMAGE_DISPLAY_QUALITY}
+          quality={unoptimizedImages ? undefined : STAY_IMAGE_DISPLAY_QUALITY}
+          unoptimized={unoptimizedImages}
         />
         <div className="absolute inset-0 bg-slate-900/40" />
         <div className="absolute inset-0 flex items-center justify-center">
@@ -1164,6 +1170,7 @@ export function StayDetailView({
                       <ScrollablePhotoGallery
                         title={stay.title}
                         imageUrls={galleryImages}
+                        unoptimized={unoptimizedImages}
                       />
                     </div>
                   ) : null}
@@ -1338,6 +1345,7 @@ export function StayDetailView({
                                 <ScrollablePhotoGallery
                                   title={accommodation.name}
                                   imageUrls={accommodation.imageUrls}
+                                  unoptimized={unoptimizedImages}
                                 />
                               </div>
                             ) : null}

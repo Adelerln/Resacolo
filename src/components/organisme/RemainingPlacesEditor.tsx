@@ -9,6 +9,7 @@ type RemainingPlacesEditorProps = {
   inputClassName?: string;
   labelClassName?: string;
   buttonLabel?: string;
+  inlineSubmit?: boolean;
   onDirtyChange?: (isDirty: boolean) => void;
   registerSubmit?: (submit: ((nextEditSessionId?: string) => void) | null) => void;
 };
@@ -20,6 +21,7 @@ export default function RemainingPlacesEditor({
   inputClassName,
   labelClassName,
   buttonLabel = 'Enregistrer',
+  inlineSubmit = false,
   onDirtyChange,
   registerSubmit
 }: RemainingPlacesEditorProps) {
@@ -63,7 +65,7 @@ export default function RemainingPlacesEditor({
   }, []);
 
   return (
-    <form ref={formRef} action={action} className="flex items-center gap-2">
+    <form ref={formRef} action={action} className="flex flex-wrap items-center gap-2">
       {Object.entries(hiddenFields).map(([name, hiddenValue]) => (
         <input key={name} type="hidden" name={name} value={hiddenValue} />
       ))}
@@ -73,6 +75,8 @@ export default function RemainingPlacesEditor({
           name="remaining_places"
           type="number"
           min="0"
+          step="1"
+          required
           value={value}
           onChange={(event) => setValue(event.target.value)}
           className={computedInputClassName}
@@ -81,7 +85,9 @@ export default function RemainingPlacesEditor({
       {isDirty && (
         <button
           type="submit"
-          className="fixed bottom-4 left-4 right-4 z-30 rounded-full bg-emerald-600 px-5 py-3 text-sm font-semibold text-white shadow-lg sm:left-auto sm:right-4 sm:w-auto"
+          className={inlineSubmit
+            ? 'rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700'
+            : 'fixed bottom-4 left-4 right-4 z-30 rounded-full bg-emerald-600 px-5 py-3 text-sm font-semibold text-white shadow-lg sm:left-auto sm:right-4 sm:w-auto'}
         >
           {buttonLabel}
         </button>

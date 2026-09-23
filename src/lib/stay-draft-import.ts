@@ -4347,6 +4347,30 @@ export async function extractThalieParentSessions(html: string, sourceUrl: strin
   return content.sessions;
 }
 
+export async function extractThalieCancellationInsurance(html: string, sourceUrl: string): Promise<Array<Record<string, unknown>>> {
+  const groups = parseThaliePbOptionGroups(html, sourceUrl);
+  const options = groups.find((group) => group.role === 'insurance')?.options ?? [];
+  const cancellation = options.find((option) => /annulation/i.test(option.label));
+  const basic = options.find((option) => /assurance de base/i.test(option.label));
+  if (!cancellation?.url || !basic?.url || cancellation.url === basic.url) return [];
+  const pages = await Promise.all([basic, cancellation].map((option) => fetchHtmlWithReaderFallback(option.url!)));
+  const selections = pages.map((page) => parseThaliePbOptionGroups(page.html, page.finalUrl)
+    .filter((group) => group.role !== 'insurance')
+    .map((group) => [group.role, group.name, group.options.find((option) => option.selected)?.value ?? ''].join(':'))
+    .sort().join('|'));
+  if (selections[0] !== selections[1]) return [];
+  // Vérifier que le serveur n'a pas renvoyé la même variante pour les deux URLs.
+  const selectedInsurance = pages.map((page) => parseThaliePbOptionGroups(page.html, page.finalUrl)
+    .find((group) => group.role === 'insurance')?.options.find((option) => option.selected)?.value);
+  if (selectedInsurance[0] !== basic.value || selectedInsurance[1] !== cancellation.value) return [];
+  const basePrice = parseThalieOfferTotalCents(pages[0].html);
+  const insuredPrice = parseThalieOfferTotalCents(pages[1].html);
+  if (basePrice == null || insuredPrice == null || insuredPrice <= basePrice) return [];
+  const amountCents = insuredPrice - basePrice;
+  return [{ label: 'Assurance annulation', option_kind: 'insurance', pricing_mode: 'FIXED',
+    price: amountCents / 100, amount_cents: amountCents, currency: 'EUR', source_url: cancellation.url }];
+}
+
 export async function extractThalieOptionUrlPricing(
   sourceHtml: string,
   sourceUrl: string

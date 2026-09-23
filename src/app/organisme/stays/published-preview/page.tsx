@@ -174,7 +174,7 @@ export default async function OrganizerPublishedPreviewPage({ searchParams }: Pa
   const { data: draft } = await supabase
     .from('stay_drafts')
     .select(
-      'id,title,summary,location_text,region_text,ages,sessions_json,images,status,raw_payload,description,program_text,activities_text,transport_text,transport_mode,transport_options_json,accommodations_json,supervision_text,required_documents_text'
+      'id,title,summary,location_text,region_text,ages,sessions_json,extra_options_json,images,status,raw_payload,description,program_text,activities_text,transport_text,transport_mode,transport_options_json,accommodations_json,supervision_text,required_documents_text'
     )
     .eq('id', draftId)
     .eq('organizer_id', selectedOrganizerId)
@@ -264,7 +264,7 @@ export default async function OrganizerPublishedPreviewPage({ searchParams }: Pa
         <h2 className="text-lg font-semibold text-slate-900">Aperçu fiche séjour</h2>
         <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white">
           <FavoritesProvider>
-            <StayDetailView stay={previewStay} disableGalleryFallback />
+            <StayDetailView stay={previewStay} disableGalleryFallback unoptimizedImages />
           </FavoritesProvider>
         </div>
       </section>

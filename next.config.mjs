@@ -33,6 +33,7 @@ const nextConfig = {
   outputFileTracingRoot: projectRoot,
   outputFileTracingIncludes: stayImportRouteTracing,
   images: {
+    qualities: [75, 92],
     remotePatterns: [
       {
         protocol: 'https',

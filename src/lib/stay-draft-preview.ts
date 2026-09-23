@@ -4,7 +4,7 @@ import {
 } from '@/lib/accommodation-location';
 import { draftSessionStableKey } from '@/lib/draft-session-keys';
 import { readDraftDestinationFields } from '@/lib/stay-draft-destination';
-import { parseTransportOptionsFromJson, type ParsedTransportOption } from '@/lib/publish-stay-draft';
+import { parseMergedExtraOptionsRows, parseTransportOptionsFromJson, type ParsedTransportOption } from '@/lib/publish-stay-draft';
 import { extractGoogleMapsEmbedSrcFromInput } from '@/lib/google-maps-iframe';
 import { isVideoUrlCandidate } from '@/lib/stay-draft-url-extract';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
@@ -22,6 +22,7 @@ type StayDraftRow = Pick<
   | 'region_text'
   | 'ages'
   | 'sessions_json'
+  | 'extra_options_json'
   | 'images'
   | 'raw_payload'
   | 'program_text'
@@ -427,6 +428,7 @@ export async function buildStayPreviewFromDraft(draft: StayDraftRow, organizerId
     parsedTransportOptions
   );
   const previewSessions = buildPreviewSessions(draft.sessions_json, parsedTransportOptions);
+  const parsedExtras = parseMergedExtraOptionsRows(asSessionRows(draft.extra_options_json));
   const sessionPrices = previewSessions
     .map((session) => session.price)
     .filter((price): price is number => price != null && price > 0);
@@ -494,8 +496,13 @@ export async function buildStayPreviewFromDraft(draft: StayDraftRow, organizerId
     bookingOptions: {
       transportMode,
       sessions: previewSessions,
-      insuranceOptions: [],
-      extraOptions: []
+      insuranceOptions: parsedExtras.insuranceOptions.map((option, index) => ({
+        id: `draft-insurance-${index + 1}`, label: option.label, pricingMode: option.pricingMode,
+        amount: option.amountCents == null ? null : option.amountCents / 100, percentValue: option.percentValue
+      })),
+      extraOptions: parsedExtras.extraOptions.map((option, index) => ({
+        id: `draft-extra-${index + 1}`, label: option.label, amount: option.amountCents / 100
+      }))
     },
     centerLocations: [],
     accommodations,

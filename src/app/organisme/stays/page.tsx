@@ -177,13 +177,15 @@ export default async function OrganizerStaysPage({ searchParams }: PageProps) {
 
   async function updateSessionRemainingPlaces(formData: FormData) {
     'use server';
+    await requireOrganizerPageAccess({ requestedOrganizerId: organizerId, requiredSection: 'stays' });
     const supabase = getServerSupabaseClient();
     const sessionId = String(formData.get('session_id') ?? '').trim();
     const stayId = String(formData.get('stay_id') ?? '').trim();
-    const remainingPlaces = Number(formData.get('remaining_places') ?? NaN);
+    const remainingPlacesInput = String(formData.get('remaining_places') ?? '').trim();
+    const remainingPlaces = remainingPlacesInput ? Number(remainingPlacesInput) : NaN;
     const nextEditSessionId = String(formData.get('next_edit_session_id') ?? '').trim();
 
-    if (!sessionId || !stayId || Number.isNaN(remainingPlaces) || remainingPlaces < 0) {
+    if (!sessionId || !stayId || !Number.isSafeInteger(remainingPlaces) || remainingPlaces < 0) {
       redirect(
         withOrganizerQuery(
           `/organisme/sejours?error=invalid-session-capacity&openStay=${encodeURIComponent(stayId)}`,

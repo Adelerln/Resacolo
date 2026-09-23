@@ -7,7 +7,7 @@ import {
   extractJsonLdOfferPricesFromHtml,
   extractStayData,
   extractThalieOptionUrlPricing,
-  extractThalieParentSessions,
+  extractThalieParentContent,
   extractTransportVariants,
   extractVideoUrls,
   fetchHtml,
@@ -1538,15 +1538,27 @@ export async function runStayImportInBackground(params: {
       extracted.sessionsJson,
       extractedWithDynamicDom.sessionsJson
     );
-    if (isThalieImport && countDatedDraftSessions(mergedStaticAndDomSessions) === 0) {
-      const parentSessions = await extractThalieParentSessions(fetchedHtml.html, fetchedHtml.finalUrl)
+    const thalieParentSessionCollection = { attempted: false, session_count: 0, image_count: 0, error: null as string | null };
+    let thalieParentContent: Awaited<ReturnType<typeof extractThalieParentContent>> = null;
+    if (isThalieImport) {
+      thalieParentSessionCollection.attempted = true;
+      thalieParentContent = await extractThalieParentContent(fetchedHtml.html, fetchedHtml.finalUrl)
         .catch((error) => {
+          thalieParentSessionCollection.error = error instanceof Error ? error.message : 'unknown-error';
           console.warn('[import-stay] Thalie parent sessions failed', {
             error: error instanceof Error ? error.message : 'unknown-error'
           });
           return null;
         });
-      if (parentSessions?.length) mergedStaticAndDomSessions = parentSessions;
+      const parentSessions = thalieParentContent?.sessions;
+      if (parentSessions?.length && countDatedDraftSessions(mergedStaticAndDomSessions) === 0) {
+        mergedStaticAndDomSessions = parentSessions;
+      }
+      thalieParentSessionCollection.session_count = parentSessions?.length ?? 0;
+      thalieParentSessionCollection.image_count = thalieParentContent?.images.length ?? 0;
+      if (thalieParentContent && !parentSessions?.length) {
+        thalieParentSessionCollection.error = 'Aucune session datée dans la fiche principale Thalie.';
+      }
     }
     const mergedWithCeslPlaywrightSessions = mergeExtractedSessions(
       mergedStaticAndDomSessions,
@@ -1584,6 +1596,7 @@ export async function runStayImportInBackground(params: {
     };
     const mergedExtractedImages = Array.from(
       new Set([
+        ...(thalieParentContent?.images ?? []),
         ...extracted.images,
         ...extractedWithDynamicDom.images,
         ...(dynamicSnapshot?.imageUrls ?? [])
@@ -1601,7 +1614,7 @@ export async function runStayImportInBackground(params: {
     });
 
     const [selectedImages, staticTransportExtraction, effectiveTransportExtraction] = await Promise.all([
-      selectBestStayImages(effectiveHtml, effectiveFinalUrl, mergedExtractedImages, {
+      selectBestStayImages(thalieParentContent?.html || effectiveHtml, thalieParentContent?.finalUrl || effectiveFinalUrl, mergedExtractedImages, {
         title: extractedAfterThalieSessions.title,
         description: extractedAfterThalieSessions.description,
         summary: extractedAfterThalieSessions.summary,
@@ -1858,6 +1871,7 @@ export async function runStayImportInBackground(params: {
                 }))
               }
             : null,
+        thalie_parent_session_collection: thalieParentSessionCollection,
         thalie_session_baselines_from_option_urls_eur:
           thaliePricing?.sessionBaselines?.map((b) => ({
             date_label: b.date_label,

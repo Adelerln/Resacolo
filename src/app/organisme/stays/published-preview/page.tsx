@@ -234,12 +234,12 @@ export default async function OrganizerPublishedPreviewPage({ searchParams }: Pa
             title={title}
             summary={summary}
             description={description}
-            locationLabel={locationLabel}
+            locationLabel={previewStay.displayLocation || locationLabel}
             ageRangeLabel={ageRangeLabel}
             seasonIconSrc={season.iconPath}
             seasonBadge={season.badgeText}
             durationLabel={durationLabel}
-            priceFromEuros={null}
+            priceFromEuros={previewStay.priceFrom}
             partnerPriceFromEuros={null}
             partnerDiscountPercent={null}
             partnerFinanceMode={null}

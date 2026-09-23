@@ -431,6 +431,8 @@ export async function buildStayPreviewFromDraft(draft: StayDraftRow, organizerId
     .map((session) => session.price)
     .filter((price): price is number => price != null && price > 0);
   const accommodations = await loadPreviewAccommodations(draft, organizerId, rawPayload);
+  const displayLocation = accommodations.find((accommodation) => accommodation.city?.trim())?.city?.trim()
+    || locationLabel;
   const videoUrls = readVideoUrls(rawPayload);
 
   const accommodationDescription = accommodations
@@ -455,8 +457,8 @@ export async function buildStayPreviewFromDraft(draft: StayDraftRow, organizerId
       slug: undefined,
       logoUrl: undefined
     },
-    location: locationLabel,
-    displayLocation: locationLabel,
+    location: displayLocation,
+    displayLocation,
     region: normalizeString(draft.region_text),
     country: destination.destinationCountry ?? '',
     destinationType: destination.destinationType ?? null,

@@ -282,6 +282,9 @@ function buildAccommodationText(accommodations: AccommodationRow[]) {
 }
 
 function buildStayDisplayLocation(destination: StayDestinationInput, accommodations: AccommodationRow[]) {
+  const centerCity = accommodations.find((accommodation) => accommodation.city?.trim())?.city?.trim();
+  if (centerCity) return centerCity;
+
   const destinationLabel = buildStayDestinationLabel(destination);
   if (destinationLabel) return destinationLabel;
 

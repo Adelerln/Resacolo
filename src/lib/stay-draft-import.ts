@@ -1012,7 +1012,10 @@ function collectImageCandidates($: CheerioAPI, sourceUrl: string): ImageCandidat
     const absoluteUrl = toAbsoluteUrl(rawUrl, sourceUrl);
     if (!absoluteUrl) return;
 
-    const normalizedUrl = normalizeImageUrlForDedup(absoluteUrl);
+    const normalizedUrl = normalizeImageUrlForDedup(absoluteUrl)
+      .replace(/^http:\/\/((?:www\.)?thalie\.eu)\//i, 'https://$1/');
+    if (/^https:\/\/(?:www\.)?thalie\.eu\//i.test(normalizedUrl) &&
+      /\/(?:reserver|le-theme|le-centre|temoignages|sejours-artistiques-thalie-pour-enfants-et-adolescents)\.[a-z]+(?:\?|$)/i.test(normalizedUrl)) return;
     const alt = normalizeWhitespace(metadata?.alt ?? '');
     if (shouldIgnoreImage(normalizedUrl, alt)) return;
     if (seen.has(normalizedUrl)) return;
@@ -4277,10 +4280,10 @@ function chooseAggregatedThalieAmount(samples: number[]): { amountCents: number 
  * - prix transport aller = total de la ville - prix session
  * - prix transport global = aller * 2
  */
-export async function extractThalieParentSessions(
+export async function extractThalieParentContent(
   html: string,
   sourceUrl: string
-): Promise<DraftSessionItem[] | null> {
+): Promise<{ sessions: DraftSessionItem[]; images: string[]; html: string; finalUrl: string } | null> {
   const source = new URL(sourceUrl);
   if (!/(^|\.)thalie\.eu$/i.test(source.hostname)) return null;
   const $ = load(html);
@@ -4289,10 +4292,59 @@ export async function extractThalieParentSessions(
   if (!parentId || !/^[1-9]\d*$/.test(parentId)) return null;
   const parentUrl = new URL('/PBSCProduct.asp', source);
   parentUrl.searchParams.set('ItmID', parentId);
-  const parent = await fetchHtmlWithReaderFallback(parentUrl.toString());
-  const extracted = extractStayData(parent.html, parent.finalUrl);
-  return extracted.sessionsJson?.filter((session) => session.start_date && session.end_date)
-    .map((session) => ({ ...session, price: session.price ?? extracted.priceFrom })) ?? null;
+  let parentPrice: number | null = null;
+  try {
+    const parent = await fetchHtmlWithReaderFallback(parentUrl.toString());
+    const extracted = extractStayData(parent.html, parent.finalUrl);
+    parentPrice = extracted.priceFrom;
+    const sessions = extracted.sessionsJson?.filter((session) => session.start_date && session.end_date);
+    if (sessions?.length) {
+      const parentDom = load(parent.html);
+      const productHtml = parentDom('.viewDetail').first().html() || parent.html;
+      return {
+        sessions: sessions.map((session) => ({ ...session, price: session.price ?? parentPrice })),
+        images: extractImages(load(productHtml), parent.finalUrl),
+        html: productHtml,
+        finalUrl: parent.finalUrl
+      };
+    }
+  } catch {
+    // Le rendu HTML du proxy peut échouer ou ne contenir que les options du produit.
+  }
+
+  const response = await fetch(`https://r.jina.ai/${parentUrl.toString()}`, {
+    headers: { accept: 'text/plain', 'x-respond-with': 'markdown', 'x-no-cache': 'true' },
+    signal: AbortSignal.timeout(READER_PROXY_TIMEOUT_MS)
+  });
+  if (!response.ok) throw new Error(`Reader sessions a échoué (HTTP ${response.status}).`);
+  const text = await response.text();
+  if (Buffer.byteLength(text, 'utf8') > READER_PROXY_MAX_BYTES) {
+    throw new Error('La fiche de sessions renvoyée par Reader est trop volumineuse.');
+  }
+  // Lire seulement le contenu de cette fiche, sans interpréter le Markdown comme du HTML.
+  const escapeHtml = (value: string) => value.replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  // Ignorer les images de navigation placées avant le titre du produit.
+  const heading = text.search(/^#\s+/m);
+  const productText = heading >= 0 ? text.slice(heading) : text;
+  const imageMarkup = Array.from(productText.matchAll(/!\[([^\]]*)\]\((https?:\/\/[^\s)]+)(?:\s+"[^"]*")?\)/g))
+    .map((match) => `<img src="${escapeHtml(match[2])}" alt="${escapeHtml(match[1])}">`).join('');
+  const document = `<html><body>${escapeHtml(productText)}${imageMarkup}</body></html>`;
+  const sessions = extractSessions(load(document), normalizeWhitespace(text), document)
+    ?.filter((session) => session.start_date && session.end_date) ?? [];
+  return {
+    sessions: sessions.map((session) => ({ ...session, price: session.price ?? parentPrice })),
+    images: extractImages(load(document), parentUrl.toString()),
+    html: document,
+    finalUrl: parentUrl.toString()
+  };
+}
+
+export async function extractThalieParentSessions(html: string, sourceUrl: string): Promise<DraftSessionItem[] | null> {
+  const content = await extractThalieParentContent(html, sourceUrl);
+  if (!content) return null;
+  if (!content.sessions.length) throw new Error('Aucune session datée dans la fiche principale Thalie.');
+  return content.sessions;
 }
 
 export async function extractThalieOptionUrlPricing(

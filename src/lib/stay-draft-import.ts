@@ -904,6 +904,14 @@ function pickSrcsetBestCandidate(srcset: string): string {
 
 function pickImageCandidates($: CheerioAPI, element: AnyNode): string[] {
   const image = $(element);
+  const linkedOriginal = image.closest('a[href]').attr('href');
+  const originalCandidates = [
+    linkedOriginal && /\.(?:jpe?g|png|webp|avif)(?:[?#]|$)/i.test(linkedOriginal) ? linkedOriginal : null,
+    image.attr('data-zoom-image'),
+    image.attr('data-large-image'),
+    image.attr('data-full'),
+    image.attr('data-original')
+  ].filter((candidate): candidate is string => Boolean(candidate && normalizeWhitespace(candidate)));
   const candidates = [
     image.attr('src'),
     image.attr('data-src'),
@@ -918,7 +926,7 @@ function pickImageCandidates($: CheerioAPI, element: AnyNode): string[] {
     pickSrcsetBestCandidate(image.attr('data-lazy-srcset') ?? '')
   ].filter(Boolean);
 
-  return unique([...candidates, ...srcsetCandidates]);
+  return unique([...originalCandidates, ...srcsetCandidates, ...candidates]);
 }
 
 function normalizeImageUrlForDedup(rawUrl: string): string {
@@ -1528,8 +1536,13 @@ function selectBestImageUrls(
   const selectedUrls = new Set<string>();
   const familyUsage = new Map<string, number>();
   const themeUsage = new Map<ImageTheme, number>();
+  const largeImages = sorted.filter((candidate) =>
+    (candidate.width ?? candidate.widthHint ?? 0) >= IMAGE_MIN_WIDTH &&
+    (candidate.height ?? candidate.heightHint ?? 0) >= IMAGE_MIN_HEIGHT && candidate.score >= -14
+  );
+  const eligible = largeImages.length > 0 ? largeImages : sorted.filter((candidate) => candidate.score >= -14);
 
-  for (const candidate of sorted) {
+  for (const candidate of eligible) {
     if (selected.length >= MAX_IMAGES) break;
     if (candidate.score < -14) continue;
     if (selectedUrls.has(candidate.url)) continue;
@@ -1550,23 +1563,17 @@ function selectBestImageUrls(
   }
 
   if (selected.length < IMAGE_SELECTION_MIN) {
-    for (const candidate of sorted) {
+    for (const candidate of eligible) {
       if (selected.length >= MAX_IMAGES) break;
       if (selectedUrls.has(candidate.url)) continue;
+      if (selected.some((item) => isNearDuplicate(candidate, item))) continue;
       selected.push(candidate);
       selectedUrls.add(candidate.url);
     }
   }
 
   const selectedUrlsOrdered = selected.map((item) => item.url);
-  const fallbackUnique = unique(fallbackImages);
-  for (const url of fallbackUnique) {
-    if (selectedUrlsOrdered.length >= MAX_IMAGES) break;
-    if (selectedUrls.has(url)) continue;
-    selectedUrlsOrdered.push(url);
-    selectedUrls.add(url);
-  }
-
+  // Ne pas réintroduire les miniatures et doublons écartés lors de l'analyse.
   return selectedUrlsOrdered.slice(0, MAX_IMAGES);
 }
 
@@ -1586,7 +1593,7 @@ export async function selectBestStayImages(
     const contextTokens = buildImageSelectionContextTokens(context);
     const analyzed = await analyzeImageCandidates(candidates, contextTokens);
     const selected = selectBestImageUrls(analyzed, fallback);
-    return selected.length > 0 ? selected : fallback;
+    return selected;
   } catch (error) {
     console.warn('[import-images] sélection intelligente indisponible, fallback utilisé', {
       sourceUrl,
@@ -4327,8 +4334,11 @@ export async function extractThalieParentContent(
   // Ignorer les images de navigation placées avant le titre du produit.
   const heading = text.search(/^#\s+/m);
   const productText = heading >= 0 ? text.slice(heading) : text;
-  const imageMarkup = Array.from(productText.matchAll(/!\[([^\]]*)\]\((https?:\/\/[^\s)]+)(?:\s+"[^"]*")?\)/g))
-    .map((match) => `<img src="${escapeHtml(match[2])}" alt="${escapeHtml(match[1])}">`).join('');
+  const imageMarkup = Array.from(productText.matchAll(/!\[([^\]]*)\]\((https?:\/\/[^\s)]+)(?:\s+"[^"]*")?\)(?:\]\((https?:\/\/[^\s)]+)\))?/g))
+    .map((match) => {
+      const image = `<img src="${escapeHtml(match[2])}" alt="${escapeHtml(match[1])}">`;
+      return match[3] ? `<a href="${escapeHtml(match[3])}">${image}</a>` : image;
+    }).join('');
   const document = `<html><body>${escapeHtml(productText)}${imageMarkup}</body></html>`;
   const sessions = extractSessions(load(document), normalizeWhitespace(text), document)
     ?.filter((session) => session.start_date && session.end_date) ?? [];
@@ -4375,6 +4385,19 @@ export async function extractThalieOptionUrlPricing(
   sourceHtml: string,
   sourceUrl: string
 ): Promise<ThalieOptionUrlPricingResult> {
+  // Cache limité à cet import : ne pas recharger la source ni une variante déjà lue.
+  const pages = new Map<string, Promise<FetchedHtml>>([
+    [sourceUrl, Promise.resolve({ html: sourceHtml, finalUrl: sourceUrl,
+      fetchedAt: new Date().toISOString(), contentType: 'text/html', status: 200 })]
+  ]);
+  const getPage = (url: string) => {
+    let pending = pages.get(url);
+    if (!pending) {
+      pending = fetchHtmlWithReaderFallback(url);
+      pages.set(url, pending);
+    }
+    return pending;
+  };
   const sourceGroups = parseThaliePbOptionGroups(sourceHtml, sourceUrl);
   const dateOptions = sourceGroups.find((group) => group.role === 'date')?.options ?? [];
   const sourceHasOutbound = sourceGroups.some((group) => group.role === 'outbound');
@@ -4415,7 +4438,7 @@ export async function extractThalieOptionUrlPricing(
     let datePage: FetchedHtml | null = null;
 
     try {
-      datePage = await fetchHtmlWithReaderFallback(dateUrl);
+      datePage = await getPage(dateUrl);
     } catch {
       if (dateOptions.length > 0) sessionBaselines.push({
         date_index: dateIndex,
@@ -4437,6 +4460,18 @@ export async function extractThalieOptionUrlPricing(
     const datePageGroups = parseThaliePbOptionGroups(datePage.html, datePage.finalUrl);
     const outboundOptions =
       datePageGroups.find((group) => group.role === 'outbound')?.options ?? [];
+    const cityUrls = unique(outboundOptions.filter((option) => {
+      const city = normalizeTransportCityLabel(option.label);
+      return city && !isTransportBaseReference(city) && option.url;
+    }).map((option) => option.url!));
+    // Quatre requêtes au maximum ; les résultats sont traités dans l'ordre initial.
+    let nextCity = 0;
+    await Promise.all(Array.from({ length: Math.min(4, cityUrls.length) }, async () => {
+      while (nextCity < cityUrls.length) {
+        const url = cityUrls[nextCity++];
+        await getPage(url).catch(() => null);
+      }
+    }));
     for (const outboundOption of outboundOptions) {
       const city = normalizeTransportCityLabel(outboundOption.label);
       if (!city || isTransportBaseReference(city)) continue;
@@ -4444,7 +4479,7 @@ export async function extractThalieOptionUrlPricing(
 
       let cityPage: FetchedHtml | null = null;
       try {
-        cityPage = await fetchHtmlWithReaderFallback(outboundOption.url);
+        cityPage = await getPage(outboundOption.url);
       } catch {
         transportPriceDebug.push({
           variant_url: outboundOption.url,

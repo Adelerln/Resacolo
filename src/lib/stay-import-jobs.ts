@@ -408,10 +408,10 @@ export async function triggerStayImportWorker(baseUrl: string): Promise<void> {
   const secret = readWorkerSecret();
   const target = new URL('/api/internal/stay-import-worker', baseUrl).toString();
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 1_500);
+  const timeoutId = setTimeout(() => controller.abort(), 290_000);
 
   try {
-    await fetch(target, {
+    const response = await fetch(target, {
       method: 'POST',
       headers: {
         Accept: 'application/json',
@@ -420,11 +420,15 @@ export async function triggerStayImportWorker(baseUrl: string): Promise<void> {
       cache: 'no-store',
       signal: controller.signal
     });
+    if (!response.ok) {
+      throw new Error(`Impossible de démarrer le traitement de l'import (HTTP ${response.status}).`);
+    }
   } catch (error) {
     console.warn('[stay-import-jobs] immediate worker trigger failed', {
       target,
       error: error instanceof Error ? error.message : 'unknown-error'
     });
+    throw error;
   } finally {
     clearTimeout(timeoutId);
   }

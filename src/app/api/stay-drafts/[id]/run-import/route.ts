@@ -49,6 +49,8 @@ export async function POST(
     }
 
     if (outcome === 'already_running') {
+      // Un job en file d'attente peut avoir perdu son premier déclenchement.
+      await triggerStayImportWorker(req.url);
       return NextResponse.json({ success: true, status: 'already_running' });
     }
 
@@ -56,7 +58,8 @@ export async function POST(
       return NextResponse.json({ success: true, status: 'already_completed' });
     }
 
-    void triggerStayImportWorker(req.url);
+    // Garder la requête active : Vercel peut suspendre un appel lancé sans await.
+    await triggerStayImportWorker(req.url);
     return NextResponse.json({ success: true, status: 'started' });
   } catch (error) {
     console.error('[stay-drafts/run-import] unexpected error:', error);

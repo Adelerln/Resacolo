@@ -1519,6 +1519,17 @@ export async function runStayImportInBackground(params: {
       dynamicSnapshot && dynamicSnapshot.html
         ? extractStayData(dynamicSnapshot.html, dynamicSnapshot.finalUrl)
         : extracted;
+    const thalieParentSessionCollection = { attempted: isThalieImport, session_count: 0, image_count: 0, error: null as string | null };
+    const thalieParentContentPromise = isThalieImport
+      ? extractThalieParentContent(fetchedHtml.html, fetchedHtml.finalUrl).catch((error) => {
+          thalieParentSessionCollection.error = error instanceof Error ? error.message : 'unknown-error';
+          console.warn('[import-stay] Thalie parent sessions failed', { error: thalieParentSessionCollection.error });
+          return null;
+        })
+      : Promise.resolve(null);
+    const paginatedDepartureTablePromise = fetchPaginatedDepartureTableData(
+      fetchedHtml.html, fetchedHtml.finalUrl
+    ).catch(() => null);
     const thaliePricing = includePricing && isThalieImport
       ? await extractThalieOptionUrlPricing(fetchedHtml.html, fetchedHtml.finalUrl).catch((error) => {
           console.warn('[import-stay] Thalie option-url pricing failed', {
@@ -1531,26 +1542,13 @@ export async function runStayImportInBackground(params: {
     const ceslStructuredBooking = includePricing && sourceHost?.includes('cesl.fr')
       ? extractCeslStructuredBookingData(fetchedHtml.html, fetchedHtml.finalUrl)
       : null;
-    const paginatedDepartureTableData = await fetchPaginatedDepartureTableData(
-      fetchedHtml.html,
-      fetchedHtml.finalUrl
-    ).catch(() => null);
+    const paginatedDepartureTableData = await paginatedDepartureTablePromise;
     let mergedStaticAndDomSessions = mergeExtractedSessions(
       extracted.sessionsJson,
       extractedWithDynamicDom.sessionsJson
     );
-    const thalieParentSessionCollection = { attempted: false, session_count: 0, image_count: 0, error: null as string | null };
-    let thalieParentContent: Awaited<ReturnType<typeof extractThalieParentContent>> = null;
+    const thalieParentContent = await thalieParentContentPromise;
     if (isThalieImport) {
-      thalieParentSessionCollection.attempted = true;
-      thalieParentContent = await extractThalieParentContent(fetchedHtml.html, fetchedHtml.finalUrl)
-        .catch((error) => {
-          thalieParentSessionCollection.error = error instanceof Error ? error.message : 'unknown-error';
-          console.warn('[import-stay] Thalie parent sessions failed', {
-            error: error instanceof Error ? error.message : 'unknown-error'
-          });
-          return null;
-        });
       const parentSessions = thalieParentContent?.sessions;
       if (parentSessions?.length && countDatedDraftSessions(mergedStaticAndDomSessions) === 0) {
         mergedStaticAndDomSessions = parentSessions;
@@ -1614,6 +1612,8 @@ export async function runStayImportInBackground(params: {
       import_progress: buildImportProgress('collecting_assets')
     });
 
+    // Les résultats génériques sont ignorés plus bas lorsqu'un extracteur Thalie a répondu.
+    const needsGenericTransport = includePricing && !thaliePricing && !(dynamicSnapshot?.thalieSessionBaselines?.length);
     const [selectedImages, staticTransportExtraction, effectiveTransportExtraction, importedInsuranceOptions] = await Promise.all([
       selectBestStayImages(thalieParentContent?.html || effectiveHtml, thalieParentContent?.finalUrl || effectiveFinalUrl, mergedExtractedImages, {
         title: extractedAfterThalieSessions.title,
@@ -1623,10 +1623,10 @@ export async function runStayImportInBackground(params: {
         regionText: extractedAfterThalieSessions.regionText,
         activities: extractedAfterThalieSessions.activities
       }),
-      includePricing
+      needsGenericTransport
         ? extractTransportVariants(fetchedHtml.html, fetchedHtml.finalUrl)
         : Promise.resolve({ transportVariants: [], transportPriceDebug: [] }),
-      includePricing
+      needsGenericTransport
         ? (
             effectiveHtml === fetchedHtml.html && effectiveFinalUrl === fetchedHtml.finalUrl
               ? Promise.resolve({ transportVariants: [], transportPriceDebug: [] })

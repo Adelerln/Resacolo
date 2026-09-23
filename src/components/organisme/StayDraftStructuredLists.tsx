@@ -319,7 +319,7 @@ export function DraftSessionsEditor({
                     )}
                   </div>
                 </div>
-                <label className="block text-xs font-medium text-slate-600">
+                <label className="block rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-950">
                   Disponibilité
                   <select
                     value={row.availability}
@@ -340,22 +340,22 @@ export function DraftSessionsEditor({
                     <option value="full">Complet</option>
                   </select>
                 </label>
-                <label className="block text-xs font-medium text-slate-600">
+                <label className="block rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-950">
                   Stock disponible
                   <input
                     value={row.remaining_places}
                     onChange={(e) => updateRow(index, { remaining_places: e.target.value })}
-                    className="mt-1 w-full rounded border border-slate-200 px-2 py-1.5 text-sm"
+                    className="mt-1 w-full rounded border border-slate-200 bg-white px-2 py-1.5 text-sm"
                     inputMode="numeric"
                     placeholder="ex. 12"
                   />
                 </label>
-                <label className="block text-xs font-medium text-slate-600">
+                <label className="block rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-950">
                   Prix (nombre)
                   <input
                     value={row.price}
                     onChange={(e) => updateRow(index, { price: e.target.value })}
-                    className="mt-1 w-full rounded border border-slate-200 px-2 py-1.5 text-sm"
+                    className="mt-1 w-full rounded border border-slate-200 bg-white px-2 py-1.5 text-sm"
                     inputMode="decimal"
                   />
                 </label>

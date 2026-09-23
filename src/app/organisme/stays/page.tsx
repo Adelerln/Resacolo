@@ -64,7 +64,7 @@ export default async function OrganizerStaysPage({ searchParams }: PageProps) {
   const { data: stays, error: staysError } = organizerId
     ? await supabase
         .from('stays')
-        .select('id,title,status,season_id,created_at,location_text')
+        .select('id,title,status,season_id,created_at,location_text,stay_accommodations(accommodations(city))')
         .eq('organizer_id', organizerId)
         .order('created_at', { ascending: false })
     : { data: [], error: null };
@@ -537,7 +537,9 @@ export default async function OrganizerStaysPage({ searchParams }: PageProps) {
     title: stay.title,
     status: stay.status,
     seasonName: seasonsById.get(stay.season_id)?.name ?? '-',
-    locationText: stay.location_text ?? '',
+    locationText: stay.stay_accommodations
+      .map((link) => link.accommodations?.city?.trim())
+      .find((city) => Boolean(city)) || stay.location_text || '',
     availability: getStayAvailability(stay.id),
     sessions: sessionsByStayId.get(stay.id)?.map((sessionItem) => ({
       id: sessionItem.id,

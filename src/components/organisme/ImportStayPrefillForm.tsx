@@ -198,7 +198,7 @@ export default function ImportStayPrefillForm({
       .then((payload) => {
         if (payload?.status === 'started') {
           setImportProgress((current) =>
-            current
+            current && !current.completed && current.step === 'created'
               ? {
                   ...current,
                   step: 'queued',
@@ -213,7 +213,7 @@ export default function ImportStayPrefillForm({
         importKickoffRef.current = null;
         const message = error instanceof Error ? error.message : "Impossible de lancer l'import.";
         setImportProgress((current) =>
-          current
+          current && !current.completed
             ? {
                 ...current,
                 completed: true,

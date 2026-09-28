@@ -149,6 +149,7 @@ export default function CheckoutInformationsPage() {
   const [isLoadingPricing, setIsLoadingPricing] = useState(true);
   const [pricingErrorMessage, setPricingErrorMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [accountPassword, setAccountPassword] = useState('');
   const [accountPasswordConfirm, setAccountPasswordConfirm] = useState('');
@@ -398,6 +399,30 @@ export default function CheckoutInformationsPage() {
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setErrorMessage(null);
+    setHasAttemptedSubmit(true);
+
+    // La validation native empêchait onSubmit sans expliquer le blocage dans la page.
+    // Conserver les contraintes HTML, mais rendre le premier champ invalide visible.
+    const invalidField = event.currentTarget.querySelector<
+      HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+    >('input:invalid, select:invalid, textarea:invalid');
+    if (invalidField) {
+      const label = Array.from(invalidField.closest('label')?.childNodes ?? [])
+        .filter((node) => node.nodeType === Node.TEXT_NODE)
+        .map((node) => node.textContent ?? '')
+        .join(' ')
+        .replace(/\*/g, '')
+        .trim();
+      setErrorMessage(
+        invalidField.validity.valueMissing
+          ? `Veuillez renseigner le champ « ${label || 'champ obligatoire'} » pour continuer vers le récapitulatif.`
+          : `Vérifiez le champ « ${label || 'champ obligatoire'} » : ${invalidField.validationMessage}`
+      );
+      invalidField.focus({ preventScroll: true });
+      invalidField.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -533,7 +558,17 @@ export default function CheckoutInformationsPage() {
       headingClassName="mt-8 sm:mt-10"
       contentClassName="border-0 bg-transparent p-0 shadow-none"
     >
-      <form id={FORM_ID} onSubmit={onSubmit} className="space-y-6">
+      <form
+        id={FORM_ID}
+        onSubmit={onSubmit}
+        noValidate
+        className={`space-y-6 ${hasAttemptedSubmit ? '[&_input:invalid]:border-red-500 [&_select:invalid]:border-red-500 [&_textarea:invalid]:border-red-500' : ''}`}
+      >
+        {errorMessage ? (
+          <p role="alert" className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {errorMessage}
+          </p>
+        ) : null}
         {isDevBypassCheckout() ? (
           <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
             <span className="font-semibold">Mode dev (checkout sans API) :</span> actif en{' '}

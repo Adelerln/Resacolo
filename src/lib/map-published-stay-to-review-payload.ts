@@ -1,5 +1,5 @@
 import { mergeDraftExtraOptionsJson } from '@/lib/stay-draft-extra-options-split';
-import { collapseTransportDraftOptionsJson } from '@/lib/stay-draft-transport-display';
+import { collapseTransportDraftOptionsJson, normalizeRepeatedTransportCity } from '@/lib/stay-draft-transport-display';
 import { normalizeImportedImageUrlList, normalizeImportedVideoUrlList } from '@/lib/stay-draft-url-extract';
 import { sanitizeSeoPrimaryKeyword } from '@/lib/stay-seo';
 import { normalizeStayDraftCategories } from '@/lib/stay-categories';
@@ -290,10 +290,11 @@ export function mapPublishedStayToReviewPayload(input: {
   const mergedExtras = mergeDraftExtraOptionsJson(extraRows, insuranceRows);
 
   const transportDraftRows: Array<Record<string, unknown>> = transportOptions.map((row) => {
+    const departure = normalizeRepeatedTransportCity(row.departure_city);
+    const arrival = normalizeRepeatedTransportCity(row.return_city);
     const displayCity =
-      [row.departure_city, row.return_city].filter(Boolean).join(' → ') ||
-      row.departure_city ||
-      row.return_city ||
+      (departure.toLocaleLowerCase('fr') === arrival.toLocaleLowerCase('fr')
+        ? departure : [departure, arrival].filter(Boolean).join(' → ')) ||
       'Transport';
     return {
       label: displayCity.trim(),

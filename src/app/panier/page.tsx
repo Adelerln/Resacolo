@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
+import StayImage from '@/components/sejours/StayImage';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Bus, Calendar, Layers, MapPin, Shield, Trash2, Users } from 'lucide-react';
@@ -139,9 +140,9 @@ export default function PanierPage() {
             className="flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm sm:flex-row"
           >
             <div className="relative h-40 w-full shrink-0 sm:h-36 sm:w-48">
-              <Image
+              <StayImage
                 src={item.coverImage || getMockImageUrl(mockImages.sejours.fallbackCover, 400, 80)}
-                alt=""
+                alt={item.title}
                 fill
                 className="object-cover"
                 sizes="(max-width: 640px) 100vw, 192px"

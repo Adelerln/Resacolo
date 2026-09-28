@@ -1,7 +1,7 @@
 'use client';
 
 import { Check, CreditCard } from 'lucide-react';
-import Image from 'next/image';
+import StayImage from '@/components/sejours/StayImage';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -219,6 +219,12 @@ export default function CheckoutRecapitulatifPage() {
     let nextContact = contact;
     let changed = false;
     for (const group of organizerGroups) {
+      if (group.selection.paymentMode === 'DEFERRED' &&
+          !group.pricing.financeRequiresQuote && !group.isPartnerTotalCoverage &&
+          !group.selection.vacafNumber.trim() && !wantsVacafAidByOrganizer[group.organizerId]) {
+        nextContact = patchOrganizerSelection(nextContact, group.organizerId, { paymentMode: 'FULL' });
+        changed = true;
+      }
       if (group.selection.paymentMode === 'DEPOSIT_200' && !group.cardDepositAllowed) {
         nextContact = patchOrganizerSelection(nextContact, group.organizerId, { paymentMode: 'FULL' });
         changed = true;
@@ -227,7 +233,7 @@ export default function CheckoutRecapitulatifPage() {
     if (changed) {
       setContact(nextContact);
     }
-  }, [contact, organizerGroups, setContact]);
+  }, [contact, organizerGroups, setContact, wantsVacafAidByOrganizer]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -261,7 +267,9 @@ export default function CheckoutRecapitulatifPage() {
         return [organizerId, Boolean(selection.vacafNumber.trim())];
       })
     );
-    setWantsVacafAidByOrganizer(next);
+    setWantsVacafAidByOrganizer((previous) => Object.fromEntries(
+      Object.entries(next).map(([id, selected]) => [id, previous[id] ?? selected])
+    ));
   }, [contact, organizerIds]);
 
   const isContactComplete = Boolean(
@@ -675,9 +683,9 @@ export default function CheckoutRecapitulatifPage() {
                 >
                   <div className="flex flex-col gap-4 sm:flex-row sm:gap-5">
                     <div className="relative h-40 w-full shrink-0 overflow-hidden rounded-xl bg-slate-200 sm:h-36 sm:w-44">
-                      <Image
+                      <StayImage
                         src={item.coverImage || getMockImageUrl(mockImages.sejours.fallbackCover, 400, 80)}
-                        alt=""
+                        alt={item.title}
                         fill
                         className="object-cover"
                         sizes="(max-width: 640px) 100vw, 176px"
@@ -874,7 +882,7 @@ export default function CheckoutRecapitulatifPage() {
                             </div>
                           ) : null}
                           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                            {group.displayedPaymentModes.map((mode) => {
+                            {group.displayedPaymentModes.filter((mode) => mode.value !== 'DEFERRED').map((mode) => {
                               const isActive =
                                 mode.value === 'DEFERRED'
                                   ? isDeferredFamilySelection(group.selection.paymentMode)
@@ -924,8 +932,13 @@ export default function CheckoutRecapitulatifPage() {
                           <p className="font-semibold text-slate-900">Aides ou règlements complémentaires</p>
                           <p className="mt-1.5 leading-relaxed text-slate-600">
                             Ces options seront transmises uniquement à {group.organizerName}. Le solde éventuel sera à régler par carte bancaire le cas échéant.
-                            Sélectionner une aide coche automatiquement le paiement différé.
+                            Le paiement est différé uniquement lorsqu’une de ces options est sélectionnée.
                           </p>
+                          {wantsVacafAid || group.selection.paymentMode === 'CV_PAPER' || group.selection.paymentMode === 'CV_CONNECT' ? (
+                            <p role="status" className="mt-3 font-semibold text-accent-700">
+                              Paiement différé : règlement à finaliser avec l’organisateur.
+                            </p>
+                          ) : null}
                           <div className="mt-4 grid gap-3 md:grid-cols-3">
                             {group.settings?.acceptsAncvPaper ? (
                               <label className="flex items-start gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
@@ -942,7 +955,7 @@ export default function CheckoutRecapitulatifPage() {
                                       return;
                                     }
                                     patchOrganizerPaymentSelection(group.organizerId, {
-                                      paymentMode: 'DEFERRED'
+                                      paymentMode: wantsVacafAid ? 'DEFERRED' : 'FULL'
                                     });
                                   }}
                                   className="mt-0.5 h-4 w-4 rounded border-slate-300"
@@ -963,7 +976,7 @@ export default function CheckoutRecapitulatifPage() {
                                       return;
                                     }
                                     patchOrganizerPaymentSelection(group.organizerId, {
-                                      paymentMode: 'DEFERRED',
+                                      paymentMode: wantsVacafAid ? 'DEFERRED' : 'FULL',
                                       ancvConnectMatricule: '',
                                       ancvConnectAmount: ''
                                     });
@@ -1005,7 +1018,8 @@ export default function CheckoutRecapitulatifPage() {
                                     }
                                     patchOrganizerPaymentSelection(group.organizerId, {
                                       vacafNumber: '',
-                                      vacafDepartmentCode: ''
+                                      vacafDepartmentCode: '',
+                                      paymentMode: group.selection.paymentMode === 'DEFERRED' ? 'FULL' : group.selection.paymentMode
                                     });
                                   }}
                                   className="mt-0.5 h-4 w-4 rounded border-slate-300"

@@ -29,6 +29,21 @@ function normalizeWhitespace(value: string | null | undefined): string {
   return value.replace(/\s+/g, ' ').trim();
 }
 
+/** Répare les libellés dupliqués lors des anciennes rééditions, avant troncature. */
+export function normalizeRepeatedTransportCity(value: string | null | undefined): string {
+  const label = normalizeWhitespace(value);
+  const parts = label.split('→').map((part) => part.trim());
+  const first = parts[0];
+  if (!first || parts.length < 2) return label;
+  const key = (part: string) => part.toLocaleLowerCase('fr');
+  if (parts.every((part) => key(part) === key(first))) return first;
+  // Les anciens champs étaient coupés à 80 caractères, parfois au milieu de la dernière copie.
+  if (label.length === 80 && parts.length >= 3 &&
+      parts.slice(0, -1).every((part) => key(part) === key(first)) &&
+      parts[parts.length - 1] && key(first).startsWith(key(parts[parts.length - 1]))) return first;
+  return label;
+}
+
 function simplifyForMatch(value: string | null | undefined): string {
   const normalized = normalizeWhitespace(value);
   if (!normalized) return '';
@@ -103,7 +118,7 @@ function sanitizeTransportLabel(value: string | null | undefined): string {
 }
 
 function normalizeCityLabel(value: string | null | undefined): string | null {
-  const normalized = sanitizeTransportLabel(value);
+  const normalized = normalizeRepeatedTransportCity(sanitizeTransportLabel(value));
   if (!normalized) return null;
   const key = simplifyForMatch(normalized);
   if (!key) return null;

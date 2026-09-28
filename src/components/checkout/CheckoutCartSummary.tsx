@@ -1,4 +1,5 @@
 import type { CartItem } from '@/types/cart';
+import StayImage from '@/components/sejours/StayImage';
 import { formatEuroFromCents, type CheckoutPricing, type CheckoutPricingItem } from '@/types/checkout';
 import { normalizePartnerFinanceMode } from '@/lib/partner-offers';
 import { formatNoPaymentAsBeneficiaryMessage } from '@/lib/partner-beneficiary-copy';
@@ -140,9 +141,19 @@ export function CheckoutCartSummary({
                   className="flex flex-col gap-3 border-b border-slate-200 pb-4 last:border-b-0 last:pb-0 sm:flex-row sm:items-start sm:gap-4"
                 >
                   <div
-                    className="h-24 w-full shrink-0 overflow-hidden rounded-[18px] bg-slate-100 bg-cover bg-center sm:h-24 sm:w-[88px]"
-                    style={item.coverImage ? { backgroundImage: `url(${item.coverImage})` } : undefined}
-                  />
+                    className="relative h-24 w-full shrink-0 overflow-hidden rounded-[18px] bg-slate-100 sm:h-24 sm:w-[88px]"
+                  >
+                    {item.coverImage ? (
+                      <StayImage
+                        src={item.coverImage}
+                        alt={item.title}
+                        fill
+                        unoptimized
+                        sizes="(max-width: 640px) 100vw, 88px"
+                        className="object-cover"
+                      />
+                    ) : null}
+                  </div>
 
                   <div className="min-w-0 flex-1 space-y-1">
                     <p className="text-sm font-semibold text-slate-900">{item.title}</p>

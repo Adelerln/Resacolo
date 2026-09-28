@@ -22,6 +22,7 @@ type InvoiceLineDraft = {
   label: string;
   quantity: number;
   amountCents: number;
+  children?: Array<{ name: string; dates: string }>;
 };
 
 function normalizeText(value: string | null | undefined) {
@@ -38,7 +39,7 @@ function asRecord(value: Json | null | undefined): Record<string, unknown> | nul
 function formatDateRange(startDate: string | null | undefined, endDate: string | null | undefined) {
   if (!startDate && !endDate) return '';
   if (startDate && endDate) {
-    return `${new Date(`${startDate}T00:00:00Z`).toLocaleDateString('fr-FR')} - ${new Date(`${endDate}T00:00:00Z`).toLocaleDateString('fr-FR')}`;
+    return `${new Date(`${startDate}T00:00:00Z`).toLocaleDateString('fr-FR')} au ${new Date(`${endDate}T00:00:00Z`).toLocaleDateString('fr-FR')}`;
   }
   const value = startDate ?? endDate;
   return value ? new Date(`${value}T00:00:00Z`).toLocaleDateString('fr-FR') : '';
@@ -250,12 +251,20 @@ async function buildClientTravelInvoiceModel(orderId: string) {
       .join(' ')
       .trim();
     const sessionLabel = formatDateRange(session?.start_date, session?.end_date);
-    const labelParts = [stay?.title ?? 'Séjour', childName || null, sessionLabel || null].filter(Boolean);
 
     return {
-      label: labelParts.join(' - '),
+      label: stay?.title ?? 'Séjour',
       quantity: 1,
-      amountCents: item.total_price_cents ?? 0
+      amountCents: item.total_price_cents ?? 0,
+      children:
+        childName || sessionLabel
+          ? [
+              {
+                name: childName || 'Participant',
+                dates: sessionLabel
+              }
+            ]
+          : undefined
     };
   });
 

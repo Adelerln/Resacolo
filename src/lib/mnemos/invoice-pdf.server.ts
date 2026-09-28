@@ -7,6 +7,11 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { RESACOLO_COMPANY, RESACOLO_INVOICE_LATE_PAYMENT_MENTIONS } from '@/lib/resacolo-company';
 import { formatOrderReservationCode } from '@/lib/order-workflow';
 import { formatMnemosLedgerChannel } from '@/lib/mnemos-display';
+import {
+  buildClientTravelInvoiceHtml,
+  formatClientTravelInvoiceNumber
+} from '@/lib/mnemos/client-travel-invoice-template.server';
+import { renderHtmlToPdfBuffer } from '@/lib/mnemos/html-to-pdf.server';
 import type { Database } from '@/types/supabase';
 import type { LedgerLinePreview } from './ledger-period-preview.server';
 import { enrichLedgerLinesForInvoice } from './ledger-period-preview.server';
@@ -35,6 +40,7 @@ type ClientTravelInvoicePdfLine = {
   label: string;
   quantity?: number;
   amountCents: number;
+  children?: Array<{ name: string; dates: string }>;
 };
 
 type ClientTravelInvoicePaymentRow = {
@@ -732,14 +738,45 @@ export async function createAndUploadClientTravelInvoicePdf(
 ) {
   await ensureInvoicePdfBucket(supabase);
 
-  let logo: PdfImage | null = null;
+  const invoiceNumber = formatClientTravelInvoiceNumber(input.invoiceYear, input.invoiceNumber);
+  const issuedAtLabel = formatDate(input.issuedAt);
+  const paidAtLabel = input.paidAt
+    ? formatDate(input.paidAt)
+    : input.remainingBalanceCents > 0
+      ? 'en attente de solde'
+      : issuedAtLabel;
+
+  let pdf: Buffer;
   try {
-    logo = await loadResacoloLogo(true);
-  } catch {
-    logo = null;
+    const html = await buildClientTravelInvoiceHtml({
+      invoiceNumber,
+      orderId: input.orderId,
+      issuedAtLabel,
+      paidAtLabel,
+      paymentModeLabel: input.paymentModeLabel,
+      organizerName: input.organizerName,
+      billingName: input.billingName,
+      billingAddressLines: input.billingAddressLines,
+      billingEmail: input.billingEmail,
+      lines: input.lines,
+      payments: input.payments ?? [],
+      totalCents: input.totalCents,
+      paidCents: input.paidCents,
+      remainingBalanceCents: input.remainingBalanceCents,
+      isProvisional: input.isProvisional
+    });
+    pdf = await renderHtmlToPdfBuffer(html);
+  } catch (error) {
+    console.error('client-travel-invoice: rendu HTML/Playwright impossible, fallback PDF natif', error);
+    let logo: PdfImage | null = null;
+    try {
+      logo = await loadResacoloLogo(true);
+    } catch {
+      logo = null;
+    }
+    pdf = renderClientTravelInvoicePdf(input, logo, null);
   }
-  // Helvetica natif : espacement correct (les TTF embarqués avec Widths fixes déforment les lettres).
-  const pdf = renderClientTravelInvoicePdf(input, logo, null);
+
   const path = `clients/${input.invoiceYear}/${input.invoiceId}.pdf`;
   const { error } = await supabase.storage.from(INVOICE_PDF_BUCKET).upload(path, pdf, {
     contentType: 'application/pdf',

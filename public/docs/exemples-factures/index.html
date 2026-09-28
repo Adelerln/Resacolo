@@ -2,18 +2,83 @@
 <html lang="fr">
 <head>
   <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Exemples de factures Resacolo</title>
   <style>
-    body { font-family: system-ui, sans-serif; max-width: 720px; margin: 40px auto; padding: 0 16px; color: #0f172a; }
-    a { color: #ea580c; }
-    li { margin: 10px 0; }
+    body { font-family: system-ui, -apple-system, sans-serif; max-width: 860px; margin: 40px auto; padding: 0 20px; color: #0f172a; background: #f8fafc; }
+    h1 { font-size: 1.75rem; margin-bottom: 0.4rem; }
+    .lead { color: #475569; margin-bottom: 1.5rem; }
+    .note { background: #e8f6fc; border: 1px solid #52b0ea; padding: 12px 14px; border-radius: 12px; margin-bottom: 1.5rem; }
+    .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; padding: 16px 18px; margin: 12px 0; box-shadow: 0 8px 24px -20px rgba(15,23,42,.45); }
+    .card strong { display: block; font-size: 1.05rem; margin-bottom: 4px; }
+    .card span { color: #64748b; font-size: 0.92rem; }
+    .card a { display: inline-block; margin-top: 10px; color: #0369a1; font-weight: 600; }
   </style>
 </head>
 <body>
-  <h1>Exemples de factures</h1>
-  <ul>
-    <li><a href="./facture-partenaire-juillet-2026.html">Facture partenaire mensuelle — juillet 2026 (50 séjours)</a></li>
-    <li><a href="./facture-partenaire-juillet-2026.pdf">Même facture en PDF</a></li>
-  </ul>
+  <h1>Exemples de factures / avoirs</h1>
+  <p class="lead">Template validé (bandeau bleu, accent orange, Raleway) — même design que les PDF téléchargés par les clients.</p>
+  <div class="note">Page locale : <code>/docs/exemples-factures/</code>. Régénérer avec <code>node scripts/generate-invoice-examples.mjs</code>.</div>
+
+  <div class="card">
+    <strong>01 — CB totalité</strong>
+    <span>Paiement de la totalité en CB</span><br />
+    <a href="./01-cb-totalite.pdf" target="_blank" rel="noopener">Ouvrir le PDF</a>
+  </div>
+  <div class="card">
+    <strong>02 — CB acompte</strong>
+    <span>Acompte 200 EUR, solde en attente</span><br />
+    <a href="./02-cb-acompte.pdf" target="_blank" rel="noopener">Ouvrir le PDF</a>
+  </div>
+  <div class="card">
+    <strong>03 — CB acompte + solde</strong>
+    <span>Acompte puis solde réglé</span><br />
+    <a href="./03-cb-acompte-puis-solde.pdf" target="_blank" rel="noopener">Ouvrir le PDF</a>
+  </div>
+  <div class="card">
+    <strong>04 — Partenaire + CB</strong>
+    <span>Prise en charge partenaire + CB famille</span><br />
+    <a href="./04-partenaire.pdf" target="_blank" rel="noopener">Ouvrir le PDF</a>
+  </div>
+  <div class="card">
+    <strong>05 — VACAF + CB</strong>
+    <span>Aide VACAF + CB</span><br />
+    <a href="./05-vacaf.pdf" target="_blank" rel="noopener">Ouvrir le PDF</a>
+  </div>
+  <div class="card">
+    <strong>06 — ANCV Connect + CB</strong>
+    <span>ANCV Connect + complément CB</span><br />
+    <a href="./06-ancv-connect.pdf" target="_blank" rel="noopener">Ouvrir le PDF</a>
+  </div>
+  <div class="card">
+    <strong>07 — ANCV papier + CB</strong>
+    <span>ANCV papier + complément CB</span><br />
+    <a href="./07-ancv-papier.pdf" target="_blank" rel="noopener">Ouvrir le PDF</a>
+  </div>
+  <div class="card">
+    <strong>08 — Mélange partenaire + VACAF + acompte</strong>
+    <span>Solde restant</span><br />
+    <a href="./08-melange-partenaire-vacaf-acompte.pdf" target="_blank" rel="noopener">Ouvrir le PDF</a>
+  </div>
+  <div class="card">
+    <strong>09 — Mélange complet soldé</strong>
+    <span>Partenaire + VACAF + ANCV + CB</span><br />
+    <a href="./09-melange-complet.pdf" target="_blank" rel="noopener">Ouvrir le PDF</a>
+  </div>
+  <div class="card">
+    <strong>10 — Avoir à rembourser</strong>
+    <span>Avoir émis, remboursement en attente</span><br />
+    <a href="./10-avoir-a-rembourser.pdf" target="_blank" rel="noopener">Ouvrir le PDF</a>
+  </div>
+  <div class="card">
+    <strong>11 — Avoir soldé</strong>
+    <span>Avoir + remboursement effectué</span><br />
+    <a href="./11-avoir-solde.pdf" target="_blank" rel="noopener">Ouvrir le PDF</a>
+  </div>
+  <div class="card">
+    <strong>Facture partenaire mensuelle</strong>
+    <span>Juillet 2026 (modèle Mnemos)</span><br />
+    <a href="./facture-partenaire-juillet-2026.pdf" target="_blank" rel="noopener">Ouvrir le PDF</a>
+  </div>
 </body>
 </html>

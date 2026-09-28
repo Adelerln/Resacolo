@@ -250,8 +250,8 @@ export default async function OrganizerPublishedPreviewPage({ searchParams }: Pa
             cseLabel={null}
             coverUrl={coverUrl}
             href="#"
-            organizerLogoUrl={null}
-            organizerName="Organisateur"
+            organizerLogoUrl={previewStay.organizer.logoUrl ?? null}
+            organizerName={previewStay.organizer.name}
             disableBlueHoverEffect
             compact
             liftOnHover

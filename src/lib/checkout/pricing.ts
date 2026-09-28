@@ -1,3 +1,4 @@
+import { findReplacementTransport } from '@/lib/checkout/transport-recovery';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { getCurrentUser } from '@/lib/auth/session';
 import { resolveCheckoutClientUserId } from '@/lib/checkout/clientIdentity';
@@ -69,22 +70,6 @@ export class CheckoutValidationError extends Error {
 
 function asValidationError(message: string): never {
   throw new CheckoutValidationError(message);
-}
-
-function pickStoredTransportOptionId(item: CartItem) {
-  if (item.selection.transportOptionId) {
-    return item.selection.transportOptionId;
-  }
-
-  if (
-    item.selection.departureTransportOptionId &&
-    item.selection.returnTransportOptionId &&
-    item.selection.departureTransportOptionId === item.selection.returnTransportOptionId
-  ) {
-    return item.selection.departureTransportOptionId;
-  }
-
-  return null;
 }
 
 function computeDifferentiatedAmount(option: TransportRow, leg: 'outbound' | 'return') {
@@ -269,7 +254,9 @@ async function fetchSessionPrice(sessionId: string): Promise<SessionPriceRow> {
   return data;
 }
 
-async function fetchTransportOption(optionId: string): Promise<TransportRow> {
+async function fetchTransportOption(
+  optionId: string, item: CartItem, sessionId: string, leg: 'roundtrip' | 'outbound' | 'return'
+): Promise<TransportRow> {
   const supabase = getServerSupabaseClient();
   const { data, error } = await supabase
     .from('transport_options')
@@ -277,11 +264,28 @@ async function fetchTransportOption(optionId: string): Promise<TransportRow> {
     .eq('id', optionId)
     .maybeSingle();
 
-  if (error || !data) {
-    asValidationError('L’option de transport sélectionnée est introuvable.');
+  if (error) {
+    asValidationError('Impossible de vérifier le transport pour le moment. Veuillez réessayer.');
   }
+  if (data) return data;
 
-  return data;
+  // Une republication peut recréer les options et invalider les anciens identifiants.
+  const { data: candidates, error: candidatesError } = await supabase
+    .from('transport_options')
+    .select('id,session_id,stay_id,amount_cents,departure_city,return_city')
+    .eq('stay_id', item.stayId);
+  if (candidatesError) {
+    asValidationError('Impossible de vérifier le transport pour le moment. Veuillez réessayer.');
+  }
+  const replacement = findReplacementTransport(candidates ?? [], {
+    stayId: item.stayId, sessionId, leg,
+    departureCity: item.selection.departureCity,
+    returnCity: item.selection.returnCity
+  });
+  if (!replacement) {
+    asValidationError(`Le transport de « ${item.title} » a changé. Retirez ce séjour du panier puis ajoutez-le à nouveau avec le transport souhaité.`);
+  }
+  return replacement;
 }
 
 async function fetchInsuranceOption(optionId: string): Promise<ResolvedInsuranceOption> {
@@ -401,13 +405,15 @@ export async function repriceCart(items: CartItem[]): Promise<CheckoutPricing> {
       const basePriceCents =
         discountedBasePriceEuros != null ? Math.round(discountedBasePriceEuros * 100) : publicBasePriceCents;
 
+      let persistedTransportOptionId: string | null = null;
       let transportPriceCents = 0;
       let transportLabel: string | null = null;
       let transportDisplayLine: string | null = null;
       if (cartItem.selection.transportOptionId) {
-        const transportOption = await fetchTransportOption(cartItem.selection.transportOptionId);
+        const transportOption = await fetchTransportOption(cartItem.selection.transportOptionId, cartItem, sessionId, 'roundtrip');
         assertRowBelongsToSession(transportOption.session_id, sessionId, 'Le transport');
         assertRowBelongsToStay(transportOption.stay_id, cartItem.stayId, 'Le transport');
+        persistedTransportOptionId = transportOption.id;
         transportPriceCents = transportOption.amount_cents;
         transportLabel = formatTransportLabel(
           transportOption.departure_city,
@@ -418,13 +424,16 @@ export async function repriceCart(items: CartItem[]): Promise<CheckoutPricing> {
       } else {
         const [departureOption, returnOption] = await Promise.all([
           cartItem.selection.departureTransportOptionId
-            ? fetchTransportOption(cartItem.selection.departureTransportOptionId)
+            ? fetchTransportOption(cartItem.selection.departureTransportOptionId, cartItem, sessionId, 'outbound')
             : Promise.resolve(null),
           cartItem.selection.returnTransportOptionId
-            ? fetchTransportOption(cartItem.selection.returnTransportOptionId)
+            ? fetchTransportOption(cartItem.selection.returnTransportOptionId, cartItem, sessionId, 'return')
             : Promise.resolve(null)
         ]);
 
+        if (departureOption && returnOption && departureOption.id === returnOption.id) {
+          persistedTransportOptionId = departureOption.id;
+        }
         if (departureOption) {
           assertRowBelongsToSession(departureOption.session_id, sessionId, 'Le transport aller');
           assertRowBelongsToStay(departureOption.stay_id, cartItem.stayId, 'Le transport aller');
@@ -583,7 +592,7 @@ export async function repriceCart(items: CartItem[]): Promise<CheckoutPricing> {
         extraOptionPriceCents,
         optionsPriceCents,
         totalPriceCents,
-        transportOptionId: pickStoredTransportOptionId(cartItem),
+        transportOptionId: persistedTransportOptionId,
         insuranceOptionId: persistedInsuranceOptionId,
         extraOptionId: cartItem.selection.extraOptionId,
         extraOptionLabel,

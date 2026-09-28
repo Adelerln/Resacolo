@@ -905,6 +905,12 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
     const stayCafEligible = organizerItems.every((item) => item.isCafEligible !== false);
     const requestKind = resolveOrderRequestKind(effectiveContact, organizerSettings, { stayCafEligible });
     const organizerPricing = buildPricingForOrganizerGroup(organizerItems, pricing.currency);
+    if (effectiveContact.paymentMode === 'DEFERRED' && !effectiveContact.vacafNumber.trim() &&
+        !organizerPricing.financeRequiresQuote && !isPartnerFullCoverageCheckout(organizerPricing)) {
+      throw new CheckoutValidationError(
+        'Sélectionnez ANCV papier, ANCV Connect ou VACAF/AVE pour un paiement différé, ou choisissez un règlement par CB.'
+      );
+    }
     assertCardDepositAllowedOrThrow({
       earliestSessionStartDate: earliestIsoDate(organizerItems.map((item) => item.sessionStartDate)),
       paymentMode: effectiveContact.paymentMode

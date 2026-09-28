@@ -2,6 +2,7 @@ import 'server-only';
 
 import { readFile } from 'fs/promises';
 import { join } from 'path';
+import { pathToFileURL } from 'url';
 import { RESACOLO_COMPANY, RESACOLO_INVOICE_LATE_PAYMENT_MENTIONS } from '@/lib/resacolo-company';
 import { formatOrderReservationCode } from '@/lib/order-workflow';
 
@@ -10,9 +11,15 @@ const BLUE = '#52b0ea';
 const BLUE_SOFT = '#e8f6fc';
 const VAT_MENTION = 'Régime particulier - Agences de voyage (art. 266, 1-e du CGI)';
 
-const RALEWAY_REGULAR_PATH = join(process.cwd(), 'public/fonts/Raleway-Regular.ttf');
-const RALEWAY_BOLD_PATH = join(process.cwd(), 'public/fonts/Raleway-Bold.ttf');
-const LOGO_WHITE_PATH = join(
+export const CLIENT_TRAVEL_INVOICE_RALEWAY_REGULAR_PATH = join(
+  process.cwd(),
+  'public/fonts/Raleway-Regular.ttf'
+);
+export const CLIENT_TRAVEL_INVOICE_RALEWAY_BOLD_PATH = join(
+  process.cwd(),
+  'public/fonts/Raleway-Bold.ttf'
+);
+export const CLIENT_TRAVEL_INVOICE_LOGO_WHITE_PATH = join(
   process.cwd(),
   'public/image/footer/logo_footer/logo-resacolo-RVB-blanc_logo-final copie 2.png'
 );
@@ -103,16 +110,26 @@ function renderLinesHtml(lines: ClientTravelInvoiceTemplateLine[]) {
     .join('');
 }
 
-async function loadTemplateAssets() {
+async function loadTemplateAssets(mode: 'data' | 'file' = 'file') {
   const [regular, bold, logo] = await Promise.all([
-    readFile(RALEWAY_REGULAR_PATH),
-    readFile(RALEWAY_BOLD_PATH),
-    readFile(LOGO_WHITE_PATH)
+    readFile(CLIENT_TRAVEL_INVOICE_RALEWAY_REGULAR_PATH),
+    readFile(CLIENT_TRAVEL_INVOICE_RALEWAY_BOLD_PATH),
+    readFile(CLIENT_TRAVEL_INVOICE_LOGO_WHITE_PATH)
   ]);
+
+  if (mode === 'data') {
+    return {
+      ralewayRegularUrl: `data:font/ttf;base64,${regular.toString('base64')}`,
+      ralewayBoldUrl: `data:font/ttf;base64,${bold.toString('base64')}`,
+      logoUrl: `data:image/png;base64,${logo.toString('base64')}`
+    };
+  }
+
+  // file:// : Chromium embarque correctement Raleway dans le PDF (contrairement aux data: seuls).
   return {
-    ralewayRegularDataUrl: `data:font/ttf;base64,${regular.toString('base64')}`,
-    ralewayBoldDataUrl: `data:font/ttf;base64,${bold.toString('base64')}`,
-    logoDataUrl: `data:image/png;base64,${logo.toString('base64')}`
+    ralewayRegularUrl: pathToFileURL(CLIENT_TRAVEL_INVOICE_RALEWAY_REGULAR_PATH).href,
+    ralewayBoldUrl: pathToFileURL(CLIENT_TRAVEL_INVOICE_RALEWAY_BOLD_PATH).href,
+    logoUrl: pathToFileURL(CLIENT_TRAVEL_INVOICE_LOGO_WHITE_PATH).href
   };
 }
 
@@ -122,8 +139,11 @@ export function formatClientTravelInvoiceNumber(year: number, number: number, ki
   return `${yy}-${series}-${String(number).padStart(4, '0')}`;
 }
 
-export async function buildClientTravelInvoiceHtml(input: ClientTravelInvoiceTemplateInput) {
-  const assets = await loadTemplateAssets();
+export async function buildClientTravelInvoiceHtml(
+  input: ClientTravelInvoiceTemplateInput,
+  options?: { assetMode?: 'data' | 'file' }
+) {
+  const assets = await loadTemplateAssets(options?.assetMode ?? 'file');
   const docLabel = input.docLabel || (input.avoirState ? 'Avoir' : 'Facture');
   const payments = input.payments ?? [];
   const paymentsHtml = payments.length
@@ -148,15 +168,17 @@ export async function buildClientTravelInvoiceHtml(input: ClientTravelInvoiceTem
   <style>
     @font-face {
       font-family: 'Raleway';
-      src: url('${assets.ralewayRegularDataUrl}') format('truetype');
+      src: url('${assets.ralewayRegularUrl}') format('truetype');
       font-weight: 400;
       font-style: normal;
+      font-display: block;
     }
     @font-face {
       font-family: 'Raleway';
-      src: url('${assets.ralewayBoldDataUrl}') format('truetype');
+      src: url('${assets.ralewayBoldUrl}') format('truetype');
       font-weight: 700;
       font-style: normal;
+      font-display: block;
     }
     * { box-sizing: border-box; }
     html, body {
@@ -317,7 +339,7 @@ export async function buildClientTravelInvoiceHtml(input: ClientTravelInvoiceTem
 <body>
   <div class="sheet">
   <div class="banner">
-    <img class="logo" src="${assets.logoDataUrl}" alt="Resacolo" />
+    <img class="logo" src="${assets.logoUrl}" alt="Resacolo" />
     <div class="doc">${escapeHtml(docLabel)}${input.isProvisional ? ' provisoire' : ''}</div>
   </div>
   <div class="accent-bar"></div>

@@ -779,38 +779,66 @@ export async function createAndUploadClientTravelInvoicePdf(
   let renderMode: 'html-playwright' | 'native-blue' = 'html-playwright';
 
   try {
-    const html = await buildClientTravelInvoiceHtml({
-      invoiceNumber,
-      orderId: input.orderId,
-      issuedAtLabel,
-      paidAtLabel,
-      paymentModeLabel: input.paymentModeLabel,
-      organizerName: input.organizerName,
-      billingName: input.billingName,
-      billingAddressLines: input.billingAddressLines,
-      billingEmail: input.billingEmail,
-      lines: input.lines,
-      payments: input.payments ?? [],
-      totalCents: input.totalCents,
-      paidCents: input.paidCents,
-      remainingBalanceCents: input.remainingBalanceCents,
-      isProvisional: input.isProvisional
-    });
-    pdf = await renderHtmlToPdfBuffer(html);
-  } catch (error) {
-    console.error(
-      'client-travel-invoice: Playwright HTML échoué — bascule sur rendu natif bleu (modèle validé)',
-      error
+    // file:// fonts d'abord (Raleway correctement embarquée dans le PDF Chromium).
+    const html = await buildClientTravelInvoiceHtml(
+      {
+        invoiceNumber,
+        orderId: input.orderId,
+        issuedAtLabel,
+        paidAtLabel,
+        paymentModeLabel: input.paymentModeLabel,
+        organizerName: input.organizerName,
+        billingName: input.billingName,
+        billingAddressLines: input.billingAddressLines,
+        billingEmail: input.billingEmail,
+        lines: input.lines,
+        payments: input.payments ?? [],
+        totalCents: input.totalCents,
+        paidCents: input.paidCents,
+        remainingBalanceCents: input.remainingBalanceCents,
+        isProvisional: input.isProvisional
+      },
+      { assetMode: 'file' }
     );
-    renderMode = 'native-blue';
-    let logo: PdfImage | null = null;
+    pdf = await renderHtmlToPdfBuffer(html);
+  } catch (fileModeError) {
     try {
-      logo = await loadResacoloLogo(true);
-    } catch {
-      logo = null;
+      const htmlData = await buildClientTravelInvoiceHtml(
+        {
+          invoiceNumber,
+          orderId: input.orderId,
+          issuedAtLabel,
+          paidAtLabel,
+          paymentModeLabel: input.paymentModeLabel,
+          organizerName: input.organizerName,
+          billingName: input.billingName,
+          billingAddressLines: input.billingAddressLines,
+          billingEmail: input.billingEmail,
+          lines: input.lines,
+          payments: input.payments ?? [],
+          totalCents: input.totalCents,
+          paidCents: input.paidCents,
+          remainingBalanceCents: input.remainingBalanceCents,
+          isProvisional: input.isProvisional
+        },
+        { assetMode: 'data' }
+      );
+      pdf = await renderHtmlToPdfBuffer(htmlData);
+    } catch (dataModeError) {
+      console.error(
+        'client-travel-invoice: Playwright/Raleway échoué — bascule natif bleu (Helvetica)',
+        { fileModeError, dataModeError }
+      );
+      renderMode = 'native-blue';
+      let logo: PdfImage | null = null;
+      try {
+        logo = await loadResacoloLogo(true);
+      } catch {
+        logo = null;
+      }
+      // Dernier recours layout bleu — Helvetica (pas Raleway).
+      pdf = renderClientTravelInvoicePdf(input, logo, null);
     }
-    // Jamais l'ancien modèle orange : rendu natif aligné charte bleue validée.
-    pdf = renderClientTravelInvoicePdf(input, logo, null);
   }
 
   if (!pdf?.length) {

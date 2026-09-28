@@ -276,7 +276,7 @@ export default function FamilyReservationAccordion({
           ) : null}
           {showInvoiceDownload ? (
             <a
-              href={`/api/orders/${reservation.orderId}/invoice?v=2`}
+              href={`/api/orders/${reservation.orderId}/invoice?v=3`}
               target="_blank"
               rel="noreferrer"
               className="btn btn-secondary btn-sm"

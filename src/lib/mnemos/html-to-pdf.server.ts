@@ -1,8 +1,9 @@
 import 'server-only';
 
-import { access } from 'fs/promises';
-import { homedir } from 'os';
+import { access, mkdtemp, rm, writeFile } from 'fs/promises';
+import { tmpdir, homedir } from 'os';
 import { join } from 'path';
+import { pathToFileURL } from 'url';
 
 type BrowserLike = {
   newPage: () => Promise<PageLike>;
@@ -14,6 +15,10 @@ type PageLike = {
     html: string,
     options?: { waitUntil?: 'load' | 'domcontentloaded' | 'networkidle'; timeout?: number }
   ) => Promise<void>;
+  goto: (
+    url: string,
+    options?: { waitUntil?: 'load' | 'domcontentloaded' | 'networkidle'; timeout?: number }
+  ) => Promise<unknown>;
   evaluate: <T>(fn: () => T | Promise<T>) => Promise<T>;
   pdf: (options: {
     format?: 'A4';
@@ -56,6 +61,10 @@ async function resolveLocalChromiumExecutable(): Promise<string | null> {
     if (await pathExists(candidate)) return candidate;
   }
   return null;
+}
+
+function isRemotePlaywrightConfigured() {
+  return Boolean(process.env.PLAYWRIGHT_REMOTE_WS_ENDPOINT?.trim());
 }
 
 async function launchChromiumBrowser(): Promise<BrowserLike> {
@@ -130,24 +139,71 @@ async function launchChromiumBrowser(): Promise<BrowserLike> {
   throw new Error(`Impossible de lancer Chromium pour le PDF facture : ${launchErrors.join(' | ')}`);
 }
 
+async function waitForRaleway(page: PageLike) {
+  const fontOk = await page.evaluate(async () => {
+    await document.fonts.ready;
+    await Promise.all([
+      document.fonts.load('400 12px Raleway'),
+      document.fonts.load('700 12px Raleway'),
+      document.fonts.load('400 16px Raleway'),
+      document.fonts.load('700 16px Raleway')
+    ]);
+    await document.fonts.ready;
+    return document.fonts.check('400 12px Raleway') && document.fonts.check('700 12px Raleway');
+  });
+  if (!fontOk) {
+    throw new Error('Police Raleway non chargée avant génération du PDF.');
+  }
+}
+
+async function pdfFromPage(page: PageLike): Promise<Buffer> {
+  await waitForRaleway(page);
+  const pdf = await page.pdf({
+    format: 'A4',
+    printBackground: true,
+    margin: { top: '0', right: '0', bottom: '0', left: '0' }
+  });
+  return Buffer.isBuffer(pdf) ? pdf : Buffer.from(pdf);
+}
+
+/**
+ * Rend un HTML en PDF A4 via Chromium avec Raleway embarquée.
+ * 1) file:// local (meilleur embedding fonts)
+ * 2) sinon setContent (data: URLs / remote browser)
+ */
 export async function renderHtmlToPdfBuffer(html: string): Promise<Buffer> {
   const browser = await launchChromiumBrowser();
+  const errors: string[] = [];
+
   try {
+    // Stratégie 1 : fichier local — Raleway via file:// bien embarquée dans le PDF.
+    if (!isRemotePlaywrightConfigured()) {
+      const tempDir = await mkdtemp(join(tmpdir(), 'resacolo-invoice-'));
+      const htmlPath = join(tempDir, 'invoice.html');
+      try {
+        await writeFile(htmlPath, html, 'utf8');
+        const page = await browser.newPage();
+        try {
+          await page.goto(pathToFileURL(htmlPath).href, { waitUntil: 'load', timeout: 45_000 });
+          return await pdfFromPage(page);
+        } finally {
+          await page.close().catch(() => undefined);
+        }
+      } catch (error) {
+        errors.push(error instanceof Error ? error.message : String(error));
+      } finally {
+        await rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
+      }
+    }
+
+    // Stratégie 2 : setContent (data URLs ou navigateur distant).
     const page = await browser.newPage();
     try {
-      // `networkidle` casse avec HTML inline (data-URL fonts/logo) → fallback orange avant.
-      await page.setContent(html, { waitUntil: 'load', timeout: 30_000 });
-      await page.evaluate(async () => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const fonts = (document as any).fonts;
-        if (fonts?.ready) await fonts.ready;
-      });
-      const pdf = await page.pdf({
-        format: 'A4',
-        printBackground: true,
-        margin: { top: '0', right: '0', bottom: '0', left: '0' }
-      });
-      return Buffer.isBuffer(pdf) ? pdf : Buffer.from(pdf);
+      await page.setContent(html, { waitUntil: 'load', timeout: 45_000 });
+      return await pdfFromPage(page);
+    } catch (error) {
+      errors.push(error instanceof Error ? error.message : String(error));
+      throw new Error(`Rendu PDF Chromium impossible (Raleway) : ${errors.join(' | ')}`);
     } finally {
       await page.close().catch(() => undefined);
     }

@@ -23,12 +23,15 @@ type OrderStatusResponse = {
   paidAt: string | null;
   paymentStatus: string | null;
   requestKind: string | null;
+  paymentMode: string | null;
   paymentModeLabel: string | null;
   remainingBalanceCents: number;
   totalCents: number;
   currency: string;
   organizerContactEmail: string | null;
   organizerName: string | null;
+  ancvPaperMailingAddress: string | null;
+  ancvPaperRequested: boolean;
 };
 
 export default function CheckoutConfirmationPage() {
@@ -44,7 +47,11 @@ export default function CheckoutConfirmationPage() {
   const [order, setOrder] = useState<OrderStatusResponse | null>(null);
   const checkoutResetDoneRef = useRef(false);
   const orderStatusRef = useRef<string | null>(null);
-  const isCvPaperMode = mode === 'cv-paper' || mode === 'dev-bypass-cv-paper';
+  const isCvPaperMode =
+    mode === 'cv-paper' ||
+    mode === 'dev-bypass-cv-paper' ||
+    order?.paymentMode === 'CV_PAPER' ||
+    Boolean(order?.ancvPaperRequested);
   const isDeferredMode = mode === 'deferred' || mode === 'dev-bypass-deferred';
   const isVacafRequestMode = mode === 'requested-vacaf' || mode === 'dev-bypass-requested-vacaf';
   const isAncvConnectRequestMode =
@@ -63,18 +70,22 @@ export default function CheckoutConfirmationPage() {
     const requestKind = order?.requestKind ?? null;
     const isVacafRequest = isVacafRequestMode || requestKind === 'VACAF';
     const isAncvConnectRequest = isAncvConnectRequestMode || requestKind === 'ANCV_CONNECT';
+    const detectedCvPaper =
+      isCvPaperMode || order?.paymentMode === 'CV_PAPER' || Boolean(order?.ancvPaperRequested);
     const contextInput = {
       orderStatus: order?.status ?? '',
       paymentStatus: order?.paymentStatus ?? null,
       requestKind,
       paidAt: order?.paidAt ?? null,
       remainingBalanceCents: order?.remainingBalanceCents ?? 0,
-      isCvPaperMode,
+      isCvPaperMode: detectedCvPaper && !isAncvConnectRequest,
       isDeferredMode,
       isVacafRequest,
       isAncvConnectRequest,
       isPartnerManualQuoteMode,
-      isPartnerTotalMode
+      isPartnerTotalMode,
+      ancvPaperMailingAddress: order?.ancvPaperMailingAddress ?? null,
+      ancvPaperRequested: Boolean(order?.ancvPaperRequested || order?.paymentMode === 'CV_PAPER')
     };
 
     return {

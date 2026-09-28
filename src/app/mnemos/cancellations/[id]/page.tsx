@@ -49,6 +49,14 @@ export default async function MnemosCancellationDetailPage({ params, searchParam
     .eq('id', request.organizer_id)
     .maybeSingle();
 
+  let attachmentUrl: string | null = null;
+  if (request.attachment_path) {
+    const { data: signed } = await supabase.storage
+      .from('organizer-docs')
+      .createSignedUrl(request.attachment_path, 60 * 60);
+    attachmentUrl = signed?.signedUrl ?? null;
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -84,7 +92,21 @@ export default async function MnemosCancellationDetailPage({ params, searchParam
           {request.amount_cents != null ? `${(request.amount_cents / 100).toFixed(2)} €` : '—'}
         </p>
         <p className="mt-2">
-          <strong>Pièce jointe :</strong> {request.attachment_path || '—'}
+          <strong>Pièce jointe :</strong>{' '}
+          {attachmentUrl ? (
+            <a
+              href={attachmentUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="text-violet-300 underline hover:text-violet-200"
+            >
+              Ouvrir la capture
+            </a>
+          ) : request.attachment_path ? (
+            <span className="font-mono text-xs text-slate-400">{request.attachment_path}</span>
+          ) : (
+            '—'
+          )}
         </p>
         <p className="mt-4 whitespace-pre-wrap">
           <strong>Motif :</strong>

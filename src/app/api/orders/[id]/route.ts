@@ -115,6 +115,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
 
   let organizerContactEmail: string | null = null;
   let organizerName: string | null = null;
+  let ancvPaperMailingAddress: string | null = null;
   if (firstOrderItem?.session_id) {
     const { data: sessionRow } = await supabase
       .from('sessions')
@@ -130,16 +131,70 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
         .maybeSingle();
 
       if (stayRow?.organizer_id) {
-        const { data: organizerRow } = await supabase
+        let { data: organizerRow, error: organizerError } = await supabase
           .from('organizers')
-          .select('name,contact_email')
+          .select('name,contact_email,ancv_paper_mailing_address')
           .eq('id', stayRow.organizer_id)
           .maybeSingle();
+
+        if (organizerError && isMissingAnyColumnError(organizerError, ['ancv_paper_mailing_address'])) {
+          const legacy = await supabase
+            .from('organizers')
+            .select('name,contact_email')
+            .eq('id', stayRow.organizer_id)
+            .maybeSingle();
+          organizerRow = legacy.data
+            ? { ...legacy.data, ancv_paper_mailing_address: null }
+            : null;
+        }
+
         organizerContactEmail = organizerRow?.contact_email ?? null;
         organizerName = organizerRow?.name ?? null;
+        ancvPaperMailingAddress =
+          typeof organizerRow?.ancv_paper_mailing_address === 'string'
+            ? organizerRow.ancv_paper_mailing_address.trim() || null
+            : null;
       }
     }
   }
+
+  const paymentMode = (() => {
+    const contact = paymentRawPayload?.contact;
+    if (!contact || typeof contact !== 'object' || Array.isArray(contact)) return null;
+    const mode = (contact as { paymentMode?: unknown }).paymentMode;
+    if (
+      mode === 'FULL' ||
+      mode === 'DEPOSIT_200' ||
+      mode === 'CV_CONNECT' ||
+      mode === 'CV_PAPER' ||
+      mode === 'DEFERRED'
+    ) {
+      return mode;
+    }
+    return null;
+  })();
+
+  const ancvPaperRequested = (() => {
+    const contact = paymentRawPayload?.contact;
+    if (!contact || typeof contact !== 'object' || Array.isArray(contact)) {
+      return paymentMode === 'CV_PAPER';
+    }
+    const contactRecord = contact as {
+      ancvPaperRequested?: unknown;
+      paymentMode?: unknown;
+      organizerSelections?: unknown;
+    };
+    if (contactRecord.ancvPaperRequested === true || contactRecord.paymentMode === 'CV_PAPER') {
+      return true;
+    }
+    const selections = contactRecord.organizerSelections;
+    if (selections && typeof selections === 'object' && !Array.isArray(selections)) {
+      return Object.values(selections as Record<string, { ancvPaperRequested?: unknown; paymentMode?: unknown }>).some(
+        (selection) => selection?.ancvPaperRequested === true || selection?.paymentMode === 'CV_PAPER'
+      );
+    }
+    return false;
+  })();
 
   return NextResponse.json({
     orderId: order.id,
@@ -151,10 +206,13 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
       requestKind: order.request_kind ?? null,
       paymentRawPayload: paymentRawPayload
     }),
+    paymentMode,
     paymentModeLabel: resolveFamilyPaymentModeLabel(paymentRawPayload),
     totalCents,
     currency: payment?.currency ?? 'EUR',
     organizerContactEmail,
-    organizerName
+    organizerName,
+    ancvPaperMailingAddress,
+    ancvPaperRequested
   });
 }

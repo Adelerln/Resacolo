@@ -66,7 +66,10 @@ const organizerSelectionSchema = z.object({
   ),
   vacafDepartmentCode: trimmedStringFromJson,
   ancvConnectMatricule: trimmedStringFromJson,
-  ancvConnectAmount: trimmedStringFromJson
+  ancvConnectAmount: trimmedStringFromJson,
+  ancvPaperRequested: z
+    .union([z.boolean(), z.null(), z.undefined()])
+    .transform((v) => Boolean(v))
 });
 
 function validateAncvConnectFields(
@@ -130,6 +133,9 @@ export const checkoutContactSchema = z.object({
   vacafDepartmentCode: trimmedStringFromJson,
   ancvConnectMatricule: trimmedStringFromJson,
   ancvConnectAmount: trimmedStringFromJson,
+  ancvPaperRequested: z
+    .union([z.boolean(), z.null(), z.undefined()])
+    .transform((v) => Boolean(v)),
   paymentMode: checkoutPaymentModeSchema,
   organizerSelections: z.record(z.string().trim().min(1), organizerSelectionSchema).optional().default({}),
   parent1Status: z.enum(['pere', 'mere', 'grand-parent', 'autre'], {

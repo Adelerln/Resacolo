@@ -76,6 +76,7 @@ function mapFamilyProfileToCheckoutContact(profile: FamilyProfile): CheckoutCont
     vacafDepartmentCode: '',
     ancvConnectMatricule: '',
     ancvConnectAmount: '',
+    ancvPaperRequested: false,
     paymentMode: profile.paymentMode,
     parent1Status: profile.parent1Status,
     parent1StatusOther: profile.parent1StatusOther,

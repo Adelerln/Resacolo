@@ -2,7 +2,7 @@ import 'server-only';
 
 import { redirect } from 'next/navigation';
 import { getApiSession } from '@/lib/auth/api';
-import { getCurrentUser, type SessionPayload } from '@/lib/auth/session';
+import { getCurrentUser, getCurrentUserAction, type SessionPayload } from '@/lib/auth/session';
 import {
   canAccessOrganizerSection,
   type OrganizerAccessRole,
@@ -68,10 +68,12 @@ function organizerLoginUrl(requestedOrganizerId?: string) {
 export async function requireOrganizerPageAccess(options?: {
   requestedOrganizerId?: string | string[] | null;
   requiredSection?: OrganizerWorkspaceSection;
+  /** À activer depuis les Server Actions pour rafraîchir correctement la session. */
+  forServerAction?: boolean;
 }): Promise<OrganizerBackofficeContext> {
   const requiredSection = options?.requiredSection;
   const requestedOrganizerId = normalizeRequestedOrganizerId(options?.requestedOrganizerId);
-  const session = await getCurrentUser();
+  const session = options?.forServerAction ? await getCurrentUserAction() : await getCurrentUser();
   if (!session) {
     redirect(organizerLoginUrl(requestedOrganizerId));
   }

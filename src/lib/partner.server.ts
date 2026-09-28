@@ -133,17 +133,29 @@ function partnerReservationStatusLabel(
   collectivityFinanceMode: string | null | undefined,
   hasContributionSnapshot: boolean,
   paymentMode: PartnerPaymentMode,
-  externalPaidCents: number
+  externalPaidCents: number,
+  externalAidCents = 0
 ) {
   const financeMode = normalizePartnerFinanceMode(collectivityFinanceMode);
+  const awaitingOrganizerAid =
+    (requestKind === 'VACAF' && externalAidCents <= 0) ||
+    (requestKind === 'ANCV_CONNECT' && externalPaidCents <= 0);
+  const effectiveStatus =
+    awaitingOrganizerAid && (status === 'REQUESTED' || status === 'PENDING_PAYMENT')
+      ? ('REQUESTED' as const)
+      : status;
   const hasOpenOrganizerPaperWorkflow =
     paymentMode === 'CV_PAPER' &&
     externalPaidCents <= 0 &&
-    (status === 'REQUESTED' || status === 'PENDING_PAYMENT');
+    (effectiveStatus === 'REQUESTED' || effectiveStatus === 'PENDING_PAYMENT');
 
-  if (status === 'REQUESTED') {
-    if (requestKind === 'VACAF') return 'En attente de traitement organisme (VACAF)';
-    if (requestKind === 'ANCV_CONNECT') return 'En attente de traitement organisme (ANCV Connect)';
+  if (effectiveStatus === 'REQUESTED') {
+    if (requestKind === 'VACAF' && externalAidCents <= 0) {
+      return 'En attente de traitement organisme (VACAF)';
+    }
+    if (requestKind === 'ANCV_CONNECT' && externalPaidCents <= 0) {
+      return 'En attente de traitement organisme (ANCV Connect)';
+    }
     if (hasOpenOrganizerPaperWorkflow) return 'En attente de traitement organisme (ANCV papier)';
     if (financeMode === 'MANUAL' && !hasContributionSnapshot) {
       return 'En attente de traitement partenaire';
@@ -151,18 +163,18 @@ function partnerReservationStatusLabel(
     return 'En attente de paiement famille';
   }
 
-  if (status === 'PENDING_PAYMENT') {
+  if (effectiveStatus === 'PENDING_PAYMENT') {
     if (hasOpenOrganizerPaperWorkflow) return 'En attente de traitement organisme (ANCV papier)';
     if (financeMode === 'MANUAL' && !hasContributionSnapshot) return 'En attente de traitement partenaire';
     return 'En attente de paiement famille';
   }
-  if (status === 'PARTIALLY_PAID') return 'Paiement partiel reçu';
-  if (status === 'PAID') return 'Réservation payée';
-  if (status === 'FAILED') return 'Échec de paiement';
-  if (status === 'CANCELLED') return 'Réservation annulée';
-  if (status === 'TRANSFERRED') return 'Réservation transférée';
+  if (effectiveStatus === 'PARTIALLY_PAID') return 'Paiement partiel reçu';
+  if (effectiveStatus === 'PAID') return 'Réservation payée';
+  if (effectiveStatus === 'FAILED') return 'Échec de paiement';
+  if (effectiveStatus === 'CANCELLED') return 'Réservation annulée';
+  if (effectiveStatus === 'TRANSFERRED') return 'Réservation transférée';
 
-  return orderStatusLabel(status);
+  return orderStatusLabel(effectiveStatus);
 }
 
 function partnerReservationBadgeStatus(input: {
@@ -186,6 +198,7 @@ function describePartnerReservationPendingActions(input: {
   hasContributionSnapshot: boolean;
   paymentMode: PartnerPaymentMode;
   externalPaidCents: number;
+  externalAidCents?: number;
 }) {
   const actions: Array<{ actorLabel: string; description: string }> = [];
   const financeMode = normalizePartnerFinanceMode(input.collectivityFinanceMode);
@@ -207,14 +220,22 @@ function describePartnerReservationPendingActions(input: {
     });
   }
 
-  if (input.status === 'REQUESTED' && input.requestKind === 'VACAF') {
+  if (
+    (input.status === 'REQUESTED' || input.status === 'PENDING_PAYMENT') &&
+    input.requestKind === 'VACAF' &&
+    (input.externalAidCents ?? 0) <= 0
+  ) {
     actions.push({
       actorLabel: 'Organisme',
       description: 'Vérifier les droits VACAF / AVE puis saisir le montant CAF appliqué à la réservation.'
     });
   }
 
-  if (input.status === 'REQUESTED' && input.requestKind === 'ANCV_CONNECT') {
+  if (
+    (input.status === 'REQUESTED' || input.status === 'PENDING_PAYMENT') &&
+    input.requestKind === 'ANCV_CONNECT' &&
+    input.externalPaidCents <= 0
+  ) {
     actions.push({
       actorLabel: 'Organisme',
       description:
@@ -753,7 +774,8 @@ export async function listPartnerReservations(collectivityId: string, excludedUs
       collectivityFinanceMode: collectivity.finance_mode,
       hasContributionSnapshot,
       paymentMode,
-      externalPaidCents: order.external_paid_cents ?? 0
+      externalPaidCents: order.external_paid_cents ?? 0,
+      externalAidCents: order.external_aid_cents ?? 0
     });
     const statusLabel = partnerReservationStatusLabel(
       effectiveStatus,
@@ -761,7 +783,8 @@ export async function listPartnerReservations(collectivityId: string, excludedUs
       collectivity.finance_mode,
       hasContributionSnapshot,
       paymentMode,
-      order.external_paid_cents ?? 0
+      order.external_paid_cents ?? 0,
+      order.external_aid_cents ?? 0
     );
     const badgeStatus = partnerReservationBadgeStatus({
       status: effectiveStatus,

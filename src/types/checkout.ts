@@ -9,6 +9,8 @@ export type CheckoutOrganizerSelection = {
   vacafDepartmentCode: string;
   ancvConnectMatricule: string;
   ancvConnectAmount: string;
+  /** Demande ANCV papier, cumulable avec ANCV Connect. */
+  ancvPaperRequested: boolean;
 };
 
 export type CheckoutContact = {
@@ -32,6 +34,8 @@ export type CheckoutContact = {
   vacafDepartmentCode: string;
   ancvConnectMatricule: string;
   ancvConnectAmount: string;
+  /** Demande ANCV papier (cumulable avec Connect via organizerSelections). */
+  ancvPaperRequested: boolean;
   paymentMode: CheckoutPaymentMode;
   organizerSelections?: Record<string, CheckoutOrganizerSelection>;
   parent1Status: '' | 'pere' | 'mere' | 'grand-parent' | 'autre';
@@ -126,6 +130,7 @@ export const EMPTY_CONTACT: CheckoutContact = {
   vacafDepartmentCode: '',
   ancvConnectMatricule: '',
   ancvConnectAmount: '',
+  ancvPaperRequested: false,
   paymentMode: 'FULL',
   organizerSelections: {},
   parent1Status: '',
@@ -137,13 +142,21 @@ export const EMPTY_CONTACT: CheckoutContact = {
 export function createDefaultOrganizerSelection(
   overrides: Partial<CheckoutOrganizerSelection> = {}
 ): CheckoutOrganizerSelection {
+  const paymentMode = overrides.paymentMode ?? 'FULL';
+  const ancvPaperRequested =
+    overrides.ancvPaperRequested !== undefined
+      ? Boolean(overrides.ancvPaperRequested)
+      : paymentMode === 'CV_PAPER';
   return {
     paymentMode: 'FULL',
     vacafNumber: '',
     vacafDepartmentCode: '',
     ancvConnectMatricule: '',
     ancvConnectAmount: '',
-    ...overrides
+    ancvPaperRequested: false,
+    ...overrides,
+    paymentMode,
+    ancvPaperRequested
   };
 }
 
@@ -175,6 +188,7 @@ export function getOrganizerSelection(
     | 'vacafDepartmentCode'
     | 'ancvConnectMatricule'
     | 'ancvConnectAmount'
+    | 'ancvPaperRequested'
     | 'organizerSelections'
   >,
   organizerId: string
@@ -189,7 +203,8 @@ export function getOrganizerSelection(
     vacafNumber: contact.vacafNumber,
     vacafDepartmentCode: contact.vacafDepartmentCode,
     ancvConnectMatricule: contact.ancvConnectMatricule,
-    ancvConnectAmount: contact.ancvConnectAmount
+    ancvConnectAmount: contact.ancvConnectAmount,
+    ancvPaperRequested: contact.ancvPaperRequested
   });
 }
 

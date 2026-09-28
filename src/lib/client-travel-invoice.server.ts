@@ -3,7 +3,10 @@ import 'server-only';
 import { computePartnerContributionSnapshotCents } from '@/lib/partner-offers';
 import { createAndUploadClientTravelInvoicePdf } from '@/lib/mnemos/invoice-pdf.server';
 import { allocateInvoiceNumber } from '@/lib/mnemos/allocate-invoice-number.server';
-import { resolveFamilyPaymentModeLabel } from '@/lib/order-workflow';
+import {
+  buildClientPaymentSummaryRows,
+  resolveCheckoutPaymentModeLabelFromPayments
+} from '@/lib/client-payment-summary';
 import { isMissingAnyColumnError } from '@/lib/supabase-schema-errors';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import type { Json, Database } from '@/types/supabase';
@@ -18,12 +21,6 @@ type InvoiceRow = Pick<
 type InvoiceLineDraft = {
   label: string;
   quantity: number;
-  amountCents: number;
-};
-
-type InvoicePaymentDraft = {
-  date: string;
-  label: string;
   amountCents: number;
 };
 
@@ -289,30 +286,16 @@ async function buildClientTravelInvoiceModel(orderId: string) {
     });
   }
 
-  const paymentRows: InvoicePaymentDraft[] = (payments ?? [])
-    .filter((payment) => payment.status === 'SUCCEEDED' && payment.amount_cents !== 0)
-    .sort((a, b) => {
-      const aTime = new Date(a.created_at ?? a.updated_at ?? 0).getTime();
-      const bTime = new Date(b.created_at ?? b.updated_at ?? 0).getTime();
-      return aTime - bTime;
-    })
-    .map((payment) => {
-      const modeLabel = resolveFamilyPaymentModeLabel(asRecord(payment.raw_payload));
-      const paidAt = payment.updated_at ?? payment.created_at ?? order.paid_at ?? order.created_at;
-      return {
-        date: new Date(paidAt).toLocaleDateString('fr-FR'),
-        label: modeLabel,
-        amountCents: payment.amount_cents
-      };
-    });
-
-  if (externalPaidCents > 0) {
-    paymentRows.push({
-      date: new Date(order.paid_at ?? order.created_at).toLocaleDateString('fr-FR'),
-      label: buildExternalAidLabel(order.request_kind),
-      amountCents: externalPaidCents
-    });
-  }
+  const paymentRows = buildClientPaymentSummaryRows({
+    payments: payments ?? [],
+    externalPaidCents,
+    requestKind: order.request_kind,
+    fallbackDateIso: order.paid_at ?? order.created_at
+  }).map((row) => ({
+    date: row.dateLabel,
+    label: row.label,
+    amountCents: row.amountCents
+  }));
 
   const firstStay = staysById.get((sessionsById.get((orderItems ?? [])[0]?.session_id ?? '')?.stay_id ?? '') as string);
   const organizer =
@@ -327,7 +310,7 @@ async function buildClientTravelInvoiceModel(orderId: string) {
     issuedAt: order.paid_at ?? order.created_at,
     paidAt: order.paid_at ?? null,
     organizerName: organizer?.name ?? null,
-    paymentModeLabel: resolveFamilyPaymentModeLabel(asRecord(latestPayment?.raw_payload)),
+    paymentModeLabel: resolveCheckoutPaymentModeLabelFromPayments(payments ?? []),
     billingName: billing.billingName,
     billingAddressLines: billing.billingAddressLines,
     billingEmail: billing.billingEmail,
@@ -381,12 +364,7 @@ export async function ensureClientTravelInvoiceForOrder(orderId: string) {
     invoice = createdInvoice as InvoiceRow;
   }
 
-  const shouldRefreshPdf =
-    model.isProvisional ||
-    !invoice.pdf_url ||
-    invoice.status !== (model.isProvisional ? 'DRAFT' : 'ISSUED') ||
-    invoice.issued_at !== model.issuedAt ||
-    invoice.total_cents !== model.totalCents;
+  const shouldRefreshPdf = true;
 
   if (shouldRefreshPdf) {
     await supabase.from('invoice_lines').delete().eq('invoice_id', invoice.id);

@@ -3,6 +3,7 @@ import 'server-only';
 import { sendSmtpEmail } from '@/lib/rag/smtp';
 import type { CheckoutContact, CheckoutPaymentMode } from '@/types/checkout';
 import { formatOrderReservationCode, type OrderRequestKind } from '@/lib/order-workflow';
+import { formatVacafNumberWithDepartment } from '@/lib/vacaf-number';
 
 export type ReservationNotificationLine = {
   stayTitle: string;
@@ -32,8 +33,10 @@ export type ReservationNotificationInput = {
     | 'phone'
     | 'paymentMode'
     | 'vacafNumber'
+    | 'vacafDepartmentCode'
     | 'ancvConnectMatricule'
     | 'ancvConnectAmount'
+    | 'ancvPaperRequested'
   >;
   paymentMode: CheckoutPaymentMode;
   requestKind: OrderRequestKind;
@@ -295,6 +298,12 @@ function renderLinesBlock(lines: ReservationNotificationLine[]) {
 
 export function renderOrganizerReservationEmail(input: ReservationNotificationInput) {
   const reservationCode = formatOrderReservationCode(input.orderId);
+  const vacafNumberRaw = input.contact.vacafNumber?.trim() || null;
+  const vacafNumberLabel = vacafNumberRaw
+    ? formatVacafNumberWithDepartment(vacafNumberRaw, input.contact.vacafDepartmentCode)
+    : null;
+  const showVacafNumber =
+    input.requestKind === 'VACAF' || Boolean(vacafNumberRaw);
   const ancvConnectMatricule = input.contact.ancvConnectMatricule?.trim() || null;
   const ancvConnectAmount = input.contact.ancvConnectAmount?.trim() || null;
   const paymentFailed = input.onlinePaymentStatus === 'FAILED';
@@ -307,7 +316,7 @@ export function renderOrganizerReservationEmail(input: ReservationNotificationIn
     organizerAcceptsAncvConnect: input.organizerAcceptsAncvConnect,
     organizerIsVacafApproved: input.organizerIsVacafApproved,
     stayCafEligible: input.stayCafEligible,
-    hasVacafNumber: Boolean(input.contact.vacafNumber?.trim()),
+    hasVacafNumber: Boolean(vacafNumberRaw),
     ancvConnectMatricule,
     ancvConnectAmount
   });
@@ -357,6 +366,11 @@ export function renderOrganizerReservationEmail(input: ReservationNotificationIn
                         : ''
                     }
                     ${
+                      showVacafNumber
+                        ? `<p style="margin:0 0 4px;font-size:14px;color:#1d1f25;"><strong>N° allocataire CAF :</strong> ${escapeHtml(vacafNumberLabel || '—')}</p>`
+                        : ''
+                    }
+                    ${
                       showAncvConnectIds
                         ? `<p style="margin:0 0 4px;font-size:14px;color:#1d1f25;"><strong>Identifiant client ANCV Connect :</strong> ${escapeHtml(ancvConnectMatricule || '—')}</p>
                     <p style="margin:0 0 4px;font-size:14px;color:#1d1f25;"><strong>Montant ANCV Connect :</strong> ${escapeHtml(ancvConnectAmount || '—')}</p>`
@@ -403,6 +417,7 @@ export function renderOrganizerReservationEmail(input: ReservationNotificationIn
     ...(input.onlinePaymentStatus
       ? [`Paiement carte : ${onlinePaymentStatusLabel(input.onlinePaymentStatus)}`]
       : []),
+    ...(showVacafNumber ? [`N° allocataire CAF : ${vacafNumberLabel || '—'}`] : []),
     ...(showAncvConnectIds
       ? [
           `Identifiant client ANCV Connect : ${ancvConnectMatricule || '—'}`,
@@ -456,7 +471,8 @@ export function renderFamilyReservationEmail(input: ReservationNotificationInput
     nextSteps.push(
       'ANCV Connect : l’organisateur va vous recontacter pour finaliser le règlement avec vos Chèques-Vacances Connect.'
     );
-  } else if (input.paymentMode === 'CV_PAPER') {
+  }
+  if (input.paymentMode === 'CV_PAPER' || input.contact.ancvPaperRequested) {
     const mailingAddress = input.ancvPaperMailingAddress?.trim();
     if (mailingAddress) {
       nextSteps.push(
@@ -467,36 +483,46 @@ export function renderFamilyReservationEmail(input: ReservationNotificationInput
         'Envoyez vos chèques-vacances papier à l’organisateur. L’adresse postale exacte vous sera communiquée par l’organisateur ; il confirmera ensuite la réception.'
       );
     }
-  } else if (input.paymentMode === 'DEPOSIT_200') {
-    nextSteps.push(
-      'Votre acompte de 200 € a été initié. Dès confirmation bancaire, il apparaîtra comme encaissé ; le solde restant pourra être réglé ensuite.'
-    );
-  } else if (input.paymentMode === 'FULL') {
-    nextSteps.push(
-      'Votre paiement par carte bancaire a été initié. Dès que la banque confirme l’opération, le statut passe à « Payée » dans votre espace Mon compte (cela peut prendre quelques instants après le retour de la page bancaire).'
-    );
-  } else if (input.paymentMode === 'DEFERRED') {
-    const coveredByAid =
-      input.requestKind === 'VACAF' ||
-      input.requestKind === 'ANCV_CONNECT' ||
-      Boolean(input.contact.vacafNumber?.trim());
-    if (!coveredByAid) {
-      if (input.isPartnerManualQuote) {
-        nextSteps.push(
-          'Paiement différé : aucun règlement n’est demandé pour l’instant, car votre partenaire doit d’abord calculer la prise en charge et la renseigner dans son back-office. Le reste à charge vous sera indiqué ensuite.'
-        );
-      } else {
-        nextSteps.push(
-          'Paiement différé : aucun règlement n’est demandé pour l’instant. L’organisateur vous recontactera pour finaliser le reste à charge.'
-        );
+  }
+
+  const hasAncvSettlement =
+    input.paymentMode === 'CV_CONNECT' ||
+    input.requestKind === 'ANCV_CONNECT' ||
+    input.paymentMode === 'CV_PAPER' ||
+    Boolean(input.contact.ancvPaperRequested);
+
+  if (!hasAncvSettlement) {
+    if (input.paymentMode === 'DEPOSIT_200') {
+      nextSteps.push(
+        'Votre acompte de 200 € a été initié. Dès confirmation bancaire, il apparaîtra comme encaissé ; le solde restant pourra être réglé ensuite.'
+      );
+    } else if (input.paymentMode === 'FULL') {
+      nextSteps.push(
+        'Votre paiement par carte bancaire a été initié. Dès que la banque confirme l’opération, le statut passe à « Payée » dans votre espace Mon compte (cela peut prendre quelques instants après le retour de la page bancaire).'
+      );
+    } else if (input.paymentMode === 'DEFERRED') {
+      const coveredByAid =
+        input.requestKind === 'VACAF' ||
+        input.requestKind === 'ANCV_CONNECT' ||
+        Boolean(input.contact.vacafNumber?.trim());
+      if (!coveredByAid) {
+        if (input.isPartnerManualQuote) {
+          nextSteps.push(
+            'Paiement différé : aucun règlement n’est demandé pour l’instant, car votre partenaire doit d’abord calculer la prise en charge et la renseigner dans son back-office. Le reste à charge vous sera indiqué ensuite.'
+          );
+        } else {
+          nextSteps.push(
+            'Paiement différé : aucun règlement n’est demandé pour l’instant. L’organisateur vous recontactera pour finaliser le reste à charge.'
+          );
+        }
       }
+    } else if (nextSteps.length === 0) {
+      nextSteps.push(
+        'Paiement différé : aucun règlement n’est demandé pour l’instant, car votre partenaire doit d’abord calculer la prise en charge et la renseigner dans son back-office. Le reste à charge vous sera indiqué ensuite.'
+      );
+    } else {
+      nextSteps.push('L’organisateur va traiter votre demande et vous recontactera si une information manque.');
     }
-  } else if (nextSteps.length === 0) {
-    nextSteps.push(
-      'Paiement différé : aucun règlement n’est demandé pour l’instant, car votre partenaire doit d’abord calculer la prise en charge et la renseigner dans son back-office. Le reste à charge vous sera indiqué ensuite.'
-    );
-  } else {
-    nextSteps.push('L’organisateur va traiter votre demande et vous recontactera si une information manque.');
   }
 
   nextSteps.push(

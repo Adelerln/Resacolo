@@ -25,7 +25,8 @@ import {
   parseAmountEurosToCents,
   resolveInitialOrderStatus,
   resolveOrderRequestKind,
-  resolvePaidOrderStatus
+  resolvePaidOrderStatus,
+  type OrderRequestKind
 } from '@/lib/order-workflow';
 import {
   clampPartnerFinanceCents,
@@ -160,6 +161,23 @@ function parsePaymentModeFromPayload(rawPayload: Json | null | undefined): Check
     return paymentMode;
   }
   return 'FULL';
+}
+
+function buildOfflineConfirmationPath(input: {
+  orderId: string;
+  paymentMode: CheckoutContact['paymentMode'];
+  requestKind: OrderRequestKind | null;
+  isPartnerTotalCoverage?: boolean;
+  isPartnerManualQuote?: boolean;
+}) {
+  const base = `/checkout/confirmation/${input.orderId}`;
+  if (input.isPartnerTotalCoverage) return `${base}?mode=partner-total`;
+  if (input.isPartnerManualQuote) return `${base}?mode=partner-manual-quote`;
+  if (input.requestKind === 'VACAF') return `${base}?mode=requested-vacaf`;
+  if (input.requestKind === 'ANCV_CONNECT') return `${base}?mode=requested-ancv-connect`;
+  if (input.paymentMode === 'CV_PAPER') return `${base}?mode=cv-paper`;
+  if (input.paymentMode === 'DEFERRED') return `${base}?mode=deferred`;
+  return base;
 }
 
 function parseReservationNotificationFromPayload(
@@ -345,7 +363,8 @@ function buildEffectiveContactForOrganizer(
     vacafNumber: selection.vacafNumber,
     vacafDepartmentCode: selection.vacafDepartmentCode,
     ancvConnectMatricule: selection.ancvConnectMatricule,
-    ancvConnectAmount: selection.ancvConnectAmount
+    ancvConnectAmount: selection.ancvConnectAmount,
+    ancvPaperRequested: selection.ancvPaperRequested
   };
 }
 
@@ -903,7 +922,10 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
     if (effectiveContact.paymentMode === 'CV_CONNECT' && !organizerSettings.accepts_ancv_connect) {
       throw new Error(`L'organisme « ${organizerSettings.name} » n'accepte pas ANCV Connect.`);
     }
-    if (effectiveContact.paymentMode === 'CV_PAPER' && !organizerSettings.accepts_ancv_paper) {
+    if (
+      (effectiveContact.paymentMode === 'CV_PAPER' || effectiveContact.ancvPaperRequested) &&
+      !organizerSettings.accepts_ancv_paper
+    ) {
       throw new Error(`L'organisme « ${organizerSettings.name} » n'accepte pas les chèques-vacances papier.`);
     }
     if (effectiveContact.vacafNumber.trim() && !organizerSettings.is_vacaf_approved) {
@@ -923,6 +945,7 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
         throw new CheckoutValidationError(vacafDepartmentError);
       }
     }
+
     if (effectiveContact.paymentMode === 'CV_CONNECT') {
       // Matricule / montant : optionnels (info). Le TPE Limonetik encaisse le total famille.
       if (effectiveContact.ancvConnectMatricule.trim()) {
@@ -1220,7 +1243,12 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
           mode: 'mock' as const,
           reference,
           transactionId,
-          paymentUrl: `/checkout/confirmation/${primaryGroup.orderId}`,
+          paymentUrl: buildOfflineConfirmationPath({
+            orderId: primaryGroup.orderId,
+            paymentMode: primaryGroup.paymentMode,
+            requestKind: primaryGroup.requestKind,
+            isPartnerTotalCoverage: primaryGroup.isPartnerTotalCoverage
+          }),
           testMode: true,
           formMethod: 'POST' as const,
           formFields: {}
@@ -1276,7 +1304,12 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
     confirmationPath:
       groupResults.length > 1
         ? `/checkout/confirmation?checkoutId=${encodeURIComponent(input.checkoutId)}`
-        : `/checkout/confirmation/${primaryGroup.orderId}`,
+        : buildOfflineConfirmationPath({
+            orderId: primaryGroup.orderId,
+            paymentMode: primaryGroup.paymentMode,
+            requestKind: primaryGroup.requestKind,
+            isPartnerTotalCoverage: primaryGroup.isPartnerTotalCoverage
+          }),
     pricing,
     monetico: moneticoPayload
   };
@@ -1409,9 +1442,16 @@ export async function markOrderPaid(input: {
     }
   }
 
-  if (appliedStatus === 'PAID' || nextStatus === 'PAID') {
-    const { recordCommissionFeesOnOrderPaid } = await import('@/lib/resacolo-fee-ledger.server');
-    await recordCommissionFeesOnOrderPaid(supabase, input.orderId, paidAt);
+  if (
+    appliedStatus === 'PAID' ||
+    nextStatus === 'PAID' ||
+    appliedStatus === 'PARTIALLY_PAID' ||
+    nextStatus === 'PARTIALLY_PAID'
+  ) {
+    if (appliedStatus === 'PAID' || nextStatus === 'PAID') {
+      const { recordCommissionFeesOnOrderPaid } = await import('@/lib/resacolo-fee-ledger.server');
+      await recordCommissionFeesOnOrderPaid(supabase, input.orderId, paidAt);
+    }
     try {
       const { ensureClientTravelInvoiceForOrder } = await import('@/lib/client-travel-invoice.server');
       await ensureClientTravelInvoiceForOrder(input.orderId);

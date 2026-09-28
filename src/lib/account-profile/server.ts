@@ -19,6 +19,7 @@ import {
   reconcileOrderStatusWithBalance,
   resolveOrderStatusLabel
 } from '@/lib/order-workflow';
+import { buildClientPaymentSummaryRows } from '@/lib/client-payment-summary';
 import {
   computePartnerContributionSnapshotCents,
   computePartnerFinanceSplit,
@@ -712,6 +713,24 @@ function buildPartnerCoverageLine(input: {
 
   const prefix = input.collectivityName?.trim() ? `${input.collectivityName.trim()} · ` : '';
   return `${prefix}-${formatEuroFromCents(totalCents)}`;
+}
+
+function buildPartnerCoverageLabel(input: {
+  partnerCents: number;
+  externalAidCents: number;
+  requestKind: string | null;
+}) {
+  const hasPartner = Math.max(0, input.partnerCents) > 0;
+  const hasVacaf =
+    Math.max(0, input.externalAidCents) > 0 || input.requestKind === 'VACAF';
+
+  if (hasVacaf && !hasPartner) {
+    return 'Prise en charge VACAF / AVE';
+  }
+  if (hasVacaf && hasPartner) {
+    return 'Prise en charge (partenaire + VACAF / AVE)';
+  }
+  return 'Prise en charge';
 }
 
 function buildTransportLegLine(
@@ -1535,7 +1554,7 @@ async function readReservations(
   ] = await Promise.all([
     supabase
       .from('payments')
-      .select('order_id,amount_cents,currency,status,updated_at,raw_payload')
+      .select('order_id,amount_cents,currency,status,created_at,updated_at,raw_payload')
       .in('order_id', orderIds)
       .order('updated_at', { ascending: false }),
     transportOptionIds.size || sessionIds.size || stayIds.size
@@ -1616,6 +1635,16 @@ async function readReservations(
     string,
     { amount_cents: number; currency: string; status: string; raw_payload: Json | null }
   >();
+  const paymentsListByOrder = new Map<
+    string,
+    Array<{
+      amount_cents: number;
+      status: string;
+      raw_payload: Json | null;
+      created_at: string | null;
+      updated_at: string | null;
+    }>
+  >();
   const successfulPaidCentsByOrder = new Map<string, number>();
   for (const payment of payments ?? []) {
     if (!paymentsByOrder.has(payment.order_id)) {
@@ -1626,6 +1655,15 @@ async function readReservations(
         raw_payload: payment.raw_payload
       });
     }
+    const list = paymentsListByOrder.get(payment.order_id) ?? [];
+    list.push({
+      amount_cents: payment.amount_cents,
+      status: payment.status,
+      raw_payload: payment.raw_payload,
+      created_at: payment.created_at ?? null,
+      updated_at: payment.updated_at ?? null
+    });
+    paymentsListByOrder.set(payment.order_id, list);
     if (payment.status === 'SUCCEEDED') {
       successfulPaidCentsByOrder.set(
         payment.order_id,
@@ -1875,6 +1913,7 @@ async function readReservations(
         }),
         sessionStartDate: session?.start_date ?? null,
         sessionEndDate: session?.end_date ?? null,
+        createdAt: order.created_at ?? null,
         isPast: session?.end_date ? new Date(`${session.end_date}T23:59:59`).getTime() < Date.now() : false,
         totalCents,
         currency,
@@ -1892,6 +1931,21 @@ async function readReservations(
           externalAidCents: order.external_aid_cents ?? 0,
           collectivityName: collectivity?.name ?? null
         }),
+        partnerCoverageLabel: buildPartnerCoverageLabel({
+          partnerCents: financeSplit.partnerCents,
+          externalAidCents: order.external_aid_cents ?? 0,
+          requestKind: order.request_kind
+        }),
+        paymentLines: buildClientPaymentSummaryRows({
+          payments: paymentsListByOrder.get(order.id) ?? [],
+          externalPaidCents,
+          requestKind: order.request_kind,
+          fallbackDateIso: order.paid_at ?? order.created_at
+        }).map((row) => ({
+          dateLabel: row.dateLabel,
+          label: row.label,
+          amountCents: row.amountCents
+        })),
         transportLine:
           Array.from(transportSummaryLines).join(' / ') ||
           (estimatedTransportResidualCents > 0
@@ -1933,11 +1987,8 @@ async function readReservations(
       });
     })
     .sort((left, right) => {
-      if (left.isPast !== right.isPast) {
-        return left.isPast ? 1 : -1;
-      }
-      const leftDate = left.sessionStartDate ? new Date(left.sessionStartDate).getTime() : 0;
-      const rightDate = right.sessionStartDate ? new Date(right.sessionStartDate).getTime() : 0;
+      const leftDate = left.createdAt ? new Date(left.createdAt).getTime() : 0;
+      const rightDate = right.createdAt ? new Date(right.createdAt).getTime() : 0;
       return rightDate - leftDate;
     });
 }
@@ -2128,11 +2179,8 @@ export async function getFamilyProfileSnapshot(input: {
   ]);
 
   const reservations = [...nativeReservations, ...legacyReservations].sort((left, right) => {
-    if (left.isPast !== right.isPast) {
-      return left.isPast ? 1 : -1;
-    }
-    const leftDate = left.sessionStartDate ? new Date(left.sessionStartDate).getTime() : 0;
-    const rightDate = right.sessionStartDate ? new Date(right.sessionStartDate).getTime() : 0;
+    const leftDate = left.createdAt ? new Date(left.createdAt).getTime() : 0;
+    const rightDate = right.createdAt ? new Date(right.createdAt).getTime() : 0;
     return rightDate - leftDate;
   });
 

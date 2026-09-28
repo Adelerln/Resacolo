@@ -65,6 +65,8 @@ export type FamilyReservation = {
   status: string;
   sessionStartDate: string | null;
   sessionEndDate: string | null;
+  /** Date de création de la réservation (ISO), pour le tri décroissant. */
+  createdAt: string | null;
   isPast: boolean;
   totalCents: number;
   currency: string;
@@ -75,6 +77,14 @@ export type FamilyReservation = {
   clientPaidCents: number;
   partnerDiscountLine: string | null;
   partnerCoverageLine: string | null;
+  /** Libellé affiché pour la ligne de prise en charge (partenaire / VACAF…). */
+  partnerCoverageLabel: string;
+  /** Historique des paiements (CB, ANCV…) pour le détail de réservation. */
+  paymentLines: Array<{
+    dateLabel: string;
+    label: string;
+    amountCents: number;
+  }>;
   transportLine: string | null;
   transportOutboundLine: string | null;
   transportReturnLine: string | null;

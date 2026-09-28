@@ -182,12 +182,15 @@ export async function getOrderStatus(orderId: string) {
     paidAt: string | null;
     paymentStatus: string | null;
     requestKind: string | null;
+    paymentMode: string | null;
     paymentModeLabel: string | null;
     remainingBalanceCents: number;
     totalCents: number;
     currency: string;
     organizerContactEmail: string | null;
     organizerName: string | null;
+    ancvPaperMailingAddress: string | null;
+    ancvPaperRequested: boolean;
   }>(`/api/orders/${orderId}`, {
     method: 'GET',
     cache: 'no-store'

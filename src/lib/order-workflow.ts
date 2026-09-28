@@ -42,6 +42,53 @@ export function normalizeOrderStatus(status: OrderStatus | string | null | undef
   return status as OrderStatus;
 }
 
+/**
+ * CAF / ANCV Connect : tant que le montant n’est pas saisi par l’organisme,
+ * la commande reste une « demande à traiter » (même si le statut DB a dérivé vers PENDING_PAYMENT).
+ */
+export function isAwaitingAidResolution(input: {
+  status?: OrderStatus | string | null;
+  requestKind?: OrderRequestKind | string | null;
+  hasVacafNumber?: boolean;
+  hasAncvConnect?: boolean;
+  externalAidCents?: number | null;
+  externalPaidCents?: number | null;
+}) {
+  const normalized = normalizeOrderStatus(input.status);
+  if (
+    !normalized ||
+    normalized === 'CANCELLED' ||
+    normalized === 'FAILED' ||
+    normalized === 'PAID' ||
+    normalized === 'CART' ||
+    normalized === 'TRANSFERRED'
+  ) {
+    return false;
+  }
+
+  const awaitingVacaf =
+    (input.requestKind === 'VACAF' || Boolean(input.hasVacafNumber)) &&
+    (input.externalAidCents ?? 0) <= 0;
+  const awaitingAncv =
+    (input.requestKind === 'ANCV_CONNECT' || Boolean(input.hasAncvConnect)) &&
+    (input.externalPaidCents ?? 0) <= 0;
+
+  return awaitingVacaf || awaitingAncv;
+}
+
+/** Statut métier affiché : REQUESTED tant que CAF/ANCV non saisis. */
+export function resolveEffectiveOrderStatus(input: {
+  status?: OrderStatus | string | null;
+  requestKind?: OrderRequestKind | string | null;
+  hasVacafNumber?: boolean;
+  hasAncvConnect?: boolean;
+  externalAidCents?: number | null;
+  externalPaidCents?: number | null;
+}): OrderStatus | null {
+  if (isAwaitingAidResolution(input)) return 'REQUESTED';
+  return normalizeOrderStatus(input.status);
+}
+
 /** Échec CB : statut FAILED, ou ancien couple CANCELLED + PAYMENT_FAILED. */
 export function isPaymentFailedOrder(input: {
   status?: string | null;
@@ -191,21 +238,30 @@ export function resolveOrderStatusLabel(input: {
     return FAMILY_ORDER_STATUS_LABELS.FAILED;
   }
 
-  const normalized = normalizeOrderStatus(input.status);
-  const hasVacaf =
-    input.requestKind === 'VACAF' || Boolean(input.hasVacafNumber);
-  const awaitingCafAmount =
+  const hasVacaf = input.requestKind === 'VACAF' || Boolean(input.hasVacafNumber);
+  if (
     hasVacaf &&
-    (input.externalAidCents ?? 0) <= 0 &&
-    (normalized === 'REQUESTED' || input.status === 'REQUESTED');
-
-  if (awaitingCafAmount) {
+    isAwaitingAidResolution({
+      status: input.status,
+      requestKind: 'VACAF',
+      hasVacafNumber: true,
+      externalAidCents: input.externalAidCents,
+      // Ne pas bloquer le libellé CAF sur un éventuel ANCV en parallèle.
+      externalPaidCents: 1
+    })
+  ) {
     return 'En attente du montant CAF';
   }
 
   return orderStatusLabel(
     reconcileOrderStatusWithBalance({
-      status: input.status,
+      status: resolveEffectiveOrderStatus({
+        status: input.status,
+        requestKind: input.requestKind,
+        hasVacafNumber: input.hasVacafNumber,
+        externalAidCents: input.externalAidCents,
+        externalPaidCents: input.externalPaidCents
+      }),
       remainingBalanceCents: input.remainingBalanceCents,
       onlinePaidCents: input.onlinePaidCents,
       externalPaidCents: input.externalPaidCents
@@ -437,6 +493,8 @@ export function resolveCheckoutConfirmationFollowUpMessage(input: {
   isAncvConnectRequest?: boolean;
   isPartnerManualQuoteMode?: boolean;
   isPartnerTotalMode?: boolean;
+  ancvPaperMailingAddress?: string | null;
+  ancvPaperRequested?: boolean;
 }): CheckoutConfirmationFollowUpMessage | null {
   const remainingBalanceCents = Math.max(0, Math.round(input.remainingBalanceCents ?? 0));
   const hasSucceededOnlinePayment = input.paymentStatus === 'SUCCEEDED';
@@ -466,6 +524,20 @@ export function resolveCheckoutConfirmationFollowUpMessage(input: {
     };
   }
   if (context.isAncvConnectRequest || effectiveRequestKind === 'ANCV_CONNECT') {
+    const mailingAddress = input.ancvPaperMailingAddress?.trim();
+    if (input.ancvPaperRequested && mailingAddress) {
+      return {
+        tone: 'warning',
+        message: `Votre demande ANCV Connect est bien transmise. Pour la part en ANCV papier, envoyez vos chèques-vacances à l’adresse suivante : ${mailingAddress}. L’organisateur confirmera ensuite la réception.`
+      };
+    }
+    if (input.ancvPaperRequested) {
+      return {
+        tone: 'warning',
+        message:
+          "Votre demande ANCV Connect est bien transmise. Vous avez aussi indiqué un règlement en ANCV papier : l’organisateur vous communiquera l’adresse d’envoi des chèques-vacances."
+      };
+    }
     return {
       tone: 'warning',
       message:
@@ -487,10 +559,17 @@ export function resolveCheckoutConfirmationFollowUpMessage(input: {
     };
   }
   if (context.isCvPaperMode) {
+    const mailingAddress = input.ancvPaperMailingAddress?.trim();
+    if (mailingAddress) {
+      return {
+        tone: 'neutral',
+        message: `Votre commande est bien enregistrée. Envoyez vos chèques-vacances papier à l’adresse suivante : ${mailingAddress}. L’organisateur confirmera ensuite la réception.`
+      };
+    }
     return {
       tone: 'neutral',
       message:
-        "Votre commande est bien enregistrée. Le règlement en ANCV papier sera traité directement avec l'organisateur."
+        "Votre commande est bien enregistrée. Le règlement en ANCV papier sera traité directement avec l'organisateur, qui vous communiquera l’adresse d’envoi des chèques-vacances."
     };
   }
   if (context.isDeferredMode) {

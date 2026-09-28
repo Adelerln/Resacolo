@@ -485,6 +485,15 @@ export default function CheckoutRecapitulatifPage() {
           return;
         }
       }
+      if (
+        (group.selection.ancvPaperRequested || group.selection.paymentMode === 'CV_PAPER') &&
+        !settings.acceptsAncvPaper
+      ) {
+        setPaymentSubmitError(
+          `L'organisme « ${group.organizerName} » n'accepte pas les chèques-vacances papier.`
+        );
+        return;
+      }
       if (group.selection.paymentMode === 'CV_CONNECT') {
         if (!settings.acceptsAncvConnect) {
           setPaymentSubmitError(`L'organisme « ${group.organizerName} » n'accepte pas ANCV Connect.`);
@@ -541,7 +550,10 @@ export default function CheckoutRecapitulatifPage() {
               ...selection,
               vacafNumber: normalizeVacafNumberInput(selection.vacafNumber ?? ''),
               vacafDepartmentCode: String(selection.vacafDepartmentCode ?? '').trim(),
-              ancvConnectMatricule: normalizeAncvConnectMatriculeInput(selection.ancvConnectMatricule ?? '')
+              ancvConnectMatricule: normalizeAncvConnectMatriculeInput(selection.ancvConnectMatricule ?? ''),
+              ancvPaperRequested: Boolean(
+                selection.ancvPaperRequested || selection.paymentMode === 'CV_PAPER'
+              )
             }
           ];
         })
@@ -558,6 +570,9 @@ export default function CheckoutRecapitulatifPage() {
           primarySelection?.ancvConnectMatricule ?? contact.ancvConnectMatricule ?? ''
         ),
         ancvConnectAmount: primarySelection?.ancvConnectAmount ?? contact.ancvConnectAmount,
+        ancvPaperRequested: Boolean(
+          primarySelection?.ancvPaperRequested ?? contact.ancvPaperRequested
+        ),
         organizerSelections: normalizedSelections
       });
 
@@ -931,18 +946,24 @@ export default function CheckoutRecapitulatifPage() {
                               <label className="flex items-start gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
                                 <input
                                   type="checkbox"
-                                  checked={group.selection.paymentMode === 'CV_PAPER'}
+                                  checked={
+                                    group.selection.ancvPaperRequested ||
+                                    group.selection.paymentMode === 'CV_PAPER'
+                                  }
                                   onChange={(event) => {
-                                    if (event.target.checked) {
+                                    const wantsPaper = event.target.checked;
+                                    const wantsConnect =
+                                      group.selection.paymentMode === 'CV_CONNECT';
+                                    if (wantsPaper) {
                                       patchOrganizerPaymentSelection(group.organizerId, {
-                                        paymentMode: 'CV_PAPER',
-                                        ancvConnectMatricule: '',
-                                        ancvConnectAmount: ''
+                                        ancvPaperRequested: true,
+                                        paymentMode: wantsConnect ? 'CV_CONNECT' : 'CV_PAPER'
                                       });
                                       return;
                                     }
                                     patchOrganizerPaymentSelection(group.organizerId, {
-                                      paymentMode: 'DEFERRED'
+                                      ancvPaperRequested: false,
+                                      paymentMode: wantsConnect ? 'CV_CONNECT' : 'DEFERRED'
                                     });
                                   }}
                                   className="mt-0.5 h-4 w-4 rounded border-slate-300"
@@ -956,14 +977,20 @@ export default function CheckoutRecapitulatifPage() {
                                   type="checkbox"
                                   checked={group.selection.paymentMode === 'CV_CONNECT'}
                                   onChange={(event) => {
-                                    if (event.target.checked) {
+                                    const wantsConnect = event.target.checked;
+                                    const wantsPaper =
+                                      group.selection.ancvPaperRequested ||
+                                      group.selection.paymentMode === 'CV_PAPER';
+                                    if (wantsConnect) {
                                       patchOrganizerPaymentSelection(group.organizerId, {
-                                        paymentMode: 'CV_CONNECT'
+                                        paymentMode: 'CV_CONNECT',
+                                        ancvPaperRequested: wantsPaper
                                       });
                                       return;
                                     }
                                     patchOrganizerPaymentSelection(group.organizerId, {
-                                      paymentMode: 'DEFERRED',
+                                      paymentMode: wantsPaper ? 'CV_PAPER' : 'DEFERRED',
+                                      ancvPaperRequested: wantsPaper,
                                       ancvConnectMatricule: '',
                                       ancvConnectAmount: ''
                                     });

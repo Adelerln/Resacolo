@@ -205,7 +205,11 @@ export default function FamilyReservationAccordion({
             <DetailRow label="Remise partenaire" value={reservation.partnerDiscountLine} accent />
           ) : null}
           {reservation.partnerCoverageLine ? (
-            <DetailRow label="Prise en charge" value={reservation.partnerCoverageLine} accent />
+            <DetailRow
+              label={reservation.partnerCoverageLabel}
+              value={reservation.partnerCoverageLine}
+              accent
+            />
           ) : null}
           {reservation.transportOutboundLine || reservation.transportReturnLine ? (
             <>
@@ -225,6 +229,28 @@ export default function FamilyReservationAccordion({
             value={reservation.extraLines.length > 0 ? reservation.extraLines.join(' | ') : 'Aucune'}
           />
         </dl>
+
+        {reservation.paymentLines.length > 0 ? (
+          <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <p className="text-sm font-semibold text-slate-900">Paiements enregistrés</p>
+            <ul className="mt-2 divide-y divide-slate-200">
+              {reservation.paymentLines.map((payment, index) => (
+                <li
+                  key={`${payment.dateLabel}-${payment.label}-${payment.amountCents}-${index}`}
+                  className="flex items-baseline justify-between gap-3 py-2 text-sm"
+                >
+                  <div className="min-w-0">
+                    <p className="font-medium text-slate-900">{payment.label}</p>
+                    <p className="text-xs text-slate-500">{payment.dateLabel}</p>
+                  </div>
+                  <p className="shrink-0 font-semibold text-slate-900">
+                    {formatMoneyCentsFr(payment.amountCents, reservation.currency)}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
 
         <div className="mt-4 flex flex-wrap items-center gap-3">
           {showBalancePay ? (

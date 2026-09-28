@@ -315,27 +315,19 @@ function buildFallbackTitle(input: StaySeoInput) {
 }
 
 function buildFallbackMetaDescription(input: StaySeoInput) {
-  const primaryKeyword = normalizeWhitespace(input.seo?.primaryKeyword);
-  const secondaryKeywords = dedupeKeywords(input.seo?.secondaryKeywords ?? []);
-  const destination = firstDestinationToken(input);
   const audience = deriveAudienceLabel(input.ageRange);
   const season = normalizeWhitespace(input.seasonName);
   const summary = normalizeWhitespace(input.summary);
   const description = normalizeWhitespace(input.description);
+  const title = normalizeWhitespace(input.title);
 
   const sentences: string[] = [];
   if (summary) {
     sentences.push(summary);
   } else if (description) {
     sentences.push(description);
-  }
-
-  if (primaryKeyword && !includesPhrase(sentences.join(' '), primaryKeyword)) {
-    sentences.push(`Découvrez ${primaryKeyword}.`);
-  }
-
-  if (destination && !includesPhrase(sentences.join(' '), destination)) {
-    sentences.push(`Destination: ${destination}.`);
+  } else if (title) {
+    sentences.push(`Découvrez ${title}.`);
   }
 
   if (audience && !includesPhrase(sentences.join(' '), audience)) {
@@ -343,12 +335,7 @@ function buildFallbackMetaDescription(input: StaySeoInput) {
   }
 
   if (season && !includesPhrase(sentences.join(' '), season)) {
-    sentences.push(`Disponible sur la saison ${season.toLowerCase()}.`);
-  }
-
-  const firstSecondary = secondaryKeywords.find((keyword) => !includesPhrase(sentences.join(' '), keyword));
-  if (firstSecondary) {
-    sentences.push(`Idéal pour ${firstSecondary}.`);
+    sentences.push(`Saison ${season.toLowerCase()}.`);
   }
 
   if (sentences.length === 0) {
@@ -588,54 +575,65 @@ export function buildStaySeoGooglePreview(input: StaySeoInput, canonicalPath: st
   };
 }
 
+/** Retire un suffixe lieu SEO du type « à Charente-Maritime » / « à la mer ». */
+function stripSeoLocationSuffix(value: string) {
+  return normalizeWhitespace(
+    value.replace(/\s+à\s+(?:l['’]|la\s+|le\s+|les\s+)?[\p{L}\d][\p{L}\d\s'’-]*$/iu, '')
+  );
+}
+
 export function buildStayH1Title(input: StaySeoInput) {
   const sanitized = sanitizeSeoContext(input);
   const baseTitle = sanitized.title || 'Séjour';
-  const h1Variant = sanitized.seo?.h1Variant ?? '';
+  const h1Variant = stripSeoLocationSuffix(sanitized.seo?.h1Variant ?? '');
   if (h1Variant && isPrimaryKeywordCoherent({ ...sanitized, seo: { ...sanitized.seo, primaryKeyword: h1Variant } })) {
     return truncateAtWord(h1Variant, 96);
   }
-  const primaryKeyword = sanitized.seo?.primaryKeyword ?? '';
+  const primaryKeyword = stripSeoLocationSuffix(sanitized.seo?.primaryKeyword ?? '');
   if (!primaryKeyword) return baseTitle;
   if (includesPhrase(baseTitle, primaryKeyword)) return baseTitle;
-  if (!isPrimaryKeywordCoherent(sanitized)) return baseTitle;
+  if (!isPrimaryKeywordCoherent({ ...sanitized, seo: { ...sanitized.seo, primaryKeyword } })) {
+    return baseTitle;
+  }
 
-  const destination = firstDestinationToken(sanitized);
-  if (!destination || !includesPhrase(primaryKeyword, destination)) {
+  // N’ajoute le mot-clé que s’il apporte un thème distinct du titre — sans le lieu.
+  if (includesPhrase(primaryKeyword, baseTitle) || includesPhrase(baseTitle, primaryKeyword)) {
     return baseTitle;
   }
 
   return truncateAtWord(`${baseTitle} - ${primaryKeyword}`, 96);
 }
 
+/** Retire les phrases auto-générées type référencement (déjà en base sur certains séjours). */
+function stripKeywordStuffingFromIntro(text: string) {
+  return text
+    .replace(/\s*Ce séjour répond à la recherche [^.?!]*[.?!]/gi, '')
+    .replace(/\s*Idéal pour [^.?!]*[.?!]/gi, '')
+    .replace(/\s*Destination\s*:\s*[^.?!]*[.?!]/gi, '')
+    .replace(/\s*Découvrez (?:le |la |les |un |une )?séjour[^.?!]*[.?!]/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export function buildStayIntroText(input: StaySeoInput) {
   const sanitized = sanitizeSeoContext(input);
-  if (sanitized.seo?.introText) {
-    return sanitized.seo.introText;
-  }
-  const summary = sanitized.summary || sanitized.description || '';
-  const primaryKeyword = sanitized.seo?.primaryKeyword ?? '';
-  const destination = firstDestinationToken(sanitized);
-  const searchIntent = sanitized.seo?.searchIntents?.[0] ?? '';
-  let intro = summary;
-
-  if (!intro) {
-    intro = `Découvrez ${primaryKeyword || sanitized.title}.`;
+  const customIntro = stripKeywordStuffingFromIntro(sanitized.seo?.introText ?? '');
+  if (customIntro) {
+    return customIntro;
   }
 
-  if (primaryKeyword && !includesPhrase(intro, primaryKeyword) && isPrimaryKeywordCoherent(sanitized)) {
-    intro = `${intro} Ce séjour répond à la recherche ${primaryKeyword}.`;
+  // Intro éditoriale uniquement — pas de bourrage de mots-clés SEO.
+  const summary = normalizeWhitespace(sanitized.summary || sanitized.description || '');
+  if (summary) {
+    return summary;
   }
 
-  if (destination && !includesPhrase(intro, destination)) {
-    intro = `${intro} Destination: ${destination}.`;
+  const title = normalizeWhitespace(sanitized.title);
+  if (title) {
+    return `Découvrez ${title}.`;
   }
 
-  if (searchIntent && !includesPhrase(intro, searchIntent)) {
-    intro = `${intro} Idéal pour ${searchIntent}.`;
-  }
-
-  return intro.replace(/\s+/g, ' ').trim();
+  return 'Découvrez ce séjour pensé pour les enfants et adolescents.';
 }
 
 export function buildRelatedStayLinks(current: Stay, stays: Stay[], getHref: (stay: Stay) => string): RelatedStayLink[] {

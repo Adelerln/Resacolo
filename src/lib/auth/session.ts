@@ -1,4 +1,4 @@
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createServerActionClient, createServerComponentClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { cache } from 'react';
 import type { Database } from '@/types/supabase';
@@ -51,13 +51,13 @@ function buildSessionPayload(
   };
 }
 
-/** Déduplique layout + page (ex. /mon-compte juste après login). */
-export const getCurrentUser = cache(async (): Promise<SessionPayload | null> => {
+async function readSessionPayload(mode: 'component' | 'action'): Promise<SessionPayload | null> {
   const cookieStore = await cookies();
   const cookieAccess = (() => cookieStore) as unknown as typeof cookies;
-  const supabase = createServerComponentClient<Database>({
-    cookies: cookieAccess
-  });
+  const supabase =
+    mode === 'action'
+      ? createServerActionClient<Database>({ cookies: cookieAccess })
+      : createServerComponentClient<Database>({ cookies: cookieAccess });
   const {
     data: { user },
     error
@@ -69,7 +69,20 @@ export const getCurrentUser = cache(async (): Promise<SessionPayload | null> => 
 
   const roleContext = await resolveRoleContextForUserId(user.id);
   return buildSessionPayload(user, roleContext);
+}
+
+/** Déduplique layout + page (ex. /mon-compte juste après login). */
+export const getCurrentUser = cache(async (): Promise<SessionPayload | null> => {
+  return readSessionPayload('component');
 });
+
+/**
+ * Session pour Server Actions : client capable de rafraîchir/écrire les cookies.
+ * Sans ça, un token expiré pendant l’action renvoie null → redirect login (« déconnexion »).
+ */
+export async function getCurrentUserAction(): Promise<SessionPayload | null> {
+  return readSessionPayload('action');
+}
 
 export async function getCurrentUserRole(): Promise<AppRole> {
   const session = await getCurrentUser();

@@ -1,23 +1,24 @@
 import Link from 'next/link';
-import { redirect } from 'next/navigation';
-import { revalidatePath } from 'next/cache';
 import OrganizerPageHeader from '@/components/organisme/OrganizerPageHeader';
 import OrganizerReservationDetailsModal from '@/components/organisme/OrganizerReservationDetailsModal';
 import { OrganizerCancellationForm } from '@/components/organisme/OrganizerCancellationForm';
 import { canAccessOrganizerSection } from '@/lib/organizer-access';
 import { requireOrganizerPageAccess } from '@/lib/organizer-backoffice-access.server';
 import {
+  computeRemainingBalanceCents,
   formatOrderReservationCode,
+  isAwaitingAidResolution,
   orderStatusBadgeClassName,
   orderStatusLabel,
-  parseAmountEurosToCents,
-  resolveStatusAfterRequestResolution
+  resolveEffectiveOrderStatus
 } from '@/lib/order-workflow';
-import { computePartnerContributionSnapshotCents } from '@/lib/partner-offers';
 import { withOrganizerQuery } from '@/lib/organizers.server';
 import { isMissingAnyColumnError } from '@/lib/supabase-schema-errors';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
+import { parentStatusLabel } from '@/lib/account-preferences';
 import { formatVacafNumberWithDepartment } from '@/lib/vacaf-number';
+import { resolveOrganizerCoverageRequestAction } from '@/app/organisme/reservations/resolve-request-actions';
+import type { ParentStatus } from '@/types/family-profile';
 import type { Database } from '@/types/supabase';
 
 type PageProps = {
@@ -25,15 +26,24 @@ type PageProps = {
     organizerId?: string | string[];
     error?: string | string[];
     cancelled?: string | string[];
+    coverageSaved?: string | string[];
   }>;
 };
 
 type ClientProfileReservationDetails = Pick<
   Database['public']['Tables']['client_profiles']['Row'],
   | 'user_id'
+  | 'parent1_first_name'
+  | 'parent1_last_name'
   | 'parent1_email'
   | 'parent1_phone'
+  | 'parent1_status'
+  | 'parent1_status_other'
+  | 'parent2_name'
+  | 'parent2_email'
   | 'parent2_phone'
+  | 'parent2_status'
+  | 'parent2_status_other'
   | 'payment_mode'
   | 'vacaf_number'
   | 'address_line1'
@@ -76,6 +86,30 @@ function parseContactStringFromPayload(rawPayload: unknown, key: string) {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
   return trimmed || null;
+}
+
+function parseAncvPaperRequestedFromPayload(rawPayload: unknown, organizerId?: string | null) {
+  if (!rawPayload || typeof rawPayload !== 'object' || Array.isArray(rawPayload)) return false;
+  const contact = (rawPayload as Record<string, unknown>).contact;
+  if (!contact || typeof contact !== 'object' || Array.isArray(contact)) return false;
+  const contactRecord = contact as Record<string, unknown>;
+  if (contactRecord.ancvPaperRequested === true || contactRecord.paymentMode === 'CV_PAPER') {
+    return true;
+  }
+  const selections = contactRecord.organizerSelections;
+  if (!selections || typeof selections !== 'object' || Array.isArray(selections)) return false;
+  if (organizerId) {
+    const selection = (selections as Record<string, unknown>)[organizerId];
+    if (selection && typeof selection === 'object' && !Array.isArray(selection)) {
+      const record = selection as Record<string, unknown>;
+      return record.ancvPaperRequested === true || record.paymentMode === 'CV_PAPER';
+    }
+  }
+  return Object.values(selections as Record<string, unknown>).some((selection) => {
+    if (!selection || typeof selection !== 'object' || Array.isArray(selection)) return false;
+    const record = selection as Record<string, unknown>;
+    return record.ancvPaperRequested === true || record.paymentMode === 'CV_PAPER';
+  });
 }
 
 function firstNonEmpty(...values: Array<string | null | undefined>) {
@@ -130,10 +164,6 @@ function formatEuroFromCents(value: number | null | undefined, currency = 'EUR')
   }).format(value / 100);
 }
 
-function participantSummary(count: number) {
-  return count > 1 ? `${count} participants` : `${count} participant`;
-}
-
 function formatText(value: string | null | undefined, fallback = 'Non renseigné') {
   const trimmed = String(value ?? '').trim();
   return trimmed || fallback;
@@ -142,6 +172,20 @@ function formatText(value: string | null | undefined, fallback = 'Non renseigné
 function formatAddress(parts: Array<string | null | undefined>, fallback = 'Non renseignée') {
   const formatted = parts.map((value) => String(value ?? '').trim()).filter(Boolean).join(', ');
   return formatted || fallback;
+}
+
+function splitPersonName(value: string | null | undefined) {
+  const clean = String(value ?? '').trim();
+  if (!clean) return { firstName: '', lastName: '' };
+  const parts = clean.split(/\s+/).filter(Boolean);
+  if (parts.length === 1) return { firstName: parts[0], lastName: '' };
+  return { firstName: parts[0], lastName: parts.slice(1).join(' ') };
+}
+
+function formatParentRole(status: string | null | undefined, other: string | null | undefined) {
+  const normalized = String(status ?? '').trim() as ParentStatus;
+  if (!normalized) return '';
+  return parentStatusLabel(normalized, other ?? undefined);
 }
 
 export const dynamic = 'force-dynamic';
@@ -155,193 +199,6 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
   });
   const canAccessStays = canAccessOrganizerSection(accessRole, 'stays');
   const supabase = getServerSupabaseClient();
-
-  async function resolveRequest(formData: FormData) {
-    'use server';
-
-    const requestedOrganizerId = String(formData.get('organizer_id') ?? '').trim();
-    const organizerAccess = await requireOrganizerPageAccess({
-      requestedOrganizerId,
-      requiredSection: 'reservations'
-    });
-    const organizerId = organizerAccess.selectedOrganizerId;
-    const orderId = String(formData.get('order_id') ?? '').trim();
-    const requestKind = String(formData.get('request_kind') ?? '').trim();
-    const amountCents = parseAmountEurosToCents(String(formData.get('resolved_amount_euros') ?? ''));
-
-    if (!organizerId || !orderId || (requestKind !== 'VACAF' && requestKind !== 'ANCV_CONNECT')) {
-      redirect(withOrganizerQuery('/organisme/reservations', organizerId));
-    }
-
-    const supabase = getServerSupabaseClient();
-    const { data: orderRow, error: orderError } = await supabase
-      .from('orders')
-      .select('id,status,request_kind,vacaf_number_snapshot,ancv_connect_matricule,external_aid_cents,external_paid_cents')
-      .eq('id', orderId)
-      .maybeSingle();
-
-    let resolvedOrder = orderRow;
-    if (orderError && isMissingAnyColumnError(orderError, ['vacaf_number_snapshot', 'ancv_connect_matricule'])) {
-      const { data: legacyOrder } = await supabase
-        .from('orders')
-        .select('id,status,request_kind,external_aid_cents,external_paid_cents')
-        .eq('id', orderId)
-        .maybeSingle();
-      resolvedOrder = legacyOrder
-        ? {
-            ...legacyOrder,
-            vacaf_number_snapshot: null,
-            ancv_connect_matricule: null
-          }
-        : null;
-    } else if (orderError || !orderRow) {
-      redirect(withOrganizerQuery('/organisme/reservations', organizerId));
-    }
-
-    if (!resolvedOrder) {
-      redirect(withOrganizerQuery('/organisme/reservations', organizerId));
-    }
-
-    const hasVacafSnapshot = Boolean(String(resolvedOrder.vacaf_number_snapshot ?? '').trim());
-    const hasAncvMatricule = Boolean(String(resolvedOrder.ancv_connect_matricule ?? '').trim());
-    const canResolveVacaf =
-      requestKind === 'VACAF' &&
-      (resolvedOrder.request_kind === 'VACAF' || hasVacafSnapshot || resolvedOrder.request_kind == null);
-    const canResolveAncv =
-      requestKind === 'ANCV_CONNECT' &&
-      (resolvedOrder.request_kind === 'ANCV_CONNECT' || hasAncvMatricule || resolvedOrder.request_kind == null);
-
-    if (!canResolveVacaf && !canResolveAncv) {
-      redirect(withOrganizerQuery('/organisme/reservations', organizerId));
-    }
-
-    if (amountCents <= 0) {
-      redirect(
-        withOrganizerQuery(
-          `/organisme/reservations?error=${encodeURIComponent('Indiquez un montant de prise en charge valide.')}`,
-          organizerId
-        )
-      );
-    }
-
-    const orderRowForResolution = resolvedOrder;
-
-    const { data: orderItemsRaw, error: itemsError } = await supabase
-      .from('order_items')
-      .select('id,total_price_cents,session_id')
-      .eq('order_id', orderId);
-
-    if (itemsError || !orderItemsRaw || orderItemsRaw.length === 0) {
-      redirect(withOrganizerQuery('/organisme/reservations', organizerId));
-    }
-    const orderItems = orderItemsRaw;
-
-    const sessionIds = Array.from(new Set(orderItems.map((item) => item.session_id).filter(Boolean)));
-    const { data: sessions } = sessionIds.length
-      ? await supabase.from('sessions').select('id,stay_id').in('id', sessionIds)
-      : { data: [] };
-    const stayIds = Array.from(new Set((sessions ?? []).map((item) => item.stay_id).filter(Boolean)));
-    const { data: stays } = stayIds.length
-      ? await supabase.from('stays').select('id,organizer_id').in('id', stayIds)
-      : { data: [] };
-
-    if ((stays ?? []).some((stay) => stay.organizer_id !== organizerId)) {
-      redirect(withOrganizerQuery('/organisme/reservations', organizerId));
-    }
-
-    const { data: successfulPayments } = await supabase
-      .from('payments')
-      .select('amount_cents,status')
-      .eq('order_id', orderId)
-      .eq('status', 'SUCCEEDED');
-    const onlinePaidCents = (successfulPayments ?? []).reduce((sum, payment) => sum + (payment.amount_cents ?? 0), 0);
-    const totalCents = orderItems.reduce((sum, item) => sum + (item.total_price_cents ?? 0), 0);
-    const orderItemIds = orderItems.map((item) => item.id);
-    const { data: contributionRows } = orderItemIds.length
-      ? await supabase
-          .from('collectivity_contributions')
-          .select('order_item_id,mode,fixed_cents,percent_value,cap_cents')
-          .in('order_item_id', orderItemIds)
-          .eq('status', 'APPROVED')
-      : { data: [] };
-    const contributionByOrderItemId = new Map((contributionRows ?? []).map((row) => [row.order_item_id, row]));
-    const partnerContributionCents = orderItems.reduce((sum, item) => {
-      const contribution = contributionByOrderItemId.get(item.id);
-      if (!contribution) return sum;
-      return (
-        sum +
-        computePartnerContributionSnapshotCents({
-          mode: contribution.mode,
-          totalCents: item.total_price_cents ?? 0,
-          percentValue: contribution.percent_value,
-          fixedCents: contribution.fixed_cents,
-          capCents: contribution.cap_cents
-        })
-      );
-    }, 0);
-    const familyPayableTotalCents = Math.max(0, totalCents - partnerContributionCents);
-    const nextExternalAidCents = requestKind === 'VACAF' ? amountCents : orderRowForResolution.external_aid_cents ?? 0;
-    const nextExternalPaidCents = requestKind === 'ANCV_CONNECT' ? amountCents : orderRowForResolution.external_paid_cents ?? 0;
-    const nextStatus = resolveStatusAfterRequestResolution({
-      totalCents: familyPayableTotalCents,
-      externalAidCents: nextExternalAidCents,
-      externalPaidCents: nextExternalPaidCents,
-      onlinePaidCents
-    });
-    const now = new Date().toISOString();
-    const fullUpdatePayload = {
-      request_kind: requestKind,
-      external_aid_cents: nextExternalAidCents,
-      external_paid_cents: nextExternalPaidCents,
-      request_resolved_at: now,
-      status: nextStatus,
-      paid_at: nextStatus === 'PAID' ? now : null,
-      partially_paid_at: nextStatus === 'PARTIALLY_PAID' ? now : null
-    };
-
-    let updateError = (
-      await supabase.from('orders').update(fullUpdatePayload).eq('id', orderId)
-    ).error;
-
-    // Bases sans colonnes optionnelles (request_resolved_at / partially_paid_at).
-    if (updateError && isMissingAnyColumnError(updateError, ['request_resolved_at', 'partially_paid_at'])) {
-      const withoutResolvedAt = { ...fullUpdatePayload } as Record<string, string | number | null>;
-      delete withoutResolvedAt.request_resolved_at;
-      updateError = (await supabase.from('orders').update(withoutResolvedAt).eq('id', orderId)).error;
-
-      if (updateError && isMissingAnyColumnError(updateError, ['partially_paid_at'])) {
-        const minimalPayload = {
-          request_kind: requestKind,
-          external_aid_cents: nextExternalAidCents,
-          external_paid_cents: nextExternalPaidCents,
-          status: nextStatus,
-          paid_at: nextStatus === 'PAID' ? now : null
-        };
-        updateError = (await supabase.from('orders').update(minimalPayload).eq('id', orderId)).error;
-      }
-    }
-
-    if (updateError) {
-      redirect(
-        withOrganizerQuery(
-          `/organisme/reservations?error=${encodeURIComponent(updateError.message)}`,
-          organizerId
-        )
-      );
-    }
-
-    if (nextStatus === 'PAID') {
-      try {
-        const { ensureClientTravelInvoiceForOrder } = await import('@/lib/client-travel-invoice.server');
-        await ensureClientTravelInvoiceForOrder(orderId);
-      } catch (invoiceError) {
-        console.error('organisme/reservations: génération facture client échouée', invoiceError);
-      }
-    }
-
-    revalidatePath(withOrganizerQuery('/organisme/reservations', organizerId));
-    redirect(withOrganizerQuery('/organisme/reservations', organizerId));
-  }
 
   const { data: staysRaw } = await supabase
     .from('stays')
@@ -451,6 +308,8 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
 
   const ordersSelectFull =
     'id,status,created_at,cancellation_reason,client_user_id,collectivity_id,request_kind,vacaf_number_snapshot,ancv_connect_matricule,ancv_connect_requested_amount_cents,external_aid_cents,external_paid_cents';
+  const ordersSelectWithoutVacafSnapshots =
+    'id,status,created_at,cancellation_reason,client_user_id,collectivity_id,request_kind,external_aid_cents,external_paid_cents';
 
   let orders: Array<{
     id: string;
@@ -479,34 +338,61 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
     if (
       ordersResult.error &&
       isMissingAnyColumnError(ordersResult.error, [
-        'request_kind',
         'vacaf_number_snapshot',
         'ancv_connect_matricule',
-        'ancv_connect_requested_amount_cents',
-        'external_aid_cents',
-        'external_paid_cents',
-        'cancellation_reason'
+        'ancv_connect_requested_amount_cents'
       ])
     ) {
-      const legacy = await supabase
+      // Colonnes snapshot CAF/ANCV absentes : on garde quand même external_aid_cents.
+      const withoutSnapshots = await supabase
         .from('orders')
-        .select('id,status,created_at,client_user_id,collectivity_id')
+        .select(ordersSelectWithoutVacafSnapshots)
         .in('id', orderIds)
         .neq('status', 'CART')
         .order('created_at', { ascending: false });
-      if (legacy.error) {
-        ordersLoadError = legacy.error.message;
-        console.error('organisme/reservations: orders legacy', legacy.error);
+
+      if (
+        withoutSnapshots.error &&
+        isMissingAnyColumnError(withoutSnapshots.error, [
+          'request_kind',
+          'external_aid_cents',
+          'external_paid_cents',
+          'cancellation_reason'
+        ])
+      ) {
+        const legacy = await supabase
+          .from('orders')
+          .select('id,status,created_at,client_user_id,collectivity_id')
+          .in('id', orderIds)
+          .neq('status', 'CART')
+          .order('created_at', { ascending: false });
+        if (legacy.error) {
+          ordersLoadError = legacy.error.message;
+          console.error('organisme/reservations: orders legacy', legacy.error);
+        } else {
+          orders = (legacy.data ?? []).map((order) => ({
+            ...order,
+            cancellation_reason: null,
+            request_kind: null,
+            vacaf_number_snapshot: null,
+            ancv_connect_matricule: null,
+            ancv_connect_requested_amount_cents: null,
+            external_aid_cents: 0,
+            external_paid_cents: 0
+          }));
+        }
+      } else if (withoutSnapshots.error) {
+        ordersLoadError = withoutSnapshots.error.message;
+        console.error('organisme/reservations: orders without snapshots', withoutSnapshots.error);
       } else {
-        orders = (legacy.data ?? []).map((order) => ({
+        orders = (withoutSnapshots.data ?? []).map((order) => ({
           ...order,
-          cancellation_reason: null,
-          request_kind: null,
+          cancellation_reason: (order as { cancellation_reason?: string | null }).cancellation_reason ?? null,
           vacaf_number_snapshot: null,
           ancv_connect_matricule: null,
           ancv_connect_requested_amount_cents: null,
-          external_aid_cents: 0,
-          external_paid_cents: 0
+          external_aid_cents: order.external_aid_cents ?? 0,
+          external_paid_cents: order.external_paid_cents ?? 0
         }));
       }
     } else if (ordersResult.error) {
@@ -578,9 +464,17 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
         .select(
           [
             'user_id',
+            'parent1_first_name',
+            'parent1_last_name',
             'parent1_email',
             'parent1_phone',
+            'parent1_status',
+            'parent1_status_other',
+            'parent2_name',
+            'parent2_email',
             'parent2_phone',
+            'parent2_status',
+            'parent2_status_other',
             'payment_mode',
             'vacaf_number',
             'address_line1',
@@ -631,6 +525,36 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
     (collectivitiesRaw ?? []).map((collectivity) => [collectivity.id, collectivity.name])
   );
 
+  // Corrige les commandes CAF/ANCV encore sans montant mais passées trop tôt en « en attente de paiement ».
+  const ordersNeedingStatusHeal = orders.filter((order) => {
+    if (order.status !== 'PENDING_PAYMENT') return false;
+    const payment = paymentsByOrderId.get(order.id);
+    const paymentMode = parsePaymentModeFromPayload(payment?.raw_payload);
+    const hasVacaf = order.request_kind === 'VACAF' || Boolean(String(order.vacaf_number_snapshot ?? '').trim());
+    const hasAncv =
+      order.request_kind === 'ANCV_CONNECT' ||
+      Boolean(String(order.ancv_connect_matricule ?? '').trim()) ||
+      paymentMode === 'CV_PAPER' ||
+      parseAncvPaperRequestedFromPayload(payment?.raw_payload, selectedOrganizerId);
+    return isAwaitingAidResolution({
+      status: order.status,
+      requestKind: order.request_kind,
+      hasVacafNumber: hasVacaf,
+      hasAncvConnect: hasAncv,
+      externalAidCents: order.external_aid_cents,
+      externalPaidCents: order.external_paid_cents
+    });
+  });
+  if (ordersNeedingStatusHeal.length > 0) {
+    const healIds = ordersNeedingStatusHeal.map((order) => order.id);
+    await supabase.from('orders').update({ status: 'REQUESTED' }).in('id', healIds);
+    for (const order of orders) {
+      if (healIds.includes(order.id)) {
+        order.status = 'REQUESTED';
+      }
+    }
+  }
+
   const reservations = orders
     .filter((order) => {
       const payment = paymentsByOrderId.get(order.id);
@@ -651,9 +575,27 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
     const profile = order.client_user_id ? profilesByUserId.get(order.client_user_id) : null;
     const payment = paymentsByOrderId.get(order.id);
     const totalCents = items.reduce((sum, item) => sum + (item.total_price_cents ?? 0), 0);
-    const participantNames = items
-      .map((item) => [item.child_first_name, item.child_last_name].filter(Boolean).join(' ').trim())
+    const children = items.map((item) => ({
+      firstName: String(item.child_first_name ?? '').trim(),
+      lastName: String(item.child_last_name ?? '').trim()
+    }));
+    const participantNames = children
+      .map((child) => [child.firstName, child.lastName].filter(Boolean).join(' ').trim())
       .filter(Boolean);
+    const parent1FirstName = String(profile?.parent1_first_name ?? '').trim();
+    const parent1LastName = String(profile?.parent1_last_name ?? '').trim();
+    const parent1FromClient = splitPersonName(
+      order.client_user_id ? clientsByUserId.get(order.client_user_id) : null
+    );
+    const parent2Identity = splitPersonName(profile?.parent2_name);
+    const parent2Role = formatParentRole(profile?.parent2_status, profile?.parent2_status_other);
+    const hasParent2 = Boolean(
+      parent2Identity.firstName ||
+        parent2Identity.lastName ||
+        String(profile?.parent2_phone ?? '').trim() ||
+        String(profile?.parent2_email ?? '').trim() ||
+        parent2Role
+    );
     const paymentMode = parsePaymentModeFromPayload(payment?.raw_payload);
     const cafNumberFromOrder = firstNonEmpty(
       order.vacaf_number_snapshot,
@@ -678,6 +620,10 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
       order.request_kind === 'ANCV_CONNECT' ||
       paymentMode === 'CV_CONNECT' ||
       Boolean(ancvConnectMatricule);
+    const isAncvPaper =
+      paymentMode === 'CV_PAPER' ||
+      parseAncvPaperRequestedFromPayload(payment?.raw_payload, selectedOrganizerId);
+    const isAncvRequest = isAncvConnect || isAncvPaper;
     const isVacafRequest = order.request_kind === 'VACAF' || Boolean(cafNumberFromOrder);
     const reservationCode = formatOrderReservationCode(order.id);
     const canEnterVacafCoverage =
@@ -686,7 +632,7 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
       order.status !== 'FAILED' &&
       order.status !== 'PAID';
     const canEnterAncvCoverage =
-      isAncvConnect &&
+      isAncvRequest &&
       order.status !== 'CANCELLED' &&
       order.status !== 'FAILED' &&
       order.status !== 'PAID';
@@ -698,12 +644,63 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
       typeof order.external_paid_cents === 'number' && order.external_paid_cents > 0
         ? formatEuroFromCents(order.external_paid_cents, payment?.currency ?? 'EUR')
         : null;
+    const onlinePaidCents = onlinePaidCentsByOrderId.get(order.id) ?? 0;
+    const remainingBalanceCents = computeRemainingBalanceCents({
+      totalCents,
+      externalAidCents: order.external_aid_cents,
+      externalPaidCents: order.external_paid_cents,
+      onlinePaidCents
+    });
+    const remainingBalanceLabel =
+      remainingBalanceCents > 0
+        ? formatEuroFromCents(remainingBalanceCents, payment?.currency ?? 'EUR')
+        : null;
+    const needsVacafCoverageEntry = canEnterVacafCoverage && !externalAidLabel;
+    const needsAncvCoverageEntry = canEnterAncvCoverage && !externalPaidLabel;
     const ancvConnectRequestedAmountLabel =
       typeof order.ancv_connect_requested_amount_cents === 'number'
         ? formatEuroFromCents(order.ancv_connect_requested_amount_cents, payment?.currency ?? 'EUR')
         : firstNonEmpty(parseContactStringFromPayload(payment?.raw_payload, 'ancvConnectAmount'))
           ? `${firstNonEmpty(parseContactStringFromPayload(payment?.raw_payload, 'ancvConnectAmount'))} €`
           : null;
+    const displayStatus =
+      resolveEffectiveOrderStatus({
+        status: order.status,
+        requestKind: order.request_kind,
+        hasVacafNumber: isVacafRequest,
+        hasAncvConnect: isAncvRequest,
+        externalAidCents: order.external_aid_cents,
+        externalPaidCents: order.external_paid_cents
+      }) ?? order.status;
+
+    const ancvCoverageRequestKind = isAncvConnect ? ('ANCV_CONNECT' as const) : ('ANCV_PAPER' as const);
+    const ancvCoverageTitle =
+      isAncvConnect && isAncvPaper
+        ? 'Montant ANCV reçu'
+        : isAncvPaper
+          ? 'Montant ANCV papier reçu'
+          : 'Montant ANCV Connect reçu';
+    const ancvCoverageReference = isAncvConnect
+      ? ancvConnectMatricule
+        ? `Matricule : ${ancvConnectMatricule}${
+            ancvConnectRequestedAmountLabel ? ` · demandé ${ancvConnectRequestedAmountLabel}` : ''
+          }${isAncvPaper ? ' · ANCV papier également demandé' : ''}`
+        : isAncvPaper
+          ? 'Saisissez le montant ANCV Connect / papier effectivement reçu.'
+          : 'Saisissez le montant ANCV Connect effectivement reçu.'
+      : 'Saisissez le montant ANCV papier effectivement reçu.';
+    const ancvCoveragePlaceholder =
+      isAncvConnect && isAncvPaper
+        ? 'Montant ANCV reçu (€)'
+        : isAncvPaper
+          ? 'Montant ANCV papier reçu (€)'
+          : 'Montant ANCV Connect reçu (€)';
+    const ancvCoverageSubmit =
+      isAncvConnect && isAncvPaper
+        ? 'Enregistrer le montant ANCV'
+        : isAncvPaper
+          ? 'Enregistrer le montant ANCV papier'
+          : 'Enregistrer le montant ANCV Connect';
 
       return {
         id: order.id,
@@ -720,24 +717,31 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
         collectivityName: order.collectivity_id
           ? collectivitiesById.get(order.collectivity_id) ?? 'Collectivité inconnue'
           : 'Famille directe',
-        status: order.status,
+        status: displayStatus,
         cancellationReason: order.cancellation_reason,
         requestKind: order.request_kind,
         isVacafRequest,
         isAncvConnect,
+        isAncvPaper,
         cafNumber: cafNumberLabel,
         requestReference: isVacafRequest
           ? cafNumberLabel
           : isAncvConnect
             ? ancvConnectMatricule
-            : null,
+            : isAncvPaper
+              ? 'ANCV papier'
+              : null,
         requestedAmountLabel: isAncvConnect ? ancvConnectRequestedAmountLabel : null,
         externalAidLabel,
         externalPaidLabel,
         canEnterVacafCoverage,
         canEnterAncvCoverage,
+        needsVacafCoverageEntry,
+        needsAncvCoverageEntry,
         totalCents,
-        onlinePaidCents: onlinePaidCentsByOrderId.get(order.id) ?? 0,
+        onlinePaidCents,
+        remainingBalanceCents,
+        remainingBalanceLabel,
         details: {
           id: order.id,
           reservationCode,
@@ -746,6 +750,14 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
             participantNames[0] ??
             'Client inconnu',
           participantName: participantNames[0] ?? 'Participant inconnu',
+          parent1FirstName: parent1FirstName || parent1FromClient.firstName,
+          parent1LastName: parent1LastName || parent1FromClient.lastName,
+          parent1Role: formatParentRole(profile?.parent1_status, profile?.parent1_status_other),
+          parent2FirstName: parent2Identity.firstName,
+          parent2LastName: parent2Identity.lastName,
+          parent2Role,
+          hasParent2,
+          children,
           paymentModeLabel: PAYMENT_MODE_LABELS[paymentMode] ?? 'Non renseigné',
           cafNumber: cafNumberLabel,
           ancvConnectMatricule: isAncvConnect ? ancvConnectMatricule : null,
@@ -777,33 +789,37 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
                 profile?.city,
                 profile?.country
               ]),
-          coverageForm: canEnterVacafCoverage
-            ? {
-                organizerId: selectedOrganizerId,
-                orderId: order.id,
-                requestKind: 'VACAF' as const,
-                referenceLabel: cafNumberLabel
-                  ? `N° allocataire : ${cafNumberLabel}`
-                  : 'Saisissez le montant CAF réellement appliqué.',
-                amountPlaceholder: 'Montant de prise en charge CAF (€)',
-                submitLabel: 'Enregistrer la prise en charge CAF',
-                currentAmountLabel: externalAidLabel
-              }
-            : canEnterAncvCoverage
-              ? {
-                  organizerId: selectedOrganizerId,
-                  orderId: order.id,
-                  requestKind: 'ANCV_CONNECT' as const,
-                  referenceLabel: ancvConnectMatricule
-                    ? `Matricule : ${ancvConnectMatricule}${
-                        ancvConnectRequestedAmountLabel ? ` · demandé ${ancvConnectRequestedAmountLabel}` : ''
-                      }`
-                    : 'Saisissez le montant ANCV Connect effectivement reçu.',
-                  amountPlaceholder: 'Montant ANCV reçu (€)',
-                  submitLabel: 'Enregistrer le montant ANCV',
-                  currentAmountLabel: externalPaidLabel
-                }
-              : null
+          coverageForms: [
+            ...(canEnterVacafCoverage
+              ? [
+                  {
+                    organizerId: selectedOrganizerId,
+                    orderId: order.id,
+                    requestKind: 'VACAF' as const,
+                    referenceLabel: cafNumberLabel
+                      ? `N° allocataire : ${cafNumberLabel}`
+                      : 'Saisissez le montant CAF réellement appliqué.',
+                    amountPlaceholder: 'Montant de prise en charge CAF (€)',
+                    submitLabel: 'Enregistrer la prise en charge CAF',
+                    currentAmountLabel: externalAidLabel
+                  }
+                ]
+              : []),
+            ...(canEnterAncvCoverage
+              ? [
+                  {
+                    organizerId: selectedOrganizerId,
+                    orderId: order.id,
+                    requestKind: ancvCoverageRequestKind,
+                    title: ancvCoverageTitle,
+                    referenceLabel: ancvCoverageReference,
+                    amountPlaceholder: ancvCoveragePlaceholder,
+                    submitLabel: ancvCoverageSubmit,
+                    currentAmountLabel: externalPaidLabel
+                  }
+                ]
+              : [])
+          ]
         }
       };
     });
@@ -824,152 +840,167 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
           Demande d&apos;annulation / remboursement enregistrée.
         </div>
       ) : null}
-      <div className="organizer-table-shell">
-        <div className="overflow-x-auto">
-          <table className="organizer-table min-w-[1200px] w-full table-fixed">
-            <thead>
-              <tr>
-                <th className="px-4 py-3">Réf.</th>
-                <th className="px-4 py-3">Client</th>
-                <th className="px-4 py-3">Séjour</th>
-                <th className="px-4 py-3">Session</th>
-                <th className="px-4 py-3">Enfant</th>
-                <th className="px-4 py-3">Statut</th>
-                <th className="px-4 py-3">Traitement organisme</th>
-                <th className="px-4 py-3">Collectivité</th>
-                <th className="px-4 py-3 text-right">Montant</th>
-                <th className="w-[140px] px-4 py-3 text-right">Détails</th>
-              </tr>
-            </thead>
-            <tbody>
-              {reservations.map((reservation) => (
-                <tr key={reservation.id} className="border-t border-slate-100 align-top">
-                  <td className="px-4 py-3">
+      {String(resolvedSearchParams?.coverageSaved ?? '') === '1' ? (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          Prise en charge enregistrée.
+        </div>
+      ) : null}
+      <div className="organizer-table-shell overflow-hidden">
+        <table className="organizer-table w-full">
+          <thead>
+            <tr>
+              <th className="!px-4 !py-3 w-[18%]">Réservation</th>
+              <th className="!px-4 !py-3 w-[18%]">Famille</th>
+              <th className="!px-4 !py-3 w-[28%]">Séjour</th>
+              <th className="!px-4 !py-3 w-[14%]">Statut</th>
+              <th className="!px-4 !py-3 w-[12%]">Traitement</th>
+              <th className="!px-4 !py-3 w-[10%] text-center">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {reservations.map((reservation) => {
+              const traitementLines = (() => {
+                const lines: string[] = [];
+                if (reservation.externalAidLabel) {
+                  lines.push(`CAF : ${reservation.externalAidLabel}`);
+                } else if (reservation.isVacafRequest) {
+                  lines.push(
+                    reservation.cafNumber
+                      ? `N° ${reservation.cafNumber}`
+                      : reservation.requestReference
+                        ? `N° ${reservation.requestReference}`
+                        : 'Demande CAF'
+                  );
+                }
+                if (reservation.externalPaidLabel) {
+                  lines.push(`ANCV : ${reservation.externalPaidLabel}`);
+                } else if (reservation.isAncvConnect || reservation.isAncvPaper) {
+                  if (reservation.isAncvConnect) {
+                    lines.push(
+                      reservation.details.ancvConnectMatricule
+                        ? `ANCV ${reservation.details.ancvConnectMatricule}`
+                        : 'ANCV Connect'
+                    );
+                  }
+                  if (reservation.isAncvPaper) {
+                    lines.push('ANCV papier');
+                  }
+                }
+                return lines;
+              })();
+              const statusLabel = orderStatusLabel(reservation.status, {
+                cancellationReason: reservation.cancellationReason
+              });
+              const infoBadge =
+                reservation.needsVacafCoverageEntry && reservation.needsAncvCoverageEntry
+                  ? ('CAF_ANCV' as const)
+                  : reservation.needsVacafCoverageEntry
+                    ? ('CAF' as const)
+                    : reservation.needsAncvCoverageEntry
+                      ? ('ANCV' as const)
+                      : null;
+
+              return (
+                <tr key={reservation.id} className="border-t border-slate-100 align-middle">
+                  <td className="!px-4 !py-2.5">
                     <div className="font-mono text-sm font-semibold tracking-wide text-slate-900">
                       {reservation.reservationCode.replace(/^#/, '')}
                     </div>
+                    <div className="mt-0.5 text-sm font-semibold tabular-nums text-slate-800">
+                      {reservation.amountLabel}
+                    </div>
+                    <div className="text-xs text-slate-500">{reservation.collectivityName}</div>
                   </td>
-                  <td className="px-4 py-3">
-                    <div className="text-slate-900">{reservation.clientName}</div>
-                  </td>
-                  <td className="px-4 py-3 font-medium text-slate-900">{reservation.stayTitle}</td>
-                  <td className="px-4 py-3 text-slate-600">{reservation.sessionLabel}</td>
-                  <td className="px-4 py-3">
-                    <div className="text-slate-900">{reservation.participantName}</div>
-                    <div className="mt-1 text-xs text-slate-500">
-                      {reservation.participantCount > 0
-                        ? participantSummary(reservation.participantCount)
-                        : 'Participant inconnu'}
+                  <td className="!px-4 !py-2.5">
+                    <div className="text-sm font-medium text-slate-900">{reservation.clientName}</div>
+                    <div className="text-sm text-slate-600">
+                      {reservation.participantName}
+                      {reservation.participantCount > 1 ? (
+                        <span className="text-slate-400"> · {reservation.participantCount}</span>
+                      ) : null}
                     </div>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="!px-4 !py-2.5">
+                    <div className="text-sm font-medium leading-snug text-slate-900">
+                      {reservation.stayTitle}
+                    </div>
+                    <div className="text-xs text-slate-500">{reservation.sessionLabel}</div>
+                  </td>
+                  <td className="!px-4 !py-2.5">
                     <span
                       className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${orderStatusBadgeClassName(
                         reservation.status,
                         { cancellationReason: reservation.cancellationReason }
                       )}`}
                     >
-                      {orderStatusLabel(reservation.status, {
-                        cancellationReason: reservation.cancellationReason
-                      })}
+                      {statusLabel}
                     </span>
                   </td>
-                  <td className="px-4 py-3">
-                    {reservation.canEnterVacafCoverage ? (
-                      <form action={resolveRequest} className="space-y-2">
-                        <input type="hidden" name="organizer_id" value={selectedOrganizerId} />
-                        <input type="hidden" name="order_id" value={reservation.id} />
-                        <input type="hidden" name="request_kind" value="VACAF" />
-                        {reservation.requestReference ? (
-                          <div className="text-xs text-slate-500">
-                            N° allocataire : {reservation.requestReference}
-                          </div>
-                        ) : null}
-                        <input
-                          name="resolved_amount_euros"
-                          type="text"
-                          inputMode="decimal"
-                          placeholder="Montant CAF (€)"
-                          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                        />
-                        <button className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white">
-                          Enregistrer le montant CAF
-                        </button>
-                      </form>
-                    ) : reservation.canEnterAncvCoverage ? (
-                      <form action={resolveRequest} className="space-y-2">
-                        <input type="hidden" name="organizer_id" value={selectedOrganizerId} />
-                        <input type="hidden" name="order_id" value={reservation.id} />
-                        <input type="hidden" name="request_kind" value="ANCV_CONNECT" />
-                        <div className="text-xs text-slate-500">
-                          {reservation.requestReference
-                            ? `Matricule : ${reservation.requestReference}`
-                            : 'ANCV Connect'}
-                          {reservation.requestedAmountLabel ? ` · demandé ${reservation.requestedAmountLabel}` : ''}
-                        </div>
-                        <input
-                          name="resolved_amount_euros"
-                          type="text"
-                          inputMode="decimal"
-                          placeholder="Montant reçu (€)"
-                          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                        />
-                        <button className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white">
-                          Enregistrer le montant ANCV
-                        </button>
-                      </form>
-                    ) : reservation.externalAidLabel || reservation.externalPaidLabel ? (
-                      <div className="space-y-1 text-xs text-slate-600">
-                        {reservation.externalAidLabel ? <div>CAF déduite : {reservation.externalAidLabel}</div> : null}
-                        {reservation.externalPaidLabel ? <div>ANCV reçu : {reservation.externalPaidLabel}</div> : null}
+                  <td className="!px-4 !py-2.5 text-sm text-slate-600">
+                    {traitementLines.length > 0 ? (
+                      <div className="space-y-0.5">
+                        {traitementLines.map((line) => (
+                          <div key={line}>{line}</div>
+                        ))}
                       </div>
                     ) : (
-                      <span className="text-xs text-slate-400">—</span>
+                      <span className="text-slate-400">—</span>
                     )}
-                  </td>
-                  <td className="px-4 py-3 text-slate-600">{reservation.collectivityName}</td>
-                  <td className="px-4 py-3 text-right font-medium text-slate-900">{reservation.amountLabel}</td>
-                  <td className="w-[140px] px-4 py-3 text-right">
-                    <OrganizerReservationDetailsModal
-                      reservation={reservation.details}
-                      resolveAction={resolveRequest}
-                    />
                     {reservation.status !== 'CANCELLED' && reservation.status !== 'FAILED' ? (
-                      <OrganizerCancellationForm
-                        organizerId={selectedOrganizerId}
-                        orderId={reservation.id}
-                        onlinePaidCents={reservation.onlinePaidCents}
+                      reservation.remainingBalanceLabel ? (
+                        <div className="mt-0.5 text-xs font-medium text-amber-700">
+                          Restant dû : {reservation.remainingBalanceLabel}
+                        </div>
+                      ) : (
+                        <div className="mt-0.5 text-xs text-slate-500">Soldé</div>
+                      )
+                    ) : null}
+                  </td>
+                  <td className="!px-4 !py-2.5 text-center">
+                    <div className="inline-flex flex-col items-center gap-0.5">
+                      <OrganizerReservationDetailsModal
+                        reservation={reservation.details}
+                        resolveAction={resolveOrganizerCoverageRequestAction}
+                        infoBadge={infoBadge}
                       />
-                    ) : null}
+                      {reservation.status !== 'CANCELLED' && reservation.status !== 'FAILED' ? (
+                        <OrganizerCancellationForm
+                          organizerId={selectedOrganizerId}
+                          orderId={reservation.id}
+                          onlinePaidCents={reservation.onlinePaidCents}
+                          compact
+                        />
+                      ) : null}
+                    </div>
                   </td>
                 </tr>
-              ))}
-              {reservations.length === 0 && (
-                <tr>
-                  <td className="px-4 py-8 text-slate-500" colSpan={10}>
-                    {ordersLoadError ? (
-                      <p className="text-red-700">
-                        Impossible de charger les réservations : {ordersLoadError}
-                      </p>
-                    ) : (
-                      <p>Aucune réservation liée à cet organisme pour le moment.</p>
-                    )}
-                    {canAccessStays ? (
-                      <p className="mt-2 text-sm">
-                        <Link
-                          href={withOrganizerQuery('/organisme/sejours', selectedOrganizerId)}
-                          className="font-semibold text-emerald-700 underline"
-                        >
-                          Vérifier les séjours publiés
-                        </Link>
-                      </p>
-                    ) : null}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+              );
+            })}
+            {reservations.length === 0 && (
+              <tr>
+                <td className="!px-4 py-8 text-slate-500" colSpan={6}>
+                  {ordersLoadError ? (
+                    <p className="text-red-700">
+                      Impossible de charger les réservations : {ordersLoadError}
+                    </p>
+                  ) : (
+                    <p>Aucune réservation liée à cet organisme pour le moment.</p>
+                  )}
+                  {canAccessStays ? (
+                    <p className="mt-2 text-sm">
+                      <Link
+                        href={withOrganizerQuery('/organisme/sejours', selectedOrganizerId)}
+                        className="font-semibold text-emerald-700 underline"
+                      >
+                        Vérifier les séjours publiés
+                      </Link>
+                    </p>
+                  ) : null}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
     </div>
   );

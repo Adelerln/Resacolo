@@ -58,40 +58,51 @@ async function notifyFamilyCancellation(input: {
   approved?: boolean;
 }) {
   if (!input.email || !input.email.includes('@')) return;
-  const subject =
-    input.kind === 'CANCEL_ONLY'
-      ? '[Resacolo] Votre réservation a été annulée'
-      : input.approved
-        ? '[Resacolo] Demande de remboursement acceptée'
-        : '[Resacolo] Demande de remboursement refusée';
 
-  const text =
-    input.kind === 'CANCEL_ONLY'
+  const isCancelOnly = input.kind === 'CANCEL_ONLY';
+  const subject = isCancelOnly
+    ? input.approved === false
+      ? '[Resacolo] Demande d’annulation refusée'
+      : '[Resacolo] Votre réservation a été annulée'
+    : input.approved
+      ? '[Resacolo] Demande de remboursement acceptée'
+      : '[Resacolo] Demande de remboursement refusée';
+
+  const text = isCancelOnly
+    ? input.approved === false
       ? [
           'Bonjour,',
           '',
-          `Votre réservation ${input.orderId} a été annulée par l’organisateur.`,
+          `La demande d’annulation pour la réservation ${input.orderId} n’a pas été acceptée.`,
+          `Contactez-nous si besoin : ${SITE_URL}/contact`,
+          '',
+          '— L’équipe Resacolo'
+        ].join('\n')
+      : [
+          'Bonjour,',
+          '',
+          `Votre réservation ${input.orderId} a été annulée.`,
           `Vous pouvez consulter votre espace : ${SITE_URL}/mon-compte`,
           '',
           '— L’équipe Resacolo'
         ].join('\n')
-      : input.approved
-        ? [
-            'Bonjour,',
-            '',
-            `Votre demande de remboursement pour la réservation ${input.orderId} a été acceptée.`,
-            'Le remboursement sera traité sous peu.',
-            '',
-            '— L’équipe Resacolo'
-          ].join('\n')
-        : [
-            'Bonjour,',
-            '',
-            `Votre demande de remboursement pour la réservation ${input.orderId} n’a pas été acceptée.`,
-            `Contactez-nous si besoin : ${SITE_URL}/contact`,
-            '',
-            '— L’équipe Resacolo'
-          ].join('\n');
+    : input.approved
+      ? [
+          'Bonjour,',
+          '',
+          `Votre demande de remboursement pour la réservation ${input.orderId} a été acceptée.`,
+          'Le remboursement sera traité sous peu.',
+          '',
+          '— L’équipe Resacolo'
+        ].join('\n')
+      : [
+          'Bonjour,',
+          '',
+          `Votre demande de remboursement pour la réservation ${input.orderId} n’a pas été acceptée.`,
+          `Contactez-nous si besoin : ${SITE_URL}/contact`,
+          '',
+          '— L’équipe Resacolo'
+        ].join('\n');
 
   try {
     await sendSmtpEmail({ to: input.email, subject, text });
@@ -142,65 +153,15 @@ export async function createOrganizerCancellationRequest(input: {
 
   const onlinePaidCents = await getOrderOnlinePaidCents(input.supabase, input.orderId);
   const kind: CancellationKind = onlinePaidCents > 0 ? 'REFUND' : 'CANCEL_ONLY';
-  const now = new Date().toISOString();
-
-  if (kind === 'CANCEL_ONLY') {
-    const { data: request, error: insertError } = await input.supabase
-      .from('order_cancellation_requests')
-      .insert({
-        order_id: input.orderId,
-        organizer_id: input.organizerId,
-        kind,
-        status: 'CANCELLED_DIRECT',
-        reason,
-        attachment_path: input.attachmentPath ?? null,
-        amount_cents: null,
-        created_by_user_id: input.userId,
-        reviewed_at: now,
-        review_note: 'Annulation immédiate (aucun paiement CB encaissé).'
-      })
-      .select('id')
-      .single();
-
-    if (insertError || !request) {
-      throw new Error(insertError?.message ?? 'Impossible de créer la demande.');
-    }
-
-    const { error: cancelError } = await input.supabase
-      .from('orders')
-      .update({
-        status: 'CANCELLED',
-        cancelled_at: now,
-        cancellation_reason: reason.slice(0, 500),
-        updated_at: now
-      })
-      .eq('id', input.orderId);
-
-    if (cancelError) {
-      throw new Error(cancelError.message);
-    }
-
-    const { data: profile } = await input.supabase
-      .from('client_profiles')
-      .select('parent1_email')
-      .eq('user_id', order.client_user_id)
-      .maybeSingle();
-
-    await notifyFamilyCancellation({
-      email: profile?.parent1_email ?? null,
-      orderId: input.orderId,
-      kind: 'CANCEL_ONLY'
-    });
-
-    return { requestId: request.id, kind, status: 'CANCELLED_DIRECT' as const };
-  }
 
   const amountCents =
-    input.amountCents != null && Number.isFinite(input.amountCents)
-      ? Math.max(0, Math.round(input.amountCents))
-      : onlinePaidCents;
+    kind === 'REFUND'
+      ? input.amountCents != null && Number.isFinite(input.amountCents)
+        ? Math.max(0, Math.round(input.amountCents))
+        : onlinePaidCents
+      : null;
 
-  if (amountCents <= 0 || amountCents > onlinePaidCents) {
+  if (kind === 'REFUND' && (amountCents == null || amountCents <= 0 || amountCents > onlinePaidCents)) {
     throw new Error('Montant de remboursement invalide.');
   }
 
@@ -209,7 +170,7 @@ export async function createOrganizerCancellationRequest(input: {
     .insert({
       order_id: input.orderId,
       organizer_id: input.organizerId,
-      kind: 'REFUND',
+      kind,
       status: 'PENDING_MNEMOS',
       reason,
       attachment_path: input.attachmentPath ?? null,
@@ -220,27 +181,32 @@ export async function createOrganizerCancellationRequest(input: {
     .single();
 
   if (insertError || !request) {
-    throw new Error(insertError?.message ?? 'Impossible de créer la demande de remboursement.');
+    throw new Error(insertError?.message ?? 'Impossible de créer la demande.');
   }
 
   try {
+    const subjectKind = kind === 'REFUND' ? 'remboursement' : 'annulation';
     await sendSmtpEmail({
       to: 'jeanne@thalie.org',
-      subject: `[Resacolo] Demande de remboursement à valider — ${input.orderId}`,
+      subject: `[Resacolo] Demande d’${subjectKind} à valider — ${input.orderId}`,
       text: [
-        'Nouvelle demande de remboursement organisateur.',
+        `Nouvelle demande d’${subjectKind} organisateur (contrôle Mnemos).`,
         `Demande : ${request.id}`,
         `Commande : ${input.orderId}`,
-        `Montant : ${(amountCents / 100).toFixed(2)} €`,
+        kind === 'REFUND' && amountCents != null
+          ? `Montant : ${(amountCents / 100).toFixed(2)} €`
+          : 'Aucun paiement CB encaissé.',
         `Motif : ${reason}`,
         `${SITE_URL}/mnemos/cancellations/${request.id}`
-      ].join('\n')
+      ]
+        .filter(Boolean)
+        .join('\n')
     });
   } catch (error) {
     console.error('[order-cancellation] mnemos alert mail failed', error);
   }
 
-  return { requestId: request.id, kind: 'REFUND' as const, status: 'PENDING_MNEMOS' as const };
+  return { requestId: request.id, kind, status: 'PENDING_MNEMOS' as const };
 }
 
 export async function reviewCancellationRequest(input: {
@@ -296,12 +262,17 @@ export async function reviewCancellationRequest(input: {
     await notifyFamilyCancellation({
       email: profile?.parent1_email ?? null,
       orderId: request.order_id,
-      kind: 'REFUND',
+      kind: request.kind === 'CANCEL_ONLY' ? 'CANCEL_ONLY' : 'REFUND',
       approved: false
     });
 
     return { status: 'REJECTED' as const };
   }
+
+  const defaultReviewNote =
+    request.kind === 'CANCEL_ONLY'
+      ? 'Annulation validée par Mnemos.'
+      : 'Remboursement validé (traitement opérationnel manuel).';
 
   const { error: updateError } = await input.supabase
     .from('order_cancellation_requests')
@@ -309,19 +280,22 @@ export async function reviewCancellationRequest(input: {
       status: 'APPROVED',
       reviewed_by_user_id: input.reviewerUserId,
       reviewed_at: now,
-      review_note: reviewNote ?? 'Remboursement validé (traitement opérationnel manuel).',
+      review_note: reviewNote ?? defaultReviewNote,
       updated_at: now
     })
     .eq('id', input.requestId);
 
   if (updateError) throw new Error(updateError.message);
 
+  const cancellationReasonPrefix =
+    request.kind === 'CANCEL_ONLY' ? 'ANNULATION_VALIDEE' : 'REMBOURSEMENT_VALIDE';
+
   const { error: cancelError } = await input.supabase
     .from('orders')
     .update({
       status: 'CANCELLED',
       cancelled_at: now,
-      cancellation_reason: `REMBOURSEMENT_VALIDE: ${request.reason}`.slice(0, 500),
+      cancellation_reason: `${cancellationReasonPrefix}: ${request.reason}`.slice(0, 500),
       updated_at: now
     })
     .eq('id', request.order_id);
@@ -344,7 +318,7 @@ export async function reviewCancellationRequest(input: {
   await notifyFamilyCancellation({
     email: profile?.parent1_email ?? null,
     orderId: request.order_id,
-    kind: 'REFUND',
+    kind: request.kind === 'CANCEL_ONLY' ? 'CANCEL_ONLY' : 'REFUND',
     approved: true
   });
 

@@ -179,7 +179,11 @@ export default function FamilyReservationDetailsModal({ reservation }: { reserva
                     <DetailRow label="Remise partenaire" value={reservation.partnerDiscountLine} accent />
                   ) : null}
                   {reservation.partnerCoverageLine ? (
-                    <DetailRow label="Prise en charge" value={reservation.partnerCoverageLine} accent />
+                    <DetailRow
+                      label={reservation.partnerCoverageLabel}
+                      value={reservation.partnerCoverageLine}
+                      accent
+                    />
                   ) : null}
                   {reservation.transportOutboundLine || reservation.transportReturnLine ? (
                     <>

@@ -3,10 +3,13 @@ import { cookies } from 'next/headers';
 import { CHECKOUT_CLIENT_COOKIE_NAME } from '@/lib/checkout/clientIdentity';
 import { getSession } from '@/lib/auth/session';
 import { ensureClientTravelInvoiceForOrder } from '@/lib/client-travel-invoice.server';
-import { createSignedMnemosInvoicePdfUrl } from '@/lib/mnemos/invoice-pdf.server';
+import { formatClientTravelInvoiceNumber } from '@/lib/mnemos/client-travel-invoice-template.server';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
+const INVOICE_PDF_BUCKET = 'invoice-pdfs';
 
 function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
@@ -80,16 +83,39 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
   }
 
   try {
+    // Régénère systématiquement le PDF au design validé avant envoi.
     const invoice = await ensureClientTravelInvoiceForOrder(orderId);
-    const signedUrl = await createSignedMnemosInvoicePdfUrl(supabase, invoice.pdfPath);
-    if (!signedUrl) {
-      return NextResponse.json({ error: 'Impossible de préparer le téléchargement de la facture.' }, { status: 500 });
+    if (!invoice.pdfPath) {
+      return NextResponse.json({ error: 'PDF facture introuvable.' }, { status: 500 });
     }
-    return NextResponse.redirect(signedUrl, { status: 302 });
+
+    const { data: pdfBlob, error: downloadError } = await supabase.storage
+      .from(INVOICE_PDF_BUCKET)
+      .download(invoice.pdfPath);
+
+    if (downloadError || !pdfBlob) {
+      return NextResponse.json(
+        { error: downloadError?.message || 'Impossible de télécharger la facture.' },
+        { status: 500 }
+      );
+    }
+
+    const bytes = Buffer.from(await pdfBlob.arrayBuffer());
+    const fileName = `facture-${formatClientTravelInvoiceNumber(invoice.invoiceYear, invoice.invoiceNumber)}.pdf`;
+    return new NextResponse(bytes, {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename="${fileName}"`,
+        'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+        Pragma: 'no-cache',
+        Expires: '0',
+        'Content-Length': String(bytes.length)
+      }
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Impossible de générer la facture.';
-    const unpaid =
-      message.includes('après un paiement') || message.includes('pas disponible');
+    const unpaid = message.includes('après un paiement') || message.includes('pas disponible');
     return NextResponse.json({ error: message }, { status: unpaid ? 409 : 500 });
   }
 }

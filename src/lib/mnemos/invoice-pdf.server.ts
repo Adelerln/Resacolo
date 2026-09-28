@@ -507,156 +507,191 @@ function renderClientTravelInvoicePdf(
   logo: PdfImage | null,
   fonts: PdfFonts | null
 ) {
+  // Design validé (exemples-factures) : bandeau bleu #52b0ea, accent orange 4px, totaux bleus.
+  const BLUE = '0.322 0.690 0.918';
+  const BLUE_SOFT = '0.910 0.965 0.988';
+  const ORANGE_ACCENT = '0.980 0.502 0.000';
+  const MUTED = '0.392 0.455 0.545';
+  const INK = '0.114 0.122 0.145';
+
   const page = new PdfPage();
-  const invoiceNumber = `${String(input.invoiceYear).slice(2)}-C01-${String(input.invoiceNumber).padStart(4, '0')}`;
-  const visibleLines = input.lines.length > 18 ? input.lines.slice(0, 17) : input.lines;
-  const overflowLines = input.lines.slice(visibleLines.length);
+  const invoiceNumber = formatClientTravelInvoiceNumber(input.invoiceYear, input.invoiceNumber);
+  const docLabel = input.isProvisional ? 'Facture provisoire' : 'Facture';
+  const paidAtLabel = input.paidAt
+    ? formatDate(input.paidAt)
+    : input.remainingBalanceCents > 0
+      ? 'en attente de solde'
+      : formatDate(input.issuedAt);
+
   const summaryHasBalance = input.remainingBalanceCents > 0;
   const summaryHasPaid = input.paidCents > 0;
-  const summaryHeight = 34 + (summaryHasBalance ? 24 : 0) + (summaryHasPaid ? 20 : 0);
-  const paymentCount = Math.min(6, (input.payments ?? []).length);
-  const payBoxH = 16 + 18 + Math.max(1, paymentCount || 1) * 16 + 10;
-  const summaryBottom = 128;
-  const summaryTop = summaryBottom + summaryHeight;
+  const summaryHeight = 40 + (summaryHasBalance ? 22 : 0) + (summaryHasPaid ? 18 : 0);
+  const paymentCount = Math.min(8, (input.payments ?? []).length || 1);
+  const payBoxH = 18 + 16 + paymentCount * 15 + 12;
+  const summaryBottom = 118;
   const bottomBlocksTop = summaryBottom + Math.max(summaryHeight, payBoxH);
-  const tableBottomLimit = bottomBlocksTop + 18;
-  const footerTop = 108;
+  const tableBottomLimit = bottomBlocksTop + 16;
+  const footerTop = 100;
 
-  page.rect(0, 792, 595, 50, '0.98 0.50 0.00');
+  // Banner bleu
+  page.rect(0, 746, 595, 96, BLUE);
   if (logo) {
-    const logoWidth = 168;
-    const logoHeight = Math.max(24, Math.round((logo.height / logo.width) * logoWidth));
-    page.image(logo.name, 36, 804 + (32 - logoHeight) / 2, logoWidth, logoHeight);
+    const logoWidth = 150;
+    const logoHeight = Math.max(28, Math.round((logo.height / logo.width) * logoWidth));
+    page.image(logo.name, 28, 770 + (48 - logoHeight) / 2, logoWidth, logoHeight);
   } else {
-    page.text('RESACOLO', 40, 812, { size: 20, font: 'bold', color: '1 1 1' });
+    page.text('RESACOLO', 28, 790, { size: 22, font: 'bold', color: '1 1 1' });
   }
-  page.text('Facture', 555, 816, { size: 13, font: 'bold', align: 'right', color: '1 1 1' });
+  // Badge document
+  page.strokeRect(470, 778, 96, 28, '1 1 1');
+  page.text(docLabel, 518, 788, { size: 12, font: 'bold', align: 'right', color: '1 1 1' });
+  // Accent orange
+  page.rect(0, 742, 595, 4, ORANGE_ACCENT);
 
-  page.text(`${RESACOLO_COMPANY.legalName} ${RESACOLO_COMPANY.legalForm}`, 40, 772, { size: 10, font: 'bold' });
-  page.text(RESACOLO_COMPANY.addressLine1, 40, 758, { size: 9 });
-  page.text(`${RESACOLO_COMPANY.postalCode} ${RESACOLO_COMPANY.city.toUpperCase()}`, 40, 744, { size: 9 });
-  page.text(`SIRET ${RESACOLO_COMPANY.siret}`, 40, 730, { size: 8, color: '0.35 0.38 0.42' });
-  page.text(`TVA intracommunautaire ${RESACOLO_COMPANY.vatNumber}`, 40, 716, { size: 8, color: '0.35 0.38 0.42' });
+  // Parties
+  page.text(`${RESACOLO_COMPANY.legalName} ${RESACOLO_COMPANY.legalForm}`, 28, 722, {
+    size: 11,
+    font: 'bold',
+    color: INK
+  });
+  page.text(RESACOLO_COMPANY.addressLine1, 28, 708, { size: 9, color: INK });
+  page.text(`${RESACOLO_COMPANY.postalCode} ${RESACOLO_COMPANY.city.toUpperCase()}`, 28, 694, {
+    size: 9,
+    color: INK
+  });
+  page.text(`SIRET ${RESACOLO_COMPANY.siret}`, 28, 680, { size: 8, color: MUTED });
+  page.text(`TVA intracommunautaire ${RESACOLO_COMPANY.vatNumber}`, 28, 666, { size: 8, color: MUTED });
 
-  page.text(input.billingName, 330, 772, { size: 12, font: 'bold' });
-  let customerY = 756;
+  page.text(input.billingName, 320, 722, { size: 11, font: 'bold', color: INK });
+  let customerY = 708;
   input.billingAddressLines.slice(0, 4).forEach((line) => {
-    page.text(line, 330, customerY, { size: 9 });
-    customerY -= 14;
+    page.text(line, 320, customerY, { size: 9, color: INK });
+    customerY -= 13;
   });
   if (input.billingEmail) {
-    page.text(input.billingEmail, 330, customerY, { size: 9, color: '0.35 0.38 0.42' });
-    customerY -= 14;
+    page.text(input.billingEmail, 320, customerY, { size: 8, color: MUTED });
+    customerY -= 13;
   }
 
-  page.line(36, 698, 559, 698, '0.88 0.90 0.93');
+  page.line(28, 650, 567, 650, BLUE_SOFT);
 
-  let metaY = 682;
-  page.text(`Facture ${invoiceNumber}`, 40, metaY, { size: 15, font: 'bold' });
-  metaY -= 18;
-  page.text(`Commande ${formatOrderReservationCode(input.orderId)}`, 40, metaY, { size: 9, color: '0.35 0.38 0.42' });
-  metaY -= 14;
-  page.text(`Date d'émission : ${formatDate(input.issuedAt)}`, 40, metaY, { size: 9 });
-  metaY -= 14;
-  page.text(
-    `Date de règlement : ${input.paidAt ? formatDate(input.paidAt) : 'en attente de solde'}`,
-    40,
-    metaY,
-    { size: 9 }
-  );
-  metaY -= 14;
-  page.text(`Mode de règlement : ${input.paymentModeLabel}`, 40, metaY, { size: 9 });
-  metaY -= 14;
+  let metaY = 632;
+  page.text(`${docLabel} ${invoiceNumber}`, 28, metaY, { size: 15, font: 'bold', color: INK });
+  metaY -= 16;
+  page.text(`Commande ${formatOrderReservationCode(input.orderId)}`, 28, metaY, {
+    size: 9,
+    color: MUTED
+  });
+  metaY -= 15;
+  page.text(`Date d'émission : ${formatDate(input.issuedAt)}`, 28, metaY, { size: 9, color: INK });
+  metaY -= 13;
+  page.text(`Date de règlement : ${paidAtLabel}`, 28, metaY, { size: 9, color: INK });
+  metaY -= 13;
+  page.text(`Mode de règlement : ${input.paymentModeLabel}`, 28, metaY, { size: 9, color: INK });
+  metaY -= 13;
   if (input.organizerName) {
-    page.text(`Organisateur du séjour : ${input.organizerName}`, 40, metaY, { size: 9 });
-    metaY -= 14;
+    page.text(`Organisateur : ${input.organizerName}`, 28, metaY, { size: 9, color: INK });
+    metaY -= 13;
   }
 
-  metaY -= 6;
-  page.text('Régime particulier - Agences de voyage (art. 266, 1-e du CGI)', 40, metaY, {
+  metaY -= 4;
+  page.rect(28, metaY - 18, 539, 26, BLUE_SOFT);
+  page.text('Régime particulier - Agences de voyage (art. 266, 1-e du CGI)', 36, metaY - 8, {
     size: 8,
-    color: '0.45 0.48 0.52'
+    color: MUTED
   });
 
-  let y = metaY - 24;
-  page.rect(36, y - 10, 523, 26, '0.96 0.97 0.99');
-  page.strokeRect(36, y - 10, 523, 26);
-  page.text('Désignation', 46, y, { size: 8.5, font: 'bold' });
-  page.text('Qté', 360, y, { size: 8.5, font: 'bold', align: 'right' });
-  page.text('PU TTC', 430, y, { size: 8.5, font: 'bold', align: 'right' });
-  page.text('Montant TTC', 552, y, { size: 8.5, font: 'bold', align: 'right' });
-  y -= 28;
+  let y = metaY - 40;
+  page.rect(28, y - 8, 539, 24, BLUE_SOFT);
+  page.line(28, y - 8, 567, y - 8, BLUE);
+  page.text('Désignation', 36, y, { size: 8.5, font: 'bold', color: '0.059 0.227 0.333' });
+  page.text('Qté', 360, y, { size: 8.5, font: 'bold', align: 'right', color: '0.059 0.227 0.333' });
+  page.text('PU TTC', 430, y, { size: 8.5, font: 'bold', align: 'right', color: '0.059 0.227 0.333' });
+  page.text('Montant TTC', 560, y, { size: 8.5, font: 'bold', align: 'right', color: '0.059 0.227 0.333' });
+  y -= 26;
 
-  visibleLines.forEach((line) => {
+  const visibleLines = input.lines;
+  for (const line of visibleLines) {
     const quantity = Math.max(1, line.quantity ?? 1);
     const unitCents = Math.round(line.amountCents / quantity);
-    const wrapped = wrapText(line.label, 48).slice(0, 3);
-    const rowHeight = Math.max(24, wrapped.length * 12 + 8);
-    if (y - rowHeight < tableBottomLimit) {
-      return;
-    }
-    page.line(36, y + 8, 559, y + 8, '0.92 0.94 0.96');
-    wrapped.forEach((part, index) => page.text(part, 46, y - index * 12, { size: 8.5 }));
-    page.text(String(quantity), 360, y, { size: 8.5, align: 'right' });
-    page.text(euros(unitCents), 430, y, { size: 8.5, align: 'right' });
-    page.text(euros(line.amountCents), 552, y, { size: 8.5, align: 'right' });
-    y -= rowHeight;
-  });
+    const wrapped = wrapText(line.label, 46).slice(0, 2);
+    const children = (line.children ?? []).slice(0, 4);
+    const rowHeight = Math.max(22, wrapped.length * 11 + children.length * 11 + 10);
+    if (y - rowHeight < tableBottomLimit) break;
 
-  if (overflowLines.length > 0 && y >= tableBottomLimit) {
-    const overflowTotal = overflowLines.reduce((sum, line) => sum + line.amountCents, 0);
-    page.line(36, y + 8, 559, y + 8, '0.92 0.94 0.96');
-    page.text(`Autres lignes regroupées (${overflowLines.length})`, 46, y, { size: 8.5 });
-    page.text(String(overflowLines.length), 360, y, { size: 8.5, align: 'right' });
-    page.text(euros(overflowTotal), 552, y, { size: 8.5, align: 'right' });
-    y -= 24;
+    page.line(28, y + 8, 567, y + 8, '0.910 0.929 0.953');
+    wrapped.forEach((part, index) =>
+      page.text(part, 36, y - index * 11, { size: 9, font: 'bold', color: INK })
+    );
+    let childY = y - wrapped.length * 11 - 2;
+    children.forEach((child) => {
+      const childLine = [child.name, child.dates].filter(Boolean).join('  ');
+      page.text(childLine, 44, childY, { size: 8, color: MUTED });
+      childY -= 11;
+    });
+    page.text(String(quantity), 360, y, { size: 9, align: 'right', color: INK });
+    page.text(euros(unitCents), 430, y, { size: 9, align: 'right', color: INK });
+    page.text(euros(line.amountCents), 560, y, { size: 9, align: 'right', color: INK });
+    y -= rowHeight;
   }
 
   const paymentRows = input.payments ?? [];
-  const payBoxX = 36;
-  const payBoxW = 280;
-  const payRowH = 16;
+  const payBoxX = 28;
+  const payBoxW = 290;
   const payBoxBottom = summaryBottom;
   const payBoxTop = payBoxBottom + payBoxH;
-  page.rect(payBoxX, payBoxBottom, payBoxW, payBoxH, '0.96 0.97 0.99');
-  page.strokeRect(payBoxX, payBoxBottom, payBoxW, payBoxH);
-  page.text('Récapitulatif des paiements', payBoxX + 8, payBoxTop - 14, { size: 9, font: 'bold' });
-  let payY = payBoxTop - 28;
-  page.text('Date', payBoxX + 8, payY, { size: 7.5, font: 'bold', color: '0.35 0.38 0.42' });
-  page.text('Mode', payBoxX + 78, payY, { size: 7.5, font: 'bold', color: '0.35 0.38 0.42' });
-  page.text('Montant', payBoxX + payBoxW - 8, payY, {
+  page.rect(payBoxX, payBoxBottom, payBoxW, payBoxH, '1 1 1');
+  page.strokeRect(payBoxX, payBoxBottom, payBoxW, payBoxH, '0.843 0.918 0.961');
+  page.rect(payBoxX, payBoxTop - 3, payBoxW, 3, BLUE);
+  page.text('Récapitulatif des paiements', payBoxX + 10, payBoxTop - 16, {
+    size: 10,
+    font: 'bold',
+    color: '0.059 0.227 0.333'
+  });
+  let payY = payBoxTop - 30;
+  page.text('Date', payBoxX + 10, payY, { size: 7.5, font: 'bold', color: MUTED });
+  page.text('Mode', payBoxX + 78, payY, { size: 7.5, font: 'bold', color: MUTED });
+  page.text('Montant', payBoxX + payBoxW - 10, payY, {
     size: 7.5,
     font: 'bold',
     align: 'right',
-    color: '0.35 0.38 0.42'
+    color: MUTED
   });
-  payY -= payRowH;
+  payY -= 15;
   if (paymentRows.length === 0) {
-    page.text('Aucun paiement enregistré', payBoxX + 8, payY, { size: 8, color: '0.45 0.48 0.52' });
+    page.text('Aucun paiement enregistré', payBoxX + 10, payY, { size: 8, color: MUTED });
   } else {
-    paymentRows.slice(0, 6).forEach((payment) => {
-      page.text(payment.date, payBoxX + 8, payY, { size: 8 });
-      page.text(payment.label.slice(0, 22), payBoxX + 78, payY, { size: 8 });
-      page.text(euros(payment.amountCents), payBoxX + payBoxW - 8, payY, { size: 8, align: 'right' });
-      payY -= payRowH;
+    paymentRows.slice(0, 8).forEach((payment) => {
+      page.text(payment.date, payBoxX + 10, payY, { size: 8, color: INK });
+      page.text(payment.label.slice(0, 28), payBoxX + 78, payY, { size: 8, color: INK });
+      page.text(euros(payment.amountCents), payBoxX + payBoxW - 10, payY, {
+        size: 8,
+        align: 'right',
+        color: INK
+      });
+      payY -= 15;
     });
   }
 
-  page.rect(332, summaryBottom, 223, summaryHeight, '0.98 0.50 0.00');
-  let summaryY = summaryTop - 16;
+  // Totaux bleus (jamais orange)
+  page.rect(336, summaryBottom, 231, summaryHeight, BLUE);
+  let summaryY = summaryBottom + summaryHeight - 16;
   page.text('TOTAL TTC', 348, summaryY, { size: 11, font: 'bold', color: '1 1 1' });
-  page.text(euros(input.totalCents), 548, summaryY, { size: 11, font: 'bold', align: 'right', color: '1 1 1' });
-  summaryY -= 24;
-
+  page.text(euros(input.totalCents), 556, summaryY, {
+    size: 11,
+    font: 'bold',
+    align: 'right',
+    color: '1 1 1'
+  });
+  summaryY -= 20;
   if (summaryHasPaid) {
     page.text('Déjà réglé', 348, summaryY, { size: 9, color: '1 1 1' });
-    page.text(euros(input.paidCents), 548, summaryY, { size: 9, align: 'right', color: '1 1 1' });
-    summaryY -= 20;
+    page.text(euros(input.paidCents), 556, summaryY, { size: 9, align: 'right', color: '1 1 1' });
+    summaryY -= 18;
   }
-
   if (summaryHasBalance) {
     page.text('RESTANT DÛ', 348, summaryY, { size: 11, font: 'bold', color: '1 1 1' });
-    page.text(euros(input.remainingBalanceCents), 548, summaryY, {
+    page.text(euros(input.remainingBalanceCents), 556, summaryY, {
       size: 11,
       font: 'bold',
       align: 'right',
@@ -664,32 +699,26 @@ function renderClientTravelInvoicePdf(
     });
   }
 
-  page.line(36, footerTop, 559, footerTop, '0.88 0.90 0.93');
-  page.text(RESACOLO_INVOICE_LATE_PAYMENT_MENTIONS[0], 40, 84, { size: 6.5, color: '0.35 0.38 0.42' });
-  page.text(RESACOLO_INVOICE_LATE_PAYMENT_MENTIONS[1], 40, 72, { size: 6.5, color: '0.35 0.38 0.42' });
+  page.line(28, footerTop, 567, footerTop, BLUE_SOFT);
+  page.text(RESACOLO_INVOICE_LATE_PAYMENT_MENTIONS[0], 28, 86, { size: 6.5, color: MUTED });
+  page.text(RESACOLO_INVOICE_LATE_PAYMENT_MENTIONS[1], 28, 74, { size: 6.5, color: MUTED });
   page.text(
     `${RESACOLO_COMPANY.legalName}, ${RESACOLO_COMPANY.legalForm} au capital de ${RESACOLO_COMPANY.shareCapitalLabel}, ${RESACOLO_COMPANY.addressLine1}, ${RESACOLO_COMPANY.postalCode} ${RESACOLO_COMPANY.city.toUpperCase()}`,
-    40,
-    56,
-    { size: 7, color: '0.35 0.38 0.42' }
-  );
-  page.text(
-    `RCS ${RESACOLO_COMPANY.rcsCity.toUpperCase()} ${RESACOLO_COMPANY.rcsNumber} | SIRET ${RESACOLO_COMPANY.siret}`,
-    40,
-    70,
-    { size: 7, color: '0.35 0.38 0.42' }
-  );
-  page.text(
-    `Numéro de TVA intracommunautaire : ${RESACOLO_COMPANY.vatNumber} | Numéro d'immatriculation Atout France : ${RESACOLO_COMPANY.atoutFranceRegistration}`,
-    40,
+    28,
     58,
-    { size: 7, color: '0.35 0.38 0.42' }
+    { size: 7, color: MUTED }
+  );
+  page.text(
+    `RCS ${RESACOLO_COMPANY.rcsCity.toUpperCase()} ${RESACOLO_COMPANY.rcsNumber} | SIRET ${RESACOLO_COMPANY.siret} | TVA ${RESACOLO_COMPANY.vatNumber} | Atout France ${RESACOLO_COMPANY.atoutFranceRegistration}`,
+    28,
+    46,
+    { size: 7, color: MUTED }
   );
   page.text(
     `Assureur : ${RESACOLO_COMPANY.professionalInsurance.insurer}, ${RESACOLO_COMPANY.professionalInsurance.address}`,
-    40,
-    44,
-    { size: 7, color: '0.35 0.38 0.42' }
+    28,
+    34,
+    { size: 7, color: MUTED }
   );
 
   return buildPdf([page.stream()], logo ? [logo] : [], fonts);
@@ -746,7 +775,9 @@ export async function createAndUploadClientTravelInvoicePdf(
       ? 'en attente de solde'
       : issuedAtLabel;
 
-  let pdf: Buffer;
+  let pdf: Buffer | null = null;
+  let renderMode: 'html-playwright' | 'native-blue' = 'html-playwright';
+
   try {
     const html = await buildClientTravelInvoiceHtml({
       invoiceNumber,
@@ -767,20 +798,30 @@ export async function createAndUploadClientTravelInvoicePdf(
     });
     pdf = await renderHtmlToPdfBuffer(html);
   } catch (error) {
-    console.error('client-travel-invoice: rendu HTML/Playwright impossible, fallback PDF natif', error);
+    console.error(
+      'client-travel-invoice: Playwright HTML échoué — bascule sur rendu natif bleu (modèle validé)',
+      error
+    );
+    renderMode = 'native-blue';
     let logo: PdfImage | null = null;
     try {
       logo = await loadResacoloLogo(true);
     } catch {
       logo = null;
     }
+    // Jamais l'ancien modèle orange : rendu natif aligné charte bleue validée.
     pdf = renderClientTravelInvoicePdf(input, logo, null);
+  }
+
+  if (!pdf?.length) {
+    throw new Error(`Échec de génération PDF facture client (${renderMode}).`);
   }
 
   const path = `clients/${input.invoiceYear}/${input.invoiceId}.pdf`;
   const { error } = await supabase.storage.from(INVOICE_PDF_BUCKET).upload(path, pdf, {
     contentType: 'application/pdf',
-    upsert: true
+    upsert: true,
+    cacheControl: '0'
   });
 
   if (error) throw error;

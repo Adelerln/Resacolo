@@ -399,6 +399,32 @@ function readVideoUrls(rawPayload: Record<string, unknown>): string[] {
   );
 }
 
+async function loadPreviewOrganizer(organizerId: string): Promise<Stay['organizer']> {
+  const supabase = getServerSupabaseClient();
+  const { data: organizer, error } = await supabase
+    .from('organizers')
+    .select('name,website_url,slug,logo_path')
+    .eq('id', organizerId)
+    .single();
+
+  if (error || !organizer) {
+    throw new Error("Impossible de charger l’organisateur pour la prévisualisation.");
+  }
+
+  const name = normalizeString(organizer.name) || 'Organisateur';
+  const logoUrl = organizer.logo_path
+    ? (await supabase.storage.from('organizer-logo').createSignedUrl(organizer.logo_path, 60 * 60))
+        .data?.signedUrl
+    : undefined;
+
+  return {
+    name,
+    website: normalizeString(organizer.website_url),
+    slug: normalizeString(organizer.slug) || slugify(name),
+    logoUrl
+  };
+}
+
 export async function buildStayPreviewFromDraft(draft: StayDraftRow, organizerId: string): Promise<Stay> {
   const rawPayload = toRecord(draft.raw_payload);
   const destination = readDraftDestinationFields(rawPayload);
@@ -432,7 +458,10 @@ export async function buildStayPreviewFromDraft(draft: StayDraftRow, organizerId
   const sessionPrices = previewSessions
     .map((session) => session.price)
     .filter((price): price is number => price != null && price > 0);
-  const accommodations = await loadPreviewAccommodations(draft, organizerId, rawPayload);
+  const [accommodations, organizer] = await Promise.all([
+    loadPreviewAccommodations(draft, organizerId, rawPayload),
+    loadPreviewOrganizer(organizerId)
+  ]);
   const displayLocation = accommodations.find((accommodation) => accommodation.city?.trim())?.city?.trim()
     || locationLabel;
   const videoUrls = readVideoUrls(rawPayload);
@@ -453,12 +482,7 @@ export async function buildStayPreviewFromDraft(draft: StayDraftRow, organizerId
     seasonId: 'draft',
     seasonName: '',
     organizerId,
-    organizer: {
-      name: 'Organisateur',
-      website: '',
-      slug: undefined,
-      logoUrl: undefined
-    },
+    organizer,
     location: displayLocation,
     displayLocation,
     region: normalizeString(draft.region_text),

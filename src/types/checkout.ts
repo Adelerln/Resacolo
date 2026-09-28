@@ -148,12 +148,10 @@ export function createDefaultOrganizerSelection(
       ? Boolean(overrides.ancvPaperRequested)
       : paymentMode === 'CV_PAPER';
   return {
-    paymentMode: 'FULL',
     vacafNumber: '',
     vacafDepartmentCode: '',
     ancvConnectMatricule: '',
     ancvConnectAmount: '',
-    ancvPaperRequested: false,
     ...overrides,
     paymentMode,
     ancvPaperRequested

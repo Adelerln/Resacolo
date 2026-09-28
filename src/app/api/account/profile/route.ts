@@ -93,6 +93,7 @@ const checkoutProfileContactSchema = z
     vacafDepartmentCode: z.string().trim().optional().default(''),
     ancvConnectMatricule: z.string().trim().optional().default(''),
     ancvConnectAmount: z.string().trim().optional().default(''),
+    ancvPaperRequested: z.boolean().optional().default(false),
     paymentMode: z
       .enum(['FULL', 'DEPOSIT_200', 'CV_CONNECT', 'CV_PAPER', 'DEFERRED'])
       .optional()
@@ -110,7 +111,8 @@ const checkoutProfileContactSchema = z
             .default(''),
           vacafDepartmentCode: z.string().trim().optional().default(''),
           ancvConnectMatricule: z.string().trim().optional().default(''),
-          ancvConnectAmount: z.string().trim().optional().default('')
+          ancvConnectAmount: z.string().trim().optional().default(''),
+          ancvPaperRequested: z.boolean().optional().default(false)
         })
       )
       .optional()

@@ -148,12 +148,15 @@ export default function CheckoutConfirmationPage() {
         paidAt: simulatedPaidAt,
         paymentStatus: simulatedPaymentStatus,
         requestKind: isVacafRequestMode ? 'VACAF' : isAncvConnectRequestMode ? 'ANCV_CONNECT' : null,
+        paymentMode: isCvPaperMode ? 'CV_PAPER' : null,
         paymentModeLabel: null,
         remainingBalanceCents: 0,
         totalCents: 0,
         currency: 'EUR',
         organizerContactEmail: null,
-        organizerName: null
+        organizerName: null,
+        ancvPaperMailingAddress: null,
+        ancvPaperRequested: isCvPaperMode
       });
       setErrorMessage(null);
       setIsLoading(false);
@@ -203,12 +206,15 @@ export default function CheckoutConfirmationPage() {
             paidAt: isPartnerTotalMode ? new Date().toISOString() : null,
             paymentStatus: null,
             requestKind: isVacafRequestMode ? 'VACAF' : isAncvConnectRequestMode ? 'ANCV_CONNECT' : null,
+            paymentMode: isCvPaperMode ? 'CV_PAPER' : null,
             paymentModeLabel: null,
             remainingBalanceCents: 0,
             totalCents: 0,
             currency: 'EUR',
             organizerContactEmail: null,
-            organizerName: null
+            organizerName: null,
+            ancvPaperMailingAddress: null,
+            ancvPaperRequested: isCvPaperMode
           });
           setErrorMessage(null);
           if (!checkoutResetDoneRef.current) {

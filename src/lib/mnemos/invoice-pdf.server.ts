@@ -13,6 +13,7 @@ import {
   CLIENT_TRAVEL_INVOICE_RALEWAY_REGULAR_PATH,
   formatClientTravelInvoiceNumber
 } from '@/lib/mnemos/client-travel-invoice-template.server';
+import { renderClientTravelInvoicePdfKit } from '@/lib/mnemos/client-travel-invoice-pdfkit.server';
 import { renderHtmlToPdfBuffer } from '@/lib/mnemos/html-to-pdf.server';
 import type { Database } from '@/types/supabase';
 import type { LedgerLinePreview } from './ledger-period-preview.server';
@@ -789,10 +790,12 @@ export async function createAndUploadClientTravelInvoicePdf(
       : issuedAtLabel;
 
   let pdf: Buffer | null = null;
-  let renderMode: 'html-playwright' | 'native-blue-raleway' = 'html-playwright';
+  let renderMode: 'html-playwright' | 'pdfkit-raleway' = 'html-playwright';
+  const preferDataAssets = process.env.VERCEL === '1' || process.env.AWS_LAMBDA_FUNCTION_NAME;
 
   try {
-    // file:// fonts d'abord (Raleway correctement embarquée dans le PDF Chromium).
+    // Sur Vercel : data: fonts d’abord (file:// souvent inaccessible / Chromium serverless).
+    const primaryMode = preferDataAssets ? 'data' : 'file';
     const html = await buildClientTravelInvoiceHtml(
       {
         invoiceNumber,
@@ -811,7 +814,7 @@ export async function createAndUploadClientTravelInvoicePdf(
         remainingBalanceCents: input.remainingBalanceCents,
         isProvisional: input.isProvisional
       },
-      { assetMode: 'file' }
+      { assetMode: primaryMode }
     );
     pdf = await renderHtmlToPdfBuffer(html);
   } catch (fileModeError) {
@@ -834,23 +837,16 @@ export async function createAndUploadClientTravelInvoicePdf(
           remainingBalanceCents: input.remainingBalanceCents,
           isProvisional: input.isProvisional
         },
-        { assetMode: 'data' }
+        { assetMode: preferDataAssets ? 'file' : 'data' }
       );
       pdf = await renderHtmlToPdfBuffer(htmlData);
     } catch (dataModeError) {
       console.error(
-        'client-travel-invoice: Playwright échoué — bascule natif bleu avec Raleway embarquée',
+        'client-travel-invoice: Playwright échoué — bascule PDFKit + Raleway',
         { fileModeError, dataModeError }
       );
-      renderMode = 'native-blue-raleway';
-      let logo: PdfImage | null = null;
-      try {
-        logo = await loadResacoloLogo(true);
-      } catch {
-        logo = null;
-      }
-      const fonts = await loadRalewayFonts();
-      pdf = renderClientTravelInvoicePdf(input, logo, fonts);
+      renderMode = 'pdfkit-raleway';
+      pdf = await renderClientTravelInvoicePdfKit(input);
     }
   }
 

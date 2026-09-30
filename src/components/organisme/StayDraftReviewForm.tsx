@@ -69,6 +69,7 @@ import {
   draftReviewSectionClass
 } from '@/lib/draft-review-field-styles';
 import { buildStayDestinationLabel } from '@/lib/stay-destination';
+import { mapToCanonicalStayRegion, STAY_REGION_OPTIONS } from '@/lib/stay-regions';
 import type { StayDraftReviewFieldErrors, StayDraftReviewPayload } from '@/types/stay-draft-review';
 
 type DestinationTypeValue = 'fixed_france' | 'fixed_abroad' | 'itinerant';
@@ -78,6 +79,8 @@ const DESTINATION_TYPE_OPTIONS: Array<{ value: DestinationTypeValue; label: stri
   { value: 'fixed_abroad', label: "Séjour fixe à l'étranger" },
   { value: 'itinerant', label: 'Circuit itinérant' }
 ];
+
+const FRANCE_REGION_OPTIONS = STAY_REGION_OPTIONS.filter((region) => region !== 'Étranger');
 
 type StayDraftReviewFormProps = {
   draftId: string;
@@ -262,8 +265,8 @@ function isMissingFranceDestinationRegion(
   destinationRegion: string
 ) {
   if (destinationType !== 'fixed_france') return false;
-  const region = destinationRegion.trim();
-  return !region || region === 'Étranger';
+  const canonical = mapToCanonicalStayRegion(destinationRegion.trim());
+  return !canonical || canonical === 'Étranger';
 }
 
 function resolvePublishBlockHint(errorMessage: string | null | undefined): PublishBlockHint | null {
@@ -2106,7 +2109,19 @@ export default function StayDraftReviewForm({
                   setDestinationCity(selection.city);
                   if (selection.postalCode) setDestinationPostalCode(selection.postalCode);
                   if (selection.department) setDestinationDepartmentCode(selection.department);
-                  if (selection.region) setDestinationRegion(selection.region);
+                  if (selection.region) {
+                    const canonicalRegion = mapToCanonicalStayRegion(selection.region);
+                    if (canonicalRegion && canonicalRegion !== 'Étranger') {
+                      setDestinationRegion(canonicalRegion);
+                      setFieldErrors((current) => {
+                        if (!current.destination_region && !current.region_text) return current;
+                        const next = { ...current };
+                        delete next.destination_region;
+                        delete next.region_text;
+                        return next;
+                      });
+                    }
+                  }
                 }}
                 showApiHint
                 inputClassName={draftReviewControlClass({
@@ -2139,9 +2154,9 @@ export default function StayDraftReviewForm({
               </label>
               <label className="block text-sm font-medium text-slate-700">
                 Région
-                <input
+                <select
                   id="draft-region-input"
-                  value={destinationRegion}
+                  value={mapToCanonicalStayRegion(destinationRegion) ?? ''}
                   onChange={(event) => {
                     const nextValue = event.target.value;
                     setDestinationRegion(nextValue);
@@ -2157,15 +2172,27 @@ export default function StayDraftReviewForm({
                   }}
                   className={draftReviewControlClass({
                     required: true,
-                    filled: Boolean(destinationRegion.trim()) && destinationRegion.trim() !== 'Étranger',
+                    filled: Boolean(mapToCanonicalStayRegion(destinationRegion)),
                     hasError: Boolean(fieldErrors.destination_region || fieldErrors.region_text)
                   })}
                   aria-invalid={Boolean(fieldErrors.destination_region || fieldErrors.region_text)}
                   required
-                />
+                >
+                  <option value="">Sélectionnez une région</option>
+                  {FRANCE_REGION_OPTIONS.map((region) => (
+                    <option key={region} value={region}>
+                      {region}
+                    </option>
+                  ))}
+                </select>
                 {fieldErrors.destination_region || fieldErrors.region_text ? (
                   <span className="mt-1 block text-xs text-rose-600">
                     {fieldErrors.destination_region || fieldErrors.region_text}
+                  </span>
+                ) : destinationRegion.trim() && !mapToCanonicalStayRegion(destinationRegion) ? (
+                  <span className="mt-1 block text-xs text-rose-600">
+                    « {destinationRegion.trim()} » n’est pas une région valide. Choisissez une région
+                    dans la liste (ex. Auvergne-Rhône-Alpes).
                   </span>
                 ) : (
                   <span className="mt-1 block text-xs text-slate-500">

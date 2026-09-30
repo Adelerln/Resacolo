@@ -1016,7 +1016,6 @@ export function StayDetailView({
   };
   const displayH1Title = capitalizeHeadingSegments(seoH1Title?.trim() || stay.title);
   const introText = buildStayIntroText(seoInput);
-  const seoPrimaryKeyword = stay.seo?.primaryKeyword?.trim();
   const seoInternalAnchors = useMemo(
     () => (stay.seo?.internalLinkAnchorSuggestions ?? []).filter((value) => value.trim().length > 0).slice(0, 6),
     [stay.seo?.internalLinkAnchorSuggestions]
@@ -1161,9 +1160,7 @@ export function StayDetailView({
             <div className="prose prose-slate max-w-none [&_li]:[text-align:justify] [&_p]:[text-align:justify]">
               {activeTab === 'sejour' && (
                 <section className="space-y-6">
-                  <h2 className="font-display text-2xl font-semibold text-slate-900">
-                    {seoPrimaryKeyword || 'Séjour'}
-                  </h2>
+                  <h2 className="font-display text-2xl font-semibold text-slate-900">Séjour</h2>
                   <EditorialParagraphs text={sejourText} className="text-base leading-relaxed text-slate-600" />
                   {galleryImages.length > 0 ? (
                     <div className="pt-2">

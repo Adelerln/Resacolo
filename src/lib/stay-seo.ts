@@ -575,33 +575,10 @@ export function buildStaySeoGooglePreview(input: StaySeoInput, canonicalPath: st
   };
 }
 
-/** Retire un suffixe lieu SEO du type « à Charente-Maritime » / « à la mer ». */
-function stripSeoLocationSuffix(value: string) {
-  return normalizeWhitespace(
-    value.replace(/\s+à\s+(?:l['’]|la\s+|le\s+|les\s+)?[\p{L}\d][\p{L}\d\s'’-]*$/iu, '')
-  );
-}
-
+/** Affichage public : titre commercial uniquement (pas de concaténation de mots-clés SEO). */
 export function buildStayH1Title(input: StaySeoInput) {
   const sanitized = sanitizeSeoContext(input);
-  const baseTitle = sanitized.title || 'Séjour';
-  const h1Variant = stripSeoLocationSuffix(sanitized.seo?.h1Variant ?? '');
-  if (h1Variant && isPrimaryKeywordCoherent({ ...sanitized, seo: { ...sanitized.seo, primaryKeyword: h1Variant } })) {
-    return truncateAtWord(h1Variant, 96);
-  }
-  const primaryKeyword = stripSeoLocationSuffix(sanitized.seo?.primaryKeyword ?? '');
-  if (!primaryKeyword) return baseTitle;
-  if (includesPhrase(baseTitle, primaryKeyword)) return baseTitle;
-  if (!isPrimaryKeywordCoherent({ ...sanitized, seo: { ...sanitized.seo, primaryKeyword } })) {
-    return baseTitle;
-  }
-
-  // N’ajoute le mot-clé que s’il apporte un thème distinct du titre — sans le lieu.
-  if (includesPhrase(primaryKeyword, baseTitle) || includesPhrase(baseTitle, primaryKeyword)) {
-    return baseTitle;
-  }
-
-  return truncateAtWord(`${baseTitle} - ${primaryKeyword}`, 96);
+  return sanitized.title || 'Séjour';
 }
 
 /** Retire les phrases auto-générées type référencement (déjà en base sur certains séjours). */

@@ -3,7 +3,6 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import AccommodationFormFields from '@/components/organisme/AccommodationFormFields';
 import { buildAccommodationTypeValue, parseAccommodationType } from '@/components/organisme/accommodation-type';
-import { requireRole } from '@/lib/auth/require';
 import { withOrganizerQuery } from '@/lib/organizers.server';
 import OrganizerPageHeader from '@/components/organisme/OrganizerPageHeader';
 import { parseAccommodationMediaUrls, replaceAccommodationMedia } from '@/lib/accommodations';
@@ -23,11 +22,17 @@ import {
   extractGoogleMapsEmbedSrcFromInput,
   mergeMapIframeHtmlIntoAiExtractedData
 } from '@/lib/google-maps-iframe';
+import {
+  consumeAccommodationFormDraft,
+  INVALID_MAP_IFRAME_WARNING,
+  stashAccommodationFormDraft
+} from '@/lib/accommodation-form-draft.server';
 
 type PageProps = {
   searchParams?: Promise<{
     organizerId?: string | string[];
     error?: string | string[];
+    iframe_warning?: string | string[];
   }>;
 };
 
@@ -43,6 +48,10 @@ export default async function NewAccommodationPage({ searchParams }: PageProps) 
   const errorParam = Array.isArray(resolvedSearchParams?.error)
     ? resolvedSearchParams?.error[0]
     : resolvedSearchParams?.error;
+  const iframeWarningParam = Array.isArray(resolvedSearchParams?.iframe_warning)
+    ? resolvedSearchParams?.iframe_warning[0]
+    : resolvedSearchParams?.iframe_warning;
+  const formDraft = await consumeAccommodationFormDraft();
 
   if (!selectedOrganizerId) {
     redirect('/organisme/sejours');
@@ -59,6 +68,7 @@ export default async function NewAccommodationPage({ searchParams }: PageProps) 
     const addressInput = normalizeAccommodationAddress(locationForm.address);
 
     if (!name || !parsedAccommodationType.baseType) {
+      await stashAccommodationFormDraft(formData);
       redirect(withOrganizerQuery('/organisme/hebergements/new?error=missing-required-fields', selectedOrganizerId));
     }
 
@@ -69,6 +79,7 @@ export default async function NewAccommodationPage({ searchParams }: PageProps) 
       address: addressInput
     });
     if (addressError) {
+      await stashAccommodationFormDraft(formData);
       redirect(
         withOrganizerQuery(
           `/organisme/hebergements/new?error=${encodeURIComponent(addressError)}`,
@@ -82,6 +93,7 @@ export default async function NewAccommodationPage({ searchParams }: PageProps) 
       centerLongitude: String(formData.get('center_longitude') ?? '').trim()
     });
     if (centerCoordinatesResult.error) {
+      await stashAccommodationFormDraft(formData);
       redirect(
         withOrganizerQuery(
           `/organisme/hebergements/new?error=${encodeURIComponent(centerCoordinatesResult.error)}`,
@@ -94,17 +106,13 @@ export default async function NewAccommodationPage({ searchParams }: PageProps) 
     const mediaUrls = parseAccommodationMediaUrls(formData.get('media_urls'));
     const mapIframeRaw = String(formData.get('map_iframe_html') ?? '').trim();
     const mapEmbedSrc = extractGoogleMapsEmbedSrcFromInput(mapIframeRaw);
+    const mapIframeInvalid = mapIframeRaw.length > 0 && !mapEmbedSrc;
     const normalizedMapIframeHtml =
-      mapIframeRaw.length === 0 ? null : mapEmbedSrc ? buildGoogleMapsEmbedIframeHtml(mapEmbedSrc) : null;
-
-    if (mapIframeRaw.length > 0 && !mapEmbedSrc) {
-      redirect(
-        withOrganizerQuery(
-          `/organisme/hebergements/new?error=${encodeURIComponent('Code iframe Google Maps invalide. Utilisez un embed https://www.google.com/maps/.../embed.')}`,
-          selectedOrganizerId
-        )
-      );
-    }
+      mapIframeRaw.length === 0 || mapIframeInvalid
+        ? null
+        : mapEmbedSrc
+          ? buildGoogleMapsEmbedIframeHtml(mapEmbedSrc)
+          : null;
 
     const insertPayload = {
       organizer_id: selectedOrganizerId,
@@ -159,6 +167,7 @@ export default async function NewAccommodationPage({ searchParams }: PageProps) 
 
     if (error || !insertedAccommodation) {
       console.error('Erreur Supabase (create accommodation)', error?.message);
+      await stashAccommodationFormDraft(formData);
       redirect(
         withOrganizerQuery(
           `/organisme/hebergements/new?error=${encodeURIComponent(error?.message ?? "Insertion de l'hébergement impossible")}`,
@@ -173,9 +182,14 @@ export default async function NewAccommodationPage({ searchParams }: PageProps) 
     });
 
     if (mediaResult.error) {
+      if (mapIframeInvalid) {
+        await stashAccommodationFormDraft(formData);
+      }
       redirect(
         withOrganizerQuery(
-          `/organisme/hebergements/new?error=${encodeURIComponent(mediaResult.error)}`,
+          `/organisme/hebergements/${insertedAccommodation.id}?error=${encodeURIComponent(mediaResult.error)}${
+            mapIframeInvalid ? '&iframe_warning=1' : ''
+          }`,
           selectedOrganizerId
         )
       );
@@ -186,16 +200,35 @@ export default async function NewAccommodationPage({ searchParams }: PageProps) 
     revalidatePath('/organisme/stays');
     revalidatePath('/sejours');
     revalidatePath('/sejours/[slug]', 'page');
-    redirect(withOrganizerQuery('/organisme/hebergements?saved=1', selectedOrganizerId));
+    if (mapIframeInvalid) {
+      await stashAccommodationFormDraft(formData);
+    }
+    redirect(
+      withOrganizerQuery(
+        `/organisme/hebergements/${insertedAccommodation.id}?saved=1${
+          mapIframeInvalid ? '&iframe_warning=1' : ''
+        }`,
+        selectedOrganizerId
+      )
+    );
   }
 
   return (
     <div className="space-y-6">
       {errorParam && (
         <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-          Impossible d&apos;enregistrer l&apos;hébergement : {decodeURIComponent(errorParam)}
+          Impossible d&apos;enregistrer l&apos;hébergement :{' '}
+          {errorParam === 'missing-required-fields'
+            ? 'renseignez au minimum le nom et le type.'
+            : decodeURIComponent(errorParam)}
+          {formDraft ? ' Vos saisies ont été conservées.' : null}
         </div>
       )}
+      {iframeWarningParam === '1' ? (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          {INVALID_MAP_IFRAME_WARNING}
+        </div>
+      ) : null}
 
       <OrganizerPageHeader
         title="Nouvel hébergement"
@@ -211,7 +244,11 @@ export default async function NewAccommodationPage({ searchParams }: PageProps) 
       />
 
       <form action={createAccommodation} className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
-        <AccommodationFormFields submitLabel="Créer l'hébergement" />
+        <AccommodationFormFields
+          key={formDraft ? `draft-${formDraft.name ?? 'empty'}-${formDraft.city ?? ''}` : 'blank'}
+          values={formDraft ?? undefined}
+          submitLabel="Créer l'hébergement"
+        />
       </form>
     </div>
   );

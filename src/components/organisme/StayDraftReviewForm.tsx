@@ -254,6 +254,18 @@ type PublishBlockHint = {
   buttonLabel: string;
 };
 
+const FRANCE_REGION_REQUIRED_MESSAGE =
+  'La région est obligatoire pour un séjour en France (sélectionnez une région, pas « Étranger »).';
+
+function isMissingFranceDestinationRegion(
+  destinationType: DestinationTypeValue | '',
+  destinationRegion: string
+) {
+  if (destinationType !== 'fixed_france') return false;
+  const region = destinationRegion.trim();
+  return !region || region === 'Étranger';
+}
+
 function resolvePublishBlockHint(errorMessage: string | null | undefined): PublishBlockHint | null {
   const normalized = String(errorMessage ?? '').toLowerCase();
   if (!normalized) return null;
@@ -1134,6 +1146,11 @@ export default function StayDraftReviewForm({
       nextErrors.accommodations_json = "Le nom de l'hébergement importé est requis.";
     }
 
+    if (isMissingFranceDestinationRegion(destinationType, destinationRegion)) {
+      nextErrors.destination_region = FRANCE_REGION_REQUIRED_MESSAGE;
+      nextErrors.region_text = FRANCE_REGION_REQUIRED_MESSAGE;
+    }
+
     let partnerDiscountParsed: number | null = null;
     const partnerRaw = partnerDiscountPercent.trim().replace(',', '.');
     if (partnerRaw.length > 0) {
@@ -1472,6 +1489,7 @@ export default function StayDraftReviewForm({
           fieldErrors.season_ids ||
           fieldErrors.summary ||
           fieldErrors.location_text ||
+          fieldErrors.destination_region ||
           fieldErrors.region_text ||
           fieldErrors.description ||
           fieldErrors.program_text ||
@@ -1513,7 +1531,9 @@ export default function StayDraftReviewForm({
         : currentLinkedAccommodation
           ? true
           : Boolean(String(accommodationImport.title ?? '').trim()),
-      sejour: Boolean(title.trim()),
+      sejour:
+        Boolean(title.trim()) &&
+        !isMissingFranceDestinationRegion(destinationType, destinationRegion),
       photos:
         imagePreviewUrls.length > 0 ||
         videoEntries.some((entry) => entry.url.trim().length > 0),
@@ -1528,6 +1548,8 @@ export default function StayDraftReviewForm({
     return completed;
   }, [
     accommodationImport.title,
+    destinationRegion,
+    destinationType,
     extraOptionsList.length,
     hasGeneratedSeo,
     imagePreviewUrls.length,
@@ -1594,9 +1616,54 @@ export default function StayDraftReviewForm({
     void persistAutosave(autosaveDraftPayload);
   }, [autosaveDraftPayload, effectiveStep, isPublishedVariant, persistAutosave]);
 
+  function focusFranceRegionField() {
+    window.requestAnimationFrame(() => {
+      document.getElementById('draft-region-input')?.focus();
+      document.getElementById('draft-region-input')?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center'
+      });
+    });
+  }
+
+  function ensureFranceRegionBeforeLeavingSejour(): boolean {
+    if (!isMissingFranceDestinationRegion(destinationType, destinationRegion)) {
+      setFieldErrors((current) => {
+        if (!current.destination_region && !current.region_text) return current;
+        const next = { ...current };
+        delete next.destination_region;
+        delete next.region_text;
+        return next;
+      });
+      return true;
+    }
+
+    setFieldErrors((current) => ({
+      ...current,
+      destination_region: FRANCE_REGION_REQUIRED_MESSAGE,
+      region_text: FRANCE_REGION_REQUIRED_MESSAGE
+    }));
+    setActiveStep('sejour');
+    focusFranceRegionField();
+    return false;
+  }
+
   function goToDraftStep(step: DraftReviewStepId) {
     if (accommodationGateClosed && step !== 'hebergement') return;
     if (!reviewSteps.includes(step)) return;
+
+    const currentIndex = draftReviewStepIndex(effectiveStep, reviewSteps);
+    const targetIndex = draftReviewStepIndex(step, reviewSteps);
+    const sejourIndex = draftReviewStepIndex('sejour', reviewSteps);
+    if (
+      sejourIndex >= 0 &&
+      currentIndex <= sejourIndex &&
+      targetIndex > sejourIndex &&
+      !ensureFranceRegionBeforeLeavingSejour()
+    ) {
+      return;
+    }
+
     setActiveStep(step);
   }
 
@@ -1610,6 +1677,9 @@ export default function StayDraftReviewForm({
     if (accommodationGateClosed) {
       setHasCompletedAccommodationGate(true);
       setActiveStep('sejour');
+      return;
+    }
+    if (activeStep === 'sejour' && !ensureFranceRegionBeforeLeavingSejour()) {
       return;
     }
     const next = draftReviewNextStep(activeStep, reviewSteps);
@@ -2072,12 +2142,36 @@ export default function StayDraftReviewForm({
                 <input
                   id="draft-region-input"
                   value={destinationRegion}
-                  onChange={(event) => setDestinationRegion(event.target.value)}
+                  onChange={(event) => {
+                    const nextValue = event.target.value;
+                    setDestinationRegion(nextValue);
+                    if (!isMissingFranceDestinationRegion('fixed_france', nextValue)) {
+                      setFieldErrors((current) => {
+                        if (!current.destination_region && !current.region_text) return current;
+                        const next = { ...current };
+                        delete next.destination_region;
+                        delete next.region_text;
+                        return next;
+                      });
+                    }
+                  }}
                   className={draftReviewControlClass({
-                    required: false,
-                    filled: Boolean(destinationRegion.trim())
+                    required: true,
+                    filled: Boolean(destinationRegion.trim()) && destinationRegion.trim() !== 'Étranger',
+                    hasError: Boolean(fieldErrors.destination_region || fieldErrors.region_text)
                   })}
+                  aria-invalid={Boolean(fieldErrors.destination_region || fieldErrors.region_text)}
+                  required
                 />
+                {fieldErrors.destination_region || fieldErrors.region_text ? (
+                  <span className="mt-1 block text-xs text-rose-600">
+                    {fieldErrors.destination_region || fieldErrors.region_text}
+                  </span>
+                ) : (
+                  <span className="mt-1 block text-xs text-slate-500">
+                    Obligatoire pour publier un séjour en France.
+                  </span>
+                )}
               </label>
             </div>
           ) : null}

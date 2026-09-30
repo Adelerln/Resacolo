@@ -775,6 +775,13 @@ export async function createAndUploadMnemosInvoicePdf(
   return path;
 }
 
+function pdfEmbedsRaleway(pdf: Buffer) {
+  // Playwright peut « réussir » avec Helvetica tout en renvoyant un PDF valide :
+  // on n’accepte le rendu HTML que si Raleway est bien embarquée.
+  const sample = pdf.subarray(0, Math.min(pdf.length, 512_000)).toString('latin1');
+  return /\/BaseFont\s*\/[^\s]*Raleway/i.test(sample) || /\/FontName\s*\/[^\s]*Raleway/i.test(sample);
+}
+
 export async function createAndUploadClientTravelInvoicePdf(
   supabase: SupabaseClient<Database>,
   input: ClientTravelInvoicePdfInput
@@ -789,37 +796,19 @@ export async function createAndUploadClientTravelInvoicePdf(
       ? 'en attente de solde'
       : issuedAtLabel;
 
+  // PDFKit embarque les TTF Raleway de façon fiable (Vercel / local).
+  // Playwright reste un essai local uniquement, et seulement si Raleway est vérifiée dans le PDF.
   let pdf: Buffer | null = null;
-  let renderMode: 'html-playwright' | 'pdfkit-raleway' = 'html-playwright';
-  const preferDataAssets = process.env.VERCEL === '1' || process.env.AWS_LAMBDA_FUNCTION_NAME;
+  let renderMode: 'pdfkit-raleway' | 'html-playwright' = 'pdfkit-raleway';
 
-  try {
-    // Sur Vercel : data: fonts d’abord (file:// souvent inaccessible / Chromium serverless).
-    const primaryMode = preferDataAssets ? 'data' : 'file';
-    const html = await buildClientTravelInvoiceHtml(
-      {
-        invoiceNumber,
-        orderId: input.orderId,
-        issuedAtLabel,
-        paidAtLabel,
-        paymentModeLabel: input.paymentModeLabel,
-        organizerName: input.organizerName,
-        billingName: input.billingName,
-        billingAddressLines: input.billingAddressLines,
-        billingEmail: input.billingEmail,
-        lines: input.lines,
-        payments: input.payments ?? [],
-        totalCents: input.totalCents,
-        paidCents: input.paidCents,
-        remainingBalanceCents: input.remainingBalanceCents,
-        isProvisional: input.isProvisional
-      },
-      { assetMode: primaryMode }
-    );
-    pdf = await renderHtmlToPdfBuffer(html);
-  } catch (fileModeError) {
+  const tryPlaywright =
+    process.env.VERCEL !== '1' &&
+    !process.env.AWS_LAMBDA_FUNCTION_NAME &&
+    process.env.CLIENT_INVOICE_FORCE_PDFKIT !== '1';
+
+  if (tryPlaywright) {
     try {
-      const htmlData = await buildClientTravelInvoiceHtml(
+      const html = await buildClientTravelInvoiceHtml(
         {
           invoiceNumber,
           orderId: input.orderId,
@@ -837,21 +826,33 @@ export async function createAndUploadClientTravelInvoicePdf(
           remainingBalanceCents: input.remainingBalanceCents,
           isProvisional: input.isProvisional
         },
-        { assetMode: preferDataAssets ? 'file' : 'data' }
+        { assetMode: 'file' }
       );
-      pdf = await renderHtmlToPdfBuffer(htmlData);
-    } catch (dataModeError) {
-      console.error(
-        'client-travel-invoice: Playwright échoué — bascule PDFKit + Raleway',
-        { fileModeError, dataModeError }
-      );
-      renderMode = 'pdfkit-raleway';
-      pdf = await renderClientTravelInvoicePdfKit(input);
+      const playwrightPdf = await renderHtmlToPdfBuffer(html);
+      if (playwrightPdf?.length && pdfEmbedsRaleway(playwrightPdf)) {
+        pdf = playwrightPdf;
+        renderMode = 'html-playwright';
+      } else {
+        console.warn(
+          'client-travel-invoice: Playwright sans Raleway embarquée — bascule PDFKit'
+        );
+      }
+    } catch (playwrightError) {
+      console.warn('client-travel-invoice: Playwright échoué — bascule PDFKit', playwrightError);
     }
   }
 
   if (!pdf?.length) {
+    renderMode = 'pdfkit-raleway';
+    pdf = await renderClientTravelInvoicePdfKit(input);
+  }
+
+  if (!pdf?.length) {
     throw new Error(`Échec de génération PDF facture client (${renderMode}).`);
+  }
+
+  if (!pdfEmbedsRaleway(pdf)) {
+    throw new Error(`PDF facture client généré sans Raleway (${renderMode}).`);
   }
 
   const path = `clients/${input.invoiceYear}/${input.invoiceId}.pdf`;

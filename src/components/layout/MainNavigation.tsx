@@ -35,6 +35,7 @@ const headerIconButtonClass =
   'flex h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-transparent transition hover:bg-slate-50 hover:opacity-80';
 const mobileHeaderLinkClass =
   'block cursor-pointer text-base font-semibold leading-snug !text-[color:var(--color-primary)] transition-colors hover:!text-[color:var(--resacolo-orange)] focus-visible:!text-[color:var(--resacolo-orange)]';
+const pointerCursorStyle = { cursor: 'pointer' } as const;
 
 function isLinkItem(
   item: (typeof links)[number]
@@ -156,18 +157,33 @@ function MainNavigationContent({
     <header
       data-site-header
       className={clsx(
-        'font-accent sticky top-0 z-[100] overflow-visible border-b border-slate-200 shadow-sm',
+        'font-accent sticky top-0 z-[200] overflow-visible border-b border-slate-200 shadow-sm',
         hidePartnerMarketingLinks
           ? 'bg-white'
           : 'bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/80'
       )}
       style={headerStyle}
     >
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
+            [data-site-header] a,
+            [data-site-header] button,
+            [data-site-header] [role="button"],
+            [data-site-header] summary,
+            [data-site-header] a *,
+            [data-site-header] button * {
+              cursor: pointer !important;
+            }
+          `
+        }}
+      />
       <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-6 sm:py-4 lg:px-8 xl:grid xl:grid-cols-[auto_minmax(0,1fr)_auto] xl:gap-4">
         <Link
           href="/"
           className="flex shrink-0 cursor-pointer items-center"
           title="Retour à l’accueil"
+          style={pointerCursorStyle}
         >
           {branding?.partnerLogoUrl ? (
             <span className="flex items-center">
@@ -218,6 +234,7 @@ function MainNavigationContent({
                       aria-expanded={dropdownOpen}
                       aria-haspopup="menu"
                       title={link.label}
+                      style={pointerCursorStyle}
                       className={clsx(
                         'flex items-center gap-1.5 overflow-visible',
                         headerLinkClass,
@@ -242,6 +259,7 @@ function MainNavigationContent({
                               key={child.href}
                               href={child.href}
                               title={child.label}
+                              style={pointerCursorStyle}
                               className={clsx(
                                 headerDropdownItemClass,
                                 pathname === child.href && 'bg-brand-50'
@@ -264,6 +282,7 @@ function MainNavigationContent({
                     key={link.href}
                     href={link.href}
                     title={link.label}
+                    style={pointerCursorStyle}
                     className={clsx(headerLinkClass, isActive && 'opacity-100')}
                   >
                     {link.label}
@@ -282,6 +301,7 @@ function MainNavigationContent({
               className={headerIconButtonClass}
               aria-label={accountLabel}
               title={accountLabel}
+              style={pointerCursorStyle}
             >
               {useBrandedHeaderIcons ? (
                 <User className={headerIconClass} strokeWidth={2.25} aria-hidden />
@@ -300,6 +320,7 @@ function MainNavigationContent({
               className={clsx(headerIconButtonClass, 'relative')}
               aria-label="Favoris"
               title="Favoris"
+              style={pointerCursorStyle}
             >
               {useBrandedHeaderIcons ? (
                 <Heart className={headerIconClass} strokeWidth={2.25} aria-hidden />
@@ -328,6 +349,7 @@ function MainNavigationContent({
               className={clsx(headerIconButtonClass, 'relative')}
               aria-label="Panier"
               title="Panier"
+              style={pointerCursorStyle}
             >
               {useBrandedHeaderIcons ? (
                 <ShoppingCart className={headerIconClass} strokeWidth={2.25} aria-hidden />
@@ -355,6 +377,7 @@ function MainNavigationContent({
           <button
             type="button"
             className="cursor-pointer rounded-lg border border-slate-200 p-2.5 text-slate-600 xl:hidden"
+            style={pointerCursorStyle}
             onClick={toggle}
             aria-label={open ? 'Fermer le menu' : 'Ouvrir le menu'}
             title={open ? 'Fermer le menu' : 'Ouvrir le menu'}
@@ -385,6 +408,7 @@ function MainNavigationContent({
                               href={child.href}
                               onClick={close}
                               title={child.label}
+                              style={pointerCursorStyle}
                               className={clsx(
                                 mobileHeaderLinkClass,
                                 pathname === child.href && 'opacity-100'
@@ -407,6 +431,7 @@ function MainNavigationContent({
                         href={link.href}
                         onClick={close}
                         title={link.label}
+                        style={pointerCursorStyle}
                         className={clsx(mobileHeaderLinkClass, isActive && 'opacity-100')}
                       >
                         {link.label}
@@ -422,6 +447,7 @@ function MainNavigationContent({
                     href={accountHref}
                     onClick={close}
                     title={accountLabel}
+                    style={pointerCursorStyle}
                     className="inline-flex min-h-[44px] flex-1 cursor-pointer items-center justify-center rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
                   >
                     {accountLabel}
@@ -430,6 +456,7 @@ function MainNavigationContent({
                     href="/account/favorites"
                     onClick={close}
                     title="Favoris"
+                    style={pointerCursorStyle}
                     className="inline-flex min-h-[44px] flex-1 cursor-pointer items-center justify-center rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
                   >
                     Favoris {favoriteIdsArray.length > 0 ? `(${favoriteIdsArray.length > 99 ? '99+' : favoriteIdsArray.length})` : ''}
@@ -438,6 +465,7 @@ function MainNavigationContent({
                     href="/panier"
                     onClick={close}
                     title="Panier"
+                    style={pointerCursorStyle}
                     className="inline-flex min-h-[44px] flex-1 cursor-pointer items-center justify-center rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
                   >
                     Panier {cartCount > 0 ? `(${cartCount > 99 ? '99+' : cartCount})` : ''}

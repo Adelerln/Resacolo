@@ -358,6 +358,21 @@ a {
   transition: color var(--flow-fast) var(--flow-ease);
 }
 
+/* Curseur main explicite sur tout le header public (liens, boutons, icônes). */
+[data-site-header] a,
+[data-site-header] button,
+[data-site-header] [role='button'],
+[data-site-header] summary {
+  cursor: pointer !important;
+}
+
+[data-site-header] a img,
+[data-site-header] a svg,
+[data-site-header] button img,
+[data-site-header] button svg {
+  pointer-events: none;
+}
+
 a.btn-primary,
 a.cta-orange-sweep,
 a.btn-primary:hover,

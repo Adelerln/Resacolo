@@ -54,6 +54,14 @@ async function resolveLocalChromiumExecutable(): Promise<string | null> {
       cacheRoot,
       'chromium-1217/chrome-mac/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing'
     ),
+    join(homedir(), 'Library/Caches/ms-playwright/chromium_headless_shell-1217/chrome-headless-shell-mac-arm64/chrome-headless-shell'),
+    join(homedir(), 'Library/Caches/ms-playwright/chromium_headless_shell-1217/chrome-headless-shell-mac-x64/chrome-headless-shell'),
+    join(
+      homedir(),
+      'Library/Caches/ms-playwright/chromium-1217/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing'
+    ),
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    '/Applications/Chromium.app/Contents/MacOS/Chromium',
     join(cacheRoot, 'chromium-1217/chrome-linux/chrome'),
     join(cacheRoot, 'chromium_headless_shell-1217/chrome-headless-shell-linux64/chrome-headless-shell')
   ];

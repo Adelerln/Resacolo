@@ -25,6 +25,7 @@ import { buildClientPaymentSummaryRows } from '@/lib/client-payment-summary';
 import {
   computePartnerContributionSnapshotCents,
   computePartnerFinanceSplit,
+  normalizePartnerFinanceMode,
   partnerHasMarqueBlancheAccess
 } from '@/lib/partner-offers';
 import {
@@ -760,11 +761,12 @@ function computeFrozenPartnerFinanceSplit(input: {
     Pick<
       CollectivityContributionRow,
       'collectivity_id' | 'order_item_id' | 'mode' | 'fixed_cents' | 'percent_value' | 'cap_cents'
-    >
+    > & { approved_by_user_id?: string | null }
   >;
   collectivity: Pick<CollectivityRow, 'id' | 'finance_mode' | 'finance_percent_value' | 'finance_fixed_cents'> | null;
   totalCents: number;
 }) {
+  const financeMode = normalizePartnerFinanceMode(input.collectivity?.finance_mode);
   const snapshotPartnerCents = input.itemsForOrder.reduce((sum, item) => {
     const contribution = input.contributionByOrderItemId.get(item.id);
     if (!contribution) return sum;
@@ -774,7 +776,11 @@ function computeFrozenPartnerFinanceSplit(input: {
   const hasContributionSnapshot = input.itemsForOrder.some((item) => {
     const contribution = input.contributionByOrderItemId.get(item.id);
     if (!contribution) return false;
-    return !input.collectivity || contribution.collectivity_id === input.collectivity.id;
+    if (input.collectivity && contribution.collectivity_id !== input.collectivity.id) return false;
+    if (financeMode !== 'MANUAL') return true;
+    const cents = computeContributionCentsFromRow(contribution, item.total_price_cents ?? 0);
+    if (cents > 0) return true;
+    return Boolean(contribution.approved_by_user_id);
   });
 
   if (hasContributionSnapshot) {
@@ -786,6 +792,14 @@ function computeFrozenPartnerFinanceSplit(input: {
   }
 
   if (!input.collectivity) {
+    return {
+      partnerCents: 0,
+      clientCents: input.totalCents,
+      hasContributionSnapshot: false
+    };
+  }
+
+  if (financeMode === 'MANUAL') {
     return {
       partnerCents: 0,
       clientCents: input.totalCents,
@@ -1609,7 +1623,7 @@ async function readReservations(
     orderItemIds.length
       ? supabase
           .from('collectivity_contributions')
-          .select('collectivity_id,order_item_id,mode,fixed_cents,percent_value,cap_cents,status')
+          .select('collectivity_id,order_item_id,mode,fixed_cents,percent_value,cap_cents,status,approved_by_user_id')
           .in('order_item_id', orderItemIds)
           .eq('status', 'APPROVED')
       : Promise.resolve({
@@ -1621,6 +1635,7 @@ async function readReservations(
             percent_value: number | null;
             cap_cents: number | null;
             status: Database['public']['Enums']['contribution_status'];
+            approved_by_user_id: string | null;
           }>
         })
   ]);
@@ -1709,7 +1724,7 @@ async function readReservations(
     Pick<
       CollectivityContributionRow,
       'collectivity_id' | 'order_item_id' | 'mode' | 'fixed_cents' | 'percent_value' | 'cap_cents'
-    >
+    > & { approved_by_user_id?: string | null }
   >();
   for (const contribution of collectivityContributions ?? []) {
     contributionByOrderItemId.set(contribution.order_item_id, contribution);
@@ -1745,12 +1760,6 @@ async function readReservations(
       const onlinePaidCents = successfulPaidCentsByOrder.get(order.id) ?? 0;
       const externalPaidCents = Math.max(0, order.external_paid_cents ?? 0);
       const clientPaidCents = onlinePaidCents + externalPaidCents;
-      const remainingBalanceCents = computeOrderRemainingBalanceCents({
-        totalCents: financeSplit.clientCents,
-        externalAidCents: order.external_aid_cents ?? 0,
-        externalPaidCents,
-        onlinePaidCents
-      });
       const isPartnerFullCoverage =
         isPartnerFullCoverageAmounts({
           totalCents,
@@ -1762,6 +1771,20 @@ async function readReservations(
           onlinePaidCents <= 0 &&
           externalPaidCents <= 0 &&
           order.request_kind == null);
+      const isPartnerManualQuotePending =
+        Boolean(collectivity) &&
+        normalizePartnerFinanceMode(collectivity.finance_mode) === 'MANUAL' &&
+        !financeSplit.hasContributionSnapshot &&
+        (order.status === 'REQUESTED' || order.status === 'PENDING_PAYMENT') &&
+        order.request_kind == null;
+      const remainingBalanceCents = isPartnerManualQuotePending
+        ? 0
+        : computeOrderRemainingBalanceCents({
+            totalCents: financeSplit.clientCents,
+            externalAidCents: order.external_aid_cents ?? 0,
+            externalPaidCents,
+            onlinePaidCents
+          });
       const effectiveOrderStatus = reconcileOrderStatusWithBalance({
         status: order.status,
         remainingBalanceCents,
@@ -1915,7 +1938,8 @@ async function readReservations(
           cancellationReason: order.cancellation_reason,
           requestKind: order.request_kind,
           hasVacafNumber: hasVacafNumberInPaymentPayload(payment?.raw_payload),
-          isPartnerFullCoverage
+          isPartnerFullCoverage,
+          isPartnerManualQuotePending
         }),
         sessionStartDate: session?.start_date ?? null,
         sessionEndDate: session?.end_date ?? null,
@@ -1930,7 +1954,8 @@ async function readReservations(
           partnerCents: isPartnerFullCoverage
             ? Math.max(financeSplit.partnerCents, totalCents)
             : financeSplit.partnerCents,
-          collectivityName: collectivity?.name ?? null
+          collectivityName: collectivity?.name ?? null,
+          isPartnerManualQuotePending
         }),
         remainingBalanceCents,
         clientPaidCents,

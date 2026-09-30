@@ -453,7 +453,7 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
       ? supabase.from('clients').select('user_id,full_name').in('user_id', clientUserIds)
       : Promise.resolve({ data: [] }),
     collectivityIds.length
-      ? supabase.from('collectivities').select('id,name').in('id', collectivityIds)
+      ? supabase.from('collectivities').select('id,name,finance_mode').in('id', collectivityIds)
       : Promise.resolve({ data: [] })
   ]);
 
@@ -469,7 +469,7 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
   const { data: contributionsRaw } = orderItemIds.length
     ? await supabase
         .from('collectivity_contributions')
-        .select('order_item_id,mode,fixed_cents,percent_value,cap_cents,status')
+        .select('order_item_id,mode,fixed_cents,percent_value,cap_cents,status,approved_by_user_id')
         .in('order_item_id', orderItemIds)
     : { data: [] };
   const contributionByOrderItemId = new Map(
@@ -542,7 +542,13 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
     }
   }
   const collectivitiesById = new Map(
-    (collectivitiesRaw ?? []).map((collectivity) => [collectivity.id, collectivity.name])
+    (collectivitiesRaw ?? []).map((collectivity) => [
+      collectivity.id,
+      {
+        name: collectivity.name,
+        financeMode: String((collectivity as { finance_mode?: string | null }).finance_mode ?? '')
+      }
+    ])
   );
 
   // Corrige les commandes CAF/ANCV encore sans montant mais passées trop tôt en « en attente de paiement ».
@@ -686,9 +692,37 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
         })
       );
     }, 0);
-    const collectivityName = order.collectivity_id
-      ? collectivitiesById.get(order.collectivity_id) ?? 'Collectivité inconnue'
-      : null;
+    const collectivityMeta = order.collectivity_id ? collectivitiesById.get(order.collectivity_id) : null;
+    const collectivityName = collectivityMeta?.name ?? (order.collectivity_id ? 'Collectivité inconnue' : null);
+    const notificationFlags =
+      payment?.raw_payload &&
+      typeof payment.raw_payload === 'object' &&
+      !Array.isArray(payment.raw_payload)
+        ? ((payment.raw_payload as { reservationNotification?: Record<string, unknown> })
+            .reservationNotification ?? null)
+        : null;
+    const flaggedManualQuote = notificationFlags?.isPartnerManualQuote === true;
+    const hasPartnerResolvedContribution = items.some((item) => {
+      if (!item.id) return false;
+      const contribution = contributionByOrderItemId.get(item.id);
+      if (!contribution) return false;
+      const cents = computePartnerContributionSnapshotCents({
+        mode: contribution.mode,
+        totalCents: item.total_price_cents ?? 0,
+        percentValue: contribution.percent_value,
+        fixedCents: contribution.fixed_cents,
+        capCents: contribution.cap_cents
+      });
+      if (cents > 0) return true;
+      return Boolean((contribution as { approved_by_user_id?: string | null }).approved_by_user_id);
+    });
+    const isPartnerManualQuotePending =
+      Boolean(order.collectivity_id) &&
+      (order.status === 'REQUESTED' || order.status === 'PENDING_PAYMENT') &&
+      !hasPartnerResolvedContribution &&
+      !isVacafRequest &&
+      !isAncvRequest &&
+      (flaggedManualQuote || collectivityMeta?.financeMode === 'MANUAL');
     const isPartnerFullCoverage =
       isPartnerFullCoverageAmounts({
         totalCents,
@@ -709,9 +743,11 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
       onlinePaidCents
     });
     const remainingBalanceLabel =
-      remainingBalanceCents > 0
-        ? formatEuroFromCents(remainingBalanceCents, payment?.currency ?? 'EUR')
-        : null;
+      isPartnerManualQuotePending
+        ? null
+        : remainingBalanceCents > 0
+          ? formatEuroFromCents(remainingBalanceCents, payment?.currency ?? 'EUR')
+          : null;
     const needsVacafCoverageEntry = canEnterVacafCoverage && !externalAidLabel;
     const needsAncvCoverageEntry = canEnterAncvCoverage && !externalPaidLabel;
     const ancvConnectRequestedAmountLabel =
@@ -771,6 +807,7 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
         amountLabel: formatEuroFromCents(totalCents, payment?.currency ?? 'EUR'),
         collectivityName: collectivityName ?? 'Famille directe',
         isPartnerFullCoverage,
+        isPartnerManualQuotePending,
         status: displayStatus,
         cancellationReason: order.cancellation_reason,
         requestKind: order.request_kind,
@@ -818,7 +855,8 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
             partnerCents: isPartnerFullCoverage
               ? Math.max(partnerContributionCents, totalCents)
               : partnerContributionCents,
-            collectivityName
+            collectivityName,
+            isPartnerManualQuotePending
           }),
           collectivityName,
           cafNumber: cafNumberLabel,
@@ -972,7 +1010,8 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
               })();
               const statusLabel = orderStatusLabel(reservation.status, {
                 cancellationReason: reservation.cancellationReason,
-                isPartnerFullCoverage: reservation.isPartnerFullCoverage
+                isPartnerFullCoverage: reservation.isPartnerFullCoverage,
+                isPartnerManualQuotePending: reservation.isPartnerManualQuotePending
               });
               const infoBadge =
                 reservation.needsVacafCoverageEntry && reservation.needsAncvCoverageEntry
@@ -1015,7 +1054,8 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
                         reservation.status,
                         {
                           cancellationReason: reservation.cancellationReason,
-                          isPartnerFullCoverage: reservation.isPartnerFullCoverage
+                          isPartnerFullCoverage: reservation.isPartnerFullCoverage,
+                          isPartnerManualQuotePending: reservation.isPartnerManualQuotePending
                         }
                       )}`}
                     >
@@ -1033,7 +1073,11 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
                       <span className="text-slate-400">—</span>
                     )}
                     {reservation.status !== 'CANCELLED' && reservation.status !== 'FAILED' ? (
-                      reservation.remainingBalanceLabel ? (
+                      reservation.isPartnerManualQuotePending ? (
+                        <div className="mt-0.5 text-xs font-medium text-amber-700">
+                          Attente calcul prise en charge partenaire
+                        </div>
+                      ) : reservation.remainingBalanceLabel ? (
                         <div className="mt-0.5 text-xs font-medium text-amber-700">
                           Restant dû : {reservation.remainingBalanceLabel}
                         </div>

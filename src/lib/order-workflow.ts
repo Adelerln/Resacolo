@@ -163,7 +163,11 @@ export function resolveDisplayedPaymentModeLabel(input: {
   totalCents: number;
   partnerCents: number;
   collectivityName?: string | null;
+  isPartnerManualQuotePending?: boolean;
 }) {
+  if (input.isPartnerManualQuotePending) {
+    return 'Demande de devis partenaire';
+  }
   if (isPartnerFullCoverageAmounts(input)) {
     return resolvePartnerFullCoveragePaymentModeLabel(input.collectivityName);
   }
@@ -270,9 +274,15 @@ export function resolveOrderStatusLabel(input: {
   hasVacafNumber?: boolean;
   /** Si true et statut payé / solde 0 : afficher « Partenaire » au lieu de « Payée ». */
   isPartnerFullCoverage?: boolean;
+  /** Demande de devis CSE : pas encore de prise en charge calculée. */
+  isPartnerManualQuotePending?: boolean;
 }) {
   if (isPaymentFailedOrder({ status: input.status, cancellationReason: input.cancellationReason })) {
     return FAMILY_ORDER_STATUS_LABELS.FAILED;
+  }
+
+  if (input.isPartnerManualQuotePending) {
+    return 'En attente du devis partenaire';
   }
 
   const hasVacaf = input.requestKind === 'VACAF' || Boolean(input.hasVacafNumber);
@@ -709,13 +719,23 @@ export function resolveCheckoutConfirmationSubtitle(input: {
 
 export function orderStatusLabel(
   status: OrderStatus | string | null | undefined,
-  options?: { cancellationReason?: string | null; isPartnerFullCoverage?: boolean }
+  options?: {
+    cancellationReason?: string | null;
+    isPartnerFullCoverage?: boolean;
+    isPartnerManualQuotePending?: boolean;
+  }
 ) {
   if (isPaymentFailedOrder({ status, cancellationReason: options?.cancellationReason })) {
     return FAMILY_ORDER_STATUS_LABELS.FAILED;
   }
   const normalized = normalizeOrderStatus(status);
   if (!normalized) return '-';
+  if (
+    options?.isPartnerManualQuotePending &&
+    (normalized === 'REQUESTED' || normalized === 'PENDING_PAYMENT')
+  ) {
+    return 'En attente du devis partenaire';
+  }
   if (options?.isPartnerFullCoverage && normalized === 'PAID') {
     return 'Partenaire';
   }
@@ -724,7 +744,11 @@ export function orderStatusLabel(
 
 export function orderStatusBadgeClassName(
   status: OrderStatus | string | null | undefined,
-  options?: { cancellationReason?: string | null; isPartnerFullCoverage?: boolean }
+  options?: {
+    cancellationReason?: string | null;
+    isPartnerFullCoverage?: boolean;
+    isPartnerManualQuotePending?: boolean;
+  }
 ) {
   if (isPaymentFailedOrder({ status, cancellationReason: options?.cancellationReason })) {
     return 'bg-rose-100 text-rose-900';
@@ -732,6 +756,12 @@ export function orderStatusBadgeClassName(
   const normalized = normalizeOrderStatus(status);
   if (options?.isPartnerFullCoverage && normalized === 'PAID') {
     return 'bg-teal-100 text-teal-900';
+  }
+  if (
+    options?.isPartnerManualQuotePending &&
+    (normalized === 'REQUESTED' || normalized === 'PENDING_PAYMENT')
+  ) {
+    return 'bg-amber-100 text-amber-900';
   }
   switch (normalized) {
     case 'REQUESTED':

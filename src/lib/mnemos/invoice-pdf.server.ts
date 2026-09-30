@@ -9,13 +9,14 @@ import { formatOrderReservationCode } from '@/lib/order-workflow';
 import { formatMnemosLedgerChannel } from '@/lib/mnemos-display';
 import {
   buildClientTravelInvoiceHtml,
+  CLIENT_TRAVEL_INVOICE_RALEWAY_BOLD_PATH,
+  CLIENT_TRAVEL_INVOICE_RALEWAY_REGULAR_PATH,
   formatClientTravelInvoiceNumber
 } from '@/lib/mnemos/client-travel-invoice-template.server';
 import { renderHtmlToPdfBuffer } from '@/lib/mnemos/html-to-pdf.server';
 import type { Database } from '@/types/supabase';
 import type { LedgerLinePreview } from './ledger-period-preview.server';
 import { enrichLedgerLinesForInvoice } from './ledger-period-preview.server';
-
 const INVOICE_PDF_BUCKET = 'invoice-pdfs';
 const RESACOLO_LOGO_PATH = join(process.cwd(), 'public/image/accueil/images_accueil/logo-resacolo.png');
 const RESACOLO_LOGO_WHITE_PATH = join(
@@ -281,21 +282,33 @@ function buildPdf(lines: string[], images: PdfImage[] = [], fonts: PdfFonts | nu
     pdfObject(`<< /Type /Catalog /Pages ${pagesId} 0 R >>`)
   );
 
-  let pdf = '%PDF-1.4\n';
+  const chunks: Buffer[] = [Buffer.from('%PDF-1.4\n', 'latin1')];
   const offsets = [0];
   objects.forEach((object, index) => {
-    offsets.push(Buffer.byteLength(pdf, 'latin1'));
-    pdf += `${index + 1} 0 obj\n`;
-    pdf += object.toString('latin1');
-    pdf += '\nendobj\n';
+    offsets.push(chunks.reduce((sum, chunk) => sum + chunk.length, 0));
+    chunks.push(Buffer.from(`${index + 1} 0 obj\n`, 'latin1'));
+    chunks.push(object);
+    chunks.push(Buffer.from('\nendobj\n', 'latin1'));
   });
-  const xrefOffset = Buffer.byteLength(pdf, 'latin1');
-  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  const xrefOffset = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  let xref = `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
   offsets.slice(1).forEach((offset) => {
-    pdf += `${String(offset).padStart(10, '0')} 00000 n \n`;
+    xref += `${String(offset).padStart(10, '0')} 00000 n \n`;
   });
-  pdf += `trailer\n<< /Size ${objects.length + 1} /Root ${catalogId} 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`;
-  return Buffer.from(pdf, 'latin1');
+  xref += `trailer\n<< /Size ${objects.length + 1} /Root ${catalogId} 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`;
+  chunks.push(Buffer.from(xref, 'latin1'));
+  return Buffer.concat(chunks);
+}
+
+async function loadRalewayFonts(): Promise<PdfFonts> {
+  const [regular, bold] = await Promise.all([
+    readFile(CLIENT_TRAVEL_INVOICE_RALEWAY_REGULAR_PATH),
+    readFile(CLIENT_TRAVEL_INVOICE_RALEWAY_BOLD_PATH)
+  ]);
+  if (!regular.length || !bold.length) {
+    throw new Error('Fichiers Raleway introuvables pour la facture PDF.');
+  }
+  return { regular, bold };
 }
 
 function paeth(left: number, up: number, upLeft: number) {
@@ -776,7 +789,7 @@ export async function createAndUploadClientTravelInvoicePdf(
       : issuedAtLabel;
 
   let pdf: Buffer | null = null;
-  let renderMode: 'html-playwright' | 'native-blue' = 'html-playwright';
+  let renderMode: 'html-playwright' | 'native-blue-raleway' = 'html-playwright';
 
   try {
     // file:// fonts d'abord (Raleway correctement embarquée dans le PDF Chromium).
@@ -826,18 +839,18 @@ export async function createAndUploadClientTravelInvoicePdf(
       pdf = await renderHtmlToPdfBuffer(htmlData);
     } catch (dataModeError) {
       console.error(
-        'client-travel-invoice: Playwright/Raleway échoué — bascule natif bleu (Helvetica)',
+        'client-travel-invoice: Playwright échoué — bascule natif bleu avec Raleway embarquée',
         { fileModeError, dataModeError }
       );
-      renderMode = 'native-blue';
+      renderMode = 'native-blue-raleway';
       let logo: PdfImage | null = null;
       try {
         logo = await loadResacoloLogo(true);
       } catch {
         logo = null;
       }
-      // Dernier recours layout bleu — Helvetica (pas Raleway).
-      pdf = renderClientTravelInvoicePdf(input, logo, null);
+      const fonts = await loadRalewayFonts();
+      pdf = renderClientTravelInvoicePdf(input, logo, fonts);
     }
   }
 

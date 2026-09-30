@@ -87,9 +87,10 @@ function escapeHtml(value: string) {
 function paymentModeLabel(
   mode: CheckoutPaymentMode,
   requestKind?: OrderRequestKind,
-  options?: { isPartnerTotalCoverage?: boolean }
+  options?: { isPartnerTotalCoverage?: boolean; isPartnerManualQuote?: boolean }
 ) {
   if (options?.isPartnerTotalCoverage) return 'Prise en charge totale par le partenaire';
+  if (options?.isPartnerManualQuote) return 'Demande de devis partenaire';
   if (requestKind === 'VACAF') return 'Demande VACAF / AVE';
   if (requestKind === 'ANCV_CONNECT' || mode === 'CV_CONNECT') return 'ANCV Connect';
   switch (mode) {
@@ -137,6 +138,16 @@ export function buildOrganizerReservationActions(input: {
         title: 'Prise en charge totale partenaire',
         description:
           'Aucun règlement n’est demandé à la famille. La collectivité / le CSE réglera la totalité auprès de ResaColo. Traitez l’inscription comme une réservation déjà financée (paiement partenaire différé — pas de paiement carte).'
+      }
+    ];
+  }
+
+  if (input.isPartnerManualQuote) {
+    return [
+      {
+        title: 'Demande de devis — calcul partenaire',
+        description:
+          'La famille a transmis une demande de devis. Aucun paiement n’est attendu pour l’instant : le partenaire (CSE / collectivité) doit d’abord calculer la prise en charge dans son espace. Attendez ce calcul avant de finaliser le reste à charge avec la famille.'
       }
     ];
   }
@@ -213,20 +224,18 @@ export function buildOrganizerReservationActions(input: {
   }
 
   // DEFERRED is also used when VACAF is checked (no online CB). Never confuse that with a partner quote.
-  if (input.paymentMode === 'DEFERRED' && !hasVacaf && !hasAncvConnect && !input.hasVacafNumber) {
-    if (input.isPartnerManualQuote) {
-      actions.push({
-        title: 'Paiement différé — devis partenaire',
-        description:
-          'Le règlement est différé car le partenaire doit d’abord calculer la prise en charge et la renseigner dans son back-office. Attendez ce calcul avant de finaliser le reste à charge avec la famille.'
-      });
-    } else {
-      actions.push({
-        title: 'Paiement différé',
-        description:
-          'La famille a choisi un règlement différé. Aucun paiement en ligne n’est attendu pour l’instant : recontactez-la pour finaliser le reste à charge.'
-      });
-    }
+  if (
+    !input.isPartnerManualQuote &&
+    input.paymentMode === 'DEFERRED' &&
+    !hasVacaf &&
+    !hasAncvConnect &&
+    !input.hasVacafNumber
+  ) {
+    actions.push({
+      title: 'Paiement différé',
+      description:
+        'La famille a choisi un règlement différé. Aucun paiement en ligne n’est attendu pour l’instant : recontactez-la pour finaliser le reste à charge.'
+    });
   }
 
   if (actions.length === 0) {
@@ -363,14 +372,19 @@ export function renderOrganizerReservationEmail(input: ReservationNotificationIn
   const showAncvConnectIds =
     input.requestKind === 'ANCV_CONNECT' || input.paymentMode === 'CV_CONNECT';
   const paymentModeDisplay = paymentModeLabel(input.paymentMode, input.requestKind, {
-    isPartnerTotalCoverage
+    isPartnerTotalCoverage,
+    isPartnerManualQuote: input.isPartnerManualQuote
   });
   const title = paymentFailed
     ? 'Paiement échoué — demande annulée'
-    : 'Nouvelle demande de réservation';
+    : input.isPartnerManualQuote
+      ? 'Nouvelle demande de devis'
+      : 'Nouvelle demande de réservation';
   const introHtml = paymentFailed
     ? `Bonjour <strong>${escapeHtml(input.organizerName)}</strong>, une tentative de réservation vient d’échouer au paiement carte.`
-    : `Bonjour <strong>${escapeHtml(input.organizerName)}</strong>, une famille vient de transmettre une demande via Resacolo.`;
+    : input.isPartnerManualQuote
+      ? `Bonjour <strong>${escapeHtml(input.organizerName)}</strong>, une famille vient de transmettre une <strong>demande de devis</strong> via Resacolo (calcul de prise en charge partenaire à venir).`
+      : `Bonjour <strong>${escapeHtml(input.organizerName)}</strong>, une famille vient de transmettre une demande via Resacolo.`;
 
   const actionsHtml = actions
     .map(
@@ -508,6 +522,10 @@ export function renderFamilyReservationEmail(input: ReservationNotificationInput
     nextSteps.push(
       'Aucun règlement ne vous est demandé : votre partenaire (CSE / collectivité) prend en charge la totalité du séjour auprès de ResaColo. Le statut dans votre espace Mon compte indique « Partenaire ».'
     );
+  } else if (input.isPartnerManualQuote) {
+    nextSteps.push(
+      'Vous avez transmis une demande de devis : aucun règlement n’est demandé pour l’instant. Votre partenaire (CSE / collectivité) doit d’abord calculer la prise en charge (quotient familial / montant) dans son espace. Le reste à charge vous sera indiqué ensuite.'
+    );
   } else if (input.requestKind === 'VACAF' || (input.contact.vacafNumber?.trim() && input.stayCafEligible)) {
     nextSteps.push(
       'L’organisateur va vérifier vos droits VACAF/CAF. Vous pouvez être recontacté(e) pour finaliser l’inscription.'
@@ -518,7 +536,7 @@ export function renderFamilyReservationEmail(input: ReservationNotificationInput
     );
   }
 
-  if (!input.isPartnerTotalCoverage) {
+  if (!input.isPartnerTotalCoverage && !input.isPartnerManualQuote) {
     if (input.paymentMode === 'CV_CONNECT' || input.requestKind === 'ANCV_CONNECT') {
       nextSteps.push(
         'ANCV Connect : l’organisateur va vous recontacter pour finaliser le règlement avec vos Chèques-Vacances Connect.'
@@ -540,12 +558,13 @@ export function renderFamilyReservationEmail(input: ReservationNotificationInput
 
   const hasAncvSettlement =
     !input.isPartnerTotalCoverage &&
+    !input.isPartnerManualQuote &&
     (input.paymentMode === 'CV_CONNECT' ||
       input.requestKind === 'ANCV_CONNECT' ||
       input.paymentMode === 'CV_PAPER' ||
       Boolean(input.contact.ancvPaperRequested));
 
-  if (!input.isPartnerTotalCoverage && !hasAncvSettlement) {
+  if (!input.isPartnerTotalCoverage && !input.isPartnerManualQuote && !hasAncvSettlement) {
     if (input.paymentMode === 'DEPOSIT_200') {
       nextSteps.push(
         'Votre acompte de 200 € a été initié. Dès confirmation bancaire, il apparaîtra comme encaissé ; le solde restant pourra être réglé ensuite.'
@@ -560,21 +579,11 @@ export function renderFamilyReservationEmail(input: ReservationNotificationInput
         input.requestKind === 'ANCV_CONNECT' ||
         Boolean(input.contact.vacafNumber?.trim());
       if (!coveredByAid) {
-        if (input.isPartnerManualQuote) {
-          nextSteps.push(
-            'Paiement différé : aucun règlement n’est demandé pour l’instant, car votre partenaire doit d’abord calculer la prise en charge et la renseigner dans son back-office. Le reste à charge vous sera indiqué ensuite.'
-          );
-        } else {
-          nextSteps.push(
-            'Paiement différé : aucun règlement n’est demandé pour l’instant. L’organisateur vous recontactera pour finaliser le reste à charge.'
-          );
-        }
+        nextSteps.push(
+          'Paiement différé : aucun règlement n’est demandé pour l’instant. L’organisateur vous recontactera pour finaliser le reste à charge.'
+        );
       }
     } else if (nextSteps.length === 0) {
-      nextSteps.push(
-        'Paiement différé : aucun règlement n’est demandé pour l’instant, car votre partenaire doit d’abord calculer la prise en charge et la renseigner dans son back-office. Le reste à charge vous sera indiqué ensuite.'
-      );
-    } else {
       nextSteps.push('L’organisateur va traiter votre demande et vous recontactera si une information manque.');
     }
   }
@@ -604,7 +613,7 @@ export function renderFamilyReservationEmail(input: ReservationNotificationInput
                     <p style="margin:0 0 8px;font-size:13px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.03em;">Votre demande</p>
                     <p style="margin:0 0 4px;font-size:14px;color:#1d1f25;"><strong>Référence :</strong> ${escapeHtml(reservationCode)}</p>
                     <p style="margin:0 0 4px;font-size:14px;color:#1d1f25;"><strong>Organisateur :</strong> ${escapeHtml(input.organizerName)}</p>
-                    <p style="margin:0;font-size:14px;color:#1d1f25;"><strong>Mode de règlement :</strong> ${escapeHtml(paymentModeLabel(input.paymentMode, input.requestKind, { isPartnerTotalCoverage: input.isPartnerTotalCoverage }))}</p>
+                    <p style="margin:0;font-size:14px;color:#1d1f25;"><strong>Mode de règlement :</strong> ${escapeHtml(paymentModeLabel(input.paymentMode, input.requestKind, { isPartnerTotalCoverage: input.isPartnerTotalCoverage, isPartnerManualQuote: input.isPartnerManualQuote }))}</p>
                   </td>
                 </tr>
               </table>
@@ -640,7 +649,8 @@ export function renderFamilyReservationEmail(input: ReservationNotificationInput
     `Référence : ${reservationCode}`,
     `Organisateur : ${input.organizerName}`,
     `Mode de règlement : ${paymentModeLabel(input.paymentMode, input.requestKind, {
-      isPartnerTotalCoverage: input.isPartnerTotalCoverage
+      isPartnerTotalCoverage: input.isPartnerTotalCoverage,
+      isPartnerManualQuote: input.isPartnerManualQuote
     })}`,
     '',
     ...input.lines.map(

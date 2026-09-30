@@ -221,7 +221,7 @@ function partnerReservationStatusLabel(
     }
     if (hasOpenOrganizerPaperWorkflow) return 'En attente de traitement organisme (ANCV papier)';
     if (financeMode === 'MANUAL' && !hasContributionSnapshot) {
-      return 'En attente de traitement partenaire';
+      return 'En attente de calcul partenaire (QF / prise en charge)';
     }
     if (familySettledWithPartnerShareDue) return PARTNER_DEFERRED_PAYMENT_STATUS_LABEL;
     return 'En attente de paiement famille';
@@ -229,7 +229,9 @@ function partnerReservationStatusLabel(
 
   if (status === 'PENDING_PAYMENT') {
     if (hasOpenOrganizerPaperWorkflow) return 'En attente de traitement organisme (ANCV papier)';
-    if (financeMode === 'MANUAL' && !hasContributionSnapshot) return 'En attente de traitement partenaire';
+    if (financeMode === 'MANUAL' && !hasContributionSnapshot) {
+      return 'En attente de calcul partenaire (QF / prise en charge)';
+    }
     if (familySettledWithPartnerShareDue) return PARTNER_DEFERRED_PAYMENT_STATUS_LABEL;
     if (remainingBalanceCents <= 0) return 'Réservation payée';
     return 'En attente de paiement famille';
@@ -253,7 +255,10 @@ function partnerReservationBadgeStatus(input: {
   if (input.statusLabel === 'En attente de paiement famille') {
     return 'PENDING_PAYMENT' as const;
   }
-  if (input.statusLabel.startsWith('En attente de traitement')) {
+  if (
+    input.statusLabel.startsWith('En attente de traitement') ||
+    input.statusLabel.startsWith('En attente de calcul partenaire')
+  ) {
     return 'REQUESTED' as const;
   }
   // Teal « Partenaire » côté organisme : confirmée sans encaissement famille.
@@ -294,7 +299,7 @@ function describePartnerReservationPendingActions(input: {
     actions.push({
       actorLabel: 'Partenaire',
       description:
-        'Calculer la prise en charge partenaire et la renseigner dans le back-office (paiement différé jusqu’à ce calcul).'
+        'Renseigner le quotient familial (Financement / Bénéficiaires) ou le montant de prise en charge, puis enregistrer le devis pour cette réservation.'
     });
   }
 
@@ -677,7 +682,7 @@ export async function listPartnerReservations(collectivityId: string, excludedUs
   const contributionsResponse = orderItemIds.length
     ? await supabase
         .from('collectivity_contributions')
-        .select('collectivity_id,order_item_id,mode,fixed_cents,percent_value,cap_cents,status')
+        .select('collectivity_id,order_item_id,mode,fixed_cents,percent_value,cap_cents,status,approved_by_user_id')
         .eq('collectivity_id', collectivityId)
         .in('order_item_id', orderItemIds)
     : { data: [], error: null };
@@ -828,7 +833,22 @@ export async function listPartnerReservations(collectivityId: string, excludedUs
         })
       );
     }, 0);
-    const hasContributionSnapshot = itemsForOrder.some((item) => contributionByOrderItemId.has(item.id));
+    const financeMode = normalizePartnerFinanceMode(collectivity.finance_mode);
+    // MANUAL : un FIXED 0 auto (checkout devis) ne compte pas comme calcul partenaire.
+    const hasContributionSnapshot = itemsForOrder.some((item) => {
+      const contribution = contributionByOrderItemId.get(item.id);
+      if (!contribution) return false;
+      if (financeMode !== 'MANUAL') return true;
+      const cents = computePartnerContributionSnapshotCents({
+        mode: contribution.mode,
+        totalCents: item.total_price_cents ?? 0,
+        percentValue: contribution.percent_value,
+        fixedCents: contribution.fixed_cents,
+        capCents: contribution.cap_cents
+      });
+      if (cents > 0) return true;
+      return Boolean((contribution as { approved_by_user_id?: string | null }).approved_by_user_id);
+    });
     const fallbackSplit = computePartnerFinanceSplit({
       mode: collectivity.finance_mode,
       totalCents,
@@ -837,7 +857,11 @@ export async function listPartnerReservations(collectivityId: string, excludedUs
       manualPartnerCents: 0
     });
     const partnerContributionCents = hasContributionSnapshot ? snapshotPartnerCents : fallbackSplit.partnerCents;
-    const clientContributionCents = Math.max(0, totalCents - partnerContributionCents);
+    const clientContributionCents = hasContributionSnapshot
+      ? Math.max(0, totalCents - partnerContributionCents)
+      : financeMode === 'MANUAL'
+        ? totalCents
+        : Math.max(0, totalCents - partnerContributionCents);
     const paymentMode = latestPaymentModeByOrderId.get(order.id) ?? 'FULL';
     const paymentRawPayload = latestPaymentPayloadByOrderId.get(order.id) ?? null;
     const effectiveRequestKind = inferPartnerRequestKind({

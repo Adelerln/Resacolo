@@ -599,6 +599,10 @@ async function snapshotCollectivityContributions(input: {
   }
 
   if (mode === 'MANUAL') {
+    // Demande de devis : ne pas figer FIXED 0 (sinon le partenaire croit que le calcul est fait).
+    const hasResolvedAid = input.orderItems.some((item) => Math.max(0, Math.round(item.partnerAidCents ?? 0)) > 0);
+    if (!hasResolvedAid) return;
+
     const { error } = await supabase.from('collectivity_contributions').upsert(
       input.orderItems.map((item) => ({
         collectivity_id: input.collectivityId,
@@ -920,6 +924,10 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
     const stayCafEligible = organizerItems.every((item) => item.isCafEligible !== false);
     const requestKind = resolveOrderRequestKind(effectiveContact, organizerSettings, { stayCafEligible });
     const organizerPricing = buildPricingForOrganizerGroup(organizerItems, pricing.currency);
+    // Demande de devis CSE : forcer différé (jamais FULL/CB) même si le contact UI a dérivé.
+    if (organizerPricing.financeRequiresQuote && !requestKind) {
+      effectiveContact.paymentMode = 'DEFERRED';
+    }
     if (effectiveContact.paymentMode === 'DEFERRED' && !effectiveContact.vacafNumber.trim() &&
         !organizerPricing.financeRequiresQuote && !isPartnerFullCoverageCheckout(organizerPricing)) {
       throw new CheckoutValidationError(
@@ -931,10 +939,13 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
       paymentMode: effectiveContact.paymentMode
     });
     const isPartnerTotalCoverage = !requestKind && isPartnerFullCoverageCheckout(organizerPricing);
+    const isPartnerManualQuote = Boolean(organizerPricing.financeRequiresQuote) && !requestKind;
     const paidAt = isPartnerTotalCoverage ? requestedAt : null;
     const initialStatus = isPartnerTotalCoverage
       ? ('PAID' as Database['public']['Enums']['order_status'])
-      : resolveInitialOrderStatus(effectiveContact, organizerSettings, { stayCafEligible });
+      : isPartnerManualQuote
+        ? ('REQUESTED' as Database['public']['Enums']['order_status'])
+        : resolveInitialOrderStatus(effectiveContact, organizerSettings, { stayCafEligible });
     const immediatePaymentAmountCents = computeImmediatePaymentAmountCents(
       organizerPricing.financeFamilyPayableTotalCents ?? 0,
       effectiveContact.paymentMode
@@ -1149,7 +1160,7 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
       contact: effectiveContact,
       paymentMode: effectiveContact.paymentMode,
       requestKind,
-      isPartnerManualQuote: Boolean(organizerPricing.financeRequiresQuote),
+      isPartnerManualQuote,
       isPartnerTotalCoverage,
       // Jamais « SUCCEEDED » ici : ce statut signifie un vrai encaissement CB pour le mail organisateur.
       onlinePaymentStatus: deferOrganizerNotification ? 'PENDING' : null,

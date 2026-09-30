@@ -1773,7 +1773,7 @@ async function readReservations(
           order.request_kind == null);
       const isPartnerManualQuotePending =
         Boolean(collectivity) &&
-        normalizePartnerFinanceMode(collectivity.finance_mode) === 'MANUAL' &&
+        normalizePartnerFinanceMode(collectivity?.finance_mode) === 'MANUAL' &&
         !financeSplit.hasContributionSnapshot &&
         (order.status === 'REQUESTED' || order.status === 'PENDING_PAYMENT') &&
         order.request_kind == null;

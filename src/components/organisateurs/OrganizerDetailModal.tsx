@@ -6,15 +6,24 @@ import Image from 'next/image';
 import { X } from 'lucide-react';
 import { StayCard } from '@/components/sejours/StayCard';
 import type { Stay } from '@/types/stay';
-import type { MockOrganizer } from '@/lib/mockOrganizers';
 
 interface OrganizerDetailModalProps {
   slug: string;
   onClose: () => void;
 }
 
+type ApiOrganizer = {
+  slug: string;
+  name: string;
+  creationYear: number | null;
+  publicAgeRange: string;
+  logoUrl?: string | null;
+  description?: string | null;
+  website?: string | null;
+};
+
 type ApiResponse = {
-  organizer: MockOrganizer;
+  organizer: ApiOrganizer;
   stays: Stay[];
 };
 
@@ -129,7 +138,8 @@ function OrganizerDetailModalContent({ slug, onClose }: OrganizerDetailModalProp
                     {data.organizer.name}
                   </h2>
                   <p className="mt-1 text-sm text-slate-500">
-                    Création : {data.organizer.creationYear} · Public : {data.organizer.publicAgeRange}
+                    Création : {data.organizer.creationYear ?? '—'} · Public :{' '}
+                    {data.organizer.publicAgeRange}
                   </p>
                 </div>
               </header>

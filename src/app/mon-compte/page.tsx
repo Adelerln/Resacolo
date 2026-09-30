@@ -1,7 +1,10 @@
 import { redirect } from 'next/navigation';
 import { getCurrentUser } from '@/lib/auth/session';
 import { getFamilyProfileSnapshot } from '@/lib/account-profile/server';
+import { getFavoriteStayIdsForUserId } from '@/lib/favorites.server';
+import { getStaysByIds } from '@/lib/stays';
 import type { FamilyCseAffiliation, FamilyProfile, FamilyReservation } from '@/types/family-profile';
+import type { Stay } from '@/types/stay';
 import MonCompteClient from './MonCompteClient';
 
 export const metadata = {
@@ -73,6 +76,7 @@ export default async function MonComptePage() {
   let initialCseAffiliation: FamilyCseAffiliation | null = null;
   let profileLoadError: string | null = null;
   let deferAccountDataToClient = false;
+  let favoriteStays: Stay[] = [];
 
   try {
     const snapshot = await getFamilyProfileSnapshot({
@@ -89,12 +93,21 @@ export default async function MonComptePage() {
     deferAccountDataToClient = true;
   }
 
+  try {
+    const favoriteIds = await getFavoriteStayIdsForUserId(session.userId);
+    if (favoriteIds.length > 0) {
+      favoriteStays = await getStaysByIds(favoriteIds);
+    }
+  } catch (error) {
+    console.error('[mon-compte] chargement favoris échoué', error);
+  }
+
   return (
     <MonCompteClient
       initialProfile={initialProfile}
       reservations={reservations}
       initialCseAffiliation={initialCseAffiliation}
-      favoriteStays={[]}
+      favoriteStays={favoriteStays}
       profileLoadError={profileLoadError}
       deferAccountDataToClient={deferAccountDataToClient}
     />

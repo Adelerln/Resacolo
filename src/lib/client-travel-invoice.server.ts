@@ -18,6 +18,21 @@ type InvoiceRow = Pick<
   'id' | 'number' | 'year' | 'pdf_url' | 'issued_at' | 'status' | 'total_cents'
 >;
 
+export type EnsureClientTravelInvoiceOptions = {
+  /** true = régénère toujours le PDF (après paiement). false = réutilise le PDF stocké s’il existe. */
+  refreshPdf?: boolean;
+};
+
+export type EnsureClientTravelInvoiceResult = {
+  invoiceId: string;
+  invoiceNumber: number;
+  invoiceYear: number;
+  pdfPath: string | null;
+};
+
+async function sleep(ms: number) {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
 type InvoiceLineDraft = {
   label: string;
   quantity: number;
@@ -328,7 +343,11 @@ async function buildClientTravelInvoiceModel(orderId: string) {
   };
 }
 
-export async function ensureClientTravelInvoiceForOrder(orderId: string) {
+export async function ensureClientTravelInvoiceForOrder(
+  orderId: string,
+  options: EnsureClientTravelInvoiceOptions = {}
+): Promise<EnsureClientTravelInvoiceResult> {
+  const refreshPdf = options.refreshPdf === true;
   const supabase = getServerSupabaseClient();
   const model = await buildClientTravelInvoiceModel(orderId);
 
@@ -373,86 +392,118 @@ export async function ensureClientTravelInvoiceForOrder(orderId: string) {
     invoice = createdInvoice as InvoiceRow;
   }
 
-  const shouldRefreshPdf = true;
+  const expectedStatus = model.isProvisional ? 'DRAFT' : 'ISSUED';
+  const canReuseStoredPdf =
+    !refreshPdf &&
+    Boolean(invoice.pdf_url) &&
+    invoice.total_cents === model.totalCents &&
+    invoice.status === expectedStatus;
 
-  if (shouldRefreshPdf) {
-    await supabase.from('invoice_lines').delete().eq('invoice_id', invoice.id);
-
-    if (model.lines.length > 0) {
-      const signedRows = model.lines.map((line) => ({
-        invoice_id: invoice!.id,
-        label: line.label,
-        amount_cents: line.amountCents
-      }));
-      let { error: lineError } = await supabase.from('invoice_lines').insert(signedRows);
-
-      // Ancienne contrainte amount_cents >= 0 : stocker la valeur absolue avec libellé de déduction.
-      if (lineError && /invoice_lines_amount_cents_check/i.test(lineError.message)) {
-        await supabase.from('invoice_lines').delete().eq('invoice_id', invoice.id);
-        const legacyRows = model.lines.map((line) => ({
-          invoice_id: invoice!.id,
-          label:
-            line.amountCents < 0
-              ? `Déduction — ${line.label}`
-              : line.label,
-          amount_cents: Math.abs(line.amountCents)
-        }));
-        ({ error: lineError } = await supabase.from('invoice_lines').insert(legacyRows));
-      }
-
-      if (lineError) {
-        throw new Error(`Impossible de créer les lignes de facture client : ${lineError.message}`);
-      }
-    }
-
-    const pdfPath = await createAndUploadClientTravelInvoicePdf(supabase, {
-      invoiceId: invoice.id,
-      invoiceNumber: invoice.number,
-      invoiceYear: invoice.year,
-      issuedAt: invoice.issued_at ?? model.issuedAt,
-      paidAt: model.paidAt,
-      isProvisional: model.isProvisional,
-      orderId: model.order.id,
-      organizerName: model.organizerName,
-      billingName: model.billingName,
-      billingAddressLines: model.billingAddressLines,
-      billingEmail: model.billingEmail,
-      paymentModeLabel: model.paymentModeLabel,
-      totalCents: model.totalCents,
-      paidCents: model.paidCents,
-      remainingBalanceCents: model.remainingBalanceCents,
-      lines: model.lines,
-      payments: model.payments
-    });
-
-    const { error: updateError } = await supabase
-      .from('invoices')
-      .update({
-        pdf_url: pdfPath,
-        status: model.isProvisional ? 'DRAFT' : 'ISSUED',
-        issued_at: model.issuedAt,
-        total_cents: model.totalCents
-      })
-      .eq('id', invoice.id);
-
-    if (updateError) {
-      throw new Error(`Impossible de finaliser la facture client : ${updateError.message}`);
-    }
-
+  if (canReuseStoredPdf) {
     return {
       invoiceId: invoice.id,
       invoiceNumber: invoice.number,
       invoiceYear: invoice.year,
-      pdfPath
+      pdfPath: invoice.pdf_url
     };
+  }
+
+  // Si on pensait pouvoir réutiliser mais le fichier a disparu du storage, refreshPdf=true côté route.
+
+  await supabase.from('invoice_lines').delete().eq('invoice_id', invoice.id);
+
+  if (model.lines.length > 0) {
+    const signedRows = model.lines.map((line) => ({
+      invoice_id: invoice!.id,
+      label: line.label,
+      amount_cents: line.amountCents
+    }));
+    let { error: lineError } = await supabase.from('invoice_lines').insert(signedRows);
+
+    // Ancienne contrainte amount_cents >= 0 : stocker la valeur absolue avec libellé de déduction.
+    if (lineError && /invoice_lines_amount_cents_check/i.test(lineError.message)) {
+      await supabase.from('invoice_lines').delete().eq('invoice_id', invoice.id);
+      const legacyRows = model.lines.map((line) => ({
+        invoice_id: invoice!.id,
+        label:
+          line.amountCents < 0
+            ? `Déduction — ${line.label}`
+            : line.label,
+        amount_cents: Math.abs(line.amountCents)
+      }));
+      ({ error: lineError } = await supabase.from('invoice_lines').insert(legacyRows));
+    }
+
+    if (lineError) {
+      throw new Error(`Impossible de créer les lignes de facture client : ${lineError.message}`);
+    }
+  }
+
+  const pdfPath = await createAndUploadClientTravelInvoicePdf(supabase, {
+    invoiceId: invoice.id,
+    invoiceNumber: invoice.number,
+    invoiceYear: invoice.year,
+    issuedAt: invoice.issued_at ?? model.issuedAt,
+    paidAt: model.paidAt,
+    isProvisional: model.isProvisional,
+    orderId: model.order.id,
+    organizerName: model.organizerName,
+    billingName: model.billingName,
+    billingAddressLines: model.billingAddressLines,
+    billingEmail: model.billingEmail,
+    paymentModeLabel: model.paymentModeLabel,
+    totalCents: model.totalCents,
+    paidCents: model.paidCents,
+    remainingBalanceCents: model.remainingBalanceCents,
+    lines: model.lines,
+    payments: model.payments
+  });
+
+  const { error: updateError } = await supabase
+    .from('invoices')
+    .update({
+      pdf_url: pdfPath,
+      status: expectedStatus,
+      issued_at: model.issuedAt,
+      total_cents: model.totalCents
+    })
+    .eq('id', invoice.id);
+
+  if (updateError) {
+    throw new Error(`Impossible de finaliser la facture client : ${updateError.message}`);
   }
 
   return {
     invoiceId: invoice.id,
     invoiceNumber: invoice.number,
     invoiceYear: invoice.year,
-    pdfPath: invoice.pdf_url
+    pdfPath
   };
+}
+
+/** Après paiement : régénère le PDF avec 1–2 retries, sans faire échouer le paiement. */
+export async function ensureClientTravelInvoiceAfterPayment(orderId: string) {
+  const attempts = 3;
+  let lastError: unknown = null;
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await ensureClientTravelInvoiceForOrder(orderId, { refreshPdf: true });
+    } catch (error) {
+      lastError = error;
+      console.error(
+        `checkout: génération facture client échouée (tentative ${attempt}/${attempts})`,
+        error
+      );
+      if (attempt < attempts) {
+        await sleep(400 * attempt);
+      }
+    }
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error('Impossible de générer la facture client après paiement.');
 }
 
 export function isClientTravelInvoiceType(value: string | null | undefined) {

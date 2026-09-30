@@ -234,8 +234,8 @@ export async function resolveOrganizerCoverageRequestAction(formData: FormData) 
 
   if (nextStatus === 'PAID') {
     try {
-      const { ensureClientTravelInvoiceForOrder } = await import('@/lib/client-travel-invoice.server');
-      await ensureClientTravelInvoiceForOrder(orderId);
+      const { ensureClientTravelInvoiceAfterPayment } = await import('@/lib/client-travel-invoice.server');
+      await ensureClientTravelInvoiceAfterPayment(orderId);
     } catch (invoiceError) {
       console.error('organisme/reservations: génération facture client échouée', invoiceError);
     }

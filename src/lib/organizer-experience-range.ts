@@ -1,4 +1,3 @@
-import { mockOrganizers } from '@/lib/mockOrganizers';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 
 export type OrganizerExperienceRange = {
@@ -34,16 +33,12 @@ export async function getOrganizerExperienceRange(): Promise<OrganizerExperience
   const supabase = getServerSupabaseClient();
   const { data, error } = await supabase.from('organizers').select('founded_year');
 
-  if (!error) {
-    const rangeFromDb = deriveOrganizerExperienceRangeFromYears(
-      (data ?? []).map((organizer) => organizer.founded_year)
-    );
-    if (rangeFromDb) {
-      return rangeFromDb;
-    }
-  } else {
+  if (error) {
     console.warn('Supabase (organizers founded_year) indisponible :', error.message);
+    return null;
   }
 
-  return deriveOrganizerExperienceRangeFromYears(mockOrganizers.map((organizer) => organizer.creationYear));
+  return deriveOrganizerExperienceRangeFromYears(
+    (data ?? []).map((organizer) => organizer.founded_year)
+  );
 }

@@ -311,8 +311,8 @@ export default async function AdminRequestsPage({ searchParams }: { searchParams
           console.error('admin/reservations: écriture journal commissions échouée', ledgerError);
         }
         try {
-          const { ensureClientTravelInvoiceForOrder } = await import('@/lib/client-travel-invoice.server');
-          await ensureClientTravelInvoiceForOrder(orderId);
+          const { ensureClientTravelInvoiceAfterPayment } = await import('@/lib/client-travel-invoice.server');
+          await ensureClientTravelInvoiceAfterPayment(orderId);
         } catch (invoiceError) {
           console.error('admin/reservations: génération facture client échouée', invoiceError);
         }

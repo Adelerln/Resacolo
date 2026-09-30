@@ -30,6 +30,16 @@ async function resolveOrderOwnerUserId() {
   return null;
 }
 
+async function downloadInvoicePdfBytes(supabase: ReturnType<typeof getServerSupabaseClient>, pdfPath: string) {
+  const { data: pdfBlob, error: downloadError } = await supabase.storage
+    .from(INVOICE_PDF_BUCKET)
+    .download(pdfPath);
+  if (downloadError || !pdfBlob) {
+    return null;
+  }
+  return Buffer.from(await pdfBlob.arrayBuffer());
+}
+
 export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id: orderId } = await params;
   if (!orderId || !isUuid(orderId)) {
@@ -83,33 +93,35 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
   }
 
   try {
-    // Régénère systématiquement le PDF au design validé avant envoi.
-    const invoice = await ensureClientTravelInvoiceForOrder(orderId);
+    // Réutilise le PDF déjà stocké ; ne régénère que s’il manque.
+    let invoice = await ensureClientTravelInvoiceForOrder(orderId, { refreshPdf: false });
+    if (!invoice.pdfPath) {
+      invoice = await ensureClientTravelInvoiceForOrder(orderId, { refreshPdf: true });
+    }
     if (!invoice.pdfPath) {
       return NextResponse.json({ error: 'PDF facture introuvable.' }, { status: 500 });
     }
 
-    const { data: pdfBlob, error: downloadError } = await supabase.storage
-      .from(INVOICE_PDF_BUCKET)
-      .download(invoice.pdfPath);
-
-    if (downloadError || !pdfBlob) {
-      return NextResponse.json(
-        { error: downloadError?.message || 'Impossible de télécharger la facture.' },
-        { status: 500 }
-      );
+    let bytes = await downloadInvoicePdfBytes(supabase, invoice.pdfPath);
+    if (!bytes?.length) {
+      invoice = await ensureClientTravelInvoiceForOrder(orderId, { refreshPdf: true });
+      if (!invoice.pdfPath) {
+        return NextResponse.json({ error: 'PDF facture introuvable.' }, { status: 500 });
+      }
+      bytes = await downloadInvoicePdfBytes(supabase, invoice.pdfPath);
     }
 
-    const bytes = Buffer.from(await pdfBlob.arrayBuffer());
+    if (!bytes?.length) {
+      return NextResponse.json({ error: 'Impossible de télécharger la facture.' }, { status: 500 });
+    }
+
     const fileName = `facture-${formatClientTravelInvoiceNumber(invoice.invoiceYear, invoice.invoiceNumber)}.pdf`;
     return new NextResponse(bytes, {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `attachment; filename="${fileName}"`,
-        'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
-        Pragma: 'no-cache',
-        Expires: '0',
+        'Cache-Control': 'private, max-age=300',
         'Content-Length': String(bytes.length)
       }
     });

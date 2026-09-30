@@ -797,14 +797,15 @@ export async function createAndUploadClientTravelInvoicePdf(
       : issuedAtLabel;
 
   // PDFKit embarque les TTF Raleway de façon fiable (Vercel / local).
-  // Playwright reste un essai local uniquement, et seulement si Raleway est vérifiée dans le PDF.
+  // On force PDFKit en prod serverless ; Playwright reste un essai local optionnel.
   let pdf: Buffer | null = null;
   let renderMode: 'pdfkit-raleway' | 'html-playwright' = 'pdfkit-raleway';
 
   const tryPlaywright =
     process.env.VERCEL !== '1' &&
     !process.env.AWS_LAMBDA_FUNCTION_NAME &&
-    process.env.CLIENT_INVOICE_FORCE_PDFKIT !== '1';
+    process.env.CLIENT_INVOICE_FORCE_PDFKIT !== '1' &&
+    process.env.CLIENT_INVOICE_ALLOW_PLAYWRIGHT === '1';
 
   if (tryPlaywright) {
     try {

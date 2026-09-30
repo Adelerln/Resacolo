@@ -10,7 +10,6 @@ import { HorizontalCardsCarousel } from '@/components/organisateurs/HorizontalCa
 import { ExternalLink, MapPin } from 'lucide-react';
 import { formatAccommodationType } from '@/lib/accommodation-types';
 import { extractAccommodationLocationMeta } from '@/lib/accommodation-location';
-import { getOrganizerBySlug } from '@/lib/mockOrganizers';
 import {
   ORGANIZER_ACTIVITY_OPTIONS,
   ORGANIZER_SEASON_OPTIONS,
@@ -43,17 +42,20 @@ export async function generateMetadata({ params }: PageProps) {
     .eq('slug', slug)
     .maybeSingle();
 
-  const fallback = !data ? getOrganizerBySlug(slug) : null;
-  const name = data?.name || fallback?.name;
-  if (!name) {
+  let organizer = data;
+  if (!organizer) {
+    const { data: all } = await supabase.from('organizers').select('name, slug, description, hero_intro_text');
+    organizer = (all ?? []).find((item) => slugify(item.name) === slug) ?? null;
+  }
+
+  if (!organizer?.name) {
     return { title: 'Organisateur introuvable | Resacolo', robots: { index: false, follow: false } };
   }
 
   const descriptionSource =
-    data?.hero_intro_text?.trim() ||
-    data?.description?.replace(/<[^>]+>/g, ' ').trim() ||
-    fallback?.description ||
-    `Colonies de vacances et séjours organisés par ${name}. Découvrez le catalogue sur Resacolo.`;
+    organizer.hero_intro_text?.trim() ||
+    organizer.description?.replace(/<[^>]+>/g, ' ').trim() ||
+    `Colonies de vacances et séjours organisés par ${organizer.name}. Découvrez le catalogue sur Resacolo.`;
 
   const description =
     descriptionSource.length > 160
@@ -61,10 +63,10 @@ export async function generateMetadata({ params }: PageProps) {
       : descriptionSource;
 
   return buildPageMetadata({
-    title: `Colonies de vacances ${name}`,
+    title: `Colonies de vacances ${organizer.name}`,
     description,
-    path: `/organisateurs/${data?.slug || fallback?.slug || slug}`,
-    keywords: [`colonie ${name}`, `séjours ${name}`, 'organisateur colo', 'Resacolo']
+    path: `/organisateurs/${organizer.slug || slug}`,
+    keywords: [`colonie ${organizer.name}`, `séjours ${organizer.name}`, 'organisateur colo', 'Resacolo']
   });
 }
 
@@ -404,16 +406,14 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
       allOrganizers.find((item) => slugify(item.name) === slug) ?? null;
   }
 
-  const fallbackOrganizer = !resolvedOrganizer ? getOrganizerBySlug(slug) : null;
-
-  if (!resolvedOrganizer && !fallbackOrganizer) {
+  if (!resolvedOrganizer) {
     notFound();
   }
 
   let stayDurationMinDays: number | null = null;
   let stayDurationMaxDays: number | null = null;
-  const organizerDescriptionMeta = extractOrganizerDurationMeta(resolvedOrganizer?.description);
-  if (resolvedOrganizer?.id) {
+  const organizerDescriptionMeta = extractOrganizerDurationMeta(resolvedOrganizer.description);
+  if (resolvedOrganizer.id) {
     const { data: durRow, error: durErr } = await supabase
       .from('organizers')
       .select('stay_duration_min_days,stay_duration_max_days')
@@ -431,18 +431,18 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
     stayDurationMaxDays = organizerDescriptionMeta.stayDurationMaxDays;
   }
 
-  const organizerName = resolvedOrganizer?.name ?? fallbackOrganizer?.name ?? 'Organisateur';
+  const organizerName = resolvedOrganizer.name;
   const organizerDisplayName = formatOrganizerDisplayName(organizerName);
   const organizerTitleLines = splitOrganizerDisplayName(organizerDisplayName);
-  const organizerSlug = resolvedOrganizer?.slug ?? fallbackOrganizer?.slug ?? slug;
+  const organizerSlug = resolvedOrganizer.slug ?? slug;
   const selectedSeasonOptions = ORGANIZER_SEASON_OPTIONS.filter((option) =>
-    (resolvedOrganizer?.season_keys ?? []).includes(option.key)
+    (resolvedOrganizer.season_keys ?? []).includes(option.key)
   );
   const selectedStayTypeOptions = ORGANIZER_STAY_TYPE_OPTIONS.filter((option) =>
-    (resolvedOrganizer?.stay_type_keys ?? []).includes(option.key)
+    (resolvedOrganizer.stay_type_keys ?? []).includes(option.key)
   );
   const selectedActivityOptions = ORGANIZER_ACTIVITY_OPTIONS.filter((option) =>
-    (resolvedOrganizer?.activity_keys ?? []).includes(option.key)
+    (resolvedOrganizer.activity_keys ?? []).includes(option.key)
   );
   const seasonHeading =
     selectedSeasonOptions.length === 0
@@ -462,64 +462,40 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
       : selectedActivityOptions.length === 1
         ? 'Activité proposée :'
         : 'Activités proposées :';
-  const publicAgeRange = resolvedOrganizer
-    ? formatPublicAgeRange(resolvedOrganizer.age_min, resolvedOrganizer.age_max)
-    : fallbackOrganizer?.publicAgeRange ?? 'Âges non renseignés';
-  const stayDurationLabel = resolvedOrganizer
-    ? formatOrganizerStayDurationLabel(stayDurationMinDays, stayDurationMaxDays)
-    : 'Durées non renseignées';
+  const publicAgeRange = formatPublicAgeRange(resolvedOrganizer.age_min, resolvedOrganizer.age_max);
+  const stayDurationLabel = formatOrganizerStayDurationLabel(stayDurationMinDays, stayDurationMaxDays);
 
-  const [bannerPath, organizerLogoUrl, projectUrl, fallbackOrganizerStaysData] = await Promise.all([
+  const [bannerPath, organizerLogoUrl, projectUrl, logoFallbackStaysData] = await Promise.all([
     resolveOrganizerBannerPath({
       name: organizerName,
       slug: organizerSlug
     }),
-    resolvedOrganizer?.logo_path
+    resolvedOrganizer.logo_path
       ? supabase.storage
           .from('organizer-logo')
           .createSignedUrl(resolvedOrganizer.logo_path, 60 * 60)
           .then((result) => result.data?.signedUrl ?? null)
-      : Promise.resolve(fallbackOrganizer?.logoUrl ?? null),
-    resolvedOrganizer?.education_project_path
+      : Promise.resolve(null),
+    resolvedOrganizer.education_project_path
       ? supabase.storage
           .from('organizer-docs')
           .createSignedUrl(resolvedOrganizer.education_project_path, 60 * 60)
           .then((result) => result.data?.signedUrl ?? null)
       : Promise.resolve(null),
-    !resolvedOrganizer || !resolvedOrganizer.logo_path
+    !resolvedOrganizer.logo_path
       ? getStays({ forceRefresh: true }).then((stays) =>
           stays
             .filter((stay) => slugify(stay.organizer.name) === slug || stay.organizer.name === organizerName)
             .slice(0, 6)
             .map((stay) => ({
-              id: stay.id,
-              title: stay.title,
-              summary: stay.summary,
-              description: stay.description,
-              location_text: stay.location,
-              age_min: stay.ageMin,
-              age_max: stay.ageMax,
-              coverImage: stay.coverImage ?? null,
               organizerLogoUrl: stay.organizer.logoUrl ?? null
             }))
         )
-      : Promise.resolve([])
+      : Promise.resolve([] as Array<{ organizerLogoUrl: string | null }>)
   ]);
-  const fallbackPublishedStays = fallbackOrganizerStaysData.map(
-    ({ id, title, summary, description, location_text, age_min, age_max, coverImage }) => ({
-      id,
-      title,
-      summary,
-      description,
-      location_text,
-      age_min,
-      age_max,
-      coverImage
-    })
-  );
   const logoUrl =
     organizerLogoUrl ??
-    fallbackOrganizerStaysData.find((stay) => stay.organizerLogoUrl)?.organizerLogoUrl ??
+    logoFallbackStaysData.find((stay) => stay.organizerLogoUrl)?.organizerLogoUrl ??
     null;
   const heroTextTheme = resolveHeroTextTheme({
     slug: organizerSlug,
@@ -532,21 +508,20 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
       ? 'text-white/90 hover:text-white decoration-white/40'
       : 'text-slate-600 hover:text-slate-900 decoration-slate-300';
 
-  const publishedStaysRaw = resolvedOrganizer
-    ? (
-        await supabase
-          .from('stays')
-          .select(
-            'id,title,summary,description,location_text,age_min,age_max,updated_at,status,season_id,seasons(name)'
-          )
-          .eq('organizer_id', resolvedOrganizer.id)
-          .eq('status', 'PUBLISHED')
-          .order('updated_at', { ascending: false })
-          .limit(6)
-      ).data ?? []
-    : [];
+  const publishedStaysRaw =
+    (
+      await supabase
+        .from('stays')
+        .select(
+          'id,title,summary,description,location_text,age_min,age_max,updated_at,status,season_id,seasons(name)'
+        )
+        .eq('organizer_id', resolvedOrganizer.id)
+        .eq('status', 'PUBLISHED')
+        .order('updated_at', { ascending: false })
+        .limit(6)
+    ).data ?? [];
 
-  const publishedStays = resolvedOrganizer ? publishedStaysRaw : fallbackPublishedStays;
+  const publishedStays = publishedStaysRaw;
   const publishedStayIds = publishedStays.map((stay) => stay.id);
 
   const { data: featuredSessionsRaw } =
@@ -679,13 +654,13 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
   const organizerCatalogHref = `/sejours?organizer=${encodeURIComponent(organizerName)}`;
 
   const presentationHtml = buildOrganizerPresentationHtml(
-    resolvedOrganizer?.description ?? fallbackOrganizer?.description,
+    resolvedOrganizer.description,
     publicAgeRange
   );
   const heroIntroText =
-    resolvedOrganizer?.hero_intro_text?.trim() ||
+    resolvedOrganizer.hero_intro_text?.trim() ||
     extractOrganizerPresentationSummary(
-      resolvedOrganizer?.description ?? fallbackOrganizer?.description,
+      resolvedOrganizer.description,
       publicAgeRange
     ) ||
     `Découvrez les séjours collectifs proposés par ${organizerDisplayName}.`;
@@ -960,7 +935,7 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
                   Création
                 </h2>
                 <p className="mt-2 font-display text-[1.3rem] font-bold leading-none text-[#505050]">
-                  {resolvedOrganizer?.founded_year ?? fallbackOrganizer?.creationYear ?? '—'}
+                  {resolvedOrganizer.founded_year ?? '—'}
                 </p>
               </article>
 

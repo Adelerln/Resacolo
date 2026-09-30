@@ -15,6 +15,19 @@ type StaySessionRow = {
   capacity_reserved: number;
 };
 
+type StayAccommodationRagRow = {
+  id: string;
+  name: string | null;
+  accommodation_type: string | null;
+  city: string | null;
+  region_text: string | null;
+  description: string | null;
+  bed_info: string | null;
+  bathroom_info: string | null;
+  catering_info: string | null;
+  accessibility_info: string | null;
+};
+
 function trimOrNull(value: string | null | undefined) {
   const normalized = value?.trim();
   return normalized || null;
@@ -104,14 +117,16 @@ async function extractStays(): Promise<RagDocumentInput[]> {
   const accommodationIds = Array.from(
     new Set((stayAccommodations ?? []).map((row) => row.accommodation_id).filter(Boolean))
   );
-  const { data: accommodations } = accommodationIds.length
-    ? await supabase
-        .from('accommodations')
-        .select(
-          'id,name,accommodation_type,city,region_text,description,bed_info,bathroom_info,catering_info,accessibility_info'
-        )
-        .in('id', accommodationIds)
-    : { data: [] as Array<Record<string, unknown>> };
+  let accommodations: StayAccommodationRagRow[] = [];
+  if (accommodationIds.length > 0) {
+    const { data } = await supabase
+      .from('accommodations')
+      .select(
+        'id,name,accommodation_type,city,region_text,description,bed_info,bathroom_info,catering_info,accessibility_info'
+      )
+      .in('id', accommodationIds);
+    accommodations = (data ?? []) as StayAccommodationRagRow[];
+  }
 
   const organizerById = new Map((organizers ?? []).map((row) => [row.id, row]));
   const seasonById = new Map((seasons ?? []).map((row) => [row.id, row]));
@@ -123,36 +138,13 @@ async function extractStays(): Promise<RagDocumentInput[]> {
     sessionsByStayId.set(session.stay_id, group);
   }
 
-  const accommodationsById = new Map((accommodations ?? []).map((row) => [row.id, row]));
-  const accommodationsByStayId = new Map<
-    string,
-    Array<{
-      name: string | null;
-      accommodation_type: string | null;
-      city: string | null;
-      region_text: string | null;
-      description: string | null;
-      bed_info: string | null;
-      bathroom_info: string | null;
-      catering_info: string | null;
-      accessibility_info: string | null;
-    }>
-  >();
+  const accommodationsById = new Map(accommodations.map((row) => [row.id, row]));
+  const accommodationsByStayId = new Map<string, StayAccommodationRagRow[]>();
   for (const link of stayAccommodations ?? []) {
     const accommodation = accommodationsById.get(link.accommodation_id);
     if (!accommodation) continue;
     const group = accommodationsByStayId.get(link.stay_id) ?? [];
-    group.push({
-      name: accommodation.name ?? null,
-      accommodation_type: accommodation.accommodation_type ?? null,
-      city: accommodation.city ?? null,
-      region_text: accommodation.region_text ?? null,
-      description: accommodation.description ?? null,
-      bed_info: accommodation.bed_info ?? null,
-      bathroom_info: accommodation.bathroom_info ?? null,
-      catering_info: accommodation.catering_info ?? null,
-      accessibility_info: accommodation.accessibility_info ?? null
-    });
+    group.push(accommodation);
     accommodationsByStayId.set(link.stay_id, group);
   }
 

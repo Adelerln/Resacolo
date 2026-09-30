@@ -156,6 +156,7 @@ function MainNavigationContent({
     <header
       className={clsx(
         'font-accent sticky top-0 z-[100] overflow-visible border-b border-slate-200 shadow-sm',
+        '[&_a]:cursor-pointer [&_button]:cursor-pointer',
         hidePartnerMarketingLinks
           ? 'bg-white'
           : 'bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/80'

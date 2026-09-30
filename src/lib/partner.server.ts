@@ -9,8 +9,10 @@ import {
 import {
   computePartnerContributionSnapshotCents,
   computePartnerFinanceSplit,
-  normalizePartnerFinanceMode
+  normalizePartnerFinanceMode,
+  PARTNER_FINANCE_MODE_LABELS
 } from '@/lib/partner-offers';
+import { buildClientPaymentSummaryRows } from '@/lib/client-payment-summary';
 import { buildFeatureActivationMessage, isMissingAnyColumnError } from '@/lib/supabase-schema-errors';
 import type { Database, Json } from '@/types/supabase';
 
@@ -30,6 +32,60 @@ const PAYMENT_MODE_LABELS: Record<PartnerPaymentMode, string> = {
   CV_PAPER: 'Paiement en ANCV papier',
   DEFERRED: 'Paiement différé'
 };
+
+function resolvePartnerFinanceModeAtOrderLabel(input: {
+  paymentRawPayload: Record<string, unknown> | null;
+  contributionMode: string | null | undefined;
+  contributionPercentValue: number | null | undefined;
+  partnerContributionCents: number;
+  totalCents: number;
+  fallbackFinanceMode: string | null | undefined;
+}) {
+  const snapshot = input.paymentRawPayload?.partnerFinanceSnapshot;
+  if (snapshot && typeof snapshot === 'object' && !Array.isArray(snapshot)) {
+    const mode = normalizePartnerFinanceMode(
+      typeof (snapshot as { mode?: unknown }).mode === 'string'
+        ? ((snapshot as { mode: string }).mode)
+        : null
+    );
+    if (mode === 'PERCENT') {
+      const percent =
+        typeof (snapshot as { percentValue?: unknown }).percentValue === 'number'
+          ? Math.round((snapshot as { percentValue: number }).percentValue)
+          : null;
+      return percent != null && percent > 0 && percent < 100
+        ? `Quote-part en % (${percent} %)`
+        : PARTNER_FINANCE_MODE_LABELS.PERCENT;
+    }
+    if (mode === 'FIXED') {
+      const fixedCents =
+        typeof (snapshot as { fixedCents?: unknown }).fixedCents === 'number'
+          ? Math.round((snapshot as { fixedCents: number }).fixedCents)
+          : null;
+      return fixedCents != null && fixedCents > 0
+        ? `Quote-part fixe (${formatCurrencyFromCents(fixedCents, 'EUR')})`
+        : PARTNER_FINANCE_MODE_LABELS.FIXED;
+    }
+    return PARTNER_FINANCE_MODE_LABELS[mode];
+  }
+
+  if (input.contributionMode === 'PERCENT') {
+    const percent = Math.round(Number(input.contributionPercentValue ?? 0));
+    if (percent >= 100) return PARTNER_FINANCE_MODE_LABELS.TOTAL;
+    if (percent > 0) return `Quote-part en % (${percent} %)`;
+    return PARTNER_FINANCE_MODE_LABELS.PERCENT;
+  }
+
+  if (input.contributionMode === 'FIXED') {
+    if (input.partnerContributionCents <= 0) return PARTNER_FINANCE_MODE_LABELS.NONE;
+    if (input.totalCents > 0 && input.partnerContributionCents >= input.totalCents) {
+      return PARTNER_FINANCE_MODE_LABELS.TOTAL;
+    }
+    return PARTNER_FINANCE_MODE_LABELS.FIXED;
+  }
+
+  return PARTNER_FINANCE_MODE_LABELS[normalizePartnerFinanceMode(input.fallbackFinanceMode)];
+}
 
 function isCollectivityContactsTableMissingError(error: { message?: string; code?: string } | null | undefined) {
   const message = String(error?.message ?? '');
@@ -127,6 +183,9 @@ function inferPartnerRequestKind(input: {
   });
 }
 
+/** Solde famille soldé, part partenaire encore due à l’organisateur (règlement différé). */
+const PARTNER_DEFERRED_PAYMENT_STATUS_LABEL = 'Confirmée — paiement différé';
+
 function partnerReservationStatusLabel(
   status: Database['public']['Enums']['order_status'],
   requestKind: string | null | undefined,
@@ -134,47 +193,57 @@ function partnerReservationStatusLabel(
   hasContributionSnapshot: boolean,
   paymentMode: PartnerPaymentMode,
   externalPaidCents: number,
-  externalAidCents = 0
+  externalAidCents = 0,
+  remainingBalanceCents = 0,
+  partnerContributionCents = 0
 ) {
   const financeMode = normalizePartnerFinanceMode(collectivityFinanceMode);
-  const awaitingOrganizerAid =
-    (requestKind === 'VACAF' && externalAidCents <= 0) ||
-    (requestKind === 'ANCV_CONNECT' && externalPaidCents <= 0);
-  const effectiveStatus =
-    awaitingOrganizerAid && (status === 'REQUESTED' || status === 'PENDING_PAYMENT')
-      ? ('REQUESTED' as const)
-      : status;
+  const vacafResolved = requestKind === 'VACAF' && externalAidCents > 0;
+  const ancvConnectResolved = requestKind === 'ANCV_CONNECT' && externalPaidCents > 0;
+  // Après saisie organisme (CAF / ANCV), ne plus afficher « traitement organisme ».
+  const awaitingOrganizerVacaf =
+    status === 'REQUESTED' && requestKind === 'VACAF' && !vacafResolved;
+  const awaitingOrganizerAncv =
+    status === 'REQUESTED' && requestKind === 'ANCV_CONNECT' && !ancvConnectResolved;
   const hasOpenOrganizerPaperWorkflow =
     paymentMode === 'CV_PAPER' &&
     externalPaidCents <= 0 &&
-    (effectiveStatus === 'REQUESTED' || effectiveStatus === 'PENDING_PAYMENT');
+    (status === 'REQUESTED' || status === 'PENDING_PAYMENT');
+  const familySettledWithPartnerShareDue =
+    remainingBalanceCents <= 0 && partnerContributionCents > 0;
 
-  if (effectiveStatus === 'REQUESTED') {
-    if (requestKind === 'VACAF' && externalAidCents <= 0) {
+  if (status === 'REQUESTED') {
+    if (awaitingOrganizerVacaf) {
       return 'En attente de traitement organisme (VACAF)';
     }
-    if (requestKind === 'ANCV_CONNECT' && externalPaidCents <= 0) {
+    if (awaitingOrganizerAncv) {
       return 'En attente de traitement organisme (ANCV Connect)';
     }
     if (hasOpenOrganizerPaperWorkflow) return 'En attente de traitement organisme (ANCV papier)';
     if (financeMode === 'MANUAL' && !hasContributionSnapshot) {
       return 'En attente de traitement partenaire';
     }
+    if (familySettledWithPartnerShareDue) return PARTNER_DEFERRED_PAYMENT_STATUS_LABEL;
     return 'En attente de paiement famille';
   }
 
-  if (effectiveStatus === 'PENDING_PAYMENT') {
+  if (status === 'PENDING_PAYMENT') {
     if (hasOpenOrganizerPaperWorkflow) return 'En attente de traitement organisme (ANCV papier)';
     if (financeMode === 'MANUAL' && !hasContributionSnapshot) return 'En attente de traitement partenaire';
+    if (familySettledWithPartnerShareDue) return PARTNER_DEFERRED_PAYMENT_STATUS_LABEL;
+    if (remainingBalanceCents <= 0) return 'Réservation payée';
     return 'En attente de paiement famille';
   }
-  if (effectiveStatus === 'PARTIALLY_PAID') return 'Paiement partiel reçu';
-  if (effectiveStatus === 'PAID') return 'Réservation payée';
-  if (effectiveStatus === 'FAILED') return 'Échec de paiement';
-  if (effectiveStatus === 'CANCELLED') return 'Réservation annulée';
-  if (effectiveStatus === 'TRANSFERRED') return 'Réservation transférée';
+  if (status === 'PARTIALLY_PAID') return 'Paiement partiel reçu';
+  if (status === 'PAID') {
+    if (familySettledWithPartnerShareDue) return PARTNER_DEFERRED_PAYMENT_STATUS_LABEL;
+    return 'Réservation payée';
+  }
+  if (status === 'FAILED') return 'Échec de paiement';
+  if (status === 'CANCELLED') return 'Réservation annulée';
+  if (status === 'TRANSFERRED') return 'Réservation transférée';
 
-  return orderStatusLabel(effectiveStatus);
+  return orderStatusLabel(status);
 }
 
 function partnerReservationBadgeStatus(input: {
@@ -187,6 +256,10 @@ function partnerReservationBadgeStatus(input: {
   if (input.statusLabel.startsWith('En attente de traitement')) {
     return 'REQUESTED' as const;
   }
+  // Teal « Partenaire » côté organisme : confirmée sans encaissement famille.
+  if (input.statusLabel === PARTNER_DEFERRED_PAYMENT_STATUS_LABEL) {
+    return 'PAID' as const;
+  }
   return input.status;
 }
 
@@ -194,6 +267,7 @@ function describePartnerReservationPendingActions(input: {
   status: Database['public']['Enums']['order_status'];
   requestKind: string | null | undefined;
   clientContributionCents: number;
+  remainingBalanceCents?: number;
   collectivityFinanceMode: string | null | undefined;
   hasContributionSnapshot: boolean;
   paymentMode: PartnerPaymentMode;
@@ -202,6 +276,10 @@ function describePartnerReservationPendingActions(input: {
 }) {
   const actions: Array<{ actorLabel: string; description: string }> = [];
   const financeMode = normalizePartnerFinanceMode(input.collectivityFinanceMode);
+  const remainingBalanceCents =
+    typeof input.remainingBalanceCents === 'number'
+      ? Math.max(0, input.remainingBalanceCents)
+      : Math.max(0, input.clientContributionCents);
   const isOpenWorkflow =
     input.status === 'REQUESTED' ||
     input.status === 'PENDING_PAYMENT' ||
@@ -221,7 +299,7 @@ function describePartnerReservationPendingActions(input: {
   }
 
   if (
-    (input.status === 'REQUESTED' || input.status === 'PENDING_PAYMENT') &&
+    input.status === 'REQUESTED' &&
     input.requestKind === 'VACAF' &&
     (input.externalAidCents ?? 0) <= 0
   ) {
@@ -232,7 +310,7 @@ function describePartnerReservationPendingActions(input: {
   }
 
   if (
-    (input.status === 'REQUESTED' || input.status === 'PENDING_PAYMENT') &&
+    input.status === 'REQUESTED' &&
     input.requestKind === 'ANCV_CONNECT' &&
     input.externalPaidCents <= 0
   ) {
@@ -251,28 +329,27 @@ function describePartnerReservationPendingActions(input: {
   }
 
   if (
-    input.status === 'PENDING_PAYMENT' &&
+    (input.status === 'PENDING_PAYMENT' || input.status === 'PARTIALLY_PAID') &&
     !organizerPaperWorkflowOpen &&
-    input.clientContributionCents > 0
+    remainingBalanceCents > 0 &&
+    !(financeMode === 'MANUAL' && !input.hasContributionSnapshot)
   ) {
     actions.push({
       actorLabel: 'Famille',
-      description: 'Régler le solde restant de la réservation.'
-    });
-  }
-
-  if (input.status === 'PARTIALLY_PAID' && input.clientContributionCents > 0) {
-    actions.push({
-      actorLabel: 'Famille',
-      description: 'Compléter le paiement du solde restant.'
+      description:
+        input.status === 'PARTIALLY_PAID'
+          ? 'Compléter le paiement du solde restant.'
+          : 'Régler le solde restant de la réservation.'
     });
   }
 
   if (
     input.status === 'REQUESTED' &&
-    input.requestKind == null &&
     !organizerPaperWorkflowOpen &&
-    input.clientContributionCents > 0
+    remainingBalanceCents > 0 &&
+    !(input.requestKind === 'VACAF' && (input.externalAidCents ?? 0) <= 0) &&
+    !(input.requestKind === 'ANCV_CONNECT' && input.externalPaidCents <= 0) &&
+    !(financeMode === 'MANUAL' && !input.hasContributionSnapshot)
   ) {
     actions.push({
       actorLabel: 'Famille',
@@ -533,10 +610,12 @@ export async function listPartnerReservations(collectivityId: string, excludedUs
   const supabase = getServerSupabaseClient();
   const collectivity = await readPartnerCollectivity(collectivityId);
 
+  // Ne pas sélectionner vacaf_number_snapshot / ancv_connect_* : absents sur certaines bases
+  // et faisaient basculer vers un fallback qui perdait external_aid_cents.
   let { data: orders, error: ordersError } = await supabase
     .from('orders')
     .select(
-      'id,status,request_kind,vacaf_number_snapshot,ancv_connect_matricule,ancv_connect_requested_amount_cents,external_aid_cents,external_paid_cents,created_at,requested_at,validated_at,booked_at,paid_at,cancellation_reason,client_user_id,collectivity_id'
+      'id,status,request_kind,external_aid_cents,external_paid_cents,created_at,requested_at,validated_at,booked_at,paid_at,cancellation_reason,client_user_id,collectivity_id'
     )
     .eq('collectivity_id', collectivityId)
     .neq('status', 'CART')
@@ -546,9 +625,6 @@ export async function listPartnerReservations(collectivityId: string, excludedUs
     ordersError &&
     isMissingAnyColumnError(ordersError, [
       'request_kind',
-      'vacaf_number_snapshot',
-      'ancv_connect_matricule',
-      'ancv_connect_requested_amount_cents',
       'external_aid_cents',
       'external_paid_cents',
       'cancellation_reason'
@@ -564,9 +640,6 @@ export async function listPartnerReservations(collectivityId: string, excludedUs
     orders = (legacyOrdersResult.data ?? []).map((order) => ({
       ...order,
       request_kind: null,
-      vacaf_number_snapshot: null,
-      ancv_connect_matricule: null,
-      ancv_connect_requested_amount_cents: null,
       external_aid_cents: 0,
       external_paid_cents: 0,
       cancellation_reason: null
@@ -578,7 +651,12 @@ export async function listPartnerReservations(collectivityId: string, excludedUs
     throw new Error(`Impossible de charger les réservations : ${ordersError.message}`);
   }
 
-  const orderRows = orders ?? [];
+  const orderRows = (orders ?? []).map((order) => ({
+    ...order,
+    vacaf_number_snapshot: null as string | null,
+    ancv_connect_matricule: null as string | null,
+    ancv_connect_requested_amount_cents: null as number | null
+  }));
   if (orderRows.length === 0) return [];
 
   const orderIds = orderRows.map((row) => row.id);
@@ -619,7 +697,7 @@ export async function listPartnerReservations(collectivityId: string, excludedUs
   const paymentsResponse = orderIds.length
     ? await supabase
         .from('payments')
-        .select('order_id,status,amount_cents,updated_at,raw_payload')
+        .select('order_id,status,amount_cents,created_at,updated_at,raw_payload')
         .in('order_id', orderIds)
         .order('updated_at', { ascending: false })
     : { data: [], error: null };
@@ -671,7 +749,21 @@ export async function listPartnerReservations(collectivityId: string, excludedUs
   const latestPaymentModeByOrderId = new Map<string, PartnerPaymentMode>();
   const latestPaymentPayloadByOrderId = new Map<string, Record<string, unknown> | null>();
   const onlinePaidCentsByOrderId = new Map<string, number>();
+  const paymentsByOrderId = new Map<
+    string,
+    Array<{
+      order_id: string;
+      status: string;
+      amount_cents: number;
+      created_at: string | null;
+      updated_at: string | null;
+      raw_payload: unknown;
+    }>
+  >();
   for (const payment of paymentsResponse.data ?? []) {
+    const list = paymentsByOrderId.get(payment.order_id) ?? [];
+    list.push(payment);
+    paymentsByOrderId.set(payment.order_id, list);
     if (payment.status === 'SUCCEEDED') {
       onlinePaidCentsByOrderId.set(
         payment.order_id,
@@ -755,27 +847,31 @@ export async function listPartnerReservations(collectivityId: string, excludedUs
       paymentRawPayload
     });
     const onlinePaidCents = onlinePaidCentsByOrderId.get(order.id) ?? 0;
+    const externalAidCents = order.external_aid_cents ?? 0;
+    const externalPaidCents = order.external_paid_cents ?? 0;
+    const parentPaidCents = onlinePaidCents + externalPaidCents;
     const remainingBalanceCents = computeRemainingBalanceCents({
       totalCents: clientContributionCents,
-      externalAidCents: order.external_aid_cents ?? 0,
-      externalPaidCents: order.external_paid_cents ?? 0,
+      externalAidCents,
+      externalPaidCents,
       onlinePaidCents
     });
     const effectiveStatus = reconcileOrderStatusWithBalance({
       status: order.status,
       remainingBalanceCents,
       onlinePaidCents,
-      externalPaidCents: order.external_paid_cents ?? 0
+      externalPaidCents
     });
     const pendingActions = describePartnerReservationPendingActions({
       status: effectiveStatus,
       requestKind: effectiveRequestKind,
       clientContributionCents,
+      remainingBalanceCents,
       collectivityFinanceMode: collectivity.finance_mode,
       hasContributionSnapshot,
       paymentMode,
-      externalPaidCents: order.external_paid_cents ?? 0,
-      externalAidCents: order.external_aid_cents ?? 0
+      externalPaidCents,
+      externalAidCents
     });
     const statusLabel = partnerReservationStatusLabel(
       effectiveStatus,
@@ -783,13 +879,46 @@ export async function listPartnerReservations(collectivityId: string, excludedUs
       collectivity.finance_mode,
       hasContributionSnapshot,
       paymentMode,
-      order.external_paid_cents ?? 0,
-      order.external_aid_cents ?? 0
+      externalPaidCents,
+      externalAidCents,
+      remainingBalanceCents,
+      partnerContributionCents
     );
     const badgeStatus = partnerReservationBadgeStatus({
       status: effectiveStatus,
       statusLabel
     });
+
+    const firstContribution = itemsForOrder
+      .map((item) => contributionByOrderItemId.get(item.id))
+      .find(Boolean);
+    const financeModeAtOrderLabel = resolvePartnerFinanceModeAtOrderLabel({
+      paymentRawPayload,
+      contributionMode: firstContribution?.mode,
+      contributionPercentValue: firstContribution?.percent_value,
+      partnerContributionCents,
+      totalCents,
+      fallbackFinanceMode: collectivity.finance_mode
+    });
+    const paymentLines = buildClientPaymentSummaryRows({
+      payments: paymentsByOrderId.get(order.id) ?? [],
+      externalPaidCents,
+      requestKind: effectiveRequestKind,
+      fallbackDateIso: order.paid_at ?? order.created_at
+    }).map((row) => ({
+      dateLabel: row.dateLabel,
+      label: row.label,
+      amountCents: row.amountCents
+    }));
+    const vacafCoverageLines =
+      externalAidCents > 0
+        ? [
+            {
+              label: 'Prise en charge VACAF / AVE',
+              amountCents: externalAidCents
+            }
+          ]
+        : [];
 
       return {
         id: order.id,
@@ -811,8 +940,14 @@ export async function listPartnerReservations(collectivityId: string, excludedUs
         })(),
         ancvConnectMatricule: order.ancv_connect_matricule,
         ancvConnectRequestedAmountCents: order.ancv_connect_requested_amount_cents,
-        externalAidCents: order.external_aid_cents ?? 0,
-        externalPaidCents: order.external_paid_cents ?? 0,
+        externalAidCents,
+        externalPaidCents,
+        onlinePaidCents,
+        parentPaidCents,
+        remainingBalanceCents,
+        financeModeAtOrderLabel,
+        vacafCoverageLines,
+        paymentLines,
         pendingActions,
         beneficiaryName,
         beneficiaryEmail,

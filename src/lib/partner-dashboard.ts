@@ -34,7 +34,7 @@ const PARTNER_STATUS_GROUPS: Array<{
     statuses: ['PENDING_PAYMENT']
   },
   { key: 'partial', label: 'Paiement partiel reçu', statuses: ['PARTIALLY_PAID'] },
-  { key: 'paid', label: 'Réservation payée', statuses: ['PAID'] },
+  { key: 'paid', label: 'Confirmées', statuses: ['PAID'] },
   { key: 'cancelled', label: 'Réservation annulée', statuses: ['CANCELLED'] },
   { key: 'failed', label: 'Échec de paiement', statuses: ['FAILED'] },
   { key: 'transferred', label: 'Réservation transférée', statuses: ['TRANSFERRED'] }

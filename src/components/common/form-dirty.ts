@@ -17,7 +17,7 @@ export function serializeFormData(form: HTMLFormElement): string {
 }
 
 /** Suit les champs d’un <form> (input/change) pour savoir si le contenu a changé depuis le chargement. */
-export function useFormDirty(formId: string): boolean {
+export function useFormDirty(formId: string, resetToken?: string): boolean {
   const [isDirty, setIsDirty] = useState(false);
   const initialSnapshotRef = useRef<string | null>(null);
   const hasUserInteractedRef = useRef(false);
@@ -58,7 +58,7 @@ export function useFormDirty(formId: string): boolean {
       form.removeEventListener('change', handlePotentialUserChange);
       form.removeEventListener('reset', handlePotentialUserChange);
     };
-  }, [formId]);
+  }, [formId, resetToken]);
 
   return isDirty;
 }

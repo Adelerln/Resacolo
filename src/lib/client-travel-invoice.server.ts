@@ -379,13 +379,27 @@ export async function ensureClientTravelInvoiceForOrder(orderId: string) {
     await supabase.from('invoice_lines').delete().eq('invoice_id', invoice.id);
 
     if (model.lines.length > 0) {
-      const { error: lineError } = await supabase.from('invoice_lines').insert(
-        model.lines.map((line) => ({
+      const signedRows = model.lines.map((line) => ({
+        invoice_id: invoice!.id,
+        label: line.label,
+        amount_cents: line.amountCents
+      }));
+      let { error: lineError } = await supabase.from('invoice_lines').insert(signedRows);
+
+      // Ancienne contrainte amount_cents >= 0 : stocker la valeur absolue avec libellé de déduction.
+      if (lineError && /invoice_lines_amount_cents_check/i.test(lineError.message)) {
+        await supabase.from('invoice_lines').delete().eq('invoice_id', invoice.id);
+        const legacyRows = model.lines.map((line) => ({
           invoice_id: invoice!.id,
-          label: line.label,
-          amount_cents: line.amountCents
-        }))
-      );
+          label:
+            line.amountCents < 0
+              ? `Déduction — ${line.label}`
+              : line.label,
+          amount_cents: Math.abs(line.amountCents)
+        }));
+        ({ error: lineError } = await supabase.from('invoice_lines').insert(legacyRows));
+      }
+
       if (lineError) {
         throw new Error(`Impossible de créer les lignes de facture client : ${lineError.message}`);
       }

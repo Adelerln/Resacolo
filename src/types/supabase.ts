@@ -638,6 +638,7 @@ export type Database = {
           logo_url: string | null
           name: string
           offer_mode: string
+          organizer_amounts_prefs: Json
           postal_code: string | null
           updated_at: string
           website_url: string | null
@@ -676,6 +677,7 @@ export type Database = {
           logo_url?: string | null
           name: string
           offer_mode?: string
+          organizer_amounts_prefs?: Json
           postal_code?: string | null
           updated_at?: string
           website_url?: string | null
@@ -714,6 +716,7 @@ export type Database = {
           logo_url?: string | null
           name?: string
           offer_mode?: string
+          organizer_amounts_prefs?: Json
           postal_code?: string | null
           updated_at?: string
           website_url?: string | null

@@ -15,8 +15,10 @@ import { isMissingAnyColumnError } from '@/lib/supabase-schema-errors';
 import { normalizeVacafNumberInput } from '@/lib/vacaf-number';
 import {
   computeRemainingBalanceCents as computeOrderRemainingBalanceCents,
+  isPartnerFullCoverageAmounts,
   isPaymentFailedOrder,
   reconcileOrderStatusWithBalance,
+  resolveDisplayedPaymentModeLabel,
   resolveOrderStatusLabel
 } from '@/lib/order-workflow';
 import { buildClientPaymentSummaryRows } from '@/lib/client-payment-summary';
@@ -398,14 +400,6 @@ function formatDateRange(startDate: string | null | undefined, endDate: string |
   if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) return 'Dates à confirmer';
   return `${start.toLocaleDateString('fr-FR')} au ${end.toLocaleDateString('fr-FR')}`;
 }
-
-const PAYMENT_MODE_LABELS: Record<FamilyProfile['paymentMode'], string> = {
-  FULL: 'Paiement de la totalité en CB',
-  DEPOSIT_200: "Paiement d'un acompte (200 €) en CB",
-  CV_CONNECT: 'Paiement en ANCV Connect',
-  CV_PAPER: 'Paiement en ANCV papier',
-  DEFERRED: 'Paiement différé'
-};
 
 function formatEuroFromCents(cents: number) {
   return new Intl.NumberFormat('fr-FR', {
@@ -1757,6 +1751,17 @@ async function readReservations(
         externalPaidCents,
         onlinePaidCents
       });
+      const isPartnerFullCoverage =
+        isPartnerFullCoverageAmounts({
+          totalCents,
+          partnerCents: financeSplit.partnerCents
+        }) ||
+        (Boolean(order.collectivity_id) &&
+          financeSplit.partnerCents === 0 &&
+          order.status === 'PAID' &&
+          onlinePaidCents <= 0 &&
+          externalPaidCents <= 0 &&
+          order.request_kind == null);
       const effectiveOrderStatus = reconcileOrderStatusWithBalance({
         status: order.status,
         remainingBalanceCents,
@@ -1909,7 +1914,8 @@ async function readReservations(
           externalAidCents: order.external_aid_cents ?? 0,
           cancellationReason: order.cancellation_reason,
           requestKind: order.request_kind,
-          hasVacafNumber: hasVacafNumberInPaymentPayload(payment?.raw_payload)
+          hasVacafNumber: hasVacafNumberInPaymentPayload(payment?.raw_payload),
+          isPartnerFullCoverage
         }),
         sessionStartDate: session?.start_date ?? null,
         sessionEndDate: session?.end_date ?? null,
@@ -1918,7 +1924,14 @@ async function readReservations(
         totalCents,
         currency,
         paymentMode,
-        paymentModeLabel: PAYMENT_MODE_LABELS[paymentMode],
+        paymentModeLabel: resolveDisplayedPaymentModeLabel({
+          paymentMode,
+          totalCents,
+          partnerCents: isPartnerFullCoverage
+            ? Math.max(financeSplit.partnerCents, totalCents)
+            : financeSplit.partnerCents,
+          collectivityName: collectivity?.name ?? null
+        }),
         remainingBalanceCents,
         clientPaidCents,
         partnerDiscountLine: buildPartnerDiscountLine({

@@ -96,6 +96,15 @@ export async function resolveOrganizerCoverageRequestAction(formData: FormData) 
     .eq('order_id', orderId)
     .eq('status', 'SUCCEEDED');
   const onlinePaidCents = (successfulPayments ?? []).reduce((sum, payment) => sum + (payment.amount_cents ?? 0), 0);
+
+  const { data: latestPayment } = await supabase
+    .from('payments')
+    .select('id,raw_payload')
+    .eq('order_id', orderId)
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
   const totalCents = orderItems.reduce((sum, item) => sum + (item.total_price_cents ?? 0), 0);
   const orderItemIds = orderItems.map((item) => item.id);
   const { data: contributionRows } = orderItemIds.length
@@ -122,9 +131,40 @@ export async function resolveOrganizerCoverageRequestAction(formData: FormData) 
   }, 0);
   const familyPayableTotalCents = Math.max(0, totalCents - partnerContributionCents);
   const nextExternalAidCents = requestKind === 'VACAF' ? amountCents : orderRow.external_aid_cents ?? 0;
+
+  const existingPayload =
+    latestPayment?.raw_payload &&
+    typeof latestPayment.raw_payload === 'object' &&
+    !Array.isArray(latestPayment.raw_payload)
+      ? ({ ...(latestPayment.raw_payload as Record<string, unknown>) } as Record<string, unknown>)
+      : {};
+  const existingBreakdown =
+    existingPayload.ancvCoverageBreakdown &&
+    typeof existingPayload.ancvCoverageBreakdown === 'object' &&
+    !Array.isArray(existingPayload.ancvCoverageBreakdown)
+      ? (existingPayload.ancvCoverageBreakdown as Record<string, unknown>)
+      : {};
+  const existingConnectCents = Math.max(
+    0,
+    Math.round(Number(existingBreakdown.connectCents ?? 0)) || 0
+  );
+  const existingPaperCents = Math.max(0, Math.round(Number(existingBreakdown.paperCents ?? 0)) || 0);
+  const hasAncvBreakdown = existingConnectCents > 0 || existingPaperCents > 0;
+  const nextConnectCents =
+    requestKind === 'ANCV_CONNECT'
+      ? amountCents
+      : hasAncvBreakdown
+        ? existingConnectCents
+        : 0;
+  const nextPaperCents =
+    requestKind === 'ANCV_PAPER'
+      ? amountCents
+      : hasAncvBreakdown
+        ? existingPaperCents
+        : 0;
   const nextExternalPaidCents =
     requestKind === 'ANCV_CONNECT' || requestKind === 'ANCV_PAPER'
-      ? amountCents
+      ? nextConnectCents + nextPaperCents
       : orderRow.external_paid_cents ?? 0;
   const nextStatus = resolveStatusAfterRequestResolution({
     totalCents: familyPayableTotalCents,
@@ -161,6 +201,28 @@ export async function resolveOrganizerCoverageRequestAction(formData: FormData) 
     updateError = (await supabase.from('orders').update(withoutExternalPaid).eq('id', orderId)).error;
   }
 
+  if (
+    !updateError &&
+    latestPayment?.id &&
+    (requestKind === 'ANCV_CONNECT' || requestKind === 'ANCV_PAPER')
+  ) {
+    const nextPayload = {
+      ...existingPayload,
+      ancvCoverageBreakdown: {
+        connectCents: nextConnectCents,
+        paperCents: nextPaperCents,
+        updatedAt: now
+      }
+    };
+    const { error: payloadError } = await supabase
+      .from('payments')
+      .update({ raw_payload: nextPayload })
+      .eq('id', latestPayment.id);
+    if (payloadError) {
+      console.error('organisme/reservations: ventilation ANCV non enregistrée', payloadError);
+    }
+  }
+
   if (updateError) {
     redirect(
       withOrganizerQuery(
@@ -180,5 +242,10 @@ export async function resolveOrganizerCoverageRequestAction(formData: FormData) 
   }
 
   revalidatePath('/organisme/reservations');
-  redirect(withOrganizerQuery('/organisme/reservations?coverageSaved=1', organizerId));
+  redirect(
+    withOrganizerQuery(
+      `/organisme/reservations?coverageSaved=1&coverageOrderId=${encodeURIComponent(orderId)}`,
+      organizerId
+    )
+  );
 }

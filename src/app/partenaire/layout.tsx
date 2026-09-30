@@ -4,7 +4,7 @@ import { PartnerSidebarNav } from '@/components/partner/PartnerSidebarNav';
 import { requirePartner } from '@/lib/auth/require';
 import { getPartnerAccessRoleFromSession, getPartnerNavLinks } from '@/lib/partner-access';
 import { partnerHasMarqueBlancheAccess } from '@/lib/partner-offers';
-import { readPartnerCollectivity } from '@/lib/partner.server';
+import { getServerSupabaseClient } from '@/lib/supabase/server';
 
 export default async function PartnerLayout({ children }: { children: React.ReactNode }) {
   const session = await requirePartner();
@@ -14,8 +14,13 @@ export default async function PartnerLayout({ children }: { children: React.Reac
   let partnerNavLinks = getPartnerNavLinks(accessRole);
   if (tenantId) {
     try {
-      const collectivity = await readPartnerCollectivity(tenantId);
-      if (!partnerHasMarqueBlancheAccess(collectivity.offer_mode)) {
+      const supabase = getServerSupabaseClient();
+      const { data: collectivity } = await supabase
+        .from('collectivities')
+        .select('offer_mode')
+        .eq('id', tenantId)
+        .maybeSingle();
+      if (!partnerHasMarqueBlancheAccess(collectivity?.offer_mode)) {
         partnerNavLinks = partnerNavLinks.filter((item) => item.href !== '/partenaire/marque-blanche');
       }
     } catch {

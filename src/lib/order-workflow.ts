@@ -136,7 +136,42 @@ export function parsePaymentModeFromCheckoutPayload(
 export function resolveFamilyPaymentModeLabel(
   rawPayload: Record<string, unknown> | null | undefined
 ) {
+  const notification = rawPayload?.reservationNotification;
+  if (notification && typeof notification === 'object' && !Array.isArray(notification)) {
+    if ((notification as { isPartnerTotalCoverage?: unknown }).isPartnerTotalCoverage === true) {
+      return resolvePartnerFullCoveragePaymentModeLabel();
+    }
+  }
   return FAMILY_PAYMENT_MODE_LABELS[parsePaymentModeFromCheckoutPayload(rawPayload)];
+}
+
+/** Prise en charge à 100 % par le CSE / partenaire (rien à régler côté famille). */
+export function isPartnerFullCoverageAmounts(input: {
+  totalCents: number;
+  partnerCents: number;
+}) {
+  return input.totalCents > 0 && input.partnerCents >= input.totalCents;
+}
+
+export function resolvePartnerFullCoveragePaymentModeLabel(_collectivityName?: string | null) {
+  // Le nom du CSE est affiché séparément (ex. « CSE de rattachement ») — pas sur cette ligne.
+  return 'Prise en charge totale';
+}
+
+export function resolveDisplayedPaymentModeLabel(input: {
+  paymentMode: CheckoutContact['paymentMode'] | string | null | undefined;
+  totalCents: number;
+  partnerCents: number;
+  collectivityName?: string | null;
+}) {
+  if (isPartnerFullCoverageAmounts(input)) {
+    return resolvePartnerFullCoveragePaymentModeLabel(input.collectivityName);
+  }
+  const mode = input.paymentMode;
+  if (mode && mode in FAMILY_PAYMENT_MODE_LABELS) {
+    return FAMILY_PAYMENT_MODE_LABELS[mode as CheckoutContact['paymentMode']];
+  }
+  return 'Non renseigné';
 }
 
 export function parseAmountEurosToCents(value: string | null | undefined) {
@@ -233,6 +268,8 @@ export function resolveOrderStatusLabel(input: {
   cancellationReason?: string | null;
   requestKind?: OrderRequestKind | string | null;
   hasVacafNumber?: boolean;
+  /** Si true et statut payé / solde 0 : afficher « Partenaire » au lieu de « Payée ». */
+  isPartnerFullCoverage?: boolean;
 }) {
   if (isPaymentFailedOrder({ status: input.status, cancellationReason: input.cancellationReason })) {
     return FAMILY_ORDER_STATUS_LABELS.FAILED;
@@ -253,20 +290,24 @@ export function resolveOrderStatusLabel(input: {
     return 'En attente du montant CAF';
   }
 
-  return orderStatusLabel(
-    reconcileOrderStatusWithBalance({
-      status: resolveEffectiveOrderStatus({
-        status: input.status,
-        requestKind: input.requestKind,
-        hasVacafNumber: input.hasVacafNumber,
-        externalAidCents: input.externalAidCents,
-        externalPaidCents: input.externalPaidCents
-      }),
-      remainingBalanceCents: input.remainingBalanceCents,
-      onlinePaidCents: input.onlinePaidCents,
+  const reconciled = reconcileOrderStatusWithBalance({
+    status: resolveEffectiveOrderStatus({
+      status: input.status,
+      requestKind: input.requestKind,
+      hasVacafNumber: input.hasVacafNumber,
+      externalAidCents: input.externalAidCents,
       externalPaidCents: input.externalPaidCents
-    })
-  );
+    }),
+    remainingBalanceCents: input.remainingBalanceCents,
+    onlinePaidCents: input.onlinePaidCents,
+    externalPaidCents: input.externalPaidCents
+  });
+
+  if (input.isPartnerFullCoverage && (reconciled === 'PAID' || input.remainingBalanceCents <= 0)) {
+    return 'Partenaire';
+  }
+
+  return orderStatusLabel(reconciled);
 }
 
 export function resolvePaidOrderStatus(input: {
@@ -517,10 +558,33 @@ export function resolveCheckoutConfirmationFollowUpMessage(input: {
   const context = { ...input, requestKind: effectiveRequestKind };
 
   if (context.isVacafRequest || effectiveRequestKind === 'VACAF') {
+    let message =
+      "Votre demande est bien transmise. L'organisme doit maintenant contrôler vos droits VACAF/AVE et saisir le montant CAF déduit.";
+
+    const mailingAddress = input.ancvPaperMailingAddress?.trim();
+    const hasAncvPaper =
+      Boolean(input.ancvPaperRequested) || Boolean(context.isCvPaperMode);
+    const hasAncvConnect =
+      Boolean(context.isAncvConnectRequest) || effectiveRequestKind === 'ANCV_CONNECT';
+
+    if (hasAncvPaper) {
+      if (mailingAddress) {
+        message += ` Envoyez aussi vos chèques-vacances papier à l’adresse renseignée par l’organisateur dans sa fiche (${mailingAddress}), afin que ce montant puisse être déduit de votre commande.`;
+      } else {
+        message +=
+          ' Envoyez aussi vos chèques-vacances papier à l’adresse que l’organisateur a renseignée dans sa fiche, afin que ce montant puisse être déduit de votre commande.';
+      }
+    }
+
+    if (hasAncvConnect) {
+      message += hasAncvPaper
+        ? ' Pour la part ANCV Connect, l’organisateur vous adressera également un lien de règlement depuis votre espace personnel ANCV Connect.'
+        : ' Pour la part ANCV Connect, l’organisateur vous adressera un lien de règlement depuis votre espace personnel ANCV Connect.';
+    }
+
     return {
       tone: 'warning',
-      message:
-        "Votre demande est bien transmise. L'organisme doit maintenant contrôler vos droits VACAF/AVE et saisir le montant CAF déduit."
+      message
     };
   }
   if (context.isAncvConnectRequest || effectiveRequestKind === 'ANCV_CONNECT') {
@@ -645,24 +709,31 @@ export function resolveCheckoutConfirmationSubtitle(input: {
 
 export function orderStatusLabel(
   status: OrderStatus | string | null | undefined,
-  options?: { cancellationReason?: string | null }
+  options?: { cancellationReason?: string | null; isPartnerFullCoverage?: boolean }
 ) {
   if (isPaymentFailedOrder({ status, cancellationReason: options?.cancellationReason })) {
     return FAMILY_ORDER_STATUS_LABELS.FAILED;
   }
   const normalized = normalizeOrderStatus(status);
   if (!normalized) return '-';
+  if (options?.isPartnerFullCoverage && normalized === 'PAID') {
+    return 'Partenaire';
+  }
   return FAMILY_ORDER_STATUS_LABELS[normalized as keyof typeof FAMILY_ORDER_STATUS_LABELS] ?? normalized;
 }
 
 export function orderStatusBadgeClassName(
   status: OrderStatus | string | null | undefined,
-  options?: { cancellationReason?: string | null }
+  options?: { cancellationReason?: string | null; isPartnerFullCoverage?: boolean }
 ) {
   if (isPaymentFailedOrder({ status, cancellationReason: options?.cancellationReason })) {
     return 'bg-rose-100 text-rose-900';
   }
-  switch (normalizeOrderStatus(status)) {
+  const normalized = normalizeOrderStatus(status);
+  if (options?.isPartnerFullCoverage && normalized === 'PAID') {
+    return 'bg-teal-100 text-teal-900';
+  }
+  switch (normalized) {
     case 'REQUESTED':
       return 'bg-amber-100 text-amber-900';
     case 'PENDING_PAYMENT':

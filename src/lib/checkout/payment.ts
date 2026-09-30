@@ -197,6 +197,7 @@ function parseReservationNotificationFromPayload(
 async function notifyOrganizerFromPaymentPayload(input: {
   rawPayload: Json | null | undefined;
   onlinePaymentStatus: ReservationOnlinePaymentStatus;
+  onlinePaymentAmountCents?: number | null;
   markNotifiedOnPaymentId?: { paymentId: string; orderId: string };
 }) {
   const notification = parseReservationNotificationFromPayload(input.rawPayload);
@@ -213,10 +214,24 @@ async function notifyOrganizerFromPaymentPayload(input: {
     }
   }
 
+  const amountCents =
+    typeof input.onlinePaymentAmountCents === 'number'
+      ? input.onlinePaymentAmountCents
+      : notification.onlinePaymentAmountCents ?? null;
+  const isPartnerTotalCoverage =
+    notification.isPartnerTotalCoverage === true ||
+    (input.onlinePaymentStatus === 'SUCCEEDED' && amountCents === 0);
+
   await sendReservationNotificationEmails(
     {
       ...notification,
-      onlinePaymentStatus: input.onlinePaymentStatus
+      isPartnerTotalCoverage,
+      onlinePaymentAmountCents: amountCents,
+      // Montant 0 = prise en charge partenaire (ou rien à encaisser) : ne pas afficher un CB confirmé.
+      onlinePaymentStatus:
+        input.onlinePaymentStatus === 'SUCCEEDED' && amountCents === 0
+          ? null
+          : input.onlinePaymentStatus
     },
     { recipients: 'organizer' }
   );
@@ -1092,7 +1107,17 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
       contact: effectiveContact,
       participants: organizerParticipants,
       orderItemIds,
-      orderItemSnapshots
+      orderItemSnapshots,
+      ...(collectivity?.collectivityId
+        ? {
+            partnerFinanceSnapshot: {
+              mode: organizerPricing.financeMode ?? 'NONE',
+              percentValue: organizerPricing.financePercentValue ?? null,
+              fixedCents: organizerPricing.financeFixedCents ?? null,
+              partnerContributionCents: organizerPricing.financePartnerContributionTotalCents ?? 0
+            }
+          }
+        : {})
     };
 
     const notificationLines = organizerParticipants.map((participant, index) => {
@@ -1125,17 +1150,17 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
       paymentMode: effectiveContact.paymentMode,
       requestKind,
       isPartnerManualQuote: Boolean(organizerPricing.financeRequiresQuote),
-      onlinePaymentStatus: deferOrganizerNotification
-        ? 'PENDING'
-        : isPartnerTotalCoverage
-          ? 'SUCCEEDED'
-          : null,
+      isPartnerTotalCoverage,
+      // Jamais « SUCCEEDED » ici : ce statut signifie un vrai encaissement CB pour le mail organisateur.
+      onlinePaymentStatus: deferOrganizerNotification ? 'PENDING' : null,
+      onlinePaymentAmountCents: immediatePaymentAmountCents,
       lines: notificationLines,
       organizerAcceptsAncvPaper: organizerSettings.accepts_ancv_paper,
       organizerAcceptsAncvConnect: organizerSettings.accepts_ancv_connect,
       organizerIsVacafApproved: organizerSettings.is_vacaf_approved,
       stayCafEligible,
-      ancvPaperMailingAddress: organizerSettings.ancv_paper_mailing_address ?? null
+      ancvPaperMailingAddress: organizerSettings.ancv_paper_mailing_address ?? null,
+      collectivityName: collectivity?.name?.trim() || null
     };
 
     const { data: payment, error: paymentInsertError } = await supabase
@@ -1471,6 +1496,7 @@ export async function markOrderPaid(input: {
     await notifyOrganizerFromPaymentPayload({
       rawPayload: existingPayment?.raw_payload,
       onlinePaymentStatus: 'SUCCEEDED',
+      onlinePaymentAmountCents: existingPayment?.amount_cents ?? null,
       markNotifiedOnPaymentId: { paymentId: input.paymentId, orderId: input.orderId }
     }).catch((error) => {
       console.error('checkout: envoi email organisateur après paiement échoué', error);

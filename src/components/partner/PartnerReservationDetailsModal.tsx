@@ -121,12 +121,12 @@ export function PartnerReservationDetailsModal({ reservation }: { reservation: P
               </button>
             </div>
 
-            <div className="min-w-0 overflow-x-hidden overflow-y-auto px-6 pb-6 pt-2">
+            <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-6 pb-6 pt-2">
               <div
-                className={`mb-4 min-w-0 rounded-xl px-4 py-3 ${
+                className={`mb-4 min-w-0 overflow-hidden rounded-xl border px-4 py-3.5 ${
                   reservation.pendingActions.length > 0
-                    ? 'border border-amber-200 bg-amber-50'
-                    : 'border border-emerald-200 bg-emerald-50'
+                    ? 'border-amber-200 bg-amber-50'
+                    : 'border-emerald-200 bg-emerald-50'
                 }`}
               >
                 <p
@@ -137,11 +137,11 @@ export function PartnerReservationDetailsModal({ reservation }: { reservation: P
                   Actions en attente
                 </p>
                 {reservation.pendingActions.length > 0 ? (
-                  <ul className="mt-2 space-y-2">
+                  <ul className="mt-2.5 space-y-2">
                     {reservation.pendingActions.map((action, index) => (
                       <li
                         key={`${action.actorLabel}-${index}`}
-                        className="min-w-0 break-words rounded-lg bg-white/70 px-3 py-2 text-sm leading-relaxed text-slate-900"
+                        className="min-w-0 break-words rounded-lg bg-white/80 px-3 py-2.5 text-sm leading-relaxed text-slate-900"
                       >
                         <span className="font-semibold">{action.actorLabel} :</span>{' '}
                         <span className="break-words">{action.description}</span>
@@ -149,7 +149,7 @@ export function PartnerReservationDetailsModal({ reservation }: { reservation: P
                     ))}
                   </ul>
                 ) : (
-                  <p className="mt-1 text-sm font-medium text-emerald-950">
+                  <p className="mt-1.5 text-sm font-medium text-emerald-950">
                     Aucune action en attente sur cette réservation.
                   </p>
                 )}
@@ -172,7 +172,7 @@ export function PartnerReservationDetailsModal({ reservation }: { reservation: P
                 <DetailRow label="Participants" value={reservation.childrenLabel} />
                 <DetailRow label="Total commande" value={reservation.totalLabel} />
                 <DetailRow label="Part partenaire" value={reservation.partnerContributionLabel} />
-                <DetailRow label="Reste client" value={reservation.clientContributionLabel} />
+                <DetailRow label="Part client" value={reservation.clientContributionLabel} />
                 <DetailRow label="Mode de règlement indiqué" value={reservation.paymentModeLabel} />
                 <DetailRow
                   label="Traitement demandé"

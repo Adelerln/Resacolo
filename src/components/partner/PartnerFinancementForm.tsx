@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useActionState, useEffect, useState } from 'react';
+import { useFormStatus } from 'react-dom';
 import PartnerProfileFormEnhancer from '@/components/partner/PartnerProfileFormEnhancer';
 import { PartnerFinancialRulesSection } from '@/components/partner/PartnerFinancialRulesSection';
 import {
@@ -11,11 +12,28 @@ import {
   type PartnerFinanceModeValue
 } from '@/lib/partner-offers';
 import type { PartnerCatalogRules } from '@/types/partner-catalog-rules';
+import type { SaveFinancingSettingsState } from '@/app/partenaire/financement/actions';
 
 const FINANCING_FORM_ID = 'partner-financing-form';
 
+const INITIAL_SAVE_STATE: SaveFinancingSettingsState = { ok: false, message: null };
+
 function fieldClassName() {
   return 'mt-1 w-full rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-900 transition-colors';
+}
+
+function SavePendingButton() {
+  const { pending } = useFormStatus();
+  return (
+    <button
+      type="submit"
+      form={FINANCING_FORM_ID}
+      disabled={pending}
+      className="pointer-events-auto w-full max-w-xs rounded-full bg-emerald-600 px-5 py-3 text-sm font-semibold text-white shadow-lg transition disabled:cursor-wait disabled:opacity-70 sm:w-auto sm:max-w-none"
+    >
+      {pending ? 'Enregistrement…' : 'Enregistrer'}
+    </button>
+  );
 }
 
 export function PartnerFinancementForm({
@@ -32,14 +50,43 @@ export function PartnerFinancementForm({
   initialFixedEuros: number | null | undefined;
   initialRulesText: string | null | undefined;
   catalogRules: PartnerCatalogRules;
-  saveAction: (formData: FormData) => void;
+  saveAction: (
+    prev: SaveFinancingSettingsState,
+    formData: FormData
+  ) => Promise<SaveFinancingSettingsState>;
   resetToken: string;
 }) {
   const [mode, setMode] = useState<PartnerFinanceModeValue>(normalizePartnerFinanceMode(initialMode));
+  const [state, formAction] = useActionState(saveAction, INITIAL_SAVE_STATE);
+  const [banner, setBanner] = useState<SaveFinancingSettingsState | null>(null);
+  const [clientResetToken, setClientResetToken] = useState(0);
+
+  useEffect(() => {
+    if (state.message) {
+      setBanner(state);
+    }
+    if (state.ok) {
+      setClientResetToken((value) => value + 1);
+    }
+  }, [state]);
+
+  const dirtyResetToken = `${resetToken}:${clientResetToken}`;
 
   return (
     <>
-      <form id={FINANCING_FORM_ID} action={saveAction} className="space-y-4">
+      {banner?.message ? (
+        <p
+          className={`mb-4 rounded-xl border px-4 py-3 text-sm ${
+            banner.ok
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+              : 'border-rose-200 bg-rose-50 text-rose-700'
+          }`}
+        >
+          {banner.message}
+        </p>
+      ) : null}
+
+      <form id={FINANCING_FORM_ID} action={formAction} className="space-y-4">
         <label className="block text-sm font-medium text-slate-700">
           Mode de financement
           <select
@@ -146,7 +193,12 @@ export function PartnerFinancementForm({
           />
         </label>
       </form>
-      <PartnerProfileFormEnhancer formId={FINANCING_FORM_ID} resetToken={resetToken} />
+
+      <PartnerProfileFormEnhancer
+        formId={FINANCING_FORM_ID}
+        resetToken={dirtyResetToken}
+        submitSlot={<SavePendingButton />}
+      />
     </>
   );
 }

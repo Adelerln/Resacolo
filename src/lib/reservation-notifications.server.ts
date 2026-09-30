@@ -42,14 +42,20 @@ export type ReservationNotificationInput = {
   requestKind: OrderRequestKind;
   /** True only when a partner affiliation requires a manual finance quote. */
   isPartnerManualQuote?: boolean;
+  /** True when the partner covers 100% (family pays nothing). */
+  isPartnerTotalCoverage?: boolean;
   /** Statut du paiement CB en ligne, si un TPE a été initié. */
   onlinePaymentStatus?: ReservationOnlinePaymentStatus | null;
+  /** Montant réellement présenté au TPE (0 = pas d’encaissement carte). */
+  onlinePaymentAmountCents?: number | null;
   lines: ReservationNotificationLine[];
   organizerAcceptsAncvPaper: boolean;
   organizerAcceptsAncvConnect: boolean;
   organizerIsVacafApproved: boolean;
   stayCafEligible: boolean;
   ancvPaperMailingAddress?: string | null;
+  /** CSE / collectivité de rattachement de la famille, s’il y en a une. */
+  collectivityName?: string | null;
   dashboardUrl?: string;
   familyAccountUrl?: string;
 };
@@ -78,7 +84,12 @@ function escapeHtml(value: string) {
     .replace(/'/g, '&#39;');
 }
 
-function paymentModeLabel(mode: CheckoutPaymentMode, requestKind?: OrderRequestKind) {
+function paymentModeLabel(
+  mode: CheckoutPaymentMode,
+  requestKind?: OrderRequestKind,
+  options?: { isPartnerTotalCoverage?: boolean }
+) {
+  if (options?.isPartnerTotalCoverage) return 'Prise en charge totale par le partenaire';
   if (requestKind === 'VACAF') return 'Demande VACAF / AVE';
   if (requestKind === 'ANCV_CONNECT' || mode === 'CV_CONNECT') return 'ANCV Connect';
   switch (mode) {
@@ -99,7 +110,9 @@ export function buildOrganizerReservationActions(input: {
   paymentMode: CheckoutPaymentMode;
   requestKind: OrderRequestKind;
   isPartnerManualQuote?: boolean;
+  isPartnerTotalCoverage?: boolean;
   onlinePaymentStatus?: ReservationOnlinePaymentStatus | null;
+  onlinePaymentAmountCents?: number | null;
   organizerAcceptsAncvPaper: boolean;
   organizerAcceptsAncvConnect: boolean;
   organizerIsVacafApproved: boolean;
@@ -118,13 +131,26 @@ export function buildOrganizerReservationActions(input: {
     ];
   }
 
+  if (input.isPartnerTotalCoverage) {
+    return [
+      {
+        title: 'Prise en charge totale partenaire',
+        description:
+          'Aucun règlement n’est demandé à la famille. La collectivité / le CSE réglera la totalité auprès de ResaColo. Traitez l’inscription comme une réservation déjà financée (paiement partenaire différé — pas de paiement carte).'
+      }
+    ];
+  }
+
   const actions: OrganizerReservationAction[] = [];
   const hasVacaf =
     input.requestKind === 'VACAF' ||
     (input.hasVacafNumber && input.organizerIsVacafApproved && input.stayCafEligible);
   const hasAncvConnect = input.requestKind === 'ANCV_CONNECT' || input.paymentMode === 'CV_CONNECT';
+  const hasRealCardCapture =
+    input.onlinePaymentStatus === 'SUCCEEDED' &&
+    (input.onlinePaymentAmountCents == null || input.onlinePaymentAmountCents > 0);
 
-  if (input.onlinePaymentStatus === 'SUCCEEDED' && (input.paymentMode === 'FULL' || input.paymentMode === 'DEPOSIT_200')) {
+  if (hasRealCardCapture && (input.paymentMode === 'FULL' || input.paymentMode === 'DEPOSIT_200')) {
     actions.push({
       title:
         input.paymentMode === 'DEPOSIT_200'
@@ -306,12 +332,21 @@ export function renderOrganizerReservationEmail(input: ReservationNotificationIn
     input.requestKind === 'VACAF' || Boolean(vacafNumberRaw);
   const ancvConnectMatricule = input.contact.ancvConnectMatricule?.trim() || null;
   const ancvConnectAmount = input.contact.ancvConnectAmount?.trim() || null;
+  const isPartnerTotalCoverage =
+    input.isPartnerTotalCoverage === true ||
+    (input.onlinePaymentStatus === 'SUCCEEDED' && input.onlinePaymentAmountCents === 0);
   const paymentFailed = input.onlinePaymentStatus === 'FAILED';
+  const showCardPaymentStatus =
+    Boolean(input.onlinePaymentStatus) &&
+    !isPartnerTotalCoverage &&
+    (input.onlinePaymentAmountCents == null || input.onlinePaymentAmountCents > 0);
   const actions = buildOrganizerReservationActions({
     paymentMode: input.paymentMode,
     requestKind: input.requestKind,
     isPartnerManualQuote: input.isPartnerManualQuote,
-    onlinePaymentStatus: input.onlinePaymentStatus,
+    isPartnerTotalCoverage,
+    onlinePaymentStatus: isPartnerTotalCoverage ? null : input.onlinePaymentStatus,
+    onlinePaymentAmountCents: input.onlinePaymentAmountCents,
     organizerAcceptsAncvPaper: input.organizerAcceptsAncvPaper,
     organizerAcceptsAncvConnect: input.organizerAcceptsAncvConnect,
     organizerIsVacafApproved: input.organizerIsVacafApproved,
@@ -327,7 +362,9 @@ export function renderOrganizerReservationEmail(input: ReservationNotificationIn
   const dashboardUrl = input.dashboardUrl ?? 'https://resacolo.com/organisme';
   const showAncvConnectIds =
     input.requestKind === 'ANCV_CONNECT' || input.paymentMode === 'CV_CONNECT';
-  const paymentModeDisplay = paymentModeLabel(input.paymentMode, input.requestKind);
+  const paymentModeDisplay = paymentModeLabel(input.paymentMode, input.requestKind, {
+    isPartnerTotalCoverage
+  });
   const title = paymentFailed
     ? 'Paiement échoué — demande annulée'
     : 'Nouvelle demande de réservation';
@@ -361,8 +398,8 @@ export function renderOrganizerReservationEmail(input: ReservationNotificationIn
                     <p style="margin:0 0 4px;font-size:14px;color:#1d1f25;"><strong>Téléphone :</strong> ${escapeHtml(input.contact.phone || '—')}</p>
                     <p style="margin:0 0 4px;font-size:14px;color:#1d1f25;"><strong>Mode de règlement :</strong> ${escapeHtml(paymentModeDisplay)}</p>
                     ${
-                      input.onlinePaymentStatus
-                        ? `<p style="margin:0 0 4px;font-size:14px;color:#1d1f25;"><strong>Paiement carte :</strong> ${escapeHtml(onlinePaymentStatusLabel(input.onlinePaymentStatus))}</p>`
+                      showCardPaymentStatus
+                        ? `<p style="margin:0 0 4px;font-size:14px;color:#1d1f25;"><strong>Paiement carte :</strong> ${escapeHtml(onlinePaymentStatusLabel(input.onlinePaymentStatus!))}</p>`
                         : ''
                     }
                     ${
@@ -376,7 +413,14 @@ export function renderOrganizerReservationEmail(input: ReservationNotificationIn
                     <p style="margin:0 0 4px;font-size:14px;color:#1d1f25;"><strong>Montant ANCV Connect :</strong> ${escapeHtml(ancvConnectAmount || '—')}</p>`
                         : ''
                     }
-                    <p style="margin:0;font-size:14px;color:#1d1f25;"><strong>Séjour éligible CAF :</strong> ${input.stayCafEligible ? 'Oui' : 'Non'}</p>
+                    <p style="margin:0${
+                      input.collectivityName?.trim() ? ' 0 4px' : ''
+                    };font-size:14px;color:#1d1f25;"><strong>Séjour éligible CAF :</strong> ${input.stayCafEligible ? 'Oui' : 'Non'}</p>
+                    ${
+                      input.collectivityName?.trim()
+                        ? `<p style="margin:0;font-size:14px;color:#1d1f25;"><strong>CSE de rattachement :</strong> ${escapeHtml(input.collectivityName.trim())}</p>`
+                        : ''
+                    }
                   </td>
                 </tr>
               </table>
@@ -414,8 +458,8 @@ export function renderOrganizerReservationEmail(input: ReservationNotificationIn
     `E-mail : ${input.contact.email}`,
     `Téléphone : ${input.contact.phone || '—'}`,
     `Mode de règlement : ${paymentModeDisplay}`,
-    ...(input.onlinePaymentStatus
-      ? [`Paiement carte : ${onlinePaymentStatusLabel(input.onlinePaymentStatus)}`]
+    ...(showCardPaymentStatus
+      ? [`Paiement carte : ${onlinePaymentStatusLabel(input.onlinePaymentStatus!)}`]
       : []),
     ...(showVacafNumber ? [`N° allocataire CAF : ${vacafNumberLabel || '—'}`] : []),
     ...(showAncvConnectIds
@@ -425,6 +469,9 @@ export function renderOrganizerReservationEmail(input: ReservationNotificationIn
         ]
       : []),
     `Séjour éligible CAF : ${input.stayCafEligible ? 'Oui' : 'Non'}`,
+    ...(input.collectivityName?.trim()
+      ? [`CSE de rattachement : ${input.collectivityName.trim()}`]
+      : []),
     '',
     ...input.lines.map(
       (line) =>
@@ -457,7 +504,11 @@ export function renderFamilyReservationEmail(input: ReservationNotificationInput
   const accountUrl = input.familyAccountUrl ?? 'https://resacolo.com/mon-compte';
   const nextSteps: string[] = [];
 
-  if (input.requestKind === 'VACAF' || (input.contact.vacafNumber?.trim() && input.stayCafEligible)) {
+  if (input.isPartnerTotalCoverage) {
+    nextSteps.push(
+      'Aucun règlement ne vous est demandé : votre partenaire (CSE / collectivité) prend en charge la totalité du séjour auprès de ResaColo. Le statut dans votre espace Mon compte indique « Partenaire ».'
+    );
+  } else if (input.requestKind === 'VACAF' || (input.contact.vacafNumber?.trim() && input.stayCafEligible)) {
     nextSteps.push(
       'L’organisateur va vérifier vos droits VACAF/CAF. Vous pouvez être recontacté(e) pour finaliser l’inscription.'
     );
@@ -467,31 +518,34 @@ export function renderFamilyReservationEmail(input: ReservationNotificationInput
     );
   }
 
-  if (input.paymentMode === 'CV_CONNECT' || input.requestKind === 'ANCV_CONNECT') {
-    nextSteps.push(
-      'ANCV Connect : l’organisateur va vous recontacter pour finaliser le règlement avec vos Chèques-Vacances Connect.'
-    );
-  }
-  if (input.paymentMode === 'CV_PAPER' || input.contact.ancvPaperRequested) {
-    const mailingAddress = input.ancvPaperMailingAddress?.trim();
-    if (mailingAddress) {
+  if (!input.isPartnerTotalCoverage) {
+    if (input.paymentMode === 'CV_CONNECT' || input.requestKind === 'ANCV_CONNECT') {
       nextSteps.push(
-        `Envoyez vos chèques-vacances papier à l’adresse suivante : ${mailingAddress}. L’organisateur confirmera ensuite la réception.`
+        'ANCV Connect : l’organisateur va vous recontacter pour finaliser le règlement avec vos Chèques-Vacances Connect.'
       );
-    } else {
-      nextSteps.push(
-        'Envoyez vos chèques-vacances papier à l’organisateur. L’adresse postale exacte vous sera communiquée par l’organisateur ; il confirmera ensuite la réception.'
-      );
+    }
+    if (input.paymentMode === 'CV_PAPER' || input.contact.ancvPaperRequested) {
+      const mailingAddress = input.ancvPaperMailingAddress?.trim();
+      if (mailingAddress) {
+        nextSteps.push(
+          `Envoyez vos chèques-vacances papier à l’adresse suivante : ${mailingAddress}. L’organisateur confirmera ensuite la réception.`
+        );
+      } else {
+        nextSteps.push(
+          'Envoyez vos chèques-vacances papier à l’organisateur. L’adresse postale exacte vous sera communiquée par l’organisateur ; il confirmera ensuite la réception.'
+        );
+      }
     }
   }
 
   const hasAncvSettlement =
-    input.paymentMode === 'CV_CONNECT' ||
-    input.requestKind === 'ANCV_CONNECT' ||
-    input.paymentMode === 'CV_PAPER' ||
-    Boolean(input.contact.ancvPaperRequested);
+    !input.isPartnerTotalCoverage &&
+    (input.paymentMode === 'CV_CONNECT' ||
+      input.requestKind === 'ANCV_CONNECT' ||
+      input.paymentMode === 'CV_PAPER' ||
+      Boolean(input.contact.ancvPaperRequested));
 
-  if (!hasAncvSettlement) {
+  if (!input.isPartnerTotalCoverage && !hasAncvSettlement) {
     if (input.paymentMode === 'DEPOSIT_200') {
       nextSteps.push(
         'Votre acompte de 200 € a été initié. Dès confirmation bancaire, il apparaîtra comme encaissé ; le solde restant pourra être réglé ensuite.'
@@ -550,7 +604,7 @@ export function renderFamilyReservationEmail(input: ReservationNotificationInput
                     <p style="margin:0 0 8px;font-size:13px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.03em;">Votre demande</p>
                     <p style="margin:0 0 4px;font-size:14px;color:#1d1f25;"><strong>Référence :</strong> ${escapeHtml(reservationCode)}</p>
                     <p style="margin:0 0 4px;font-size:14px;color:#1d1f25;"><strong>Organisateur :</strong> ${escapeHtml(input.organizerName)}</p>
-                    <p style="margin:0;font-size:14px;color:#1d1f25;"><strong>Mode de règlement :</strong> ${escapeHtml(paymentModeLabel(input.paymentMode, input.requestKind))}</p>
+                    <p style="margin:0;font-size:14px;color:#1d1f25;"><strong>Mode de règlement :</strong> ${escapeHtml(paymentModeLabel(input.paymentMode, input.requestKind, { isPartnerTotalCoverage: input.isPartnerTotalCoverage }))}</p>
                   </td>
                 </tr>
               </table>
@@ -585,7 +639,9 @@ export function renderFamilyReservationEmail(input: ReservationNotificationInput
     'Votre demande de réservation est bien enregistrée',
     `Référence : ${reservationCode}`,
     `Organisateur : ${input.organizerName}`,
-    `Mode de règlement : ${paymentModeLabel(input.paymentMode, input.requestKind)}`,
+    `Mode de règlement : ${paymentModeLabel(input.paymentMode, input.requestKind, {
+      isPartnerTotalCoverage: input.isPartnerTotalCoverage
+    })}`,
     '',
     ...input.lines.map(
       (line) =>

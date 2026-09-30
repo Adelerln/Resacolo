@@ -56,7 +56,10 @@ export default function CheckoutConfirmationPage() {
   const isVacafRequestMode = mode === 'requested-vacaf' || mode === 'dev-bypass-requested-vacaf';
   const isAncvConnectRequestMode =
     mode === 'requested-ancv-connect' || mode === 'dev-bypass-requested-ancv-connect';
-  const isPartnerTotalMode = mode === 'partner-total' || mode === 'dev-bypass-partner-total';
+  const isPartnerTotalMode =
+    mode === 'partner-total' ||
+    mode === 'dev-bypass-partner-total' ||
+    Boolean(order?.paymentModeLabel?.startsWith('Prise en charge totale'));
   const isPartnerManualQuoteMode =
     mode === 'partner-manual-quote' || mode === 'dev-bypass-partner-manual-quote';
   const isManualConfirmationMode =
@@ -78,14 +81,14 @@ export default function CheckoutConfirmationPage() {
       requestKind,
       paidAt: order?.paidAt ?? null,
       remainingBalanceCents: order?.remainingBalanceCents ?? 0,
-      isCvPaperMode: detectedCvPaper && !isAncvConnectRequest,
+      isCvPaperMode: detectedCvPaper,
       isDeferredMode,
       isVacafRequest,
       isAncvConnectRequest,
       isPartnerManualQuoteMode,
       isPartnerTotalMode,
       ancvPaperMailingAddress: order?.ancvPaperMailingAddress ?? null,
-      ancvPaperRequested: Boolean(order?.ancvPaperRequested || order?.paymentMode === 'CV_PAPER')
+      ancvPaperRequested: Boolean(order?.ancvPaperRequested || order?.paymentMode === 'CV_PAPER' || detectedCvPaper)
     };
 
     return {

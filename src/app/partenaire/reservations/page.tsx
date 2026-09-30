@@ -1,7 +1,6 @@
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { requirePartner } from '@/lib/auth/require';
-import { orderStatusBadgeClassName } from '@/lib/order-workflow';
 import { canAccessPartnerSection, getPartnerAccessRoleFromSession } from '@/lib/partner-access';
 import { clampPartnerFinanceCents, normalizePartnerFinanceMode, PARTNER_FINANCE_MODE_LABELS } from '@/lib/partner-offers';
 import {
@@ -9,22 +8,8 @@ import {
   readPartnerCollectivity
 } from '@/lib/partner.server';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
-import { PartnerContributionAmountEditor } from '@/components/partner/PartnerContributionAmountEditor';
-import { PartnerReservationDetailsModal } from '@/components/partner/PartnerReservationDetailsModal';
+import { PartnerReservationsTable } from '@/components/partner/PartnerReservationsTable';
 import type { Json } from '@/types/supabase';
-
-function formatDate(value: string) {
-  return new Date(value).toLocaleDateString('fr-FR');
-}
-
-function formatCurrencyFromCents(value: number) {
-  return new Intl.NumberFormat('fr-FR', {
-    style: 'currency',
-    currency: 'EUR',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  }).format(value / 100);
-}
 
 function parseEurosToCents(value: FormDataEntryValue | null) {
   const parsed = Number.parseFloat(String(value ?? '').replace(',', '.'));
@@ -223,109 +208,10 @@ export default async function PartnerReservationsPage() {
         Mode de financement actif : <span className="font-semibold text-slate-900">{PARTNER_FINANCE_MODE_LABELS[financeMode]}</span>
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-        <div className="overflow-x-auto">
-          <table className="min-w-[1180px] w-full text-left text-sm">
-            <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-              <tr>
-                <th className="whitespace-nowrap px-4 py-3">Commande</th>
-                <th className="px-4 py-3">Bénéficiaire</th>
-                <th className="px-4 py-3">Séjour</th>
-                <th className="px-4 py-3">Participants</th>
-                <th className="px-4 py-3">Statut</th>
-                <th className="px-4 py-3">Total</th>
-                <th className="px-4 py-3">Part partenaire</th>
-                <th className="px-4 py-3">Reste client</th>
-              </tr>
-            </thead>
-            <tbody>
-              {reservations.map((reservation) => {
-                return (
-                  <tr key={reservation.id} className="border-t border-slate-100 align-top">
-                    <td className="whitespace-nowrap px-4 py-3 text-slate-600">
-                      <PartnerReservationDetailsModal
-                        reservation={{
-                          id: reservation.id,
-                          createdAt: reservation.createdAt,
-                          statusLabel: reservation.statusLabel,
-                          beneficiaryName: reservation.beneficiaryName,
-                          stayTitle: reservation.stayTitle,
-                          stayLocation: reservation.stayLocation,
-                          sessionLabel: reservation.sessionLabel,
-                          childrenLabel: reservation.childrenLabel,
-                          totalLabel: reservation.totalLabel,
-                          partnerContributionLabel: formatCurrencyFromCents(reservation.partnerContributionCents),
-                          clientContributionLabel: formatCurrencyFromCents(reservation.clientContributionCents),
-                          requestKind: reservation.requestKind,
-                          paymentMode: reservation.paymentMode,
-                          paymentModeLabel: reservation.paymentModeLabel,
-                          vacafNumberSnapshot: reservation.vacafNumberSnapshot,
-                          vacafDepartmentCode: reservation.vacafDepartmentCode ?? null,
-                          ancvConnectMatricule: reservation.ancvConnectMatricule,
-                          ancvConnectRequestedAmountLabel:
-                            typeof reservation.ancvConnectRequestedAmountCents === 'number'
-                              ? formatCurrencyFromCents(reservation.ancvConnectRequestedAmountCents)
-                              : null,
-                          externalAidLabel:
-                            reservation.externalAidCents > 0
-                              ? formatCurrencyFromCents(reservation.externalAidCents)
-                              : null,
-                          externalPaidLabel:
-                            reservation.externalPaidCents > 0
-                              ? formatCurrencyFromCents(reservation.externalPaidCents)
-                              : null,
-                          pendingActions: reservation.pendingActions
-                        }}
-                      />
-                      <p className="mt-1 text-xs text-slate-500">{formatDate(reservation.createdAt)}</p>
-                    </td>
-                    <td className="px-4 py-3 text-slate-600">
-                      <p className="font-medium text-slate-900">{reservation.beneficiaryName}</p>
-                    </td>
-                    <td className="px-4 py-3 text-slate-600">
-                      <p className="font-medium text-slate-900">{reservation.stayTitle}</p>
-                      <p className="mt-1 text-xs text-slate-500">{reservation.stayLocation}</p>
-                    </td>
-                    <td className="px-4 py-3 text-slate-600">{reservation.childrenLabel}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-col items-start gap-2">
-                        <span
-                          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${orderStatusBadgeClassName(
-                            reservation.badgeStatus ?? reservation.status
-                          )}`}
-                        >
-                          {reservation.statusLabel}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 font-semibold text-slate-900">{reservation.totalLabel}</td>
-                    <td className="px-4 py-3">
-                      <PartnerContributionAmountEditor
-                        orderId={reservation.id}
-                        beneficiaryName={reservation.beneficiaryName}
-                        partnerContributionCents={reservation.partnerContributionCents}
-                        saveAction={saveManualContribution}
-                      />
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="font-semibold text-slate-900">
-                        {formatCurrencyFromCents(reservation.clientContributionCents)}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-              {reservations.length === 0 && (
-                <tr>
-                  <td className="px-4 py-6 text-slate-500" colSpan={8}>
-                    Aucune réservation liée à votre code CSE.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <PartnerReservationsTable
+        reservations={reservations}
+        saveManualContribution={saveManualContribution}
+      />
     </div>
   );
 }

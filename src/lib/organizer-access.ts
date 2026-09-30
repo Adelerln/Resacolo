@@ -6,6 +6,7 @@ export type OrganizerWorkspaceSection =
   | 'stays'
   | 'accommodations'
   | 'reservations'
+  | 'partner-amounts'
   | 'inquiries'
   | 'support'
   | 'users';
@@ -31,12 +32,13 @@ const ORGANIZER_ACCESS_SECTIONS: Record<OrganizerAccessRole, OrganizerWorkspaceS
     'stays',
     'accommodations',
     'reservations',
+    'partner-amounts',
     'inquiries',
     'support',
     'users'
   ],
-  EDITOR: ['dashboard', 'stays', 'accommodations', 'reservations', 'inquiries', 'support'],
-  RESERVATION_MANAGER: ['dashboard', 'reservations', 'inquiries', 'support']
+  EDITOR: ['dashboard', 'stays', 'accommodations', 'reservations', 'partner-amounts', 'inquiries', 'support'],
+  RESERVATION_MANAGER: ['dashboard', 'reservations', 'partner-amounts', 'inquiries', 'support']
 };
 
 const ORGANIZER_NAV_LINKS: Array<{
@@ -49,6 +51,7 @@ const ORGANIZER_NAV_LINKS: Array<{
   { href: '/organisme/sejours', label: 'Séjours', section: 'stays' },
   { href: '/organisme/hebergements', label: 'Hébergements', section: 'accommodations' },
   { href: '/organisme/reservations', label: 'Réservations', section: 'reservations' },
+  { href: '/organisme/montants-partenaires', label: 'Montants partenaires', section: 'partner-amounts' },
   { href: '/organisme/demandes', label: 'Demandes', section: 'inquiries' },
   { href: '/organisme/assistance', label: 'Assistance technique', section: 'support' },
   { href: '/organisme/utilisateurs', label: 'Utilisateurs', section: 'users' }
@@ -86,6 +89,7 @@ export function getOrganizerSectionFromPath(pathname: string): OrganizerWorkspac
   }
   if (pathname.startsWith('/organisme/hebergements')) return 'accommodations';
   if (pathname.startsWith('/organisme/reservations')) return 'reservations';
+  if (pathname.startsWith('/organisme/montants-partenaires')) return 'partner-amounts';
   if (pathname.startsWith('/organisme/demandes')) return 'inquiries';
   if (pathname.startsWith('/organisme/assistance')) return 'support';
   if (pathname.startsWith('/organisme/utilisateurs')) return 'users';

@@ -8,10 +8,13 @@ import {
   computeRemainingBalanceCents,
   formatOrderReservationCode,
   isAwaitingAidResolution,
+  isPartnerFullCoverageAmounts,
   orderStatusBadgeClassName,
   orderStatusLabel,
+  resolveDisplayedPaymentModeLabel,
   resolveEffectiveOrderStatus
 } from '@/lib/order-workflow';
+import { computePartnerContributionSnapshotCents } from '@/lib/partner-offers';
 import { withOrganizerQuery } from '@/lib/organizers.server';
 import { isMissingAnyColumnError } from '@/lib/supabase-schema-errors';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
@@ -27,6 +30,7 @@ type PageProps = {
     error?: string | string[];
     cancelled?: string | string[];
     coverageSaved?: string | string[];
+    coverageOrderId?: string | string[];
   }>;
 };
 
@@ -221,6 +225,7 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
   const sessionIds = sessions.map((session) => session.id);
 
   type OrderItemRow = {
+    id?: string;
     order_id: string;
     session_id: string | null;
     child_first_name: string | null;
@@ -232,7 +237,9 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
   function addOrderItems(rows: OrderItemRow[] | null | undefined) {
     for (const row of rows ?? []) {
       if (!row.order_id) continue;
-      const key = `${row.order_id}:${row.session_id ?? ''}:${row.child_first_name ?? ''}:${row.child_last_name ?? ''}:${row.total_price_cents ?? 0}`;
+      const key = row.id
+        ? row.id
+        : `${row.order_id}:${row.session_id ?? ''}:${row.child_first_name ?? ''}:${row.child_last_name ?? ''}:${row.total_price_cents ?? 0}`;
       orderItemsByKey.set(key, row);
     }
   }
@@ -240,7 +247,7 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
   // 1) Lignes explicitement rattachées à l’organisme
   const byOrganizerResult = await supabase
     .from('order_items')
-    .select('order_id,session_id,child_first_name,child_last_name,total_price_cents')
+    .select('id,order_id,session_id,child_first_name,child_last_name,total_price_cents')
     .eq('organizer_id', selectedOrganizerId);
   if (byOrganizerResult.error) {
     console.error('organisme/reservations: order_items by organizer_id', byOrganizerResult.error);
@@ -252,7 +259,7 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
   if (sessionIds.length > 0) {
     const bySessionResult = await supabase
       .from('order_items')
-      .select('order_id,session_id,child_first_name,child_last_name,total_price_cents')
+      .select('id,order_id,session_id,child_first_name,child_last_name,total_price_cents')
       .in('session_id', sessionIds);
     if (bySessionResult.error) {
       console.error('organisme/reservations: order_items by session_id', bySessionResult.error);
@@ -292,7 +299,7 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
   if (orderIdsMissingItems.length > 0) {
     const { data: missingItems, error: missingItemsError } = await supabase
       .from('order_items')
-      .select('order_id,session_id,child_first_name,child_last_name,total_price_cents')
+      .select('id,order_id,session_id,child_first_name,child_last_name,total_price_cents')
       .in('order_id', orderIdsMissingItems);
     if (missingItemsError) {
       console.error('organisme/reservations: order_items by order_id', missingItemsError);
@@ -457,6 +464,19 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
         .in('order_id', orderIds)
         .order('created_at', { ascending: false })
     : { data: [] };
+
+  const orderItemIds = orderItems.map((item) => item.id).filter((id): id is string => Boolean(id));
+  const { data: contributionsRaw } = orderItemIds.length
+    ? await supabase
+        .from('collectivity_contributions')
+        .select('order_item_id,mode,fixed_cents,percent_value,cap_cents,status')
+        .in('order_item_id', orderItemIds)
+    : { data: [] };
+  const contributionByOrderItemId = new Map(
+    (contributionsRaw ?? [])
+      .filter((row) => row.status !== 'REJECTED')
+      .map((row) => [row.order_item_id, row])
+  );
 
   const { data: profilesRaw } = clientUserIds.length
     ? await supabase
@@ -631,11 +651,17 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
       order.status !== 'CANCELLED' &&
       order.status !== 'FAILED' &&
       order.status !== 'PAID';
-    const canEnterAncvCoverage =
-      isAncvRequest &&
+    const canEnterAncvConnectCoverage =
+      isAncvConnect &&
       order.status !== 'CANCELLED' &&
       order.status !== 'FAILED' &&
       order.status !== 'PAID';
+    const canEnterAncvPaperCoverage =
+      isAncvPaper &&
+      order.status !== 'CANCELLED' &&
+      order.status !== 'FAILED' &&
+      order.status !== 'PAID';
+    const canEnterAncvCoverage = canEnterAncvConnectCoverage || canEnterAncvPaperCoverage;
     const externalAidLabel =
       typeof order.external_aid_cents === 'number' && order.external_aid_cents > 0
         ? formatEuroFromCents(order.external_aid_cents, payment?.currency ?? 'EUR')
@@ -645,8 +671,39 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
         ? formatEuroFromCents(order.external_paid_cents, payment?.currency ?? 'EUR')
         : null;
     const onlinePaidCents = onlinePaidCentsByOrderId.get(order.id) ?? 0;
+    const partnerContributionCents = items.reduce((sum, item) => {
+      if (!item.id) return sum;
+      const contribution = contributionByOrderItemId.get(item.id);
+      if (!contribution) return sum;
+      return (
+        sum +
+        computePartnerContributionSnapshotCents({
+          mode: contribution.mode,
+          totalCents: item.total_price_cents ?? 0,
+          percentValue: contribution.percent_value,
+          fixedCents: contribution.fixed_cents,
+          capCents: contribution.cap_cents
+        })
+      );
+    }, 0);
+    const collectivityName = order.collectivity_id
+      ? collectivitiesById.get(order.collectivity_id) ?? 'Collectivité inconnue'
+      : null;
+    const isPartnerFullCoverage =
+      isPartnerFullCoverageAmounts({
+        totalCents,
+        partnerCents: partnerContributionCents
+      }) ||
+      (Boolean(order.collectivity_id) &&
+        partnerContributionCents === 0 &&
+        order.status === 'PAID' &&
+        onlinePaidCents <= 0 &&
+        (order.external_paid_cents ?? 0) <= 0 &&
+        !isVacafRequest &&
+        !isAncvRequest);
+    const familyPayableCents = Math.max(0, totalCents - partnerContributionCents);
     const remainingBalanceCents = computeRemainingBalanceCents({
-      totalCents,
+      totalCents: familyPayableCents,
       externalAidCents: order.external_aid_cents,
       externalPaidCents: order.external_paid_cents,
       onlinePaidCents
@@ -663,6 +720,33 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
         : firstNonEmpty(parseContactStringFromPayload(payment?.raw_payload, 'ancvConnectAmount'))
           ? `${firstNonEmpty(parseContactStringFromPayload(payment?.raw_payload, 'ancvConnectAmount'))} €`
           : null;
+    const ancvCoverageBreakdown = (() => {
+      const payload = payment?.raw_payload;
+      if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+        return { connectCents: 0, paperCents: 0 };
+      }
+      const breakdown = (payload as { ancvCoverageBreakdown?: unknown }).ancvCoverageBreakdown;
+      if (!breakdown || typeof breakdown !== 'object' || Array.isArray(breakdown)) {
+        return { connectCents: 0, paperCents: 0 };
+      }
+      const record = breakdown as { connectCents?: unknown; paperCents?: unknown };
+      return {
+        connectCents: Math.max(0, Math.round(Number(record.connectCents ?? 0)) || 0),
+        paperCents: Math.max(0, Math.round(Number(record.paperCents ?? 0)) || 0)
+      };
+    })();
+    const ancvConnectPaidLabel =
+      ancvCoverageBreakdown.connectCents > 0
+        ? formatEuroFromCents(ancvCoverageBreakdown.connectCents, payment?.currency ?? 'EUR')
+        : isAncvConnect && !isAncvPaper && externalPaidLabel
+          ? externalPaidLabel
+          : null;
+    const ancvPaperPaidLabel =
+      ancvCoverageBreakdown.paperCents > 0
+        ? formatEuroFromCents(ancvCoverageBreakdown.paperCents, payment?.currency ?? 'EUR')
+        : isAncvPaper && !isAncvConnect && externalPaidLabel
+          ? externalPaidLabel
+          : null;
     const displayStatus =
       resolveEffectiveOrderStatus({
         status: order.status,
@@ -672,35 +756,6 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
         externalAidCents: order.external_aid_cents,
         externalPaidCents: order.external_paid_cents
       }) ?? order.status;
-
-    const ancvCoverageRequestKind = isAncvConnect ? ('ANCV_CONNECT' as const) : ('ANCV_PAPER' as const);
-    const ancvCoverageTitle =
-      isAncvConnect && isAncvPaper
-        ? 'Montant ANCV reçu'
-        : isAncvPaper
-          ? 'Montant ANCV papier reçu'
-          : 'Montant ANCV Connect reçu';
-    const ancvCoverageReference = isAncvConnect
-      ? ancvConnectMatricule
-        ? `Matricule : ${ancvConnectMatricule}${
-            ancvConnectRequestedAmountLabel ? ` · demandé ${ancvConnectRequestedAmountLabel}` : ''
-          }${isAncvPaper ? ' · ANCV papier également demandé' : ''}`
-        : isAncvPaper
-          ? 'Saisissez le montant ANCV Connect / papier effectivement reçu.'
-          : 'Saisissez le montant ANCV Connect effectivement reçu.'
-      : 'Saisissez le montant ANCV papier effectivement reçu.';
-    const ancvCoveragePlaceholder =
-      isAncvConnect && isAncvPaper
-        ? 'Montant ANCV reçu (€)'
-        : isAncvPaper
-          ? 'Montant ANCV papier reçu (€)'
-          : 'Montant ANCV Connect reçu (€)';
-    const ancvCoverageSubmit =
-      isAncvConnect && isAncvPaper
-        ? 'Enregistrer le montant ANCV'
-        : isAncvPaper
-          ? 'Enregistrer le montant ANCV papier'
-          : 'Enregistrer le montant ANCV Connect';
 
       return {
         id: order.id,
@@ -714,9 +769,8 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
         participantName: participantNames[0] ?? 'Participant inconnu',
         participantCount: items.length,
         amountLabel: formatEuroFromCents(totalCents, payment?.currency ?? 'EUR'),
-        collectivityName: order.collectivity_id
-          ? collectivitiesById.get(order.collectivity_id) ?? 'Collectivité inconnue'
-          : 'Famille directe',
+        collectivityName: collectivityName ?? 'Famille directe',
+        isPartnerFullCoverage,
         status: displayStatus,
         cancellationReason: order.cancellation_reason,
         requestKind: order.request_kind,
@@ -758,7 +812,15 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
           parent2Role,
           hasParent2,
           children,
-          paymentModeLabel: PAYMENT_MODE_LABELS[paymentMode] ?? 'Non renseigné',
+          paymentModeLabel: resolveDisplayedPaymentModeLabel({
+            paymentMode,
+            totalCents,
+            partnerCents: isPartnerFullCoverage
+              ? Math.max(partnerContributionCents, totalCents)
+              : partnerContributionCents,
+            collectivityName
+          }),
+          collectivityName,
           cafNumber: cafNumberLabel,
           ancvConnectMatricule: isAncvConnect ? ancvConnectMatricule : null,
           ancvConnectRequestedAmountLabel: isAncvConnect ? ancvConnectRequestedAmountLabel : null,
@@ -805,17 +867,37 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
                   }
                 ]
               : []),
-            ...(canEnterAncvCoverage
+            ...(canEnterAncvConnectCoverage
               ? [
                   {
                     organizerId: selectedOrganizerId,
                     orderId: order.id,
-                    requestKind: ancvCoverageRequestKind,
-                    title: ancvCoverageTitle,
-                    referenceLabel: ancvCoverageReference,
-                    amountPlaceholder: ancvCoveragePlaceholder,
-                    submitLabel: ancvCoverageSubmit,
-                    currentAmountLabel: externalPaidLabel
+                    requestKind: 'ANCV_CONNECT' as const,
+                    title: 'Montant ANCV Connect reçu',
+                    referenceLabel: ancvConnectMatricule
+                      ? `Matricule : ${ancvConnectMatricule}${
+                          ancvConnectRequestedAmountLabel
+                            ? ` · demandé ${ancvConnectRequestedAmountLabel}`
+                            : ''
+                        }`
+                      : 'Saisissez le montant ANCV Connect effectivement reçu.',
+                    amountPlaceholder: 'Montant ANCV Connect reçu (€)',
+                    submitLabel: 'Enregistrer le montant ANCV Connect',
+                    currentAmountLabel: ancvConnectPaidLabel
+                  }
+                ]
+              : []),
+            ...(canEnterAncvPaperCoverage
+              ? [
+                  {
+                    organizerId: selectedOrganizerId,
+                    orderId: order.id,
+                    requestKind: 'ANCV_PAPER' as const,
+                    title: 'Montant ANCV papier reçu',
+                    referenceLabel: 'Saisissez le montant ANCV papier effectivement reçu.',
+                    amountPlaceholder: 'Montant ANCV papier reçu (€)',
+                    submitLabel: 'Enregistrer le montant ANCV papier',
+                    currentAmountLabel: ancvPaperPaidLabel
                   }
                 ]
               : [])
@@ -889,7 +971,8 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
                 return lines;
               })();
               const statusLabel = orderStatusLabel(reservation.status, {
-                cancellationReason: reservation.cancellationReason
+                cancellationReason: reservation.cancellationReason,
+                isPartnerFullCoverage: reservation.isPartnerFullCoverage
               });
               const infoBadge =
                 reservation.needsVacafCoverageEntry && reservation.needsAncvCoverageEntry
@@ -930,7 +1013,10 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
                     <span
                       className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${orderStatusBadgeClassName(
                         reservation.status,
-                        { cancellationReason: reservation.cancellationReason }
+                        {
+                          cancellationReason: reservation.cancellationReason,
+                          isPartnerFullCoverage: reservation.isPartnerFullCoverage
+                        }
                       )}`}
                     >
                       {statusLabel}
@@ -962,6 +1048,9 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
                         reservation={reservation.details}
                         resolveAction={resolveOrganizerCoverageRequestAction}
                         infoBadge={infoBadge}
+                        initialOpen={
+                          String(resolvedSearchParams?.coverageOrderId ?? '') === reservation.id
+                        }
                       />
                       {reservation.status !== 'CANCELLED' && reservation.status !== 'FAILED' ? (
                         <OrganizerCancellationForm

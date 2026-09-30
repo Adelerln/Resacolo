@@ -33,6 +33,8 @@ export type OrganizerReservationDetails = {
   hasParent2: boolean;
   children: OrganizerReservationChildDetails[];
   paymentModeLabel: string;
+  /** CSE / collectivité de rattachement du client (null si famille directe). */
+  collectivityName?: string | null;
   /** Matricule CAF / VACAF — null si non renseigné à la commande. */
   cafNumber: string | null;
   /** Matricule ANCV Connect — null si non demandé. */
@@ -111,13 +113,16 @@ function ParentCard({
 export default function OrganizerReservationDetailsModal({
   reservation,
   resolveAction,
-  infoBadge = null
+  infoBadge = null,
+  initialOpen = false
 }: {
   reservation: OrganizerReservationDetails;
   resolveAction?: (formData: FormData) => void | Promise<void>;
   infoBadge?: 'CAF' | 'ANCV' | 'CAF_ANCV' | null;
+  /** Rouvre le détail après un enregistrement CAF/ANCV pour saisir le second montant. */
+  initialOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initialOpen);
   const coverageForms =
     reservation.coverageForms && reservation.coverageForms.length > 0
       ? reservation.coverageForms
@@ -131,6 +136,40 @@ export default function OrganizerReservationDetailsModal({
   if (needsCoverageAmount && infoBadge === 'CAF_ANCV') {
     pendingHints.push('CAF à saisir', 'ANCV à saisir');
   }
+
+  const draftStorageKey = `resacolo:organizer-coverage-draft:${reservation.id}`;
+  const [amountDrafts, setAmountDrafts] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!initialOpen) return;
+    setOpen(true);
+    try {
+      const url = new URL(window.location.href);
+      if (url.searchParams.has('coverageOrderId')) {
+        url.searchParams.delete('coverageOrderId');
+        const next = `${url.pathname}${url.search}${url.hash}`;
+        window.history.replaceState({}, '', next);
+      }
+    } catch {
+      // ignore
+    }
+  }, [initialOpen]);
+
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(draftStorageKey);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as unknown;
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return;
+      const next: Record<string, string> = {};
+      for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+        if (typeof value === 'string' && value.trim()) next[key] = value;
+      }
+      setAmountDrafts(next);
+    } catch {
+      // ignore invalid draft
+    }
+  }, [draftStorageKey]);
 
   useEffect(() => {
     if (!open) return;
@@ -150,6 +189,30 @@ export default function OrganizerReservationDetailsModal({
       window.removeEventListener('keydown', onKeyDown);
     };
   }, [open]);
+
+  function persistDrafts(next: Record<string, string>) {
+    setAmountDrafts(next);
+    try {
+      const hasValues = Object.values(next).some((value) => value.trim());
+      if (!hasValues) {
+        sessionStorage.removeItem(draftStorageKey);
+        return;
+      }
+      sessionStorage.setItem(draftStorageKey, JSON.stringify(next));
+    } catch {
+      // ignore quota / private mode
+    }
+  }
+
+  function updateDraft(requestKind: string, value: string) {
+    persistDrafts({ ...amountDrafts, [requestKind]: value });
+  }
+
+  function handleCoverageSubmit(submittedKind: string) {
+    const next = { ...amountDrafts };
+    delete next[submittedKind];
+    persistDrafts(next);
+  }
 
   return (
     <>
@@ -245,6 +308,9 @@ export default function OrganizerReservationDetailsModal({
                 <dl className="divide-y divide-slate-100 rounded-xl border border-slate-100 bg-slate-50/50 px-4 sm:px-5">
                   <DetailRow label="Référence" value={reservation.reservationCode} />
                   <DetailRow label="Mode de paiement" value={reservation.paymentModeLabel} />
+                  {reservation.collectivityName ? (
+                    <DetailRow label="CSE de rattachement" value={reservation.collectivityName} />
+                  ) : null}
                   {reservation.children.length === 0 ? (
                     <>
                       <DetailRow label="Prénom de l'enfant" value="" />
@@ -310,6 +376,7 @@ export default function OrganizerReservationDetailsModal({
                     <form
                       key={coverageForm.requestKind}
                       action={resolveAction}
+                      onSubmit={() => handleCoverageSubmit(coverageForm.requestKind)}
                       className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-4"
                     >
                       <input type="hidden" name="organizer_id" value={coverageForm.organizerId} />
@@ -334,6 +401,10 @@ export default function OrganizerReservationDetailsModal({
                         type="text"
                         inputMode="decimal"
                         required
+                        value={amountDrafts[coverageForm.requestKind] ?? ''}
+                        onChange={(event) =>
+                          updateDraft(coverageForm.requestKind, event.target.value)
+                        }
                         placeholder={coverageForm.amountPlaceholder}
                         className="w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm text-slate-900"
                       />

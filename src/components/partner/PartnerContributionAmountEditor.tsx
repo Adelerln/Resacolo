@@ -16,13 +16,15 @@ type PartnerContributionAmountEditorProps = {
   beneficiaryName: string;
   partnerContributionCents: number;
   saveAction: (formData: FormData) => void | Promise<void>;
+  compact?: boolean;
 };
 
 export function PartnerContributionAmountEditor({
   orderId,
   beneficiaryName,
   partnerContributionCents,
-  saveAction
+  saveAction,
+  compact = false
 }: PartnerContributionAmountEditorProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [partnerMessage, setPartnerMessage] = useState('');
@@ -34,7 +36,7 @@ export function PartnerContributionAmountEditor({
 
   if (isEditing) {
     return (
-      <form action={saveAction} className="flex min-w-[200px] flex-col gap-2">
+      <form action={saveAction} className={`flex flex-col gap-2 ${compact ? 'min-w-0' : 'min-w-[200px]'}`}>
         <input type="hidden" name="order_id" value={orderId} />
         <input type="hidden" name="partner_message" value={partnerMessage} />
         <input
@@ -44,8 +46,10 @@ export function PartnerContributionAmountEditor({
           step="0.01"
           defaultValue={defaultEuros}
           autoFocus
-          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
-          placeholder="Montant partenaire (€)"
+          className={`w-full rounded-lg border border-slate-200 bg-white text-slate-900 ${
+            compact ? 'px-2 py-1.5 text-xs' : 'px-3 py-2 text-sm'
+          }`}
+          placeholder="Montant (€)"
         />
         <div className="flex flex-wrap gap-2">
           <button
@@ -99,7 +103,9 @@ export function PartnerContributionAmountEditor({
     <button
       type="button"
       onClick={() => setIsEditing(true)}
-      className="group relative max-w-full text-left font-semibold text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-400 focus-visible:ring-offset-1"
+      className={`group relative max-w-full text-left font-semibold text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-400 focus-visible:ring-offset-1 ${
+        compact ? 'text-xs tabular-nums' : ''
+      }`}
       aria-label={`Part partenaire : ${displayLabel}. Modifier le montant.`}
     >
       <span className="underline-offset-2 transition group-hover:underline">{displayLabel}</span>

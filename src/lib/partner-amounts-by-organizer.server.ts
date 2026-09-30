@@ -7,6 +7,13 @@ import {
   PARTNER_FINANCE_MODE_LABELS
 } from '@/lib/partner-offers';
 import { readPartnerCollectivity } from '@/lib/partner.server';
+import {
+  formatPartnerSeasonYearLabel,
+  isPartnerSeasonYearArchived,
+  partnerSeasonArchiveKey,
+  settlementMatchesScope
+} from '@/lib/partner-organizer-amounts-prefs';
+import { readPartnerOrganizerAmountsPrefs } from '@/lib/partner-organizer-amounts-prefs.server';
 
 export type PartnerOrganizerAmountRow = {
   organizerId: string;
@@ -17,13 +24,29 @@ export type PartnerOrganizerAmountRow = {
   partnerContributionCents: number;
   clientContributionCents: number;
   pendingManualCount: number;
+  isSettled: boolean;
+  settledAt: string | null;
+};
+
+export type PartnerAmountsSeasonOption = {
+  id: string;
+  name: string;
+  year: number | null;
+  archived: boolean;
+  /** Clé persistée pour l’archivage (saison + année). */
+  archiveKey: string;
+  /** Libellé affichage, ex. « Automne 2025 ». */
+  label: string;
 };
 
 export type PartnerAmountsByOrganizerViewModel = {
   partnerName: string;
   financeModeLabel: string;
   selectedSeasonId: string | null;
-  seasonOptions: Array<{ id: string; name: string }>;
+  selectedYear: number | null;
+  seasonOptions: PartnerAmountsSeasonOption[];
+  yearOptions: number[];
+  archivedSeasons: PartnerAmountsSeasonOption[];
   rows: PartnerOrganizerAmountRow[];
   totals: {
     reservationCount: number;
@@ -46,13 +69,53 @@ function formatMoneyFromCents(value: number) {
 
 export { formatMoneyFromCents as formatPartnerOrganizerAmountMoney };
 
+function seasonYearFromDates(startDate: string | null | undefined, endDate: string | null | undefined) {
+  const source = startDate || endDate;
+  if (!source) return null;
+  const year = Number.parseInt(String(source).slice(0, 4), 10);
+  return Number.isFinite(year) ? year : null;
+}
+
+function emptyModel(input: {
+  partnerName: string;
+  financeModeLabel: string;
+  selectedSeasonId: string | null;
+  selectedYear: number | null;
+}): PartnerAmountsByOrganizerViewModel {
+  return {
+    partnerName: input.partnerName,
+    financeModeLabel: input.financeModeLabel,
+    selectedSeasonId: input.selectedSeasonId,
+    selectedYear: input.selectedYear,
+    seasonOptions: [],
+    yearOptions: [],
+    archivedSeasons: [],
+    rows: [],
+    totals: {
+      reservationCount: 0,
+      itemCount: 0,
+      totalCents: 0,
+      partnerContributionCents: 0,
+      clientContributionCents: 0,
+      pendingManualCount: 0
+    }
+  };
+}
+
 export async function buildPartnerAmountsByOrganizerModel(input: {
   collectivityId: string;
   seasonId?: string | null;
+  year?: number | null;
 }): Promise<PartnerAmountsByOrganizerViewModel> {
   const supabase = getServerSupabaseClient();
   const collectivity = await readPartnerCollectivity(input.collectivityId);
   const selectedSeasonId = input.seasonId?.trim() || null;
+  const selectedYear =
+    typeof input.year === 'number' && Number.isFinite(input.year) ? Math.round(input.year) : null;
+  const financeModeLabel = PARTNER_FINANCE_MODE_LABELS[normalizePartnerFinanceMode(collectivity.finance_mode)];
+
+  const prefs = await readPartnerOrganizerAmountsPrefs(input.collectivityId);
+  const archivedSeasonIds = new Set(prefs.archivedSeasonIds);
 
   let { data: orders, error: ordersError } = await supabase
     .from('orders')
@@ -84,21 +147,12 @@ export async function buildPartnerAmountsByOrganizerModel(input: {
       order.status !== 'TRANSFERRED'
   );
   if (orderRows.length === 0) {
-    return {
+    return emptyModel({
       partnerName: collectivity.name,
-      financeModeLabel: PARTNER_FINANCE_MODE_LABELS[normalizePartnerFinanceMode(collectivity.finance_mode)],
+      financeModeLabel,
       selectedSeasonId,
-      seasonOptions: [],
-      rows: [],
-      totals: {
-        reservationCount: 0,
-        itemCount: 0,
-        totalCents: 0,
-        partnerContributionCents: 0,
-        clientContributionCents: 0,
-        pendingManualCount: 0
-      }
-    };
+      selectedYear
+    });
   }
 
   const orderIds = orderRows.map((row) => row.id);
@@ -143,21 +197,12 @@ export async function buildPartnerAmountsByOrganizerModel(input: {
 
   const eligibleItems = (orderItems ?? []).filter((item) => eligibleOrderIds.has(item.order_id));
   if (eligibleItems.length === 0) {
-    return {
+    return emptyModel({
       partnerName: collectivity.name,
-      financeModeLabel: PARTNER_FINANCE_MODE_LABELS[normalizePartnerFinanceMode(collectivity.finance_mode)],
+      financeModeLabel,
       selectedSeasonId,
-      seasonOptions: [],
-      rows: [],
-      totals: {
-        reservationCount: 0,
-        itemCount: 0,
-        totalCents: 0,
-        partnerContributionCents: 0,
-        clientContributionCents: 0,
-        pendingManualCount: 0
-      }
-    };
+      selectedYear
+    });
   }
 
   const sessionIds = Array.from(new Set(eligibleItems.map((item) => item.session_id).filter(Boolean)));
@@ -165,7 +210,7 @@ export async function buildPartnerAmountsByOrganizerModel(input: {
 
   const [sessionsResponse, contributionsResponse, seasonsResponse] = await Promise.all([
     sessionIds.length
-      ? supabase.from('sessions').select('id,stay_id').in('id', sessionIds)
+      ? supabase.from('sessions').select('id,stay_id,start_date').in('id', sessionIds)
       : Promise.resolve({ data: [], error: null }),
     orderItemIds.length
       ? supabase
@@ -174,7 +219,7 @@ export async function buildPartnerAmountsByOrganizerModel(input: {
           .eq('collectivity_id', input.collectivityId)
           .in('order_item_id', orderItemIds)
       : Promise.resolve({ data: [], error: null }),
-    supabase.from('seasons').select('id,name').order('name')
+    supabase.from('seasons').select('id,name,start_date,end_date').order('name')
   ]);
 
   if (sessionsResponse.error) {
@@ -205,14 +250,24 @@ export async function buildPartnerAmountsByOrganizerModel(input: {
   const sessionsById = new Map((sessionsResponse.data ?? []).map((row) => [row.id, row]));
   const staysById = new Map((stays ?? []).map((row) => [row.id, row]));
   const organizersById = new Map((organizers ?? []).map((row) => [row.id, row]));
-  const seasonsById = new Map((seasonsResponse.data ?? []).map((row) => [row.id, row.name]));
+  const seasonsMetaById = new Map(
+    (seasonsResponse.data ?? []).map((row) => [
+      row.id,
+      {
+        name: row.name,
+        year: seasonYearFromDates(row.start_date, row.end_date)
+      }
+    ])
+  );
   const contributionByOrderItemId = new Map(
     (contributionsResponse.data ?? [])
       .filter((row) => row.status !== 'REJECTED')
       .map((row) => [row.order_item_id, row])
   );
 
-  const seasonIdsInData = new Set<string>();
+  const includeArchivedByExplicitFilter = Boolean(selectedSeasonId || selectedYear);
+  const seasonYearInData = new Map<string, { id: string; name: string; year: number | null }>();
+  const yearsInData = new Set<number>();
   const allReservationIds = new Set<string>();
   const aggregation = new Map<
     string,
@@ -234,8 +289,27 @@ export async function buildPartnerAmountsByOrganizerModel(input: {
     if (!organizerId) continue;
 
     const seasonId = stay?.season_id ?? null;
-    if (seasonId) seasonIdsInData.add(seasonId);
+    const seasonMeta = seasonId ? seasonsMetaById.get(seasonId) : null;
+    const year =
+      seasonMeta?.year ??
+      (session?.start_date ? seasonYearFromDates(session.start_date, null) : null);
+
+    if (seasonId) {
+      const archiveKey = partnerSeasonArchiveKey(seasonId, year);
+      if (!seasonYearInData.has(archiveKey)) {
+        seasonYearInData.set(archiveKey, {
+          id: seasonId,
+          name: seasonMeta?.name ?? 'Saison inconnue',
+          year
+        });
+      }
+    }
+    if (year != null) yearsInData.add(year);
+
+    const isArchivedSeason = isPartnerSeasonYearArchived(archivedSeasonIds, seasonId, year);
+    if (isArchivedSeason && !includeArchivedByExplicitFilter) continue;
     if (selectedSeasonId && seasonId !== selectedSeasonId) continue;
+    if (selectedYear != null && year !== selectedYear) continue;
 
     const itemTotalCents = item.total_price_cents ?? 0;
     const contribution = contributionByOrderItemId.get(item.id);
@@ -286,22 +360,58 @@ export async function buildPartnerAmountsByOrganizerModel(input: {
     aggregation.set(organizerId, existing);
   }
 
-  const seasonOptions = Array.from(seasonIdsInData)
-    .map((id) => ({ id, name: seasonsById.get(id) ?? 'Saison inconnue' }))
-    .sort((left, right) => left.name.localeCompare(right.name, 'fr'));
-
-  const rows: PartnerOrganizerAmountRow[] = Array.from(aggregation.entries())
-    .map(([organizerId, value]) => ({
-      organizerId,
-      organizerName: value.organizerName,
-      reservationCount: value.reservationIds.size,
-      itemCount: value.itemCount,
-      totalCents: value.totalCents,
-      partnerContributionCents: value.partnerContributionCents,
-      clientContributionCents: value.clientContributionCents,
-      pendingManualCount: value.pendingManualCount
+  const seasonOptions: PartnerAmountsSeasonOption[] = Array.from(seasonYearInData.entries())
+    .map(([archiveKey, meta]) => ({
+      id: meta.id,
+      name: meta.name,
+      year: meta.year,
+      archiveKey,
+      label: formatPartnerSeasonYearLabel(meta.name, meta.year),
+      archived: isPartnerSeasonYearArchived(archivedSeasonIds, meta.id, meta.year)
     }))
     .sort((left, right) => {
+      const yearLeft = left.year ?? 0;
+      const yearRight = right.year ?? 0;
+      if (yearLeft !== yearRight) return yearRight - yearLeft;
+      return left.name.localeCompare(right.name, 'fr');
+    });
+
+  const archivedSeasons = seasonOptions.filter((season) => season.archived);
+  const visibleSeasonOptions = includeArchivedByExplicitFilter
+    ? seasonOptions
+    : seasonOptions.filter((season) => !season.archived);
+
+  const yearOptions = Array.from(yearsInData).sort((left, right) => right - left);
+
+  const settlementScope = {
+    seasonId: selectedSeasonId,
+    year: selectedYear
+  };
+
+  const rows: PartnerOrganizerAmountRow[] = Array.from(aggregation.entries())
+    .map(([organizerId, value]) => {
+      const settlement = prefs.settlements.find((row) =>
+        settlementMatchesScope(row, {
+          organizerId,
+          seasonId: settlementScope.seasonId,
+          year: settlementScope.year
+        })
+      );
+      return {
+        organizerId,
+        organizerName: value.organizerName,
+        reservationCount: value.reservationIds.size,
+        itemCount: value.itemCount,
+        totalCents: value.totalCents,
+        partnerContributionCents: value.partnerContributionCents,
+        clientContributionCents: value.clientContributionCents,
+        pendingManualCount: value.pendingManualCount,
+        isSettled: Boolean(settlement),
+        settledAt: settlement?.settledAt ?? null
+      };
+    })
+    .sort((left, right) => {
+      if (left.isSettled !== right.isSettled) return left.isSettled ? 1 : -1;
       if (right.partnerContributionCents !== left.partnerContributionCents) {
         return right.partnerContributionCents - left.partnerContributionCents;
       }
@@ -329,9 +439,12 @@ export async function buildPartnerAmountsByOrganizerModel(input: {
 
   return {
     partnerName: collectivity.name,
-    financeModeLabel: PARTNER_FINANCE_MODE_LABELS[normalizePartnerFinanceMode(collectivity.finance_mode)],
+    financeModeLabel,
     selectedSeasonId,
-    seasonOptions,
+    selectedYear,
+    seasonOptions: visibleSeasonOptions,
+    yearOptions,
+    archivedSeasons,
     rows,
     totals
   };

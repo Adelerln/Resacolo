@@ -1,5 +1,5 @@
 import type { MetadataRoute } from 'next';
-import { SITE_URL } from '@/lib/seo';
+import { DEFAULT_STAY_OG_IMAGE_PATH, SITE_URL, toAbsoluteUrl } from '@/lib/seo';
 import { SEO_LANDINGS } from '@/lib/seo-landings';
 import { getStays, getStayCanonicalPath } from '@/lib/stays';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
@@ -25,10 +25,11 @@ const PUBLIC_STATIC_PATHS: Array<{
   { path: '/cgu', changeFrequency: 'yearly', priority: 0.2 },
   { path: '/cgv', changeFrequency: 'yearly', priority: 0.2 },
   { path: '/confidentialite', changeFrequency: 'yearly', priority: 0.2 },
-  { path: '/mentions-legales', changeFrequency: 'yearly', priority: 0.2 }
+  { path: '/mentions-legales', changeFrequency: 'yearly', priority: 0.2 },
+  { path: '/llms.txt', changeFrequency: 'monthly', priority: 0.3 }
 ];
 
-function toAbsoluteUrl(path: string) {
+function toSitemapUrl(path: string) {
   return new URL(path, SITE_URL).toString();
 }
 
@@ -37,7 +38,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const entries = new Map<string, MetadataRoute.Sitemap[number]>();
 
   for (const item of PUBLIC_STATIC_PATHS) {
-    const url = toAbsoluteUrl(item.path);
+    const url = toSitemapUrl(item.path);
     entries.set(url, {
       url,
       lastModified: now,
@@ -47,7 +48,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   }
 
   for (const landing of SEO_LANDINGS) {
-    const url = toAbsoluteUrl(`/colonies-de-vacances/${landing.slug}`);
+    const url = toSitemapUrl(`/colonies-de-vacances/${landing.slug}`);
     entries.set(url, {
       url,
       lastModified: now,
@@ -59,12 +60,16 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   try {
     const stays = await getStays();
     for (const stay of stays) {
-      const url = toAbsoluteUrl(getStayCanonicalPath(stay));
+      const url = toSitemapUrl(getStayCanonicalPath(stay));
+      const image = stay.coverImage
+        ? toAbsoluteUrl(stay.coverImage)
+        : toAbsoluteUrl(DEFAULT_STAY_OG_IMAGE_PATH);
       entries.set(url, {
         url,
         lastModified: stay.updatedAt ? new Date(stay.updatedAt) : now,
         changeFrequency: 'weekly',
-        priority: 0.7
+        priority: 0.7,
+        images: [image]
       });
     }
   } catch (error) {
@@ -77,7 +82,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     for (const organizer of organizers ?? []) {
       const slug = organizer.slug?.trim() || slugify(organizer.name ?? '');
       if (!slug) continue;
-      const url = toAbsoluteUrl(`/organisateurs/${slug}`);
+      const url = toSitemapUrl(`/organisateurs/${slug}`);
       entries.set(url, {
         url,
         lastModified: now,

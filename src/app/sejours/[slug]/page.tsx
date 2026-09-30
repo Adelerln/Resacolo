@@ -62,11 +62,21 @@ function buildStayProductJsonLd(stay: Stay) {
   const organizerPath = stay.organizer.slug ? `/organisateurs/${stay.organizer.slug}` : '/organisateurs';
   const seoInput = toStaySeoInput(stay);
   const seoKeywords = buildStaySeoKeywords(seoInput);
+  const imageUrl = toAbsoluteUrl(getStayOpenGraphImage(stay));
+  const sessions = stay.bookingOptions?.sessions ?? [];
+  const openSessions = sessions.filter((session) => session.status === 'OPEN');
+  const nextSession = openSessions[0] ?? sessions[0];
+  const ageLabel =
+    stay.ageMin != null && stay.ageMax != null
+      ? `${stay.ageMin}–${stay.ageMax} ans`
+      : stay.ageRange || null;
+
   const offer: Record<string, unknown> = {
     '@type': 'Offer',
     url: canonicalUrl,
     priceCurrency: 'EUR',
     availability: getStayAvailability(stay),
+    category: 'Colonies de vacances',
     seller: {
       '@type': 'Organization',
       name: stay.organizer.name,
@@ -76,23 +86,103 @@ function buildStayProductJsonLd(stay: Stay) {
 
   if (stay.priceFrom != null) {
     offer.price = stay.priceFrom.toFixed(2);
+    offer.priceValidUntil = nextSession?.endDate || undefined;
+  }
+
+  const additionalProperty: Array<Record<string, unknown>> = [];
+  if (ageLabel) {
+    additionalProperty.push({
+      '@type': 'PropertyValue',
+      name: 'Tranche d’âge',
+      value: ageLabel
+    });
+  }
+  if (stay.seasonName) {
+    additionalProperty.push({
+      '@type': 'PropertyValue',
+      name: 'Période',
+      value: stay.seasonName
+    });
   }
 
   return {
     '@context': 'https://schema.org',
     '@type': 'Product',
+    '@id': `${canonicalUrl}#product`,
     name: stay.title,
     description: buildStaySeoMetaDescription(seoInput),
     sku: stay.id,
     url: canonicalUrl,
-    image: [toAbsoluteUrl(getStayOpenGraphImage(stay))],
+    image: [imageUrl],
     keywords: seoKeywords.join(', '),
+    category: 'Colonies de vacances',
     brand: {
       '@type': 'Organization',
-      name: stay.organizer.name
+      name: stay.organizer.name,
+      url: toAbsoluteUrl(organizerPath)
     },
+    ...(additionalProperty.length ? { additionalProperty } : {}),
     offers: offer
   };
+}
+
+function buildStayTouristTripJsonLd(stay: Stay) {
+  const canonicalPath = getStayCanonicalPath(stay);
+  const canonicalUrl = toAbsoluteUrl(canonicalPath);
+  const seoInput = toStaySeoInput(stay);
+  const sessions = stay.bookingOptions?.sessions ?? [];
+  const nextSession = sessions.find((session) => session.status === 'OPEN') ?? sessions[0];
+  const placeName =
+    stay.destinationCity || stay.location || stay.region || stay.destinationRegion || 'France';
+
+  const trip: Record<string, unknown> = {
+    '@context': 'https://schema.org',
+    '@type': 'TouristTrip',
+    '@id': `${canonicalUrl}#trip`,
+    name: stay.title,
+    description: buildStaySeoMetaDescription(seoInput),
+    url: canonicalUrl,
+    image: toAbsoluteUrl(getStayOpenGraphImage(stay)),
+    touristType: 'Family',
+    provider: {
+      '@type': 'Organization',
+      name: stay.organizer.name,
+      url: stay.organizer.slug
+        ? toAbsoluteUrl(`/organisateurs/${stay.organizer.slug}`)
+        : toAbsoluteUrl('/organisateurs')
+    },
+    itinerary: {
+      '@type': 'Place',
+      name: placeName,
+      address: {
+        '@type': 'PostalAddress',
+        addressLocality: stay.destinationCity || stay.location || undefined,
+        addressRegion: stay.region || stay.destinationRegion || undefined,
+        addressCountry: stay.destinationCountry || 'FR'
+      }
+    }
+  };
+
+  if (stay.ageMin != null || stay.ageMax != null) {
+    trip.audience = {
+      '@type': 'PeopleAudience',
+      suggestedMinAge: stay.ageMin ?? undefined,
+      suggestedMaxAge: stay.ageMax ?? undefined
+    };
+  }
+
+  if (nextSession?.startDate) {
+    trip.offers = {
+      '@type': 'Offer',
+      url: canonicalUrl,
+      priceCurrency: 'EUR',
+      availability: getStayAvailability(stay),
+      ...(stay.priceFrom != null ? { price: stay.priceFrom.toFixed(2) } : {}),
+      validFrom: nextSession.startDate
+    };
+  }
+
+  return trip;
 }
 
 function buildStayBreadcrumbJsonLd(stay: Stay) {
@@ -153,8 +243,14 @@ export async function generateMetadata({ params }: StayDetailPageProps): Promise
       absolute: title
     },
     description,
+    keywords: buildStaySeoKeywords(seoInput),
     alternates: {
-      canonical: canonicalPath
+      canonical: canonicalPath,
+      languages: {
+        'fr-FR': canonicalPath,
+        fr: canonicalPath,
+        'x-default': canonicalPath
+      }
     },
     robots: {
       index: true,
@@ -227,6 +323,7 @@ export default async function StayDetailPage({ params }: StayDetailPageProps) {
     stay = applyCsePricingToStay(stay, csePricingContext);
   }
   const productJsonLd = serializeJsonLd(buildStayProductJsonLd(stay));
+  const tripJsonLd = serializeJsonLd(buildStayTouristTripJsonLd(stay));
   const breadcrumbJsonLd = serializeJsonLd(buildStayBreadcrumbJsonLd(stay));
   const seoH1Title = buildStayH1Title(toStaySeoInput(stay));
   const relatedStayLinks = buildRelatedStayLinks(stay, allStays, getStayCanonicalPath);
@@ -234,6 +331,7 @@ export default async function StayDetailPage({ params }: StayDetailPageProps) {
   return (
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: productJsonLd }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: tripJsonLd }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: breadcrumbJsonLd }} />
       <StayDetailView stay={stay} seoH1Title={seoH1Title} relatedStayLinks={relatedStayLinks} />
     </>

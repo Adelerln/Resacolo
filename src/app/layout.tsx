@@ -43,16 +43,23 @@ export const metadata: Metadata = {
   description: DEFAULT_SITE_DESCRIPTION,
   keywords: DEFAULT_SITE_KEYWORDS,
   applicationName: 'Resacolo',
-  authors: [{ name: 'Resacolo' }],
+  authors: [{ name: 'Resacolo', url: SITE_URL }],
   creator: 'Resacolo',
   publisher: 'Resacolo',
+  category: 'travel',
+  classification: 'Colonies de vacances',
   formatDetection: {
     email: false,
     address: false,
     telephone: false
   },
   alternates: {
-    canonical: '/'
+    canonical: '/',
+    languages: {
+      'fr-FR': '/',
+      fr: '/',
+      'x-default': '/'
+    }
   },
   openGraph: {
     title: DEFAULT_SITE_TITLE,
@@ -61,7 +68,7 @@ export const metadata: Metadata = {
     siteName: 'Resacolo',
     locale: 'fr_FR',
     type: 'website',
-    images: [{ url: DEFAULT_STAY_OG_IMAGE_PATH, alt: 'Resacolo — colonies de vacances' }]
+    images: [{ url: DEFAULT_STAY_OG_IMAGE_PATH, width: 1200, height: 630, alt: 'Resacolo — colonies de vacances' }]
   },
   twitter: {
     card: 'summary_large_image',
@@ -84,6 +91,10 @@ export const metadata: Metadata = {
     icon: '/image/footer/gouttes.png',
     shortcut: '/image/footer/gouttes.png',
     apple: '/image/footer/gouttes.png'
+  },
+  other: {
+    'geo.region': 'FR',
+    'geo.placename': 'Paris'
   }
 };
 

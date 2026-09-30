@@ -1,10 +1,10 @@
 import type { Metadata } from 'next';
 import { StayCatalogPage } from '@/components/sejours/StayCatalogPage';
-import { getStays } from '@/lib/stays';
+import { getStays, getStayCanonicalPath } from '@/lib/stays';
 import { getCurrentUser } from '@/lib/auth/session';
 import { applyCsePricingToStays, readUserCsePricingContext } from '@/lib/cse-pricing';
 import { applyPartnerDiscountPricingToStays, readUserPartnerPricingContext } from '@/lib/stay-partner-pricing';
-import { buildPageMetadata } from '@/lib/seo-meta';
+import { buildBreadcrumbJsonLd, buildCollectionPageJsonLd, buildPageMetadata, serializeJsonLd } from '@/lib/seo-meta';
 
 export const metadata: Metadata = buildPageMetadata({
   title: 'Colonies de vacances et séjours pour enfants',
@@ -38,9 +38,32 @@ export default async function SejoursPage({
     stays = applyCsePricingToStays(stays, csePricingContext);
   }
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
+
+  const featured = stays.slice(0, 30);
+  const collectionJsonLd = serializeJsonLd(
+    buildCollectionPageJsonLd({
+      name: 'Catalogue colonies de vacances Resacolo',
+      description:
+        'Catalogue de colonies de vacances et séjours pour enfants et adolescents sur Resacolo.',
+      path: '/sejours',
+      items: featured.map((stay) => ({
+        name: stay.title,
+        path: getStayCanonicalPath(stay)
+      }))
+    })
+  );
+  const breadcrumbJsonLd = serializeJsonLd(
+    buildBreadcrumbJsonLd([
+      { name: 'Accueil', path: '/' },
+      { name: 'Séjours', path: '/sejours' }
+    ])
+  );
+
   return (
-    <div style={{ fontFamily: 'Inter, var(--font-sans), sans-serif' }}>
+    <>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: collectionJsonLd }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: breadcrumbJsonLd }} />
       <StayCatalogPage stays={stays} searchParams={resolvedSearchParams} />
-    </div>
+    </>
   );
 }

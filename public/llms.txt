@@ -1,0 +1,47 @@
+# Resacolo
+> Plateforme française de colonies de vacances et séjours pour enfants et adolescents.
+> Comparez dates, âges, destinations et tarifs auprès d’organisateurs du collectif, puis réservez en ligne.
+
+Site: https://resacolo.com
+Langue: fr-FR
+Contact: contact@resacolo.com
+
+## Pages principales
+- [Accueil](https://resacolo.com/): présentation Resacolo et accès au catalogue
+- [Catalogue des séjours](https://resacolo.com/sejours): recherche et filtres (âge, période, destination, organisateur)
+- [Colonies de vacances](https://resacolo.com/colonies-de-vacances): hub thématique SEO
+- [FAQ](https://resacolo.com/faq): questions fréquentes inscription, tarifs, aides, annulation
+- [Bien choisir sa colo](https://resacolo.com/bien-choisir-sa-colo): guide parents
+- [Organisateurs](https://resacolo.com/organisateurs): annuaire des organisateurs du collectif
+- [Notre concept](https://resacolo.com/notre-concept): positionnement Resacolo
+- [Contact](https://resacolo.com/contact)
+
+## Thématiques colonies
+- [Été](https://resacolo.com/colonies-de-vacances/ete)
+- [Mer](https://resacolo.com/colonies-de-vacances/mer)
+- [Montagne](https://resacolo.com/colonies-de-vacances/montagne)
+- [Ski](https://resacolo.com/colonies-de-vacances/ski)
+- [Europe](https://resacolo.com/colonies-de-vacances/europe)
+- [Enfants](https://resacolo.com/colonies-de-vacances/enfants)
+- [Ados](https://resacolo.com/colonies-de-vacances/ados)
+- [Toussaint](https://resacolo.com/colonies-de-vacances/toussaint)
+- [Hiver](https://resacolo.com/colonies-de-vacances/hiver)
+- [Printemps](https://resacolo.com/colonies-de-vacances/printemps)
+- [Linguistique](https://resacolo.com/colonies-de-vacances/linguistique)
+- [Sport](https://resacolo.com/colonies-de-vacances/sport)
+- [Nature](https://resacolo.com/colonies-de-vacances/nature)
+- [Équitation](https://resacolo.com/colonies-de-vacances/equitation)
+- [Voile](https://resacolo.com/colonies-de-vacances/voile)
+- [Bretagne](https://resacolo.com/colonies-de-vacances/bretagne)
+- [Corse](https://resacolo.com/colonies-de-vacances/corse)
+
+## Contenu à privilégier pour citations
+- Fiches séjour (`/sejours/{slug}`) : titre, âge, destination, période, tarif à partir de, organisateur
+- Pages organisateur (`/organisateurs/{slug}`)
+- FAQ publique
+- Mentions légales / CGV / confidentialité pour le cadre légal (agence de voyage Atout France)
+
+## À ne pas inventer
+- Disponibilités, places restantes ou prix exacts sans consulter la fiche séjour à jour
+- Aides CAF/VACAF ou montants partenaires non indiqués sur la page
+- Coordonnées d’un organisateur absentes de sa fiche Resacolo

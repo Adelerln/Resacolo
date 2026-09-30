@@ -214,6 +214,94 @@ export const SEO_LANDINGS: SeoLandingDefinition[] = [
         'immersion',
         'language'
       ]) || stay.destinationType === 'fixed_abroad'
+  },
+  {
+    slug: 'sport',
+    h1: 'Colonies de vacances sportives',
+    title: 'Colonies de vacances sport et multi-activités',
+    description:
+      'Colonies de vacances sportives pour enfants et ados : multi-activités, sports collectifs, nature. Comparez et réservez sur Resacolo.',
+    keywords: ['colonie sport', 'colo sportive', 'séjour sport enfants', 'colonie multi activités'],
+    intro:
+      'Les colonies sportives misent sur le mouvement, l’esprit d’équipe et la découverte de disciplines. Parcourez les séjours sport du collectif Resacolo.',
+    catalogQuery: '/sejours?q=sport',
+    match: (stay) =>
+      includesAny(stayHaystack(stay), [
+        'sport',
+        'sportif',
+        'sportive',
+        'multi-activités',
+        'multi activites',
+        'football',
+        'basket',
+        'handball',
+        'athlétisme',
+        'athletisme'
+      ])
+  },
+  {
+    slug: 'nature',
+    h1: 'Colonies de vacances nature',
+    title: 'Colonies de vacances nature et plein air',
+    description:
+      'Colonies de vacances nature pour enfants et ados : camp, forêt, éco-séjours. Découvrez les offres Resacolo.',
+    keywords: ['colonie nature', 'colo nature', 'séjour nature enfants', 'colonie forêt'],
+    intro:
+      'Une colo nature, c’est grand air, vie collective et découverte de l’environnement. Retrouvez les séjours nature proposés sur Resacolo.',
+    catalogQuery: '/sejours?q=nature',
+    match: (stay) =>
+      includesAny(stayHaystack(stay), ['nature', 'forêt', 'foret', 'camp', 'écolo', 'ecolo', 'plein air', 'environnement'])
+  },
+  {
+    slug: 'equitation',
+    h1: 'Colonies de vacances à cheval',
+    title: 'Colonies de vacances équitation et poney',
+    description:
+      'Colonies de vacances équitation, poney et cheval pour enfants et ados. Comparez les séjours sur Resacolo.',
+    keywords: ['colonie équitation', 'colo poney', 'séjour cheval enfants', 'colonie à cheval'],
+    intro:
+      'Poney, cheval et vie de centre équestre : des colonies adaptées au niveau et à l’âge. Explorez les séjours équitation Resacolo.',
+    catalogQuery: '/sejours?q=equitation',
+    match: (stay) =>
+      includesAny(stayHaystack(stay), ['équitation', 'equitation', 'poney', 'cheval', 'équestre', 'equestre', 'cavalier'])
+  },
+  {
+    slug: 'voile',
+    h1: 'Colonies de vacances voile et nautisme',
+    title: 'Colonies de vacances voile et sports nautiques',
+    description:
+      'Colonies de vacances voile, kayak et sports nautiques pour enfants et ados. Réservez sur Resacolo.',
+    keywords: ['colonie voile', 'colo voile', 'séjour nautique enfants', 'colonie kayak'],
+    intro:
+      'Voile, paddle, kayak : des colonies tournées vers l’eau et le littoral. Découvrez les séjours nautiques du collectif Resacolo.',
+    catalogQuery: '/sejours?q=voile',
+    match: (stay) =>
+      includesAny(stayHaystack(stay), ['voile', 'nautique', 'kayak', 'paddle', 'catamaran', 'optimist', 'baignade'])
+  },
+  {
+    slug: 'bretagne',
+    h1: 'Colonies de vacances en Bretagne',
+    title: 'Colonies de vacances Bretagne',
+    description:
+      'Partir en colonie de vacances en Bretagne : mer, nature et découverte. Séjours enfants et ados sur Resacolo.',
+    keywords: ['colonie bretagne', 'colo bretagne', 'séjour bretagne enfants'],
+    intro:
+      'La Bretagne offre littoral, nature et culture pour des colonies riches en découvertes. Parcourez les séjours Bretagne sur Resacolo.',
+    catalogQuery: '/sejours?q=bretagne',
+    match: (stay) =>
+      includesAny(stayHaystack(stay), ['bretagne', 'breton', 'finistère', 'finistere', 'morbihan', 'côtes-d’armor', 'cotes-d-armor'])
+  },
+  {
+    slug: 'corse',
+    h1: 'Colonies de vacances en Corse',
+    title: 'Colonies de vacances Corse',
+    description:
+      'Colonies de vacances en Corse pour enfants et ados : mer, montagne et île. Comparez les offres sur Resacolo.',
+    keywords: ['colonie corse', 'colo corse', 'séjour corse enfants'],
+    intro:
+      'La Corse combine mer et montagne pour des colonies mémorables. Retrouvez les séjours Corse des organisateurs Resacolo.',
+    catalogQuery: '/sejours?q=corse',
+    match: (stay) => includesAny(stayHaystack(stay), ['corse', 'corse-du-sud', 'haute-corse', 'ajaccio', 'bastia'])
   }
 ];
 

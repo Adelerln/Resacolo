@@ -6,8 +6,12 @@ import {
   getSeoLandingBySlug,
   SEO_LANDINGS
 } from '@/lib/seo-landings';
-import { buildPageMetadata, serializeJsonLd } from '@/lib/seo-meta';
-import { toAbsoluteUrl } from '@/lib/seo';
+import {
+  buildBreadcrumbJsonLd,
+  buildCollectionPageJsonLd,
+  buildPageMetadata,
+  serializeJsonLd
+} from '@/lib/seo-meta';
 
 export const revalidate = 300;
 
@@ -41,22 +45,30 @@ export default async function ColonieLandingPage({ params }: PageProps) {
   const allStays = await getStays().catch(() => []);
   const matched = filterStaysForLanding(allStays, landing).slice(0, 24);
 
-  const itemListJsonLd = serializeJsonLd({
-    '@context': 'https://schema.org',
-    '@type': 'ItemList',
-    name: landing.h1,
-    numberOfItems: matched.length,
-    itemListElement: matched.map((stay, index) => ({
-      '@type': 'ListItem',
-      position: index + 1,
-      name: stay.title,
-      url: toAbsoluteUrl(getStayCanonicalPath(stay))
-    }))
-  });
+  const collectionJsonLd = serializeJsonLd(
+    buildCollectionPageJsonLd({
+      name: landing.h1,
+      description: landing.description,
+      path: `/colonies-de-vacances/${landing.slug}`,
+      items: matched.map((stay) => ({
+        name: stay.title,
+        path: getStayCanonicalPath(stay)
+      }))
+    })
+  );
+
+  const breadcrumbJsonLd = serializeJsonLd(
+    buildBreadcrumbJsonLd([
+      { name: 'Accueil', path: '/' },
+      { name: 'Colonies de vacances', path: '/colonies-de-vacances' },
+      { name: landing.h1, path: `/colonies-de-vacances/${landing.slug}` }
+    ])
+  );
 
   return (
     <div className="bg-slate-50">
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: itemListJsonLd }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: collectionJsonLd }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: breadcrumbJsonLd }} />
       <div className="mx-auto max-w-5xl px-4 py-12 sm:px-6 sm:py-16">
         <nav aria-label="Fil d’Ariane" className="mb-6 text-sm text-slate-500">
           <ol className="flex flex-wrap items-center gap-2">

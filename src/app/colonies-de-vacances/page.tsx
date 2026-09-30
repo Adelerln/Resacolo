@@ -1,7 +1,12 @@
 import Link from 'next/link';
 import { getStays, getStayCanonicalPath } from '@/lib/stays';
 import { SEO_LANDINGS } from '@/lib/seo-landings';
-import { buildPageMetadata, serializeJsonLd } from '@/lib/seo-meta';
+import {
+  buildBreadcrumbJsonLd,
+  buildCollectionPageJsonLd,
+  buildPageMetadata,
+  serializeJsonLd
+} from '@/lib/seo-meta';
 import { toAbsoluteUrl } from '@/lib/seo';
 
 export const revalidate = 300;
@@ -24,6 +29,26 @@ export default async function ColoniesDeVacancesHubPage() {
   const stays = await getStays().catch(() => []);
   const stayCount = stays.length;
 
+  const collectionJsonLd = serializeJsonLd(
+    buildCollectionPageJsonLd({
+      name: 'Colonies de vacances Resacolo',
+      description:
+        'Hub thématique des colonies de vacances et séjours pour enfants et adolescents sur Resacolo.',
+      path: '/colonies-de-vacances',
+      items: SEO_LANDINGS.map((landing) => ({
+        name: landing.h1,
+        path: `/colonies-de-vacances/${landing.slug}`
+      }))
+    })
+  );
+
+  const breadcrumbJsonLd = serializeJsonLd(
+    buildBreadcrumbJsonLd([
+      { name: 'Accueil', path: '/' },
+      { name: 'Colonies de vacances', path: '/colonies-de-vacances' }
+    ])
+  );
+
   const itemListJsonLd = serializeJsonLd({
     '@context': 'https://schema.org',
     '@type': 'ItemList',
@@ -39,6 +64,8 @@ export default async function ColoniesDeVacancesHubPage() {
 
   return (
     <div className="bg-slate-50">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: collectionJsonLd }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: breadcrumbJsonLd }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: itemListJsonLd }} />
       <div className="mx-auto max-w-5xl px-4 py-12 sm:px-6 sm:py-16">
         <nav aria-label="Fil d’Ariane" className="mb-6 text-sm text-slate-500">

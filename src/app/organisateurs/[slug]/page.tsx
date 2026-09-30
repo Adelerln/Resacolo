@@ -23,7 +23,8 @@ import {
   extractOrganizerPresentationSummary
 } from '@/lib/organizer-rich-text';
 import { staySessionsAppearFullyBooked } from '@/lib/stay-catalog-availability';
-import { buildPageMetadata } from '@/lib/seo-meta';
+import { buildPageMetadata, serializeJsonLd } from '@/lib/seo-meta';
+import { toAbsoluteUrl } from '@/lib/seo';
 import { getStays, getStayCanonicalPath } from '@/lib/stays';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { slugify } from '@/lib/utils';
@@ -689,8 +690,44 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
     ) ||
     `Découvrez les séjours collectifs proposés par ${organizerDisplayName}.`;
 
+  const organizerJsonLd = serializeJsonLd({
+    '@context': 'https://schema.org',
+    '@type': 'Organization',
+    name: organizerDisplayName,
+    url: toAbsoluteUrl(`/organisateurs/${organizerSlug}`),
+    description: heroIntroText,
+    parentOrganization: {
+      '@type': 'Organization',
+      name: 'Resacolo',
+      url: toAbsoluteUrl('/')
+    },
+    knowsAbout: ['Colonies de vacances', 'Séjours pour enfants']
+  });
+
+  const breadcrumbJsonLd = serializeJsonLd({
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name: 'Accueil', item: toAbsoluteUrl('/') },
+      {
+        '@type': 'ListItem',
+        position: 2,
+        name: 'Organisateurs',
+        item: toAbsoluteUrl('/organisateurs')
+      },
+      {
+        '@type': 'ListItem',
+        position: 3,
+        name: organizerDisplayName,
+        item: toAbsoluteUrl(`/organisateurs/${organizerSlug}`)
+      }
+    ]
+  });
+
   return (
     <div className="min-h-screen bg-[#fcfcfb]">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: organizerJsonLd }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: breadcrumbJsonLd }} />
       <section
         className="relative overflow-hidden bg-[#edf7f5]"
         style={

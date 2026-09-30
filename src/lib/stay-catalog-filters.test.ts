@@ -84,6 +84,18 @@ test('buildStayCatalogFilterOptions merges departure city technical variants', (
   assert.equal(options.departureCities[0]?.label, 'Paris');
 });
 
+test('buildStayCatalogFilterOptions merges Champagne-Ardenne TGV spelling variants', () => {
+  const stays = [
+    createStay({ id: 'stay-1', title: 'Séjour 1', departureCity: 'Champagne -Ardennes Tgv' }),
+    createStay({ id: 'stay-2', title: 'Séjour 2', departureCity: 'Champagne Ardenne Tgv' })
+  ];
+
+  const options = buildStayCatalogFilterOptions(stays);
+  assert.equal(options.departureCities.length, 1);
+  assert.equal(options.departureCities[0]?.count, 2);
+  assert.equal(options.departureCities[0]?.label, 'Champagne-Ardenne TGV');
+});
+
 test('applyStayCatalogFilters matches stays across departure city variants', () => {
   const stays = [
     createStay({ id: 'stay-1', title: 'Séjour 1', departureCity: 'PARIS' }),

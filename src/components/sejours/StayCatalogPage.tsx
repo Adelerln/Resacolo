@@ -1,8 +1,8 @@
 'use client';
 
 import Image from 'next/image';
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { useDeferredValue, useEffect, useMemo, useState } from 'react';
+import { usePathname } from 'next/navigation';
 import { Compass, Filter, Search, X } from 'lucide-react';
 import { FavoriteToggleButton } from '@/components/favorites/FavoriteToggleButton';
 import { OrganizerStayPreviewCard } from '@/components/organisateurs/OrganizerStayPreviewCard';
@@ -446,8 +446,6 @@ export function StayCatalogPage({
 }) {
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const pathname = usePathname();
-  const router = useRouter();
-  const runtimeSearchParams = useSearchParams();
 
   const filterOptions = useMemo(() => buildStayCatalogFilterOptions(stays), [stays]);
   const indexedStays = useMemo(() => stays.map(buildStaySearchIndex), [stays]);
@@ -483,18 +481,6 @@ export function StayCatalogPage({
       price: { min: Math.floor(priceMin), max: Math.ceil(Math.max(priceMin, priceMax)) }
     };
   }, [stays]);
-
-  const runtimeFilters = useMemo(
-    () => parseStayCatalogFiltersFromSearchParams(runtimeSearchParams, filterOptions),
-    [runtimeSearchParams, filterOptions]
-  );
-  const runtimeSort = useMemo(
-    () => parseStayCatalogSortFromSearchParams(runtimeSearchParams),
-    [runtimeSearchParams]
-  );
-  const runtimeFiltersKey = useMemo(() => stayCatalogFilterStateKey(runtimeFilters), [runtimeFilters]);
-  const runtimeQuery = runtimeSearchParams.toString();
-  const pendingUrlSyncKeyRef = useRef<string | null>(null);
 
   const urlFilters = useMemo(
     () => {
@@ -551,43 +537,56 @@ export function StayCatalogPage({
       sliderBounds.price.max
     ]
   );
-  const urlFiltersKey = useMemo(
-    () => stayCatalogFilterStateKey(urlFilters),
-    [urlFilters]
-  );
   const activeFilterCount = useMemo(
     () => countActiveStayCatalogFilters(filters),
     [filters]
   );
 
+  // Met à jour l’URL sans navigation Next (évite de recharger tout le catalogue côté serveur).
   useEffect(() => {
     const params = serializeStayCatalogFiltersToSearchParams(urlFilters);
     if (sort !== DEFAULT_STAY_CATALOG_SORT) {
       params.set('sort', sort);
     }
     const nextQuery = params.toString();
-    if (nextQuery === runtimeQuery) {
-      pendingUrlSyncKeyRef.current = null;
-      return;
-    }
+    const currentQuery = window.location.search.replace(/^\?/, '');
+    if (nextQuery === currentQuery) return;
 
-    pendingUrlSyncKeyRef.current = urlFiltersKey;
-    router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
-  }, [sort, urlFilters, urlFiltersKey, pathname, router, runtimeQuery]);
+    const nextUrl = nextQuery ? `${pathname}?${nextQuery}` : pathname;
+    window.history.replaceState(window.history.state, '', nextUrl);
+  }, [sort, urlFilters, pathname]);
 
+  // Retour navigateur / deep link externe.
   useEffect(() => {
-    if (pendingUrlSyncKeyRef.current != null) {
-      if (runtimeFiltersKey === pendingUrlSyncKeyRef.current) {
-        pendingUrlSyncKeyRef.current = null;
-      }
-      return;
+    function syncFromLocation() {
+      const params = new URLSearchParams(window.location.search);
+      const nextFilters = parseStayCatalogFiltersFromSearchParams(params, filterOptions);
+      const nextSort = parseStayCatalogSortFromSearchParams(params);
+      setFilters((previous) =>
+        stayCatalogFilterStateKey(previous) === stayCatalogFilterStateKey(nextFilters)
+          ? previous
+          : nextFilters
+      );
+      setSort((previous) => (previous === nextSort ? previous : nextSort));
     }
 
+    window.addEventListener('popstate', syncFromLocation);
+    return () => window.removeEventListener('popstate', syncFromLocation);
+  }, [filterOptions]);
+
+  // Deep link : si l’URL initiale côté client diffère du SSR, s’aligner une fois.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const nextFilters = parseStayCatalogFiltersFromSearchParams(params, filterOptions);
+    const nextSort = parseStayCatalogSortFromSearchParams(params);
     setFilters((previous) =>
-      stayCatalogFilterStateKey(previous) === runtimeFiltersKey ? previous : runtimeFilters
+      stayCatalogFilterStateKey(previous) === stayCatalogFilterStateKey(nextFilters)
+        ? previous
+        : nextFilters
     );
-    setSort((previous) => (previous === runtimeSort ? previous : runtimeSort));
-  }, [runtimeFilters, runtimeFiltersKey, runtimeSort]);
+    setSort((previous) => (previous === nextSort ? previous : nextSort));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- hydrate once from real browser URL
+  }, []);
 
   const filteredStays = useMemo(
     () => applyStayCatalogFilters(indexedStays, deferredFilters, deferredSearchQuery),

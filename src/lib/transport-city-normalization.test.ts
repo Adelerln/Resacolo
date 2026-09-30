@@ -38,3 +38,13 @@ test('empty values are ignored cleanly', () => {
   assert.equal(canonicalTransportCityKey(null), '');
   assert.equal(formatTransportCityLabel(undefined), '');
 });
+
+test('Champagne-Ardenne TGV variants collapse to one canonical city', () => {
+  const left = 'Champagne -Ardennes Tgv';
+  const right = 'Champagne Ardenne Tgv';
+
+  assert.equal(canonicalTransportCityKey(left), canonicalTransportCityKey(right));
+  assert.equal(canonicalTransportCityKey(left), 'champagne ardenne tgv');
+  assert.equal(formatTransportCityLabel(left), 'Champagne-Ardenne TGV');
+  assert.equal(formatTransportCityLabel(right), 'Champagne-Ardenne TGV');
+});

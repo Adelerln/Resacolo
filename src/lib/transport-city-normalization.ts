@@ -4,6 +4,22 @@ function normalizeWhitespace(value: string | null | undefined) {
     .trim();
 }
 
+/**
+ * Alias de clés canoniques pour fusionner des variantes fréquentes
+ * (pluriel / tiret / orthographe commerciale).
+ */
+const TRANSPORT_CITY_KEY_ALIASES: Record<string, string> = {
+  'champagne ardennes tgv': 'champagne ardenne tgv',
+  'champagne ardenne tgv': 'champagne ardenne tgv',
+  'champagne ardenne': 'champagne ardenne tgv',
+  'champagne ardennes': 'champagne ardenne tgv'
+};
+
+/** Libellés d’affichage préférés pour les hubs connus. */
+const TRANSPORT_CITY_DISPLAY_LABELS: Record<string, string> = {
+  'champagne ardenne tgv': 'Champagne-Ardenne TGV'
+};
+
 function normalizeForKey(value: string) {
   return normalizeWhitespace(value)
     .normalize('NFD')
@@ -21,6 +37,15 @@ function toTitleCase(value: string) {
   });
 }
 
+function polishTransportCityLabel(value: string) {
+  return value
+    .replace(/\s*-\s*/g, '-')
+    .replace(/\bTgv\b/gi, 'TGV')
+    .replace(/\bSncf\b/gi, 'SNCF')
+    .replace(/\bCdg\b/gi, 'CDG')
+    .replace(/\bOrly\b/gi, 'Orly');
+}
+
 /**
  * Nettoyage technique des villes importées:
  * - espaces parasites
@@ -36,25 +61,13 @@ export function normalizeTransportCityRaw(input: string | null | undefined) {
     .map((part) => normalizeWhitespace(part))
     .filter(Boolean);
   if (parts.length === 0) return '';
-  if (parts.length === 1) {
-    return normalizeWhitespace(
-      parts[0]
-        .replace(/\s*\([^)]*\)\s*$/g, ' ')
-        .replace(/\s*-\s*(?:gare|aeroport|aéroport|rdv|rendez-vous)\b.*$/i, ' ')
-    );
-  }
 
-  const uniqueKeys = new Set(parts.map((part) => normalizeForKey(part)));
-  if (uniqueKeys.size === 1) {
-    return normalizeWhitespace(
-      parts[0]
-        .replace(/\s*\([^)]*\)\s*$/g, ' ')
-        .replace(/\s*-\s*(?:gare|aeroport|aéroport|rdv|rendez-vous)\b.*$/i, ' ')
-    );
-  }
+  const primary = parts.length === 1 || new Set(parts.map((part) => normalizeForKey(part))).size === 1
+    ? parts[0]!
+    : parts[0]!;
 
   return normalizeWhitespace(
-    parts[0]
+    primary
       .replace(/\s*\([^)]*\)\s*$/g, ' ')
       .replace(/\s*-\s*(?:gare|aeroport|aéroport|rdv|rendez-vous)\b.*$/i, ' ')
   );
@@ -63,14 +76,22 @@ export function normalizeTransportCityRaw(input: string | null | undefined) {
 export function canonicalTransportCityKey(input: string | null | undefined) {
   const normalized = normalizeTransportCityRaw(input);
   if (!normalized) return '';
-  return normalizeForKey(normalized);
+  const key = normalizeForKey(normalized);
+  return TRANSPORT_CITY_KEY_ALIASES[key] ?? key;
 }
 
 export function formatTransportCityLabel(input: string | null | undefined) {
+  const key = canonicalTransportCityKey(input);
+  if (!key) return '';
+
+  const preferred = TRANSPORT_CITY_DISPLAY_LABELS[key];
+  if (preferred) return preferred;
+
   const normalized = normalizeTransportCityRaw(input);
   if (!normalized) return '';
-  if (normalized === normalized.toUpperCase()) {
-    return toTitleCase(normalized);
-  }
-  return normalized;
+
+  const polished = polishTransportCityLabel(
+    normalized === normalized.toUpperCase() ? toTitleCase(normalized) : normalized
+  );
+  return polished;
 }

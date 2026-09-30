@@ -1,4 +1,5 @@
 import { cache } from 'react';
+import { unstable_cache } from 'next/cache';
 import { NextRequest } from 'next/server';
 import { formatAccommodationType } from '@/components/organisme/accommodation-type';
 import {
@@ -1118,13 +1119,19 @@ async function fetchStaysFromSupabase(options: { stayIds?: string[] } = {}): Pro
   return stays;
 }
 
-const loadStays = cache(async () => fetchStaysFromSupabase());
+const fetchPublishedStaysCached = unstable_cache(
+  async () => fetchStaysFromSupabase(),
+  ['stays-catalog-published-v1'],
+  { revalidate: 60 }
+);
+
+const loadStaysRequest = cache(async () => fetchPublishedStaysCached());
 
 export async function getStays(options: { forceRefresh?: boolean } = {}) {
   if (options.forceRefresh) {
     return fetchStaysFromSupabase();
   }
-  return loadStays();
+  return loadStaysRequest();
 }
 
 export async function getStaysByIds(stayIds: string[]): Promise<Stay[]> {

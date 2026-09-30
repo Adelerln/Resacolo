@@ -84,7 +84,7 @@ export default async function PartnerHome() {
           <p className="mt-2 text-2xl font-semibold text-slate-900">{dashboard.metrics.reservations30d}</p>
         </article>
         <article className="rounded-2xl border border-slate-200 bg-white p-5">
-          <p className="admin-kpi-label">Taux finalisées</p>
+          <p className="admin-kpi-label">Taux confirmées</p>
           <p className="mt-2 text-2xl font-semibold text-slate-900">{Math.round(dashboard.metrics.finalizedRate30d)}%</p>
         </article>
         <article className="rounded-2xl border border-slate-200 bg-white p-5">

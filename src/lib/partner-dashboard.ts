@@ -2,7 +2,7 @@ import {
   normalizePartnerFinanceMode,
   PARTNER_FINANCE_MODE_LABELS
 } from '@/lib/partner-offers';
-import { FINALIZED_ORDER_STATUSES } from '@/lib/order-workflow';
+import { normalizeOrderStatus } from '@/lib/order-workflow';
 import {
   findNewSiteCountries,
   listSiteStayCountryLabels
@@ -21,25 +21,78 @@ import type { Database } from '@/types/supabase';
 const DASHBOARD_WINDOW_DAYS = 30;
 const RECENT_RESERVATIONS_LIMIT = 4;
 const TOP_STAYS_LIMIT = 5;
-/** Libellés partenaire : plusieurs statuts techniques partagent le même libellé. */
+
+/** Aligné sur les libellés métier partenaires (voir partnerReservationStatusLabel). */
+const PARTNER_DEFERRED_STATUS_LABEL = 'Confirmée — paiement différé';
+
+type PartnerDashboardStatusGroupKey =
+  | 'requested'
+  | 'pending'
+  | 'partial'
+  | 'paid'
+  | 'cancelled'
+  | 'failed'
+  | 'transferred';
+
+/** Libellés partenaire : regroupement métier (pas seulement le statut SQL brut). */
 const PARTNER_STATUS_GROUPS: Array<{
-  key: string;
+  key: PartnerDashboardStatusGroupKey;
   label: string;
-  statuses: Database['public']['Enums']['order_status'][];
 }> = [
-  { key: 'requested', label: 'Traitement organisme', statuses: ['REQUESTED'] },
-  {
-    key: 'pending',
-    label: 'En attente de paiement famille',
-    statuses: ['PENDING_PAYMENT']
-  },
-  { key: 'partial', label: 'Paiement partiel reçu', statuses: ['PARTIALLY_PAID'] },
-  { key: 'paid', label: 'Confirmées', statuses: ['PAID'] },
-  { key: 'cancelled', label: 'Réservation annulée', statuses: ['CANCELLED'] },
-  { key: 'failed', label: 'Échec de paiement', statuses: ['FAILED'] },
-  { key: 'transferred', label: 'Réservation transférée', statuses: ['TRANSFERRED'] }
+  { key: 'requested', label: 'Traitement / calcul en cours' },
+  { key: 'pending', label: 'En attente de paiement famille' },
+  { key: 'partial', label: 'Paiement partiel reçu' },
+  { key: 'paid', label: 'Confirmées' },
+  { key: 'cancelled', label: 'Réservation annulée' },
+  { key: 'failed', label: 'Échec de paiement' },
+  { key: 'transferred', label: 'Réservation transférée' }
 ];
 
+function resolvePartnerDashboardStatusGroup(input: {
+  status: Database['public']['Enums']['order_status'] | string;
+  statusLabel: string;
+}): PartnerDashboardStatusGroupKey {
+  const label = input.statusLabel.trim();
+  const normalized = normalizeOrderStatus(input.status) ?? input.status;
+
+  if (label === 'Réservation annulée' || normalized === 'CANCELLED') return 'cancelled';
+  if (label === 'Échec de paiement' || normalized === 'FAILED') return 'failed';
+  if (label === 'Réservation transférée' || normalized === 'TRANSFERRED') return 'transferred';
+  if (label === 'Paiement partiel reçu' || normalized === 'PARTIALLY_PAID') return 'partial';
+
+  // Confirmées métier : payée, legacy CONFIRMED, ou famille soldée avec part partenaire différée.
+  if (
+    label === 'Réservation payée' ||
+    label === PARTNER_DEFERRED_STATUS_LABEL ||
+    label.startsWith('Confirmée') ||
+    normalized === 'PAID'
+  ) {
+    return 'paid';
+  }
+
+  if (
+    label.startsWith('En attente de traitement') ||
+    label.startsWith('En attente de calcul partenaire')
+  ) {
+    return 'requested';
+  }
+
+  if (label === 'En attente de paiement famille' || normalized === 'PENDING_PAYMENT') {
+    return 'pending';
+  }
+
+  if (normalized === 'REQUESTED') return 'requested';
+
+  // Filet de sécurité : ne jamais laisser une résa hors camembert.
+  return 'pending';
+}
+
+function isPartnerDashboardFinalized(input: {
+  status: Database['public']['Enums']['order_status'] | string;
+  statusLabel: string;
+}) {
+  return resolvePartnerDashboardStatusGroup(input) === 'paid';
+}
 function startOfLocalDay(date: Date) {
   const value = new Date(date);
   value.setHours(0, 0, 0, 0);
@@ -170,19 +223,27 @@ export async function buildPartnerDashboardModel(input: {
   }
 
   const statusCountByGroup = new Map(PARTNER_STATUS_GROUPS.map((group) => [group.key, 0]));
-  for (const reservation of reservations30d) {
-    const group = PARTNER_STATUS_GROUPS.find((entry) => entry.statuses.includes(reservation.status));
-    if (!group) continue;
-    statusCountByGroup.set(group.key, (statusCountByGroup.get(group.key) ?? 0) + 1);
-  }
-
   let finalizedCount = 0;
   let totalCents30d = 0;
   let partnerCents30d = 0;
   let clientCents30d = 0;
 
   for (const reservation of reservations30d) {
-    if (FINALIZED_ORDER_STATUSES.has(reservation.status)) finalizedCount += 1;
+    const groupKey = resolvePartnerDashboardStatusGroup({
+      status: reservation.status,
+      statusLabel: reservation.statusLabel
+    });
+    statusCountByGroup.set(groupKey, (statusCountByGroup.get(groupKey) ?? 0) + 1);
+
+    if (
+      isPartnerDashboardFinalized({
+        status: reservation.status,
+        statusLabel: reservation.statusLabel
+      })
+    ) {
+      finalizedCount += 1;
+    }
+
     totalCents30d += reservation.totalCents;
     partnerCents30d += reservation.partnerContributionCents;
     clientCents30d += reservation.clientContributionCents;

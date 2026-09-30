@@ -261,8 +261,11 @@ function partnerReservationBadgeStatus(input: {
   ) {
     return 'REQUESTED' as const;
   }
-  // Teal « Partenaire » côté organisme : confirmée sans encaissement famille.
-  if (input.statusLabel === PARTNER_DEFERRED_PAYMENT_STATUS_LABEL) {
+  // Confirmées métier (payée famille, ou différé partenaire).
+  if (
+    input.statusLabel === PARTNER_DEFERRED_PAYMENT_STATUS_LABEL ||
+    input.statusLabel === 'Réservation payée'
+  ) {
     return 'PAID' as const;
   }
   return input.status;

@@ -1512,6 +1512,7 @@ export function StayDetailView({
                       <Link
                         href={link.href}
                         className="text-sm font-medium text-brand-700 hover:text-brand-800"
+                        title={link.title}
                       >
                         {link.anchorText || link.title}
                       </Link>

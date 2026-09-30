@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { usePathname } from 'next/navigation';
 import { Loader2, MessageCircle, Send, X } from 'lucide-react';
 
 type Citation = {
@@ -29,8 +28,11 @@ type Message = {
 
 const STORAGE_KEYS = {
   open: 'resacolo.chatbot.open',
-  sessionId: 'resacolo.chatbot.sessionId'
+  sessionId: 'resacolo.chatbot.sessionId',
+  messages: 'resacolo.chatbot.messages'
 } as const;
+
+const MAX_STORED_MESSAGES = 40;
 
 const INITIAL_SUGGESTIONS = [
   'Quel séjour recommandez-vous pour 10-12 ans cet été ?',
@@ -47,6 +49,39 @@ function buildConversationExcerpt(messages: Message[]) {
     .slice(-10)
     .map((message) => `${message.role === 'user' ? 'Utilisateur' : 'Assistant'}: ${message.content}`)
     .join('\n');
+}
+
+function isStoredMessage(value: unknown): value is Message {
+  if (!value || typeof value !== 'object') return false;
+  const message = value as Record<string, unknown>;
+  return (
+    typeof message.id === 'string' &&
+    (message.role === 'user' || message.role === 'assistant') &&
+    typeof message.content === 'string'
+  );
+}
+
+function readStoredMessages(): Message[] {
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEYS.messages);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(isStoredMessage).slice(-MAX_STORED_MESSAGES);
+  } catch {
+    return [];
+  }
+}
+
+function writeStoredMessages(messages: Message[]) {
+  try {
+    window.localStorage.setItem(
+      STORAGE_KEYS.messages,
+      JSON.stringify(messages.slice(-MAX_STORED_MESSAGES))
+    );
+  } catch {
+    // Quota / mode privé : on continue sans bloquer le chat.
+  }
 }
 
 async function postJson<TResponse>(url: string, payload: Record<string, unknown>) {
@@ -80,15 +115,14 @@ async function trackEvent(
 }
 
 export function PublicChatbotWidget() {
-  const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
   const [question, setQuestion] = useState('');
   const [loading, setLoading] = useState(false);
   const [handoffLoading, setHandoffLoading] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [lastPathname, setLastPathname] = useState<string | null>(null);
 
   const hasMessages = messages.length > 0;
   const canSend = question.trim().length >= 2 && !loading;
@@ -98,16 +132,24 @@ export function PublicChatbotWidget() {
     const savedSessionId = window.localStorage.getItem(STORAGE_KEYS.sessionId);
     if (savedOpen === '1') setOpen(true);
     if (savedSessionId) setSessionId(savedSessionId);
+    setMessages(readStoredMessages());
+    setHydrated(true);
   }, []);
 
   useEffect(() => {
+    if (!hydrated) return;
     window.localStorage.setItem(STORAGE_KEYS.open, open ? '1' : '0');
-  }, [open]);
+  }, [hydrated, open]);
 
   useEffect(() => {
     if (!sessionId) return;
     window.localStorage.setItem(STORAGE_KEYS.sessionId, sessionId);
   }, [sessionId]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    writeStoredMessages(messages);
+  }, [hydrated, messages]);
 
   useEffect(() => {
     if (!open) return;
@@ -117,17 +159,6 @@ export function PublicChatbotWidget() {
       }
     });
   }, [open, sessionId]);
-
-  useEffect(() => {
-    if (lastPathname === null) {
-      setLastPathname(pathname);
-      return;
-    }
-    if (lastPathname !== pathname) {
-      setOpen(false);
-      setLastPathname(pathname);
-    }
-  }, [lastPathname, pathname]);
 
   const lastAssistantMessage = useMemo(() => {
     const reversed = [...messages].reverse();

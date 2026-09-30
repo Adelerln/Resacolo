@@ -89,15 +89,29 @@ async function extractStays(): Promise<RagDocumentInput[]> {
   const seasonIds = Array.from(new Set(stayRows.map((row) => row.season_id)));
   const stayIds = stayRows.map((row) => row.id);
 
-  const [{ data: organizers }, { data: seasons }, { data: sessions }, publishedStays] = await Promise.all([
-    supabase.from('organizers').select('id,name,slug').in('id', organizerIds),
-    supabase.from('seasons').select('id,name,start_date,end_date').in('id', seasonIds),
-    supabase
-      .from('sessions')
-      .select('id,stay_id,start_date,end_date,status,capacity_total,capacity_reserved')
-      .in('stay_id', stayIds),
-    getStays().catch(() => [])
-  ]);
+  const [{ data: organizers }, { data: seasons }, { data: sessions }, { data: stayAccommodations }, publishedStays] =
+    await Promise.all([
+      supabase.from('organizers').select('id,name,slug').in('id', organizerIds),
+      supabase.from('seasons').select('id,name,start_date,end_date').in('id', seasonIds),
+      supabase
+        .from('sessions')
+        .select('id,stay_id,start_date,end_date,status,capacity_total,capacity_reserved')
+        .in('stay_id', stayIds),
+      supabase.from('stay_accommodations').select('stay_id,accommodation_id').in('stay_id', stayIds),
+      getStays().catch(() => [])
+    ]);
+
+  const accommodationIds = Array.from(
+    new Set((stayAccommodations ?? []).map((row) => row.accommodation_id).filter(Boolean))
+  );
+  const { data: accommodations } = accommodationIds.length
+    ? await supabase
+        .from('accommodations')
+        .select(
+          'id,name,accommodation_type,city,region_text,description,bed_info,bathroom_info,catering_info,accessibility_info'
+        )
+        .in('id', accommodationIds)
+    : { data: [] as Array<Record<string, unknown>> };
 
   const organizerById = new Map((organizers ?? []).map((row) => [row.id, row]));
   const seasonById = new Map((seasons ?? []).map((row) => [row.id, row]));
@@ -109,6 +123,39 @@ async function extractStays(): Promise<RagDocumentInput[]> {
     sessionsByStayId.set(session.stay_id, group);
   }
 
+  const accommodationsById = new Map((accommodations ?? []).map((row) => [row.id, row]));
+  const accommodationsByStayId = new Map<
+    string,
+    Array<{
+      name: string | null;
+      accommodation_type: string | null;
+      city: string | null;
+      region_text: string | null;
+      description: string | null;
+      bed_info: string | null;
+      bathroom_info: string | null;
+      catering_info: string | null;
+      accessibility_info: string | null;
+    }>
+  >();
+  for (const link of stayAccommodations ?? []) {
+    const accommodation = accommodationsById.get(link.accommodation_id);
+    if (!accommodation) continue;
+    const group = accommodationsByStayId.get(link.stay_id) ?? [];
+    group.push({
+      name: accommodation.name ?? null,
+      accommodation_type: accommodation.accommodation_type ?? null,
+      city: accommodation.city ?? null,
+      region_text: accommodation.region_text ?? null,
+      description: accommodation.description ?? null,
+      bed_info: accommodation.bed_info ?? null,
+      bathroom_info: accommodation.bathroom_info ?? null,
+      catering_info: accommodation.catering_info ?? null,
+      accessibility_info: accommodation.accessibility_info ?? null
+    });
+    accommodationsByStayId.set(link.stay_id, group);
+  }
+
   const canonicalPathByStayId = new Map(
     publishedStays.map((stay) => [stay.id, getStayCanonicalPath(stay)])
   );
@@ -117,6 +164,7 @@ async function extractStays(): Promise<RagDocumentInput[]> {
     const organizer = organizerById.get(row.organizer_id);
     const season = seasonById.get(row.season_id);
     const rowSessions = sessionsByStayId.get(row.id) ?? [];
+    const rowAccommodations = accommodationsByStayId.get(row.id) ?? [];
     const sourceUrl = canonicalPathByStayId.get(row.id) ?? trimOrNull(row.source_url) ?? null;
     const title = `Séjour: ${row.title}`;
     const content = toMultilineRecord({
@@ -140,6 +188,7 @@ async function extractStays(): Promise<RagDocumentInput[]> {
       age_max: row.age_max,
       transport_mode: row.transport_mode,
       partner_discount_percent: row.partner_discount_percent,
+      accommodations: rowAccommodations,
       sessions: rowSessions
     });
 
@@ -156,7 +205,8 @@ async function extractStays(): Promise<RagDocumentInput[]> {
         season_id: row.season_id,
         season_name: season?.name ?? null,
         source_table: 'stays',
-        has_public_page: Boolean(sourceUrl)
+        has_public_page: Boolean(sourceUrl),
+        accommodations_count: rowAccommodations.length
       },
       content
     } satisfies RagDocumentInput;

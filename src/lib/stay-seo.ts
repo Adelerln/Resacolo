@@ -390,29 +390,41 @@ function isPrimaryKeywordCoherent(input: StaySeoInput) {
   return matched >= Math.max(1, Math.floor(tokens.length / 2));
 }
 
+function shortenAnchorCandidate(value: string, maxLength = 68) {
+  const normalized = normalizeWhitespace(value);
+  if (!normalized) return '';
+
+  // Les primaryKeyword SEO sont souvent une liste "a - b - c" : un seul ancrage suffit.
+  const firstSegment = (normalized.split(/\s[-–—|]\s/)[0] ?? normalized).trim();
+  if (firstSegment.length <= maxLength) return firstSegment;
+  const clipped = firstSegment.slice(0, maxLength - 1).trimEnd();
+  const lastSpace = clipped.lastIndexOf(' ');
+  return `${(lastSpace > 24 ? clipped.slice(0, lastSpace) : clipped).trimEnd()}…`;
+}
+
 function contextualAnchorText(current: Stay, candidate: Stay) {
-  const candidateKeyword = normalizeWhitespace(candidate.seo?.primaryKeyword);
+  const candidateKeyword = shortenAnchorCandidate(candidate.seo?.primaryKeyword ?? '');
   const candidateTitle = normalizeWhitespace(candidate.title);
   const candidateRegion = normalizeWhitespace(candidate.seo?.targetRegion || candidate.region);
   const candidateCity = normalizeWhitespace(candidate.seo?.targetCity || candidate.location);
   const currentRegion = normalizeWhitespace(current.seo?.targetRegion || current.region);
 
   if (candidateKeyword) {
-    if (candidateRegion && candidateRegion === currentRegion) {
-      return `${candidateKeyword} en ${candidateRegion}`;
+    if (candidateRegion && candidateRegion === currentRegion && !candidateKeyword.toLowerCase().includes(candidateRegion.toLowerCase())) {
+      return shortenAnchorCandidate(`${candidateKeyword} en ${candidateRegion}`);
     }
     return candidateKeyword;
   }
 
-  if (candidateCity) {
-    return `${candidateTitle} à ${candidateCity}`;
+  if (candidateCity && candidateTitle) {
+    return shortenAnchorCandidate(`${candidateTitle} à ${candidateCity}`);
   }
 
-  if (candidateRegion) {
-    return `${candidateTitle} en ${candidateRegion}`;
+  if (candidateRegion && candidateTitle) {
+    return shortenAnchorCandidate(`${candidateTitle} en ${candidateRegion}`);
   }
 
-  return candidateTitle;
+  return shortenAnchorCandidate(candidateTitle) || 'Séjour similaire';
 }
 
 function sanitizeSeoContext(input: StaySeoInput): StaySeoInput {
@@ -641,7 +653,7 @@ export function buildRelatedStayLinks(current: Stay, stays: Stay[], getHref: (st
       if (left.score !== right.score) return right.score - left.score;
       return left.stay.title.localeCompare(right.stay.title, 'fr');
     })
-    .slice(0, 4);
+    .slice(0, 3);
 
   return scored.map(({ stay }) => ({
     stayId: stay.id,

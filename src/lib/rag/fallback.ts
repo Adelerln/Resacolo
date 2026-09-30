@@ -31,6 +31,23 @@ export async function retrieveFallbackChunks(question: string, limit = 8): Promi
 
   const scored = stays
     .map((stay) => {
+      const accommodationText = (stay.accommodations ?? [])
+        .map((accommodation) =>
+          [
+            accommodation.name,
+            accommodation.description,
+            accommodation.bedInfo,
+            accommodation.bathroomInfo,
+            accommodation.cateringInfo,
+            accommodation.accessibilityInfo,
+            accommodation.city,
+            accommodation.regionText,
+            accommodation.locationLabel
+          ]
+            .filter(Boolean)
+            .join(' ')
+        )
+        .join(' ');
       const haystack = normalize(
         [
           stay.title,
@@ -40,26 +57,33 @@ export async function retrieveFallbackChunks(question: string, limit = 8): Promi
           stay.location,
           stay.region,
           stay.activitiesText ?? '',
-          stay.programText ?? ''
+          stay.programText ?? '',
+          accommodationText
         ].join(' ')
       );
       const termScore = scoreFromTerms(haystack, terms);
       const keywordBoost = haystack.includes('sejour') || haystack.includes('colonie') ? 0.05 : 0;
       const score = Math.max(0, Math.min(1, termScore + keywordBoost));
-      return { stay, score };
+      return { stay, score, accommodationText };
     })
     .filter((item) => item.score > 0)
     .sort((left, right) => right.score - left.score)
     .slice(0, limit);
 
-  return scored.map(({ stay, score }) => ({
+  return scored.map(({ stay, score, accommodationText }) => ({
     chunkId: `fallback:${stay.id}`,
     documentId: stay.id,
     sourceRef: `stay:${stay.id}`,
     sourceType: 'stay',
     sourceUrl: `/sejours/${stay.canonicalSlug}`,
     title: stay.title,
-    content: [stay.summary, stay.description, stay.organizer.name, stay.location || stay.region]
+    content: [
+      stay.summary,
+      stay.description,
+      stay.organizer.name,
+      stay.location || stay.region,
+      accommodationText
+    ]
       .filter(Boolean)
       .join('\n'),
     metadata: {

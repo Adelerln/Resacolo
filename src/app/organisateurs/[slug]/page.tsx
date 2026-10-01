@@ -813,7 +813,7 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
                 Présentation
               </h1>
               <div
-                className="mt-5 text-left text-[0.88rem] font-medium leading-[1.6] text-slate-600 sm:text-[0.95rem] [&_b]:text-[1rem] [&_b]:font-extrabold [&_br]:block [&_br]:content-[''] [&_em]:italic [&_i]:italic [&_li]:ml-5 [&_li]:list-disc [&_li]:pl-1 [&_ol]:ml-5 [&_ol]:list-decimal [&_ol]:space-y-2 [&_p]:mb-4 [&_strong]:text-[1rem] [&_strong]:font-extrabold [&_u]:underline [&_ul]:space-y-2 sm:[&_b]:text-[1.05rem] sm:[&_strong]:text-[1.05rem]"
+                className="mt-5 text-left text-[0.88rem] font-medium leading-[1.6] text-slate-600 sm:text-[0.95rem] [&_b]:text-[1rem] [&_b]:font-extrabold [&_br]:block [&_br]:content-[''] [&_em]:italic [&_i]:italic [&_li]:my-0.5 [&_ol]:mb-3 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:space-y-1 [&_p]:mb-4 [&_strong]:text-[1rem] [&_strong]:font-extrabold [&_u]:underline [&_ul]:mb-3 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:space-y-1 sm:[&_b]:text-[1.05rem] sm:[&_strong]:text-[1.05rem]"
                 dangerouslySetInnerHTML={{ __html: presentationHtml }}
               />
               {projectUrl && (

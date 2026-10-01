@@ -1,7 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { sanitizeOrganizerRichText } from '@/lib/organizer-rich-text';
+import { useCallback, useEffect, useRef, useState, type ClipboardEvent } from 'react';
+import {
+  sanitizeOrganizerRichText,
+  sanitizeOrganizerRichTextFromPaste
+} from '@/lib/organizer-rich-text';
 
 type OrganizerRichTextEditorProps = {
   name: string;
@@ -10,10 +13,11 @@ type OrganizerRichTextEditorProps = {
 };
 
 const TOOLBAR_ACTIONS = [
-  { label: 'B', command: 'bold' },
-  { label: 'I', command: 'italic' },
-  { label: 'U', command: 'underline' }
-] as const;
+  { label: 'B', command: 'bold' as const },
+  { label: 'I', command: 'italic' as const },
+  { label: 'U', command: 'underline' as const },
+  { label: '•', command: 'insertUnorderedList' as const, title: 'Liste à puces' }
+];
 
 export default function OrganizerRichTextEditor({
   name,
@@ -27,7 +31,8 @@ export default function OrganizerRichTextEditor({
   const [activeCommands, setActiveCommands] = useState<Record<string, boolean>>({
     bold: false,
     italic: false,
-    underline: false
+    underline: false,
+    insertUnorderedList: false
   });
 
   const syncFromEditor = useCallback(() => {
@@ -39,8 +44,17 @@ export default function OrganizerRichTextEditor({
     setActiveCommands({
       bold: document.queryCommandState('bold'),
       italic: document.queryCommandState('italic'),
-      underline: document.queryCommandState('underline')
+      underline: document.queryCommandState('underline'),
+      insertUnorderedList: document.queryCommandState('insertUnorderedList')
     });
+  }, []);
+
+  const clearInheritedInlineFormats = useCallback(() => {
+    for (const command of ['bold', 'italic', 'underline'] as const) {
+      if (document.queryCommandState(command)) {
+        document.execCommand(command, false);
+      }
+    }
   }, []);
 
   useEffect(() => {
@@ -84,6 +98,21 @@ export default function OrganizerRichTextEditor({
     syncFromEditor();
   }
 
+  function handlePaste(event: ClipboardEvent<HTMLDivElement>) {
+    event.preventDefault();
+    const clipboard = event.clipboardData;
+    const cleanHtml = sanitizeOrganizerRichTextFromPaste(
+      clipboard.getData('text/html'),
+      clipboard.getData('text/plain')
+    );
+    if (!cleanHtml) return;
+
+    editorRef.current?.focus();
+    document.execCommand('insertHTML', false, cleanHtml);
+    clearInheritedInlineFormats();
+    syncFromEditor();
+  }
+
   return (
     <div className="block text-sm font-medium text-slate-700">
       <div>{label}</div>
@@ -93,6 +122,7 @@ export default function OrganizerRichTextEditor({
             <button
               key={action.command}
               type="button"
+              title={'title' in action ? action.title : undefined}
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => applyCommand(action.command)}
               className={`rounded-md border px-3 py-1 text-xs font-semibold transition ${
@@ -116,7 +146,8 @@ export default function OrganizerRichTextEditor({
           onKeyUp={syncFromEditor}
           onMouseUp={syncFromEditor}
           onFocus={syncFromEditor}
-          className="min-h-[220px] w-full rounded-b-lg bg-slate-100 px-3 py-3 text-sm font-normal leading-6 text-slate-700 outline-none"
+          onPaste={handlePaste}
+          className="min-h-[220px] w-full rounded-b-lg bg-slate-100 px-3 py-3 text-sm font-normal leading-6 text-slate-700 outline-none [&_li]:my-0.5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:mb-3 [&_p:last-child]:mb-0 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5"
         />
       </div>
       <input

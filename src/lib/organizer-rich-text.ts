@@ -36,6 +36,11 @@ function applyFrenchNbspBeforePunctuation(value: string) {
 const ORGANIZER_DURATION_META_PATTERN = /<!--\s*resacolo:duration:(\d*):(\d*)\s*-->/gi;
 const ORGANIZER_PAYMENT_AIDS_META_PATTERN = /<!--\s*resacolo:payment-aids:([a-z_,\s-]*)\s*-->/gi;
 
+type SanitizeOrganizerRichTextOptions = {
+  /** Au collage Word/Docs : retire le soulignement global souvent importé par erreur. */
+  stripUnderline?: boolean;
+};
+
 function stripOrganizerDescriptionMeta(value?: string | null) {
   return (value ?? '')
     .replace(ORGANIZER_DURATION_META_PATTERN, '')
@@ -48,20 +53,57 @@ export function extractOrganizerPresentationHtmlForEditor(value?: string | null)
 }
 
 export function convertPlainTextToRichTextHtml(value: string) {
-  const paragraphs = value
-    .trim()
-    .split(/\n{2,}/)
-    .map((paragraph) => paragraph.trim())
-    .filter(Boolean);
+  const normalized = value
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .replace(/^\n+|\n+$/g, '');
+  if (!normalized.trim()) return '';
 
-  if (paragraphs.length === 0) return '';
+  const parts = normalized.split(/(\n{2,})/);
+  const htmlParts: string[] = [];
 
-  return paragraphs
-    .map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, '<br />')}</p>`)
-    .join('');
+  for (const part of parts) {
+    if (/^\n+$/.test(part)) {
+      // \n\n sépare deux paragraphes ; chaque \n supplémentaire crée un paragraphe vide.
+      const emptyParagraphs = Math.max(0, part.length - 2);
+      for (let index = 0; index < emptyParagraphs; index += 1) {
+        htmlParts.push('<p><br /></p>');
+      }
+      continue;
+    }
+    if (part.trim() === '') continue;
+    htmlParts.push(`<p>${escapeHtml(part).replace(/\n/g, '<br />')}</p>`);
+  }
+
+  return htmlParts.join('');
 }
 
-export function sanitizeOrganizerRichText(value?: string | null) {
+function normalizeEmptyParagraphs(html: string) {
+  return html
+    .replace(/<p>(?:\s|&nbsp;|&#160;)*<\/p>/gi, '<p><br /></p>')
+    .replace(/<p>(?:\s|&nbsp;|&#160;)*(?:<br\s*\/?>\s*)+(?:\s|&nbsp;|&#160;)*<\/p>/gi, '<p><br /></p>');
+}
+
+function unwrapFullDocumentUnderline(html: string) {
+  const withoutOuterWhitespace = html.trim();
+  const fullWrap = withoutOuterWhitespace.match(/^<u>([\s\S]*)<\/u>$/i);
+  if (fullWrap) return fullWrap[1];
+
+  // Word colle souvent chaque paragraphe entièrement souligné.
+  const paragraphMatches = [...withoutOuterWhitespace.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)];
+  if (paragraphMatches.length === 0) return html;
+  const allFullyUnderlined = paragraphMatches.every((match) => {
+    const inner = match[1].trim();
+    return /^<u\b[^>]*>[\s\S]*<\/u>$/i.test(inner) || inner === '<br />' || inner === '<br>';
+  });
+  if (!allFullyUnderlined) return html;
+  return withoutOuterWhitespace.replace(/<\/?u(?=[\s>/])[^>]*>/gi, '');
+}
+
+export function sanitizeOrganizerRichText(
+  value?: string | null,
+  options: SanitizeOrganizerRichTextOptions = {}
+) {
   const input = (value ?? '').trim();
   if (!input) return '';
 
@@ -72,18 +114,39 @@ export function sanitizeOrganizerRichText(value?: string | null) {
     ''
   );
   html = html.replace(/<!--[\s\S]*?-->/g, '');
-  html = html.replace(/<\s*\/?\s*(html|head|body)[^>]*>/gi, '');
+  html = html.replace(/<\s*\/?\s*(html|head|body|meta|link|xml)[^>]*>/gi, '');
+  // Tags Word / Office
+  html = html.replace(/<\/?(?:o:p|w:[a-z]+|m:[a-z]+)[^>]*>/gi, '');
   html = html.replace(/<(\/?)div\b/gi, '<$1p');
   html = html.replace(/<(\/?)span\b[^>]*>/gi, '');
+  html = html.replace(/<(\/?)font\b[^>]*>/gi, '');
   html = html.replace(/\son\w+\s*=\s*(['"]).*?\1/gi, '');
   html = html.replace(/\son\w+\s*=\s*[^\s>]+/gi, '');
-  html = html.replace(/\s(?:style|class|id|data-[\w-]+)\s*=\s*(['"]).*?\1/gi, '');
+  html = html.replace(/\s(?:style|class|id|dir|lang|data-[\w-]+)\s*=\s*(['"]).*?\1/gi, '');
   html = html.replace(/<(?!\/?(p|br|strong|b|em|i|u|ul|ol|li)\b)[^>]+>/gi, '');
-  html = html.replace(/<p>\s*<\/p>/gi, '');
-  html = html.replace(/<(strong|b|em|i|u|li|p|ul|ol)([^>]*)>/gi, '<$1>');
-  html = html.replace(/<br>/gi, '<br />');
+
+  if (options.stripUnderline) {
+    html = html.replace(/<\/?u(?=[\s>/])[^>]*>/gi, '');
+  } else {
+    html = unwrapFullDocumentUnderline(html);
+  }
+
+  html = html.replace(/<((?:strong|em|ul|ol|li|br|p|b|i|u))\b([^>]*)>/gi, '<$1>');
+  html = html.replace(/<br[^>]*>/gi, '<br />');
+  html = normalizeEmptyParagraphs(html);
+  // Evite les enchaînements excessifs de paragraphes vides (plus de 2 d'affilée)
+  html = html.replace(/(?:<p><br \/><\/p>){3,}/gi, '<p><br /></p><p><br /></p>');
 
   return applyFrenchNbspBeforePunctuation(html.trim());
+}
+
+/** Nettoyage dédié au collage (Word, Docs, mail…) : structure + gras/italique/listes. */
+export function sanitizeOrganizerRichTextFromPaste(html?: string | null, plainText?: string | null) {
+  const rawHtml = (html ?? '').trim();
+  if (rawHtml && /<\/?[a-z][\s\S]*>/i.test(rawHtml)) {
+    return sanitizeOrganizerRichText(rawHtml, { stripUnderline: true });
+  }
+  return sanitizeOrganizerRichText(convertPlainTextToRichTextHtml(plainText ?? ''));
 }
 
 export function extractOrganizerRichTextPlainText(value?: string | null) {

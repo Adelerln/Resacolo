@@ -9,6 +9,26 @@ export function isVideoUrlCandidate(value: string): boolean {
   );
 }
 
+/** True if the URL path looks like a real raster image file (not a gallery HTML page). */
+export function isRasterImageUrl(value: string): boolean {
+  try {
+    const pathname = new URL(value.trim()).pathname;
+    return /\.(jpg|jpeg|png|gif|webp|avif)$/i.test(pathname);
+  } catch {
+    return /\.(jpg|jpeg|png|gif|webp|avif)(\?|$)/i.test(value.trim());
+  }
+}
+
+/** First usable photo URL from an ordered media list (skips videos and non-image pages). */
+export function pickFirstRasterImageUrl(urls: Array<string | null | undefined>): string | null {
+  for (const raw of urls) {
+    const url = String(raw ?? '').trim();
+    if (!url || !/^https?:\/\//i.test(url) || isVideoUrlCandidate(url)) continue;
+    if (isRasterImageUrl(url)) return url;
+  }
+  return null;
+}
+
 const HTTPS_IN_TEXT_RE = /https?:\/\/[^'")\s]+/gi;
 
 function trimTrailingJunk(url: string): string {

@@ -28,6 +28,7 @@ import { getStays, getStayCanonicalPath } from '@/lib/stays';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { slugify } from '@/lib/utils';
 import { extractGoogleMapsEmbedSrcFromInput } from '@/lib/google-maps-iframe';
+import { resolveAccommodationCoverImage } from '@/lib/resolve-media-cover-image';
 
 type PageProps = { params: Promise<{ slug: string }> };
 
@@ -590,6 +591,15 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
     ? (accommodationsLegacyResult?.data ?? []).map((row) => ({ ...row, map_iframe_html: null }))
     : (accommodationsWithMapResult.data ?? []);
 
+  const accommodationIds = (accommodationsRaw ?? []).map((row) => row.id);
+  const { data: accommodationMediaForCovers } = accommodationIds.length
+    ? await supabase
+        .from('accommodation_media')
+        .select('accommodation_id,url,position')
+        .in('accommodation_id', accommodationIds)
+        .order('position', { ascending: true })
+    : { data: [] as Array<{ accommodation_id: string; url: string; position: number }> | null };
+
   const coverImageByStayId = new Map<string, string>();
   for (const media of stayMediaRaw ?? []) {
     if (!coverImageByStayId.has(media.stay_id)) {
@@ -618,12 +628,24 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
     }
   }
 
-  const coverImageByAccommodationId = new Map<string, string>();
-  for (const media of accommodationMediaRaw ?? []) {
-    if (!coverImageByAccommodationId.has(media.accommodation_id)) {
-      coverImageByAccommodationId.set(media.accommodation_id, media.url);
-    }
+  const mediaUrlsByAccommodationId = new Map<string, string[]>();
+  for (const media of accommodationMediaForCovers ?? accommodationMediaRaw ?? []) {
+    const group = mediaUrlsByAccommodationId.get(media.accommodation_id) ?? [];
+    group.push(media.url);
+    mediaUrlsByAccommodationId.set(media.accommodation_id, group);
   }
+
+  const coverImageEntries = await Promise.all(
+    (accommodationsRaw ?? []).map(async (accommodation) => {
+      const coverImage = await resolveAccommodationCoverImage(
+        mediaUrlsByAccommodationId.get(accommodation.id) ?? []
+      );
+      return [accommodation.id, coverImage] as const;
+    })
+  );
+  const coverImageByAccommodationId = new Map(
+    coverImageEntries.filter((entry): entry is readonly [string, string] => Boolean(entry[1]))
+  );
 
   const accommodations = (accommodationsRaw ?? []).map((accommodation) => {
     const locationMeta = extractAccommodationLocationMeta(accommodation.description, {

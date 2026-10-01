@@ -26,7 +26,8 @@ export function defaultAccommodationImportRecord(): Record<string, unknown> {
     bed_info: '',
     bathroom_info: '',
     catering_info: '',
-    pmr_accessible: false
+    pmr_accessible: false,
+    media_urls: [] as string[]
   };
 }
 
@@ -38,6 +39,22 @@ export function mergeAccommodationImportRecord(
   const next = repairAccommodationImportLocation({ ...base, ...patch });
   if (!Array.isArray(next.accommodation_types)) {
     next.accommodation_types = [];
+  }
+  if (!Array.isArray(next.media_urls)) {
+    const rawMedia = next.media_urls;
+    if (typeof rawMedia === 'string') {
+      next.media_urls = rawMedia
+        .split(/\r?\n/)
+        .map((item) => item.trim())
+        .filter(Boolean);
+    } else {
+      next.media_urls = [];
+    }
+  } else {
+    next.media_urls = next.media_urls
+      .filter((item): item is string => typeof item === 'string')
+      .map((item) => item.trim())
+      .filter(Boolean);
   }
   if (next.pmr_accessible === undefined) {
     next.pmr_accessible = false;

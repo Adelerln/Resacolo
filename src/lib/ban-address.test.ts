@@ -58,3 +58,27 @@ test('parseBanMunicipalitySelection keeps Corsica department codes', () => {
   assert.equal(parsed?.department, '2B');
   assert.equal(parsed?.region, 'Corse');
 });
+
+test('parseBanMunicipalitySelection does not treat department name as region', () => {
+  const parsed = parseBanMunicipalitySelection({
+    city: 'Campan',
+    postcode: '65710',
+    context: '65, Hautes-Pyrénées, Occitanie',
+    depcode: '65'
+  });
+
+  assert.equal(parsed?.department, '65');
+  assert.equal(parsed?.region, 'Occitanie');
+});
+
+test('parseBanMunicipalitySelection ignores non-canonical department-only region fallback', () => {
+  const parsed = parseBanMunicipalitySelection({
+    city: 'Campan',
+    postcode: '65710',
+    context: '65, Hautes-Pyrénées',
+    depcode: '65'
+  });
+
+  assert.equal(parsed?.department, '65');
+  assert.equal(parsed?.region, null);
+});

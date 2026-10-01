@@ -10,6 +10,7 @@ import {
   stripStockPmrPhraseFromAccessibility,
   type AccommodationLocationMode
 } from '@/lib/accommodation-location';
+import { FRANCE_REGION_OPTIONS, mapToCanonicalStayRegion } from '@/lib/stay-regions';
 
 export {
   ACCOMMODATION_TYPE_OPTIONS,
@@ -281,7 +282,7 @@ export default function AccommodationFormFields({
                     city: selection.city,
                     postal_code: selection.postalCode ?? current.postal_code,
                     department_code: selection.department ?? current.department_code,
-                    region_text: selection.region ?? current.region_text,
+                    region_text: mapToCanonicalStayRegion(selection.region) ?? current.region_text,
                     country: selection.country ?? 'France'
                   }))
                 }
@@ -301,14 +302,28 @@ export default function AccommodationFormFields({
               </label>
               <label className="block text-sm font-medium text-slate-700">
                 Région
-                <input
+                <select
                   name="region_text"
-                  value={physicalAddress.region_text}
+                  value={mapToCanonicalStayRegion(physicalAddress.region_text) ?? ''}
                   onChange={(event) =>
                     setPhysicalAddress((current) => ({ ...current, region_text: event.target.value }))
                   }
                   className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-                />
+                >
+                  <option value="">Sélectionnez une région</option>
+                  {FRANCE_REGION_OPTIONS.map((region) => (
+                    <option key={region} value={region}>
+                      {region}
+                    </option>
+                  ))}
+                </select>
+                {physicalAddress.region_text.trim() &&
+                !mapToCanonicalStayRegion(physicalAddress.region_text) ? (
+                  <span className="mt-1 block text-xs text-rose-600">
+                    « {physicalAddress.region_text.trim()} » n’est pas une région valide (souvent un
+                    département). Choisissez une région dans la liste (ex. Occitanie).
+                  </span>
+                ) : null}
               </label>
               <label className="block text-sm font-medium text-slate-700 md:col-span-2">
                 Pays

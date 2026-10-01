@@ -21,8 +21,10 @@ import { liveSessionStableKey } from '@/lib/draft-session-keys';
 import { readDraftDestinationFields } from '@/lib/stay-draft-destination';
 import {
   isVideoUrlCandidate,
+  normalizeImportedImageUrlList,
   normalizeImportedVideoUrlList
 } from '@/lib/stay-draft-url-extract';
+import { replaceAccommodationMedia } from '@/lib/accommodations';
 import {
   removeStayMediaStorageFiles,
   uploadImportedStayImages
@@ -1179,6 +1181,39 @@ function parseAccommodation(
   };
 }
 
+function parseAccommodationMediaUrlsFromJson(value: Json | null): string[] {
+  const object = coerceAccommodationJsonObject(value);
+  const raw = object.media_urls ?? object.image_urls ?? object.images;
+  if (Array.isArray(raw)) {
+    return normalizeImportedImageUrlList(
+      raw.filter((item): item is string => typeof item === 'string')
+    );
+  }
+  if (typeof raw === 'string') {
+    return normalizeImportedImageUrlList(
+      raw
+        .split(/\r?\n/)
+        .map((item) => item.trim())
+        .filter(Boolean)
+    );
+  }
+  return [];
+}
+
+async function syncAccommodationImageMedia(
+  accommodationId: string,
+  accommodationSource: Json | null
+) {
+  const urls = parseAccommodationMediaUrlsFromJson(accommodationSource);
+  const result = await replaceAccommodationMedia({
+    accommodationId,
+    urls
+  });
+  if (result.error) {
+    throw new PublishStayDraftError('replace-accommodation-media', result.error);
+  }
+}
+
 function readLivePublication(rawPayload: Record<string, unknown>): {
   stayId: string | null;
   accommodationId: string | null;
@@ -2209,6 +2244,17 @@ export async function syncStayDraftPreviewAccommodation(
     accommodationId = inserted.id;
   }
 
+  if (accommodationId) {
+    try {
+      await syncAccommodationImageMedia(accommodationId, accommodationSource);
+    } catch (error) {
+      console.error(
+        '[stay-draft-preview-accommodation] media sync failed',
+        error instanceof Error ? error.message : error
+      );
+    }
+  }
+
   const nextRaw: Record<string, unknown> = {
     ...rawPayload,
     draft_accommodation_preview: {
@@ -2447,6 +2493,10 @@ export async function publishStayDraftToLive(
   syncedTables.push('stay_accommodations', 'accommodations');
 
   if (accommodationId) {
+    // Images catalogue : uniquement quand la fiche vient du JSON d’import (pas un lien catalogue existant).
+    if (accommodation) {
+      await syncAccommodationImageMedia(accommodationId, accommodationSource);
+    }
     await replaceAccommodationVideoOnlyMedia(supabase, accommodationId, accommodationPublishVideos);
     syncedTables.push('accommodation_media');
   }

@@ -3,7 +3,7 @@ import type { AnyNode } from 'domhandler';
 import { createHash } from 'crypto';
 import iconv from 'iconv-lite';
 import { draftSessionStableKey } from '@/lib/draft-session-keys';
-import { STAY_REGION_OPTIONS } from '@/lib/stay-regions';
+import { mapToCanonicalStayRegion, STAY_REGION_OPTIONS } from '@/lib/stay-regions';
 import {
   extractVideoUrlsFromArbitraryString,
   isVideoUrlCandidate
@@ -5066,7 +5066,10 @@ function extractAccommodation(
     postal_code: primaryAddressHint?.postalCode ?? null,
     city: primaryAddressHint?.locality ?? null,
     department_code: null,
-    region_text: primaryAddressHint?.region ?? primaryAddressHint?.department ?? null,
+    region_text:
+      mapToCanonicalStayRegion(primaryAddressHint?.region) ??
+      mapToCanonicalStayRegion(primaryAddressHint?.department) ??
+      null,
     country: null
   };
 }

@@ -66,9 +66,8 @@ export function parseBanMunicipalitySelection(
     // DOM / collectivités : contexte à 2 segments « 971, Guadeloupe » → le 2ᵉ segment est la région.
     (contextDepartmentName && !contextRegionName ? contextDepartmentName : null);
 
-  const region =
-    mapToCanonicalStayRegion(regionRaw) ??
-    (regionRaw?.trim() || null);
+  // Ne jamais garder un nom de département (ex. Hautes-Pyrénées) comme région libre.
+  const region = mapToCanonicalStayRegion(regionRaw);
 
   return {
     city,

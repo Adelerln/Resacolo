@@ -69,7 +69,7 @@ import {
   draftReviewSectionClass
 } from '@/lib/draft-review-field-styles';
 import { buildStayDestinationLabel } from '@/lib/stay-destination';
-import { mapToCanonicalStayRegion, STAY_REGION_OPTIONS } from '@/lib/stay-regions';
+import { mapToCanonicalStayRegion, FRANCE_REGION_OPTIONS } from '@/lib/stay-regions';
 import type { StayDraftReviewFieldErrors, StayDraftReviewPayload } from '@/types/stay-draft-review';
 
 type DestinationTypeValue = 'fixed_france' | 'fixed_abroad' | 'itinerant';
@@ -79,8 +79,6 @@ const DESTINATION_TYPE_OPTIONS: Array<{ value: DestinationTypeValue; label: stri
   { value: 'fixed_abroad', label: "Séjour fixe à l'étranger" },
   { value: 'itinerant', label: 'Circuit itinérant' }
 ];
-
-const FRANCE_REGION_OPTIONS = STAY_REGION_OPTIONS.filter((region) => region !== 'Étranger');
 
 type StayDraftReviewFormProps = {
   draftId: string;

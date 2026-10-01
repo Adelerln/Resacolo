@@ -22,6 +22,11 @@ export const STAY_REGION_OPTIONS = [
 
 export type StayRegion = (typeof STAY_REGION_OPTIONS)[number];
 
+/** Régions sélectionnables pour une adresse / destination en France (hors « Étranger »). */
+export const FRANCE_REGION_OPTIONS = STAY_REGION_OPTIONS.filter(
+  (region): region is Exclude<StayRegion, 'Étranger'> => region !== 'Étranger'
+);
+
 const STAY_REGION_SET = new Set<string>(STAY_REGION_OPTIONS);
 const STAY_REGION_KEY_TO_VALUE = new Map(
   STAY_REGION_OPTIONS.map((region) => [simplifyForMatch(region), region])

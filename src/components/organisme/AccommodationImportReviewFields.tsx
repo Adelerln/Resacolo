@@ -6,6 +6,7 @@ import {
   mergeAccommodationImportRecord
 } from '@/lib/stay-draft-accommodation-import';
 import { draftReviewControlClass } from '@/lib/draft-review-field-styles';
+import { FRANCE_REGION_OPTIONS, mapToCanonicalStayRegion } from '@/lib/stay-regions';
 import { cn } from '@/lib/utils';
 
 type Props = {
@@ -141,14 +142,28 @@ export default function AccommodationImportReviewFields({
             </label>
             <label className="block text-sm font-medium text-slate-700">
               Région
-              <input
+              <select
                 className={draftReviewControlClass({
                   required: false,
-                  filled: Boolean(String(draft.region_text ?? '').trim())
+                  filled: Boolean(mapToCanonicalStayRegion(String(draft.region_text ?? '')))
                 })}
-                value={String(draft.region_text ?? '')}
+                value={mapToCanonicalStayRegion(String(draft.region_text ?? '')) ?? ''}
                 onChange={(e) => patch({ region_text: e.target.value })}
-              />
+              >
+                <option value="">Sélectionnez une région</option>
+                {FRANCE_REGION_OPTIONS.map((region) => (
+                  <option key={region} value={region}>
+                    {region}
+                  </option>
+                ))}
+              </select>
+              {String(draft.region_text ?? '').trim() &&
+              !mapToCanonicalStayRegion(String(draft.region_text ?? '')) ? (
+                <span className="mt-1 block text-xs text-rose-600">
+                  « {String(draft.region_text).trim()} » n’est pas une région valide (souvent un
+                  département). Choisissez une région dans la liste (ex. Occitanie).
+                </span>
+              ) : null}
             </label>
             <label className="block text-sm font-medium text-slate-700 sm:col-span-2">
               Pays
@@ -246,6 +261,34 @@ export default function AccommodationImportReviewFields({
             </span>
           </label>
         </div>
+
+        <label className="block text-sm font-medium text-slate-700">
+          URL des images
+          <textarea
+            className={cn(
+              draftReviewControlClass({
+                required: false,
+                filled: (Array.isArray(draft.media_urls) ? draft.media_urls : []).length > 0
+              }),
+              'min-h-[7rem] font-mono text-xs'
+            )}
+            rows={5}
+            value={(Array.isArray(draft.media_urls) ? (draft.media_urls as string[]) : []).join('\n')}
+            onChange={(e) =>
+              patch({
+                media_urls: e.target.value
+                  .split(/\r?\n/)
+                  .map((item) => item.trim())
+                  .filter(Boolean)
+              })
+            }
+            placeholder={'https://exemple.com/photo-1.jpg\nhttps://exemple.com/photo-2.jpg'}
+          />
+          <span className="mt-1 block text-xs font-normal text-slate-500">
+            Une URL d&apos;image par ligne (https://…). Elles alimenteront le carrousel de la fiche
+            hébergement à la validation / publication.
+          </span>
+        </label>
       </div>
 
       {fieldError ? <p className="mt-3 text-xs text-rose-600">{fieldError}</p> : null}

@@ -979,6 +979,18 @@ export function DraftTransportOptionsEditor({
           ))}
         </ul>
       )}
+      {rows.length > 0 ? (
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={() => onChange([...value, transportOptionToRecord(emptyTransportOptionRow())])}
+            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-50"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Ajouter
+          </button>
+        </div>
+      ) : null}
       {error ? <p className="text-xs text-rose-600">{error}</p> : null}
     </div>
   );

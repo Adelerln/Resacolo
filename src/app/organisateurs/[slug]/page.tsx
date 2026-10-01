@@ -727,13 +727,13 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
         <div className="section-container relative py-5 sm:py-6 lg:py-8">
           <Link
             href="/organisateurs"
-            className={`absolute -left-6 top-3 inline-flex text-sm font-semibold sm:-left-10 sm:top-4 lg:-left-16 lg:top-5 ${heroLinkClass}`}
+            className={`absolute left-0 top-3 z-[2] inline-flex text-sm font-semibold sm:-left-10 sm:top-4 lg:-left-16 lg:top-5 ${heroLinkClass}`}
           >
             ← Retour aux organisateurs
           </Link>
 
           <div className="relative mt-0 grid gap-8 lg:min-h-[27rem] lg:grid-cols-[minmax(0,1.15fr)_minmax(260px,0.85fr)] lg:items-center">
-            <div className="relative z-[1] max-w-[44rem] self-center -ml-8 px-0 py-0 sm:-ml-12 lg:-ml-20">
+            <div className="relative z-[1] max-w-[44rem] self-center max-md:ml-0 -ml-8 px-0 py-0 sm:-ml-12 lg:-ml-20">
                 <p className="text-[0.65rem] font-extrabold uppercase tracking-[0.18em] text-[#6DC7FE] sm:text-[0.7rem]">
                   Organisateur de séjours collectifs
                 </p>
@@ -783,10 +783,10 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
         </div>
       </section>
 
-      <section className="relative bg-white pb-28 pt-10 sm:pb-32 sm:pt-12">
+      <section className="relative overflow-x-clip bg-white pb-10 pt-10 sm:pt-12 md:pb-32">
         <div className="section-container">
           <div className="grid gap-8 lg:grid-cols-[minmax(0,0.56fr)_minmax(340px,0.44fr)] lg:gap-10">
-            <div className="max-w-4xl -ml-8 sm:-ml-12 lg:-ml-20">
+            <div className="max-w-4xl max-md:ml-0 -ml-8 sm:-ml-12 lg:-ml-20">
               <h1 className="mt-2 font-display text-4xl font-bold leading-[1.02] text-[#505050] sm:text-5xl lg:text-[3.6rem]">
                 Présentation
               </h1>
@@ -921,9 +921,8 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
             </div>
           </div>
 
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 translate-y-1/2 px-4 sm:px-6">
-            <div className="mx-auto grid max-w-[30rem] justify-center gap-4 md:grid-cols-2">
-              <article className="pointer-events-auto flex min-h-[116px] w-full max-w-[210px] flex-col items-center justify-center rounded-[18px] bg-white px-4 py-3 text-center shadow-[0_18px_44px_-34px_rgba(15,23,42,0.2)] sm:px-4 sm:py-4">
+          <div className="relative z-10 mx-auto mt-8 grid max-w-[30rem] grid-cols-2 justify-items-center gap-3 px-1 md:pointer-events-none md:absolute md:inset-x-0 md:bottom-0 md:mt-0 md:translate-y-1/2 md:gap-4 md:px-6">
+              <article className="pointer-events-auto flex min-h-[116px] w-full max-w-[210px] flex-col items-center justify-center rounded-[18px] bg-white px-3 py-3 text-center shadow-[0_18px_44px_-34px_rgba(15,23,42,0.2)] sm:px-4 sm:py-4">
                 <Image
                   src="/image/organisateurs/pictos_orga/creation.png"
                   alt=""
@@ -939,7 +938,7 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
                 </p>
               </article>
 
-              <article className="pointer-events-auto flex min-h-[116px] w-full max-w-[210px] flex-col items-center justify-center rounded-[18px] bg-white px-4 py-3 text-center shadow-[0_18px_44px_-34px_rgba(15,23,42,0.2)] sm:px-4 sm:py-4">
+              <article className="pointer-events-auto flex min-h-[116px] w-full max-w-[210px] flex-col items-center justify-center rounded-[18px] bg-white px-3 py-3 text-center shadow-[0_18px_44px_-34px_rgba(15,23,42,0.2)] sm:px-4 sm:py-4">
                 <Image
                   src="/image/organisateurs/pictos_orga/age.png"
                   alt=""
@@ -952,19 +951,18 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
                 </h2>
                 <p className="mt-2 font-display text-[1.3rem] font-bold leading-none text-[#505050]">{publicAgeRange}</p>
               </article>
-            </div>
           </div>
         </div>
       </section>
 
-      <section className="bg-[#ece9e5] pb-12 pt-20 sm:pb-14 sm:pt-24">
+      <section className="bg-[#ece9e5] pb-12 pt-8 sm:pb-14 md:pt-24">
         <div className="section-container">
           <div className="grid gap-8 lg:grid-cols-[minmax(0,0.42fr)_minmax(0,0.58fr)] lg:items-start lg:gap-10">
             <div className="max-w-md">
               <p className="text-[0.72rem] font-extrabold uppercase tracking-[0.18em] text-slate-500">
                 Hébergements
               </p>
-              <h2 className="mt-2 font-display text-[2.45rem] font-bold leading-[1.02] text-[#505050] sm:text-[2.8rem]">
+              <h2 className="mt-2 font-display text-[2.1rem] font-bold leading-[1.02] text-[#505050] sm:text-[2.8rem] md:text-[2.45rem]">
                 Coup d&apos;oeil sur
                 <span className="mt-2 block text-[#FA8500]">{organizerDisplayName}</span>
               </h2>
@@ -975,7 +973,7 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
 
             {accommodations.length > 0 ? (
               <HorizontalCardsCarousel>
-                <div className="flex min-w-max gap-5 pr-2">
+                <div className="flex min-w-max gap-4 pr-2 md:gap-5">
                   {accommodations.map((accommodation) => {
                     const locationLabel =
                       accommodation.locationLabel ?? accommodation.linkedStayLocations.find(Boolean) ?? '';
@@ -986,25 +984,25 @@ export default async function OrganisateurDetailPage({ params }: PageProps) {
                     return (
                       <article
                         key={accommodation.id}
-                        className="group w-[280px] shrink-0 overflow-hidden rounded-[28px] bg-white shadow-[0_18px_40px_-28px_rgba(15,23,42,0.35)]"
+                        className="group w-[min(280px,calc(100vw-3rem))] shrink-0 snap-start overflow-hidden rounded-[28px] bg-white shadow-[0_18px_40px_-28px_rgba(15,23,42,0.35)] md:w-[280px]"
                       >
-                        <div className="relative h-[320px] bg-slate-100">
-                          {accommodation.mapEmbedSrc ? (
+                        <div className="relative h-[280px] bg-slate-100 sm:h-[320px]">
+                          {accommodation.coverImage ? (
+                            <Image
+                              src={accommodation.coverImage}
+                              alt={accommodation.name}
+                              fill
+                              sizes="(max-width: 768px) 85vw, 280px"
+                              unoptimized
+                              className="object-cover transition duration-500 group-hover:scale-[1.03]"
+                            />
+                          ) : accommodation.mapEmbedSrc ? (
                             <iframe
                               src={accommodation.mapEmbedSrc}
                               title={`Carte ${accommodation.name}`}
                               className="h-full w-full"
                               loading="lazy"
                               referrerPolicy="no-referrer-when-downgrade"
-                            />
-                          ) : accommodation.coverImage ? (
-                            <Image
-                              src={accommodation.coverImage}
-                              alt={accommodation.name}
-                              fill
-                              sizes="280px"
-                              unoptimized
-                              className="object-cover transition duration-500 group-hover:scale-[1.03]"
                             />
                           ) : (
                             <div className="flex h-full items-center justify-center bg-slate-100 text-slate-400">

@@ -33,7 +33,7 @@ export function HorizontalCardsCarousel({ children, scrollStep = 320 }: Horizont
       >
         <ChevronRight className="h-5 w-5" />
       </button>
-      <div ref={viewportRef} className="-mx-4 overflow-x-auto px-4 pb-3 scroll-smooth">
+      <div ref={viewportRef} className="-mx-4 snap-x snap-mandatory overflow-x-auto overscroll-x-contain px-4 pb-3 scroll-smooth">
         {children}
       </div>
     </div>

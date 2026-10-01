@@ -179,13 +179,19 @@ export default async function AdminAccommodationsPage({ searchParams }: PageProp
                 <th className="px-4 py-3">Séjours liés</th>
                 <th className="px-4 py-3">Statut</th>
                 <th className="px-4 py-3">Mis à jour</th>
+                <th className="px-4 py-3">Actions</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((row) => (
-                <tr key={row.id} className="border-t border-slate-100 align-top">
+                <tr key={row.id} className="border-t border-slate-100 align-top hover:bg-slate-50/70">
                   <td className="px-4 py-3">
-                    <div className="font-medium text-slate-900">{row.name}</div>
+                    <Link
+                      href={`/admin/hebergements/${row.id}`}
+                      className="font-medium text-slate-900 hover:underline"
+                    >
+                      {row.name}
+                    </Link>
                     <div className="mt-1 text-xs text-slate-500">{row.id}</div>
                   </td>
                   <td className="px-4 py-3 text-slate-600">
@@ -211,11 +217,19 @@ export default async function AdminAccommodationsPage({ searchParams }: PageProp
                   <td className="px-4 py-3 text-slate-600">
                     {new Date(row.updated_at).toLocaleDateString('fr-FR')}
                   </td>
+                  <td className="px-4 py-3">
+                    <Link
+                      href={`/admin/hebergements/${row.id}`}
+                      className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-white"
+                    >
+                      Voir le détail
+                    </Link>
+                  </td>
                 </tr>
               ))}
               {rows.length === 0 && (
                 <tr>
-                  <td className="px-4 py-6 text-slate-500" colSpan={7}>
+                  <td className="px-4 py-6 text-slate-500" colSpan={8}>
                     Aucun hébergement trouvé pour ce filtre.
                   </td>
                 </tr>

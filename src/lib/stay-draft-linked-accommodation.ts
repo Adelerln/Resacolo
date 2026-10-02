@@ -1,10 +1,25 @@
 import type { Json } from '@/types/supabase';
 
-function asObject(value: Json | null | undefined): Record<string, unknown> {
+function asObject(value: unknown): Record<string, unknown> {
   if (value && typeof value === 'object' && !Array.isArray(value)) {
     return { ...(value as Record<string, unknown>) };
   }
   return {};
+}
+
+function toJsonOrNull(value: unknown): Json | null {
+  if (value == null) return null;
+  if (
+    typeof value === 'string' ||
+    typeof value === 'number' ||
+    typeof value === 'boolean'
+  ) {
+    return value;
+  }
+  if (Array.isArray(value) || typeof value === 'object') {
+    return value as Json;
+  }
+  return null;
 }
 
 /**
@@ -13,7 +28,7 @@ function asObject(value: Json | null | undefined): Record<string, unknown> {
  */
 export function applyDraftLinkedAccommodationChoice(input: {
   rawPayload: Record<string, unknown>;
-  accommodationsJson: Json | null | undefined;
+  accommodationsJson: Json | Record<string, unknown> | null | undefined;
   linkedAccommodationId: string | null | undefined;
   linkedAccommodationName?: string | null;
 }): {
@@ -25,17 +40,15 @@ export function applyDraftLinkedAccommodationChoice(input: {
       ? input.linkedAccommodationId.trim()
       : null;
 
-  const importOptions = asObject(
-    (input.rawPayload.import_options as Json | null | undefined) ?? null
-  );
+  const importOptions = asObject(input.rawPayload.import_options);
 
   if (!linkedId) {
     const restored =
       input.rawPayload.deferred_accommodations_json &&
       typeof input.rawPayload.deferred_accommodations_json === 'object' &&
       !Array.isArray(input.rawPayload.deferred_accommodations_json)
-        ? (input.rawPayload.deferred_accommodations_json as Json)
-        : input.accommodationsJson ?? null;
+        ? toJsonOrNull(input.rawPayload.deferred_accommodations_json)
+        : toJsonOrNull(input.accommodationsJson);
 
     return {
       rawPayload: {
@@ -55,13 +68,13 @@ export function applyDraftLinkedAccommodationChoice(input: {
     input.accommodationsJson &&
     typeof input.accommodationsJson === 'object' &&
     !Array.isArray(input.accommodationsJson)
-      ? input.accommodationsJson
+      ? toJsonOrNull(input.accommodationsJson)
       : null;
   const alreadyDeferred =
     input.rawPayload.deferred_accommodations_json &&
     typeof input.rawPayload.deferred_accommodations_json === 'object' &&
     !Array.isArray(input.rawPayload.deferred_accommodations_json)
-      ? input.rawPayload.deferred_accommodations_json
+      ? toJsonOrNull(input.rawPayload.deferred_accommodations_json)
       : null;
 
   return {

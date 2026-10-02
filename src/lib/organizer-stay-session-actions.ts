@@ -32,7 +32,7 @@ async function verifyStayAccess(stayId: string, organizerId: string) {
 }
 
 function revalidateStayPaths(stayId: string) {
-  revalidateTag(STAYS_CATALOG_CACHE_TAG);
+  revalidateTag(STAYS_CATALOG_CACHE_TAG, 'max');
   revalidatePath(`/organisme/sejours/${stayId}`);
   revalidatePath(`/organisme/stays/${stayId}`);
   revalidatePath(`/organisme/stays/${stayId}/edit`);

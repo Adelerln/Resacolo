@@ -41,7 +41,7 @@ export async function PATCH(
     return NextResponse.json({ error: result.message }, { status: 400 });
   }
 
-  revalidateTag(STAYS_CATALOG_CACHE_TAG);
+  revalidateTag(STAYS_CATALOG_CACHE_TAG, 'max');
   revalidatePath(`/organisme/sejours/${stayId}`);
   revalidatePath(`/organisme/stays/${stayId}`);
   revalidatePath(`/organisme/stays/${stayId}/edit`);

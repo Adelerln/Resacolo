@@ -2,7 +2,7 @@ import {
   buildAccommodationAddressLabel,
   extractAccommodationLocationMeta
 } from '@/lib/accommodation-location';
-import { draftSessionStableKey } from '@/lib/draft-session-keys';
+import { draftSessionStableKey, normalizeDraftSessionDateKey } from '@/lib/draft-session-keys';
 import { readDraftDestinationFields } from '@/lib/stay-draft-destination';
 import { parseMergedExtraOptionsRows, parseTransportOptionsFromJson, type ParsedTransportOption } from '@/lib/publish-stay-draft';
 import { extractGoogleMapsEmbedSrcFromInput } from '@/lib/google-maps-iframe';
@@ -72,11 +72,11 @@ function deriveDaysFromSessionRow(row: Record<string, unknown>): number | null {
   const parsedDuration = Number(durationDays);
   if (Number.isFinite(parsedDuration) && parsedDuration > 0) return Math.round(parsedDuration);
 
-  const start = normalizeString(row.start_date);
-  const end = normalizeString(row.end_date);
+  const start = parseLooseSessionDate(row.start_date);
+  const end = parseLooseSessionDate(row.end_date);
   if (!start || !end) return null;
-  const startMs = new Date(start).getTime();
-  const endMs = new Date(end).getTime();
+  const startMs = new Date(`${start}T12:00:00`).getTime();
+  const endMs = new Date(`${end}T12:00:00`).getTime();
   if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return null;
   return Math.max(0, Math.round((endMs - startMs) / DAY_MS)) + 1;
 }
@@ -189,6 +189,47 @@ function mapTransportOptionsForSession(
   return output;
 }
 
+function parseLooseSessionDate(value: unknown): string {
+  if (typeof value === 'string' || typeof value === 'number') {
+    const fromKey = normalizeDraftSessionDateKey(value);
+    if (fromKey) return fromKey;
+  }
+  const raw = normalizeString(value);
+  if (!raw) return '';
+
+  // JJ/MM/AAAA (ou JJ-MM-AAAA)
+  const french = raw.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/);
+  if (french) {
+    const day = Number(french[1]);
+    const month = Number(french[2]);
+    const year = Number(french[3]);
+    if (
+      Number.isFinite(day) &&
+      Number.isFinite(month) &&
+      Number.isFinite(year) &&
+      day >= 1 &&
+      day <= 31 &&
+      month >= 1 &&
+      month <= 12
+    ) {
+      return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    }
+  }
+
+  return normalizeDraftSessionDateKey(raw.slice(0, 10));
+}
+
+function recoverSessionDatesFromLabel(label: string): { start: string; end: string } | null {
+  const numeric = label.match(
+    /\b(\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4})\s*(?:au|a|à|-|→)\s*(\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4})\b/i
+  );
+  if (!numeric) return null;
+  const start = parseLooseSessionDate(numeric[1]);
+  const end = parseLooseSessionDate(numeric[2]);
+  if (!start || !end) return null;
+  return { start, end };
+}
+
 function buildPreviewSessions(
   sessions: unknown,
   parsedTransportOptions: ParsedTransportOption[]
@@ -196,8 +237,17 @@ function buildPreviewSessions(
   const rows = asSessionRows(sessions);
   return rows
     .map<StaySessionOption | null>((row, index) => {
-      const start = normalizeString(row.start_date);
-      const end = normalizeString(row.end_date);
+      let start = parseLooseSessionDate(row.start_date);
+      let end = parseLooseSessionDate(row.end_date);
+
+      if ((!start || !end) && typeof row.label === 'string') {
+        const recovered = recoverSessionDatesFromLabel(row.label);
+        if (recovered) {
+          start = start || recovered.start;
+          end = end || recovered.end;
+        }
+      }
+
       if (!start || !end) return null;
 
       return {

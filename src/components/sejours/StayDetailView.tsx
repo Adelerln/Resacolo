@@ -110,8 +110,9 @@ function formatPrice(price?: number | null) {
 }
 
 function formatSessionLabel(session: StaySessionOption) {
-  const start = new Date(session.startDate).toLocaleDateString('fr-FR');
-  const end = new Date(session.endDate).toLocaleDateString('fr-FR');
+  const range = formatSessionDateRangeFr(session.startDate, session.endDate)
+    .replace(/^Du\s+/i, '')
+    .replace(/\s+au\s+/i, ' - ');
   const status = session.status === 'FULL' ? ' (COMPLET)' : '';
   const price =
     session.familyCentsAfterAid != null && session.cseEligible
@@ -121,7 +122,7 @@ function formatSessionLabel(session: StaySessionOption) {
         : session.price != null
           ? ` · ${formatPrice(session.price)}`
           : '';
-  return `${start} - ${end}${status}${price}`;
+  return `${range}${status}${price}`;
 }
 
 function computeDisplayedTotal(input: {

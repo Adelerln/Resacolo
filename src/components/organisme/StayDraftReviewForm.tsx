@@ -24,6 +24,7 @@ import {
 import GoogleMapsCityInput from '@/components/common/GoogleMapsCityInput';
 import SavedToast from '@/components/common/SavedToast';
 import AccommodationImportReviewFields from '@/components/organisme/AccommodationImportReviewFields';
+import AccommodationPicker from '@/components/organisme/AccommodationPicker';
 import {
   DraftExtraOptionsEditor,
   DraftInsuranceOptionsEditor,
@@ -358,6 +359,10 @@ export default function StayDraftReviewForm({
     [organizerAccommodationPickerOptions, selectedLinkedAccommodationId]
   );
   const [isUnlinkingAccommodation, setIsUnlinkingAccommodation] = useState(false);
+  const [isLinkingAccommodation, setIsLinkingAccommodation] = useState(false);
+  const [draftAccommodationMode, setDraftAccommodationMode] = useState<'create' | 'existing'>(() =>
+    linkedAccommodation ? 'existing' : 'create'
+  );
   const [activeStep, setActiveStep] = useState<DraftReviewStepId>(() =>
     firstIncompleteStepFromInitialPayload(
       reviewSteps,
@@ -509,7 +514,11 @@ export default function StayDraftReviewForm({
 
   useEffect(() => {
     setCurrentLinkedAccommodation(linkedAccommodation);
-  }, [linkedAccommodation]);
+    setDraftAccommodationMode(linkedAccommodation ? 'existing' : 'create');
+    if (!isPublishedVariant) {
+      setSelectedLinkedAccommodationId(linkedAccommodation?.id ?? null);
+    }
+  }, [linkedAccommodation, isPublishedVariant]);
 
   useEffect(() => {
     if (!isPublishedVariant) return;
@@ -1118,9 +1127,8 @@ export default function StayDraftReviewForm({
     const transportOptionsPayload = transportOptionsList.filter(
       (row) => String(row.label ?? '').trim().length > 0
     );
-    const accommodationsParsed = isPublishedVariant
-      ? { value: null as Record<string, unknown> | null }
-      : currentLinkedAccommodation
+    const accommodationsParsed =
+      isPublishedVariant || currentLinkedAccommodation || draftAccommodationMode === 'existing'
         ? { value: null as Record<string, unknown> | null }
         : { value: JSON.parse(JSON.stringify(accommodationImport)) as Record<string, unknown> };
     const imagesPayload = normalizeImportedImageUrlList(
@@ -1146,7 +1154,13 @@ export default function StayDraftReviewForm({
       ) {
         nextErrors.accommodations_json = "Sélectionnez l'hébergement lié au séjour dans le catalogue.";
       }
-    } else if (!currentLinkedAccommodation && !String(accommodationImport.title ?? '').trim()) {
+    } else if (currentLinkedAccommodation) {
+      // déjà rattaché
+    } else if (draftAccommodationMode === 'existing') {
+      if (!selectedLinkedAccommodationId?.trim()) {
+        nextErrors.accommodations_json = 'Sélectionnez un hébergement existant dans le catalogue.';
+      }
+    } else if (!String(accommodationImport.title ?? '').trim()) {
       nextErrors.accommodations_json = "Le nom de l'hébergement importé est requis.";
     }
 
@@ -1227,7 +1241,10 @@ export default function StayDraftReviewForm({
       is_caf_eligible: isCafEligible,
       linked_accommodation_id: isPublishedVariant
         ? selectedLinkedAccommodationId?.trim() || null
-        : null
+        : currentLinkedAccommodation?.id ??
+          (draftAccommodationMode === 'existing'
+            ? selectedLinkedAccommodationId?.trim() || null
+            : null)
     };
 
     return { payload };
@@ -1259,9 +1276,10 @@ export default function StayDraftReviewForm({
     const transportOptionsPayload = transportOptionsList.filter(
       (row) => String(row.label ?? '').trim().length > 0
     );
-    const accommodationsParsed = currentLinkedAccommodation
-      ? { value: null as Record<string, unknown> | null }
-      : { value: JSON.parse(JSON.stringify(accommodationImport)) as Record<string, unknown> };
+    const accommodationsParsed =
+      currentLinkedAccommodation || draftAccommodationMode === 'existing'
+        ? { value: null as Record<string, unknown> | null }
+        : { value: JSON.parse(JSON.stringify(accommodationImport)) as Record<string, unknown> };
     const imagesPayload = normalizeImportedImageUrlList(
       imageUrls.map((u) => u.trim()).filter(Boolean)
     );
@@ -1335,7 +1353,11 @@ export default function StayDraftReviewForm({
       seo_checks: seoChecks,
       partner_discount_percent: partnerParsed,
       is_caf_eligible: isCafEligible,
-      linked_accommodation_id: null
+      linked_accommodation_id:
+        currentLinkedAccommodation?.id ??
+        (draftAccommodationMode === 'existing'
+          ? selectedLinkedAccommodationId?.trim() || null
+          : null)
     };
   }
 
@@ -1534,7 +1556,9 @@ export default function StayDraftReviewForm({
           organizerAccommodationPickerOptions.length === 0
         : currentLinkedAccommodation
           ? true
-          : Boolean(String(accommodationImport.title ?? '').trim()),
+          : draftAccommodationMode === 'existing'
+            ? Boolean(selectedLinkedAccommodationId?.trim())
+            : Boolean(String(accommodationImport.title ?? '').trim()),
       sejour:
         Boolean(title.trim()) &&
         !isMissingFranceDestinationRegion(destinationType, destinationRegion),
@@ -1554,6 +1578,7 @@ export default function StayDraftReviewForm({
     accommodationImport.title,
     destinationRegion,
     destinationType,
+    draftAccommodationMode,
     extraOptionsList.length,
     hasGeneratedSeo,
     imagePreviewUrls.length,
@@ -1937,21 +1962,170 @@ export default function StayDraftReviewForm({
           ) : null}
 
           {effectiveStep === 'hebergement' && !isPublishedVariant && !currentLinkedAccommodation && (
-            <AccommodationImportReviewFields
-              value={accommodationImport}
-              onChange={setAccommodationImport}
-              fieldError={fieldErrors.accommodations_json}
-              nameInputClassName={draftReviewControlClass({
-                required: true,
-                filled: Boolean(String(accommodationImport.title ?? '').trim()),
-                hasError: Boolean(fieldErrors.accommodations_json)
-              })}
-            />
+            <div className="space-y-4">
+              {organizerAccommodationPickerOptions.length > 0 ? (
+                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <h3 className="text-sm font-semibold text-slate-900">Centre / hébergement</h3>
+                  <p className="mt-1 text-xs text-slate-500">
+                    L&apos;IA propose un nouveau centre. Si vous vous êtes trompé·e, rattachez plutôt une fiche déjà
+                    présente dans votre catalogue.
+                  </p>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDraftAccommodationMode('create');
+                        setSelectedLinkedAccommodationId(null);
+                        setFieldErrors((current) => {
+                          if (!current.accommodations_json) return current;
+                          const next = { ...current };
+                          delete next.accommodations_json;
+                          return next;
+                        });
+                      }}
+                      className={cn(
+                        'rounded-xl border px-3 py-2.5 text-left text-sm font-semibold transition',
+                        draftAccommodationMode === 'create'
+                          ? 'border-emerald-300 bg-emerald-50 text-emerald-900'
+                          : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                      )}
+                    >
+                      Créer / compléter le centre extrait
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDraftAccommodationMode('existing');
+                        setFieldErrors((current) => {
+                          if (!current.accommodations_json) return current;
+                          const next = { ...current };
+                          delete next.accommodations_json;
+                          return next;
+                        });
+                      }}
+                      className={cn(
+                        'rounded-xl border px-3 py-2.5 text-left text-sm font-semibold transition',
+                        draftAccommodationMode === 'existing'
+                          ? 'border-sky-300 bg-sky-50 text-sky-900'
+                          : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                      )}
+                    >
+                      Utiliser un centre déjà existant
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
+              {draftAccommodationMode === 'existing' && organizerAccommodationPickerOptions.length > 0 ? (
+                <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4">
+                  <AccommodationPicker
+                    options={organizerAccommodationPickerOptions.map((option) => ({
+                      id: option.id,
+                      name: option.name,
+                      accommodationType: option.accommodationType,
+                      label: option.name,
+                      meta: option.accommodationType
+                        ? formatAccommodationType(option.accommodationType)
+                        : null,
+                      locationLabel: null,
+                      description: null,
+                      searchText: [
+                        option.name,
+                        option.accommodationType
+                          ? formatAccommodationType(option.accommodationType)
+                          : ''
+                      ]
+                        .filter(Boolean)
+                        .join(' ')
+                    }))}
+                    value={selectedLinkedAccommodationId ?? ''}
+                    onChange={(next) => setSelectedLinkedAccommodationId(next.trim() || null)}
+                    emptyMessage="Aucun hébergement existant ne correspond à cette recherche."
+                  />
+                  {fieldErrors.accommodations_json ? (
+                    <p className="text-xs text-rose-600">{fieldErrors.accommodations_json}</p>
+                  ) : null}
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      disabled={!selectedLinkedAccommodationId || isLinkingAccommodation}
+                      onClick={async () => {
+                        if (!selectedLinkedAccommodationId) return;
+                        setIsLinkingAccommodation(true);
+                        setGlobalError(null);
+                        try {
+                          const response = await fetch(
+                            `/api/stay-drafts/${draftId}/link-accommodation`,
+                            {
+                              method: 'POST',
+                              headers: {
+                                'content-type': 'application/json',
+                                accept: 'application/json'
+                              },
+                              body: JSON.stringify({
+                                organizerId,
+                                accommodationId: selectedLinkedAccommodationId
+                              })
+                            }
+                          );
+                          const data = (await response.json().catch(() => null)) as
+                            | {
+                                success?: boolean;
+                                error?: string;
+                                accommodation?: {
+                                  id: string;
+                                  name: string;
+                                  accommodationType: string | null;
+                                };
+                              }
+                            | null;
+                          if (!response.ok || !data?.success || !data.accommodation) {
+                            setGlobalError(
+                              data?.error ?? "Impossible de rattacher l'hébergement existant."
+                            );
+                            return;
+                          }
+                          setCurrentLinkedAccommodation({
+                            id: data.accommodation.id,
+                            name: data.accommodation.name,
+                            accommodationType: data.accommodation.accommodationType
+                          });
+                          setDraftAccommodationMode('existing');
+                          setHasCompletedAccommodationGate(true);
+                          setSuccessMessage(
+                            `Séjour rattaché à « ${data.accommodation.name} ». Aucun nouveau centre ne sera créé.`
+                          );
+                          router.refresh();
+                        } catch {
+                          setGlobalError("Impossible de rattacher l'hébergement existant.");
+                        } finally {
+                          setIsLinkingAccommodation(false);
+                        }
+                      }}
+                      className="organizer-btn-primary disabled:cursor-wait disabled:opacity-70"
+                    >
+                      {isLinkingAccommodation ? 'Rattachement…' : 'Rattacher ce centre'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <AccommodationImportReviewFields
+                  value={accommodationImport}
+                  onChange={setAccommodationImport}
+                  fieldError={fieldErrors.accommodations_json}
+                  nameInputClassName={draftReviewControlClass({
+                    required: true,
+                    filled: Boolean(String(accommodationImport.title ?? '').trim()),
+                    hasError: Boolean(fieldErrors.accommodations_json)
+                  })}
+                />
+              )}
+            </div>
           )}
 
           {effectiveStep === 'hebergement' && !isPublishedVariant && currentLinkedAccommodation && (
             <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-4 text-sm text-sky-900">
-              <p className="font-semibold">Hébergement déjà sélectionné avant import</p>
+              <p className="font-semibold">Hébergement catalogue sélectionné</p>
               <p className="mt-1">
                 Le séjour sera rattaché à <span className="font-semibold">{currentLinkedAccommodation.name}</span>
                 {currentLinkedAccommodation.accommodationType
@@ -1959,20 +2133,93 @@ export default function StayDraftReviewForm({
                   : ''}.
               </p>
               <p className="mt-1 text-sky-800">
-                L&apos;IA n&apos;extrait pas de nouvel hébergement pour ce brouillon.
+                Aucun nouveau centre ne sera créé à la publication. Vous pouvez changer de fiche ou revenir au
+                centre extrait.
               </p>
               {variant === 'draft' &&
               (String(status ?? '').trim().toLowerCase() === 'pending' ||
                 String(status ?? '').trim().toLowerCase() === 'draft' ||
                 String(status ?? '').trim().toLowerCase() === 'validated') ? (
-                <div className="mt-4 flex justify-end">
+                <div className="mt-4 flex flex-wrap justify-end gap-2">
+                  {organizerAccommodationPickerOptions.length > 0 ? (
+                    <label className="mr-auto block min-w-[220px] flex-1 text-sm font-medium text-sky-950">
+                      Changer de centre
+                      <select
+                        value={selectedLinkedAccommodationId ?? currentLinkedAccommodation.id}
+                        disabled={isLinkingAccommodation || isUnlinkingAccommodation}
+                        onChange={async (event) => {
+                          const nextId = event.target.value.trim();
+                          if (!nextId || nextId === currentLinkedAccommodation.id) return;
+                          setSelectedLinkedAccommodationId(nextId);
+                          setIsLinkingAccommodation(true);
+                          setGlobalError(null);
+                          try {
+                            const response = await fetch(
+                              `/api/stay-drafts/${draftId}/link-accommodation`,
+                              {
+                                method: 'POST',
+                                headers: {
+                                  'content-type': 'application/json',
+                                  accept: 'application/json'
+                                },
+                                body: JSON.stringify({
+                                  organizerId,
+                                  accommodationId: nextId
+                                })
+                              }
+                            );
+                            const data = (await response.json().catch(() => null)) as
+                              | {
+                                  success?: boolean;
+                                  error?: string;
+                                  accommodation?: {
+                                    id: string;
+                                    name: string;
+                                    accommodationType: string | null;
+                                  };
+                                }
+                              | null;
+                            if (!response.ok || !data?.success || !data.accommodation) {
+                              setGlobalError(
+                                data?.error ?? "Impossible de changer l'hébergement rattaché."
+                              );
+                              setSelectedLinkedAccommodationId(currentLinkedAccommodation.id);
+                              return;
+                            }
+                            setCurrentLinkedAccommodation({
+                              id: data.accommodation.id,
+                              name: data.accommodation.name,
+                              accommodationType: data.accommodation.accommodationType
+                            });
+                            setSuccessMessage(`Hébergement mis à jour : ${data.accommodation.name}`);
+                            router.refresh();
+                          } catch {
+                            setGlobalError("Impossible de changer l'hébergement rattaché.");
+                            setSelectedLinkedAccommodationId(currentLinkedAccommodation.id);
+                          } finally {
+                            setIsLinkingAccommodation(false);
+                          }
+                        }}
+                        className="organizer-input mt-1"
+                      >
+                        {organizerAccommodationPickerOptions.map((option) => (
+                          <option key={option.id} value={option.id}>
+                            {option.name}
+                            {option.accommodationType
+                              ? ` (${formatAccommodationType(option.accommodationType)})`
+                              : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : null}
                   <button
                     type="button"
-                    disabled={isUnlinkingAccommodation}
+                    disabled={isUnlinkingAccommodation || isLinkingAccommodation}
                     onClick={async () => {
                       if (
                         !window.confirm(
-                          "Êtes-vous sûr de vouloir délier cet hébergement de ce brouillon ? Vous pourrez ensuite sélectionner un autre centre."
+                          "Délier cet hébergement pour revenir au centre extrait par l'IA (ou en choisir un autre) ?"
                         )
                       ) {
                         return;
@@ -2001,6 +2248,8 @@ export default function StayDraftReviewForm({
                         }
 
                         setCurrentLinkedAccommodation(null);
+                        setSelectedLinkedAccommodationId(null);
+                        setDraftAccommodationMode('create');
                         setHasCompletedAccommodationGate(false);
                         setActiveStep('hebergement');
                         setSuccessMessage('Hébergement délié du brouillon.');
@@ -2013,7 +2262,7 @@ export default function StayDraftReviewForm({
                     }}
                     className="rounded-lg border border-rose-200 bg-white px-4 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-wait disabled:opacity-70"
                   >
-                    {isUnlinkingAccommodation ? 'Déliaison...' : "Délier l'hébergement"}
+                    {isUnlinkingAccommodation ? 'Déliaison...' : 'Revenir au centre extrait'}
                   </button>
                 </div>
               ) : null}

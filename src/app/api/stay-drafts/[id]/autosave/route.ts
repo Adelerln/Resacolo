@@ -7,6 +7,7 @@ import { writeDraftDestinationFields } from '@/lib/stay-draft-destination';
 import { mapToCanonicalStayRegion } from '@/lib/stay-regions';
 import { sanitizeSeoPrimaryKeyword, sanitizeSeoTags, sanitizeSeoText } from '@/lib/stay-seo';
 import { sanitizeStayRichText } from '@/lib/stay-rich-text';
+import { applyDraftLinkedAccommodationChoice } from '@/lib/stay-draft-linked-accommodation';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { normalizeStayTitle } from '@/lib/stay-title';
 import type { Json } from '@/types/supabase';
@@ -321,6 +322,23 @@ export async function PATCH(
     }),
     updated_at: now
   };
+
+  if (hasOwn(payload, 'linked_accommodation_id')) {
+    const linkedIdRaw = payload.linked_accommodation_id;
+    const linkedId =
+      typeof linkedIdRaw === 'string' && linkedIdRaw.trim().length > 0 ? linkedIdRaw.trim() : null;
+    const applied = applyDraftLinkedAccommodationChoice({
+      rawPayload: asObject((updatePayload.raw_payload as Json | null) ?? null),
+      accommodationsJson: linkedId
+        ? ((currentDraft.accommodations_json as Json | null) ??
+          (updatePayload.accommodations_json as Json | null) ??
+          null)
+        : ((updatePayload.accommodations_json as Json | null) ?? null),
+      linkedAccommodationId: linkedId
+    });
+    updatePayload.raw_payload = applied.rawPayload;
+    updatePayload.accommodations_json = applied.accommodationsJson;
+  }
 
   updatePayload.raw_payload = {
     ...(updatePayload.raw_payload as Record<string, unknown>),

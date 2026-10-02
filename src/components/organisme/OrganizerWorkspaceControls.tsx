@@ -17,6 +17,7 @@ type Props = {
   organizers: OrganizerOption[];
   initialSelectedOrganizerId?: string | null;
   accessRolesByOrganizerId: Record<string, OrganizerAccessRole>;
+  canManageOrganizerProfileByOrganizerId?: Record<string, boolean>;
 };
 
 const ORGANIZER_STORAGE_KEY = 'resacolo:selectedOrganizerId';
@@ -50,14 +51,17 @@ function useOrganizerSelection(
 export function OrganizerWorkspaceNav({
   organizers,
   initialSelectedOrganizerId,
-  accessRolesByOrganizerId
+  accessRolesByOrganizerId,
+  canManageOrganizerProfileByOrganizerId = {}
 }: Props) {
   const { pathname, selectedOrganizerId } = useOrganizerSelection(
     organizers,
     initialSelectedOrganizerId
   );
   const currentAccessRole = accessRolesByOrganizerId[selectedOrganizerId] ?? 'EDITOR';
-  const links = getOrganizerNavLinks(currentAccessRole);
+  const links = getOrganizerNavLinks(currentAccessRole, {
+    canManageOrganizerProfile: Boolean(canManageOrganizerProfileByOrganizerId[selectedOrganizerId])
+  });
 
   return (
     <nav className="px-3 text-sm text-slate-600">

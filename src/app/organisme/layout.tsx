@@ -14,9 +14,17 @@ function withOrganizerQuery(path: string, organizerId?: string | null) {
 }
 
 export default async function OrganizerLayout({ children }: { children: React.ReactNode }) {
-  const { organizers, selectedOrganizerId, accessRole, accessByOrganizerId } =
-    await requireOrganizerPageAccess();
-  const organizerNavLinks = getOrganizerNavLinks(accessRole);
+  const {
+    organizers,
+    selectedOrganizerId,
+    accessRole,
+    accessByOrganizerId,
+    canManageOrganizerProfile,
+    canManageOrganizerProfileByOrganizerId
+  } = await requireOrganizerPageAccess();
+  const organizerNavLinks = getOrganizerNavLinks(accessRole, {
+    canManageOrganizerProfile
+  });
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -51,6 +59,7 @@ export default async function OrganizerLayout({ children }: { children: React.Re
               organizers={organizers}
               initialSelectedOrganizerId={selectedOrganizerId}
               accessRolesByOrganizerId={accessByOrganizerId}
+              canManageOrganizerProfileByOrganizerId={canManageOrganizerProfileByOrganizerId}
             />
           </Suspense>
           <div className="mt-auto px-6 pb-6 pt-4">

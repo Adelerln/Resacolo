@@ -1462,6 +1462,7 @@ export type Database = {
       }
       organizer_members: {
         Row: {
+          can_manage_organizer_profile: boolean
           created_at: string
           first_name: string | null
           id: string
@@ -1471,6 +1472,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          can_manage_organizer_profile?: boolean
           created_at?: string
           first_name?: string | null
           id?: string
@@ -1480,6 +1482,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          can_manage_organizer_profile?: boolean
           created_at?: string
           first_name?: string | null
           id?: string
@@ -2285,6 +2288,8 @@ export type Database = {
           ancv_paper_mailing_address: string | null
           contact_email: string | null
           created_at: string
+          order_status_notify_member_id: string | null
+          weekly_recap_notify_member_id: string | null
           description: string | null
           education_project_path: string | null
           founded_year: number | null
@@ -2326,6 +2331,8 @@ export type Database = {
           logo_path?: string | null
           logo_url?: string | null
           name: string
+          order_status_notify_member_id?: string | null
+          weekly_recap_notify_member_id?: string | null
           profile_completeness_percent?: number | null
           season_keys?: string[]
           slug?: string | null
@@ -2354,6 +2361,8 @@ export type Database = {
           logo_path?: string | null
           logo_url?: string | null
           name?: string
+          order_status_notify_member_id?: string | null
+          weekly_recap_notify_member_id?: string | null
           profile_completeness_percent?: number | null
           season_keys?: string[]
           slug?: string | null

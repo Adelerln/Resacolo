@@ -70,15 +70,29 @@ export function normalizeOrganizerAccessRole(
   return isOrganizerAccessRole(value) ? value : DEFAULT_ORGANIZER_ACCESS_ROLE;
 }
 
+export type OrganizerSectionAccessOptions = {
+  canManageOrganizerProfile?: boolean;
+};
+
 export function canAccessOrganizerSection(
   role: OrganizerAccessRole,
-  section: OrganizerWorkspaceSection
+  section: OrganizerWorkspaceSection,
+  options?: OrganizerSectionAccessOptions
 ) {
+  if (section === 'organizer-profile') {
+    if (role === 'OWNER') return true;
+    return Boolean(options?.canManageOrganizerProfile);
+  }
   return ORGANIZER_ACCESS_SECTIONS[role].includes(section);
 }
 
-export function getOrganizerNavLinks(role: OrganizerAccessRole) {
-  return ORGANIZER_NAV_LINKS.filter((link) => canAccessOrganizerSection(role, link.section));
+export function getOrganizerNavLinks(
+  role: OrganizerAccessRole,
+  options?: OrganizerSectionAccessOptions
+) {
+  return ORGANIZER_NAV_LINKS.filter((link) =>
+    canAccessOrganizerSection(role, link.section, options)
+  );
 }
 
 export function getOrganizerSectionFromPath(pathname: string): OrganizerWorkspaceSection {

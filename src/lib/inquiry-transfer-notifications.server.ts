@@ -2,6 +2,7 @@ import 'server-only';
 
 import { after } from 'next/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { resolveOrganizerInquiryNotificationEmails } from '@/lib/organizer-notification-recipients.server';
 import { sendSmtpEmail } from '@/lib/rag/smtp';
 import { SITE_URL } from '@/lib/seo';
 import type { Database } from '@/types/supabase';
@@ -16,62 +17,6 @@ function escapeHtml(value: string) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
-}
-
-function normalizeEmail(value: string | null | undefined) {
-  const email = String(value ?? '')
-    .trim()
-    .toLowerCase();
-  return email.includes('@') ? email : null;
-}
-
-async function resolveOrganizerNotificationEmails(
-  supabase: SupabaseClient<Database>,
-  organizerId: string
-) {
-  const emails = new Set<string>();
-
-  const { data: organizer, error: organizerError } = await supabase
-    .from('organizers')
-    .select('id, name, contact_email')
-    .eq('id', organizerId)
-    .maybeSingle();
-
-  if (organizerError) {
-    throw new Error(organizerError.message);
-  }
-
-  const contact = normalizeEmail(organizer?.contact_email);
-  if (contact) emails.add(contact);
-
-  if (emails.size === 0) {
-    const { data: owners } = await supabase
-      .from('organizer_members')
-      .select('user_id')
-      .eq('organizer_id', organizerId)
-      .eq('role', 'OWNER')
-      .limit(5);
-
-    await Promise.all(
-      (owners ?? []).map(async (owner) => {
-        try {
-          const { data } = await supabase.auth.admin.getUserById(owner.user_id);
-          const memberEmail = normalizeEmail(data.user?.email);
-          if (memberEmail) emails.add(memberEmail);
-        } catch (error) {
-          console.warn('[inquiry-transfer-notify] owner email lookup failed', {
-            userId: owner.user_id,
-            error: error instanceof Error ? error.message : String(error)
-          });
-        }
-      })
-    );
-  }
-
-  return {
-    organizerName: organizer?.name?.trim() || 'Organisateur',
-    emails: Array.from(emails)
-  };
 }
 
 function buildTransferEmailHtml(input: {
@@ -235,7 +180,7 @@ export async function notifyOrganizerOfInquiryTransfer(input: {
   subject?: string | null;
   message: string;
 }) {
-  const { organizerName, emails } = await resolveOrganizerNotificationEmails(
+  const { organizerName, emails } = await resolveOrganizerInquiryNotificationEmails(
     input.supabase,
     input.organizerId
   );

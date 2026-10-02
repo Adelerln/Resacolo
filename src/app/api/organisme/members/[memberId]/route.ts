@@ -28,6 +28,7 @@ export async function POST(req: Request, context: { params: Promise<{ memberId: 
   const firstName = String(formData.get('first_name') ?? '').trim();
   const lastName = String(formData.get('last_name') ?? '').trim();
   const role = String(formData.get('role') ?? '').trim();
+  const canManageOrganizerProfile = formData.get('can_manage_organizer_profile') === '1';
 
   const access = await requireOrganizerApiAccess({
     requestedOrganizerId: organizerId,
@@ -66,10 +67,27 @@ export async function POST(req: Request, context: { params: Promise<{ memberId: 
     return NextResponse.json({ error: 'Membre introuvable.' }, { status: 404 });
   }
 
-  const { error } = await supabase
-    .from('organizer_members')
-    .update({ first_name: firstName || null, last_name: lastName || null, role })
-    .eq('id', memberId);
+  let updatePayload: {
+    first_name: string | null;
+    last_name: string | null;
+    role: typeof role;
+    can_manage_organizer_profile?: boolean;
+  } = {
+    first_name: firstName || null,
+    last_name: lastName || null,
+    role
+  };
+  if (role !== 'OWNER') {
+    updatePayload = { ...updatePayload, can_manage_organizer_profile: canManageOrganizerProfile };
+  }
+
+  let { error } = await supabase.from('organizer_members').update(updatePayload).eq('id', memberId);
+  if (error?.message.includes('can_manage_organizer_profile')) {
+    ({ error } = await supabase
+      .from('organizer_members')
+      .update({ first_name: firstName || null, last_name: lastName || null, role })
+      .eq('id', memberId));
+  }
   if (error) {
     if (!wantsJson(req)) {
       return redirectToUsers(req, organizerId, { error: error.message });

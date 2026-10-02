@@ -17,6 +17,7 @@ import { writeDraftDestinationFields } from '@/lib/stay-draft-destination';
 import { mapToCanonicalStayRegion } from '@/lib/stay-regions';
 import { sanitizeSeoPrimaryKeyword, sanitizeSeoTags, sanitizeSeoText } from '@/lib/stay-seo';
 import { sanitizeStayRichText } from '@/lib/stay-rich-text';
+import { applyDraftLinkedAccommodationChoice } from '@/lib/stay-draft-linked-accommodation';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { normalizeStayTitle } from '@/lib/stay-title';
 import type { Database, Json } from '@/types/supabase';
@@ -86,7 +87,8 @@ const bodySchema = z.object({
   video_urls: z.array(z.string()).optional().default([]),
   accommodation_video_urls: z.array(z.string()).optional().default([]),
   partner_discount_percent: z.number().min(0).max(100).nullable().optional().default(null),
-  is_caf_eligible: z.boolean().optional().default(true)
+  is_caf_eligible: z.boolean().optional().default(true),
+  linked_accommodation_id: z.string().trim().nullable().optional().default(null)
 });
 
 type StayDraftRow = Database['public']['Tables']['stay_drafts']['Row'];
@@ -415,7 +417,8 @@ async function parseBody(req: Request): Promise<{ payload: StayDraftReviewPayloa
       data.partner_discount_percent != null && Number.isFinite(data.partner_discount_percent)
         ? data.partner_discount_percent
         : null,
-    is_caf_eligible: data.is_caf_eligible !== false
+    is_caf_eligible: data.is_caf_eligible !== false,
+    linked_accommodation_id: normalizeString(data.linked_accommodation_id ?? '') || null
   };
 
   if (!payload.title) {
@@ -583,11 +586,18 @@ async function handleUpdate(req: Request, params: { id: string }, mode: 'save' |
   const categories = normalizeStayDraftCategories(parsedBody.payload.categories).categories;
   const { data: currentDraft } = await supabase
     .from('stay_drafts')
-    .select('raw_payload')
+    .select('raw_payload,accommodations_json')
     .eq('id', params.id)
     .eq('organizer_id', selectedOrganizerId)
     .maybeSingle();
   const currentRawPayload = asObject(currentDraft?.raw_payload ?? null);
+  const linkedAccommodationChoice = applyDraftLinkedAccommodationChoice({
+    rawPayload: currentRawPayload,
+    accommodationsJson: parsedBody.payload.linked_accommodation_id
+      ? currentDraft?.accommodations_json ?? parsedBody.payload.accommodations_json
+      : parsedBody.payload.accommodations_json,
+    linkedAccommodationId: parsedBody.payload.linked_accommodation_id
+  });
 
   const updatePayload: Record<string, unknown> = {
     title: normalizeStayTitle(parsedBody.payload.title),
@@ -609,7 +619,7 @@ async function handleUpdate(req: Request, params: { id: string }, mode: 'save' |
     sessions_json: parsedBody.payload.sessions_json,
     extra_options_json: parsedBody.payload.extra_options_json,
     transport_options_json: parsedBody.payload.transport_options_json,
-    accommodations_json: parsedBody.payload.accommodations_json,
+    accommodations_json: linkedAccommodationChoice.accommodationsJson,
     images: parsedBody.payload.images.length > 0 ? parsedBody.payload.images : null,
     seo_primary_keyword: toNullableString(parsedBody.payload.seo_primary_keyword),
     seo_secondary_keywords: parsedBody.payload.seo_secondary_keywords,
@@ -624,7 +634,7 @@ async function handleUpdate(req: Request, params: { id: string }, mode: 'save' |
     seo_slug_candidate: toNullableString(parsedBody.payload.seo_slug_candidate),
     seo_score: parsedBody.payload.seo_score,
     seo_checks: parsedBody.payload.seo_checks,
-    raw_payload: writeDraftDestinationFields(currentRawPayload, {
+    raw_payload: writeDraftDestinationFields(linkedAccommodationChoice.rawPayload, {
       destination_type: parsedBody.payload.destination_type,
       destination_city: parsedBody.payload.destination_city,
       destination_postal_code: parsedBody.payload.destination_postal_code,

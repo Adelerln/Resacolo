@@ -33,7 +33,11 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const body = (await req.json().catch(() => null)) as { organizerId?: string } | null;
+  const body = (await req.json().catch(() => null)) as {
+    organizerId?: string;
+    accommodationId?: string;
+  } | null;
+
   const access = await requireOrganizerApiAccess({
     requestedOrganizerId: body?.organizerId,
     requiredSection: 'stays'
@@ -43,8 +47,14 @@ export async function POST(
     return NextResponse.json({ error: access.error }, { status: access.status });
   }
 
+  const accommodationId = String(body?.accommodationId ?? '').trim();
+  if (!accommodationId) {
+    return NextResponse.json({ error: 'Hébergement requis.' }, { status: 400 });
+  }
+
   const { selectedOrganizerId } = access.context;
   const supabase = getServerSupabaseClient();
+
   const { data: draft, error } = await supabase
     .from('stay_drafts')
     .select('id,organizer_id,status,raw_payload,accommodations_json')
@@ -62,26 +72,36 @@ export async function POST(
   const status = normalizeStatus(draft.status);
   if (status !== 'pending' && status !== 'draft' && status !== 'validated') {
     return NextResponse.json(
-      { error: "Seuls les brouillons non publiés peuvent délier un hébergement." },
+      { error: 'Seuls les brouillons non publiés peuvent rattacher un hébergement.' },
       { status: 400 }
+    );
+  }
+
+  const { data: accommodation, error: accommodationError } = await supabase
+    .from('accommodations')
+    .select('id,name,accommodation_type')
+    .eq('id', accommodationId)
+    .eq('organizer_id', selectedOrganizerId)
+    .maybeSingle();
+
+  if (accommodationError || !accommodation) {
+    return NextResponse.json(
+      { error: accommodationError?.message ?? 'Hébergement introuvable pour cet organisateur.' },
+      { status: 404 }
     );
   }
 
   const applied = applyDraftLinkedAccommodationChoice({
     rawPayload: asObject(draft.raw_payload),
     accommodationsJson: draft.accommodations_json,
-    linkedAccommodationId: null
+    linkedAccommodationId: accommodation.id,
+    linkedAccommodationName: accommodation.name
   });
-
-  const nextRawPayload: Record<string, unknown> = {
-    ...applied.rawPayload,
-    draft_accommodation_preview: null
-  };
 
   const { error: updateError } = await supabase
     .from('stay_drafts')
     .update({
-      raw_payload: nextRawPayload as Json,
+      raw_payload: applied.rawPayload as Json,
       accommodations_json: applied.accommodationsJson,
       updated_at: new Date().toISOString()
     })
@@ -90,15 +110,22 @@ export async function POST(
 
   if (updateError) {
     return NextResponse.json(
-      { error: updateError.message ?? "Impossible de délier l'hébergement." },
+      { error: updateError.message ?? "Impossible de rattacher l'hébergement." },
       { status: 500 }
     );
   }
 
   revalidatePath('/organisme/sejours');
   revalidatePath('/organisme/stays');
-  revalidatePath(`/organisme/sejours/drafts/${draft.id}`);
-  revalidatePath(`/organisme/stays/drafts/${draft.id}`);
+  revalidatePath(`/organisme/sejours/drafts/${id}`);
+  revalidatePath(`/organisme/stays/drafts/${id}`);
 
-  return NextResponse.json({ success: true });
+  return NextResponse.json({
+    success: true,
+    accommodation: {
+      id: accommodation.id,
+      name: accommodation.name,
+      accommodationType: accommodation.accommodation_type
+    }
+  });
 }

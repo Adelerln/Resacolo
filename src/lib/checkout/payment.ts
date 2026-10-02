@@ -55,6 +55,7 @@ import {
   type ReservationOnlinePaymentStatus
 } from '@/lib/reservation-notifications.server';
 import { isMissingAnyColumnError } from '@/lib/supabase-schema-errors';
+import { resolveOrganizerOrderStatusNotificationEmail } from '@/lib/organizer-notification-recipients.server';
 
 type PrepareCheckoutPaymentInput = {
   checkoutId: string;
@@ -1151,11 +1152,16 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
 
     const deferOrganizerNotification =
       immediatePaymentAmountCents > 0 && !isPartnerTotalCoverage;
+    const organizerNotificationEmail = await resolveOrganizerOrderStatusNotificationEmail(
+      supabase,
+      organizerId,
+      organizerSettings.contact_email
+    );
     const notificationInput: ReservationNotificationInput = {
       orderId: order.id,
       organizerId,
       organizerName: organizerSettings.name,
-      organizerEmail: organizerSettings.contact_email,
+      organizerEmail: organizerNotificationEmail,
       familyEmail: effectiveContact.email,
       contact: effectiveContact,
       paymentMode: effectiveContact.paymentMode,

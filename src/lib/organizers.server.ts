@@ -54,21 +54,46 @@ async function loadOrganizerOptionsByIds(organizerIds: string[]): Promise<Organi
   }));
 }
 
-async function loadOrganizerAccessByUserId(appUserId: string): Promise<Map<string, OrganizerAccessRole>> {
+export type OrganizerMembershipAccess = {
+  role: OrganizerAccessRole;
+  canManageOrganizerProfile: boolean;
+};
+
+async function loadOrganizerAccessByUserId(
+  appUserId: string
+): Promise<Map<string, OrganizerMembershipAccess>> {
   const supabase = getServerSupabaseClient();
   const { data, error } = await supabase
     .from('organizer_members')
-    .select('organizer_id,role')
+    .select('organizer_id,role,can_manage_organizer_profile')
     .eq('user_id', appUserId);
 
   if (error) {
+    const missingColumn = error.message.includes('can_manage_organizer_profile');
+    if (missingColumn) {
+      const legacy = await supabase
+        .from('organizer_members')
+        .select('organizer_id,role')
+        .eq('user_id', appUserId);
+      const map = new Map<string, OrganizerMembershipAccess>();
+      for (const row of legacy.data ?? []) {
+        map.set(row.organizer_id, {
+          role: normalizeOrganizerAccessRole(row.role),
+          canManageOrganizerProfile: false
+        });
+      }
+      return map;
+    }
     console.warn('Supabase (organizer_members) indisponible :', error.message);
     return new Map();
   }
 
-  const map = new Map<string, OrganizerAccessRole>();
+  const map = new Map<string, OrganizerMembershipAccess>();
   for (const row of data ?? []) {
-    map.set(row.organizer_id, normalizeOrganizerAccessRole(row.role));
+    map.set(row.organizer_id, {
+      role: normalizeOrganizerAccessRole(row.role),
+      canManageOrganizerProfile: Boolean(row.can_manage_organizer_profile)
+    });
   }
   return map;
 }
@@ -87,7 +112,7 @@ export async function resolveOrganizerSelection(
   const appUserId = options?.appUserId?.trim() ?? '';
   const accessByOrganizerId = enforceBackofficeAccess && appUserId
     ? await loadOrganizerAccessByUserId(appUserId)
-    : new Map<string, OrganizerAccessRole>();
+    : new Map<string, OrganizerMembershipAccess>();
 
   const organizers = enforceBackofficeAccess
     ? await loadOrganizerOptionsByIds(Array.from(accessByOrganizerId.keys()))
@@ -109,7 +134,12 @@ export async function resolveOrganizerSelection(
     organizers,
     selectedOrganizer,
     selectedOrganizerId: selectedOrganizer?.id ?? null,
-    selectedAccessRole: selectedOrganizer ? accessByOrganizerId.get(selectedOrganizer.id) ?? null : null,
+    selectedAccessRole: selectedOrganizer
+      ? (accessByOrganizerId.get(selectedOrganizer.id)?.role ?? null)
+      : null,
+    selectedCanManageOrganizerProfile: selectedOrganizer
+      ? (accessByOrganizerId.get(selectedOrganizer.id)?.canManageOrganizerProfile ?? false)
+      : false,
     accessByOrganizerId
   };
 }

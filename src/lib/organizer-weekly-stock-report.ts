@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { resolveOrganizerWeeklyRecapEmail } from '@/lib/organizer-notification-recipients.server';
 import { getReservedSessionCounts } from '@/lib/session-reservations';
 import type { Database } from '@/types/supabase';
 
@@ -192,22 +193,43 @@ function chunkIds<T>(items: T[], size: number) {
 export async function buildWeeklyStockReports(
   supabase: SupabaseClient<Database>
 ): Promise<WeeklyStockOrganizerReport[]> {
+  let organizerRows: Array<{
+    id: string;
+    name: string | null;
+    contact_email: string | null;
+    weekly_recap_notify_member_id?: string | null;
+  }> = [];
+
   const { data: organizers, error: organizersError } = await supabase
     .from('organizers')
-    .select('id,name,contact_email')
-    .not('contact_email', 'is', null);
+    .select('id,name,contact_email,weekly_recap_notify_member_id');
 
   if (organizersError) {
-    throw new Error(`Impossible de lire les organisateurs: ${organizersError.message}`);
+    const legacy = await supabase.from('organizers').select('id,name,contact_email');
+    if (legacy.error) {
+      throw new Error(`Impossible de lire les organisateurs: ${organizersError.message}`);
+    }
+    organizerRows = legacy.data ?? [];
+  } else {
+    organizerRows = organizers ?? [];
   }
 
-  const organizersWithEmail = (organizers ?? [])
-    .map((row) => ({
-      id: row.id,
-      name: row.name?.trim() || 'Organisateur',
-      contactEmail: row.contact_email?.trim().toLowerCase() ?? ''
-    }))
-    .filter((row) => row.contactEmail.includes('@'));
+  const organizersWithEmail = (
+    await Promise.all(
+      organizerRows.map(async (row) => {
+        const contactEmail = await resolveOrganizerWeeklyRecapEmail(
+          supabase,
+          row.id,
+          row.contact_email
+        );
+        return {
+          id: row.id,
+          name: row.name?.trim() || 'Organisateur',
+          contactEmail: contactEmail ?? ''
+        };
+      })
+    )
+  ).filter((row) => row.contactEmail.includes('@'));
 
   if (organizersWithEmail.length === 0) return [];
 

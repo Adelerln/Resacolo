@@ -391,6 +391,16 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
             .maybeSingle()
         ).data ?? null
       : null;
+  const { data: organizerAccommodations } = await supabase
+    .from('accommodations')
+    .select('id,name,accommodation_type')
+    .eq('organizer_id', selectedOrganizerId)
+    .order('name', { ascending: true });
+  const organizerAccommodationPickerOptions = (organizerAccommodations ?? []).map((row) => ({
+    id: row.id,
+    name: row.name,
+    accommodationType: row.accommodation_type
+  }));
   const rawStayVideoUrls = asStringArray((rawPayload.video_urls as Json | null) ?? null);
   const rawAccommodationVideoUrls = asStringArray(
     (rawPayload.accommodation_video_urls as Json | null) ?? null
@@ -675,6 +685,7 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
               } satisfies LinkedAccommodationSummary)
             : null
         }
+        organizerAccommodationPickerOptions={organizerAccommodationPickerOptions}
       />
     </div>
   );

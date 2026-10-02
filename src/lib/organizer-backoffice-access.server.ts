@@ -21,7 +21,9 @@ export type OrganizerBackofficeContext = {
   selectedOrganizer: OrganizerOption;
   selectedOrganizerId: string;
   accessRole: OrganizerAccessRole;
+  canManageOrganizerProfile: boolean;
   accessByOrganizerId: Record<string, OrganizerAccessRole>;
+  canManageOrganizerProfileByOrganizerId: Record<string, boolean>;
 };
 
 function normalizeRequestedOrganizerId(
@@ -32,10 +34,18 @@ function normalizeRequestedOrganizerId(
 }
 
 function mapAccessByOrganizerId(
-  accessByOrganizerId: Map<string, OrganizerAccessRole>
-): Record<string, OrganizerAccessRole> {
-  const entries = Array.from(accessByOrganizerId.entries());
-  return Object.fromEntries(entries);
+  accessByOrganizerId: Map<
+    string,
+    import('@/lib/organizers.server').OrganizerMembershipAccess
+  >
+) {
+  const roles: Record<string, OrganizerAccessRole> = {};
+  const profileByOrganizerId: Record<string, boolean> = {};
+  for (const [organizerId, access] of accessByOrganizerId.entries()) {
+    roles[organizerId] = access.role;
+    profileByOrganizerId[organizerId] = access.canManageOrganizerProfile;
+  }
+  return { roles, profileByOrganizerId };
 }
 
 async function resolveSelectionForSession(
@@ -97,7 +107,11 @@ export async function requireOrganizerPageAccess(options?: {
       selectedOrganizer: selection.selectedOrganizer,
       selectedOrganizerId: selection.selectedOrganizerId,
       accessRole: 'OWNER',
-      accessByOrganizerId
+      canManageOrganizerProfile: true,
+      accessByOrganizerId,
+      canManageOrganizerProfileByOrganizerId: Object.fromEntries(
+        selection.organizers.map((organizer) => [organizer.id, true])
+      )
     };
   }
 
@@ -111,9 +125,16 @@ export async function requireOrganizerPageAccess(options?: {
     redirect('/forbidden');
   }
 
-  if (requiredSection && !canAccessOrganizerSection(selection.selectedAccessRole, requiredSection)) {
+  if (
+    requiredSection &&
+    !canAccessOrganizerSection(selection.selectedAccessRole, requiredSection, {
+      canManageOrganizerProfile: selection.selectedCanManageOrganizerProfile
+    })
+  ) {
     redirect('/forbidden');
   }
+
+  const mappedAccess = mapAccessByOrganizerId(selection.accessByOrganizerId);
 
   return {
     session,
@@ -121,7 +142,9 @@ export async function requireOrganizerPageAccess(options?: {
     selectedOrganizer: selection.selectedOrganizer,
     selectedOrganizerId: selection.selectedOrganizerId,
     accessRole: selection.selectedAccessRole,
-    accessByOrganizerId: mapAccessByOrganizerId(selection.accessByOrganizerId)
+    canManageOrganizerProfile: selection.selectedCanManageOrganizerProfile,
+    accessByOrganizerId: mappedAccess.roles,
+    canManageOrganizerProfileByOrganizerId: mappedAccess.profileByOrganizerId
   };
 }
 
@@ -156,8 +179,12 @@ export async function requireOrganizerApiAccess(options?: {
         selectedOrganizer: selection.selectedOrganizer,
         selectedOrganizerId: selection.selectedOrganizerId,
         accessRole: 'OWNER',
+        canManageOrganizerProfile: true,
         accessByOrganizerId: Object.fromEntries(
           selection.organizers.map((organizer) => [organizer.id, 'OWNER' as const])
+        ),
+        canManageOrganizerProfileByOrganizerId: Object.fromEntries(
+          selection.organizers.map((organizer) => [organizer.id, true])
         )
       }
     };
@@ -173,9 +200,16 @@ export async function requireOrganizerApiAccess(options?: {
     return { ok: false, status: 403, error: 'Accès organisateur non autorisé.' };
   }
 
-  if (requiredSection && !canAccessOrganizerSection(selection.selectedAccessRole, requiredSection)) {
+  if (
+    requiredSection &&
+    !canAccessOrganizerSection(selection.selectedAccessRole, requiredSection, {
+      canManageOrganizerProfile: selection.selectedCanManageOrganizerProfile
+    })
+  ) {
     return { ok: false, status: 403, error: 'Accès organisateur non autorisé.' };
   }
+
+  const mappedAccess = mapAccessByOrganizerId(selection.accessByOrganizerId);
 
   return {
     ok: true,
@@ -185,7 +219,9 @@ export async function requireOrganizerApiAccess(options?: {
       selectedOrganizer: selection.selectedOrganizer,
       selectedOrganizerId: selection.selectedOrganizerId,
       accessRole: selection.selectedAccessRole,
-      accessByOrganizerId: mapAccessByOrganizerId(selection.accessByOrganizerId)
+      canManageOrganizerProfile: selection.selectedCanManageOrganizerProfile,
+      accessByOrganizerId: mappedAccess.roles,
+      canManageOrganizerProfileByOrganizerId: mappedAccess.profileByOrganizerId
     }
   };
 }

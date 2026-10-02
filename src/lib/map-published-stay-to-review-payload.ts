@@ -1,4 +1,5 @@
 import { mergeDraftExtraOptionsJson } from '@/lib/stay-draft-extra-options-split';
+import { rebuildDraftExtraRowsFromPublished } from '@/lib/stay-extra-choice-groups';
 import { collapseTransportDraftOptionsJson, normalizeRepeatedTransportCity } from '@/lib/stay-draft-transport-display';
 import { normalizeImportedImageUrlList, normalizeImportedVideoUrlList } from '@/lib/stay-draft-url-extract';
 import { sanitizeSeoPrimaryKeyword } from '@/lib/stay-seo';
@@ -21,7 +22,14 @@ type SessionRow = {
     | null;
 };
 
-type ExtraRow = { id: string; label: string; amount_cents: number; position: number };
+type ExtraRow = {
+  id: string;
+  label: string;
+  amount_cents: number;
+  position: number;
+  choice_group_label?: string | null;
+  choice_value?: string | null;
+};
 type InsuranceRow = {
   id: string;
   label: string;
@@ -256,12 +264,14 @@ export function mapPublishedStayToReviewPayload(input: {
     };
   });
 
-  const extraRows: Array<Record<string, unknown>> = extraOptions.map((o) => ({
-    label: o.label,
-    price: o.amount_cents / 100,
-    currency: 'EUR',
-    description: null
-  }));
+  const extraRows: Array<Record<string, unknown>> = rebuildDraftExtraRowsFromPublished(
+    extraOptions.map((o) => ({
+      label: o.label,
+      amount_cents: o.amount_cents,
+      choice_group_label: o.choice_group_label ?? null,
+      choice_value: o.choice_value ?? null
+    }))
+  );
 
   const insuranceRows: Array<Record<string, unknown>> = insuranceOptions.map((o) => {
     const mode = (o.pricing_mode ?? '').toUpperCase() === 'PERCENT' ? 'PERCENT' : 'FIXED';

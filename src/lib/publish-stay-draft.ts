@@ -31,6 +31,10 @@ import {
 } from '@/lib/stay-media-storage';
 import { mapToCanonicalStayRegion } from '@/lib/stay-regions';
 import { isPartnerTariffExtraOptionLabel } from '@/lib/stay-draft-extra-options-split';
+import {
+  choiceGroupFromRecord,
+  isChoiceGroupExtraOptionRow
+} from '@/lib/stay-extra-choice-groups';
 import { sanitizeSeoPrimaryKeyword } from '@/lib/stay-seo';
 import { sanitizeStayRichText } from '@/lib/stay-rich-text';
 import { tryCanonicalizeStaySourceUrl } from '@/lib/stay-source-url-canonical';
@@ -627,14 +631,44 @@ function isInsuranceCandidate(...values: Array<unknown>): boolean {
 
 /** Même logique que `parseExtraAndInsuranceOptions` mais sur une liste fusionnée (ex. payload de relecture). */
 export function parseMergedExtraOptionsRows(rowsInput: Array<Record<string, unknown>>): {
-  extraOptions: Array<{ label: string; amountCents: number }>;
+  extraOptions: Array<{
+    label: string;
+    amountCents: number;
+    choiceGroupLabel?: string | null;
+    choiceValue?: string | null;
+  }>;
   insuranceOptions: Array<{ label: string; pricingMode: 'FIXED' | 'PERCENT'; amountCents: number | null; percentValue: number | null }>;
 } {
   const rows = rowsInput;
-  const extraOutput: Array<{ label: string; amountCents: number }> = [];
+  const extraOutput: Array<{
+    label: string;
+    amountCents: number;
+    choiceGroupLabel?: string | null;
+    choiceValue?: string | null;
+  }> = [];
   const insuranceOutput: Array<{ label: string; pricingMode: 'FIXED' | 'PERCENT'; amountCents: number | null; percentValue: number | null }> = [];
 
   for (const row of rows) {
+    if (isChoiceGroupExtraOptionRow(row)) {
+      const group = choiceGroupFromRecord(row);
+      if (isPartnerTariffExtraOptionLabel(group.groupLabel)) continue;
+      if (!group.groupLabel || group.choices.length === 0) continue;
+      const priceTrim = group.price.trim().replace(',', '.');
+      const priceNum = priceTrim === '' ? null : Number(priceTrim);
+      const amountCents =
+        priceNum !== null && Number.isFinite(priceNum) ? Math.max(0, Math.round(priceNum * 100)) : null;
+      if (amountCents === null) continue;
+      for (const choice of group.choices) {
+        extraOutput.push({
+          label: choice,
+          amountCents,
+          choiceGroupLabel: group.groupLabel,
+          choiceValue: choice
+        });
+      }
+      continue;
+    }
+
     const label = normalizeWhitespace(String(row.label ?? ''));
     if (!label) continue;
     if (isPartnerTariffExtraOptionLabel(label)) continue;
@@ -680,9 +714,17 @@ export function parseMergedExtraOptionsRows(rowsInput: Array<Record<string, unkn
     });
   }
 
-  const dedupedExtras = new Map<string, { label: string; amountCents: number }>();
+  const dedupedExtras = new Map<
+    string,
+    {
+      label: string;
+      amountCents: number;
+      choiceGroupLabel?: string | null;
+      choiceValue?: string | null;
+    }
+  >();
   for (const option of extraOutput) {
-    const key = `${simplifyForMatch(option.label)}|${option.amountCents}`;
+    const key = `${simplifyForMatch(option.choiceGroupLabel ?? '')}|${simplifyForMatch(option.label)}|${option.amountCents}`;
     if (!dedupedExtras.has(key)) dedupedExtras.set(key, option);
   }
 
@@ -705,7 +747,12 @@ function parseExtraAndInsuranceOptions(
   draft: StayDraftRow,
   rawPayload: Record<string, unknown>
 ): {
-  extraOptions: Array<{ label: string; amountCents: number }>;
+  extraOptions: Array<{
+    label: string;
+    amountCents: number;
+    choiceGroupLabel?: string | null;
+    choiceValue?: string | null;
+  }>;
   insuranceOptions: Array<{ label: string; pricingMode: 'FIXED' | 'PERCENT'; amountCents: number | null; percentValue: number | null }>;
 } {
   const rows: Array<Record<string, unknown>> = [...asRecordArray(draft.extra_options_json)];
@@ -1815,7 +1862,12 @@ export async function replaceAccommodationVideoOnlyMedia(
 export async function syncExtraOptions(
   supabase: SupabaseClient<Database>,
   stayId: string,
-  options: Array<{ label: string; amountCents: number }>
+  options: Array<{
+    label: string;
+    amountCents: number;
+    choiceGroupLabel?: string | null;
+    choiceValue?: string | null;
+  }>
 ): Promise<void> {
   const { error: deleteError } = await supabase
     .from('stay_extra_options')
@@ -1830,14 +1882,35 @@ export async function syncExtraOptions(
     return;
   }
 
-  const rows: ExtraOptionInsert[] = options.map((option, index) => ({
+  const rowsWithChoice = options.map((option, index) => ({
     stay_id: stayId,
     label: option.label,
     amount_cents: option.amountCents,
-    position: index + 1
+    position: index + 1,
+    choice_group_label: option.choiceGroupLabel ?? null,
+    choice_value: option.choiceValue ?? null
   }));
 
-  const { error: insertError } = await supabase.from('stay_extra_options').insert(rows);
+  let insertError = (
+    await supabase.from('stay_extra_options').insert(rowsWithChoice as ExtraOptionInsert[])
+  ).error;
+
+  if (
+    insertError &&
+    (isMissingColumnError(insertError.message, 'choice_group_label') ||
+      isMissingColumnError(insertError.message, 'choice_value'))
+  ) {
+    const legacyRows: ExtraOptionInsert[] = options.map((option, index) => ({
+      stay_id: stayId,
+      label: option.choiceGroupLabel
+        ? `${option.choiceGroupLabel} — ${option.label}`
+        : option.label,
+      amount_cents: option.amountCents,
+      position: index + 1
+    }));
+    insertError = (await supabase.from('stay_extra_options').insert(legacyRows)).error;
+  }
+
   if (insertError) {
     throw new PublishStayDraftError('insert-extra-options', insertError.message);
   }

@@ -1,3 +1,5 @@
+import { isChoiceGroupExtraOptionRow } from '@/lib/stay-extra-choice-groups';
+
 /**
  * Sépare options supplémentaires et assurances dans `extra_options_json` (même colonne DB, logique alignée sur publish-stay-draft).
  */
@@ -69,9 +71,14 @@ export function splitDraftExtraOptionsJson(rows: Array<Record<string, unknown>>)
     if (isPartnerTariffExtraOptionLabel(label)) continue;
     if (isInsuranceOptionRow(row)) {
       insurance.push({ ...row });
-    } else {
-      extras.push({ ...row });
+      continue;
     }
+    if (isChoiceGroupExtraOptionRow(row)) {
+      extras.push({ ...row });
+      continue;
+    }
+    if (!label) continue;
+    extras.push({ ...row });
   }
   return { extras, insurance };
 }

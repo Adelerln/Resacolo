@@ -2,6 +2,14 @@
 
 import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
+import ChipTextInput from '@/components/common/ChipTextInput';
+import {
+  STAY_EXTRA_OPTION_KIND_SIMPLE,
+  choiceGroupFromRecord,
+  choiceGroupToRecord,
+  emptyDraftExtraOptionChoiceGroupRecord,
+  isChoiceGroupExtraOptionRow
+} from '@/lib/stay-extra-choice-groups';
 import {
   draftSessionStableKey,
   formatDraftSessionShortLabel
@@ -403,6 +411,7 @@ function optionToRecord(row: OptionRow): Record<string, unknown> {
   const priceTrim = row.price.trim().replace(',', '.');
   const priceNum = priceTrim === '' ? null : Number(priceTrim);
   return {
+    kind: STAY_EXTRA_OPTION_KIND_SIMPLE,
     label: labelTrimmed === '' ? null : row.label,
     price: priceNum !== null && Number.isFinite(priceNum) ? priceNum : null,
     currency: normalizeDraftCurrency(row.currency),
@@ -484,12 +493,26 @@ export function DraftExtraOptionsEditor({
   error?: string;
   containerClassName?: string;
 }) {
-  const rows = value.map(optionFromRecord);
+  function updateSimpleRow(index: number, patch: Partial<OptionRow>) {
+    const next = [...value];
+    const row = optionFromRecord(next[index] ?? {});
+    next[index] = optionToRecord({ ...row, ...patch });
+    onChange(next);
+  }
 
-  function updateRow(index: number, patch: Partial<OptionRow>) {
-    const nextRows = [...rows];
-    nextRows[index] = { ...nextRows[index], ...patch };
-    onChange(nextRows.map(optionToRecord));
+  function updateChoiceGroupRow(
+    index: number,
+    patch: Partial<{ groupLabel: string; choices: string[]; price: string; currency: string }>
+  ) {
+    const next = [...value];
+    const current = choiceGroupFromRecord(next[index] ?? {});
+    next[index] = choiceGroupToRecord({
+      groupLabel: patch.groupLabel ?? current.groupLabel,
+      choices: patch.choices ?? current.choices,
+      price: patch.price ?? current.price,
+      currency: patch.currency ?? current.currency
+    });
+    onChange(next);
   }
 
   return (
@@ -502,69 +525,135 @@ export function DraftExtraOptionsEditor({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <p className="text-sm font-medium text-slate-800">Options supplémentaires</p>
-          <p className="text-xs text-slate-500">Repas, matériel, activité payante, etc. (hors assurance)</p>
+          <p className="text-xs text-slate-500">
+            Option simple ou option à choix restrictifs (Thème, Pack…). Hors assurance.
+          </p>
         </div>
-        <button
-          type="button"
-          onClick={() => onChange([...value, optionToRecord(emptyOptionRow())])}
-          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-50"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          Ajouter
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => onChange([...value, optionToRecord(emptyOptionRow())])}
+            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-50"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Option simple
+          </button>
+          <button
+            type="button"
+            onClick={() => onChange([...value, emptyDraftExtraOptionChoiceGroupRecord()])}
+            className="inline-flex items-center gap-1 rounded-lg border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-900 hover:bg-sky-100"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Option à choix
+          </button>
+        </div>
       </div>
-      {rows.length === 0 ? (
+      {value.length === 0 ? (
         <p className="text-sm text-slate-500">Aucune option.</p>
       ) : (
         <ul className="space-y-2">
-          {rows.map((row, index) => (
-            <li key={index} className="rounded-lg border border-slate-200 bg-white p-2">
-              <div className="flex items-start gap-2">
-                <div className="min-w-0 flex-1 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                      #{index + 1}
-                    </span>
-                    <label className="block min-w-0 flex-1 text-xs font-medium text-slate-600">
-                      Libellé
-                      <input
-                        value={row.label}
-                        onChange={(e) => updateRow(index, { label: e.target.value })}
-                        className="mt-0.5 w-full rounded border border-slate-200 px-2 py-1 text-sm leading-tight"
-                      />
-                    </label>
+          {value.map((record, index) => {
+            const isChoiceGroup = isChoiceGroupExtraOptionRow(record);
+            const simpleRow = optionFromRecord(record);
+            const choiceGroup = choiceGroupFromRecord(record);
+
+            return (
+              <li key={index} className="rounded-lg border border-slate-200 bg-white p-3">
+                <div className="flex items-start gap-2">
+                  <div className="min-w-0 flex-1 space-y-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                        #{index + 1}
+                      </span>
+                      <span
+                        className={cn(
+                          'rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
+                          isChoiceGroup
+                            ? 'bg-sky-100 text-sky-800'
+                            : 'bg-slate-100 text-slate-600'
+                        )}
+                      >
+                        {isChoiceGroup ? 'Choix restrictifs' : 'Simple'}
+                      </span>
+                    </div>
+
+                    {isChoiceGroup ? (
+                      <>
+                        <label className="block text-xs font-medium text-slate-600">
+                          Libellé de l&apos;option
+                          <input
+                            value={choiceGroup.groupLabel}
+                            onChange={(e) =>
+                              updateChoiceGroupRow(index, { groupLabel: e.target.value })
+                            }
+                            placeholder="Ex. Thème, Pack…"
+                            className="mt-0.5 w-full rounded border border-slate-200 px-2 py-1.5 text-sm leading-tight"
+                          />
+                        </label>
+                        <div>
+                          <p className="text-xs font-medium text-slate-600">Choix possibles</p>
+                          <p className="mt-0.5 text-[11px] text-slate-500">
+                            Saisissez un mot puis Entrée (puces retirables avec la croix).
+                          </p>
+                          <ChipTextInput
+                            className="mt-1.5"
+                            values={choiceGroup.choices}
+                            onChange={(choices) => updateChoiceGroupRow(index, { choices })}
+                            placeholder="Ex. Ski, puis Entrée"
+                          />
+                        </div>
+                      </>
+                    ) : (
+                      <label className="block text-xs font-medium text-slate-600">
+                        Libellé
+                        <input
+                          value={simpleRow.label}
+                          onChange={(e) => updateSimpleRow(index, { label: e.target.value })}
+                          className="mt-0.5 w-full rounded border border-slate-200 px-2 py-1.5 text-sm leading-tight"
+                        />
+                      </label>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-2 sm:max-w-md">
+                      <label className="block text-xs font-medium text-slate-600">
+                        Prix
+                        <input
+                          value={isChoiceGroup ? choiceGroup.price : simpleRow.price}
+                          onChange={(e) =>
+                            isChoiceGroup
+                              ? updateChoiceGroupRow(index, { price: e.target.value })
+                              : updateSimpleRow(index, { price: e.target.value })
+                          }
+                          className="mt-0.5 w-full rounded border border-slate-200 px-2 py-1.5 text-sm leading-tight"
+                          inputMode="decimal"
+                        />
+                      </label>
+                      <label className="block text-xs font-medium text-slate-600">
+                        Devise
+                        <CurrencySelect
+                          value={isChoiceGroup ? choiceGroup.currency : simpleRow.currency}
+                          onChange={(next) =>
+                            isChoiceGroup
+                              ? updateChoiceGroupRow(index, { currency: next })
+                              : updateSimpleRow(index, { currency: next })
+                          }
+                          className="mt-0.5 w-full rounded border border-slate-200 bg-white px-2 py-1.5 text-sm leading-tight"
+                        />
+                      </label>
+                    </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-2 sm:max-w-md">
-                    <label className="block text-xs font-medium text-slate-600">
-                      Prix
-                      <input
-                        value={row.price}
-                        onChange={(e) => updateRow(index, { price: e.target.value })}
-                        className="mt-0.5 w-full rounded border border-slate-200 px-2 py-1 text-sm leading-tight"
-                        inputMode="decimal"
-                      />
-                    </label>
-                    <label className="block text-xs font-medium text-slate-600">
-                      Devise
-                      <CurrencySelect
-                        value={row.currency}
-                        onChange={(next) => updateRow(index, { currency: next })}
-                        className="mt-0.5 w-full rounded border border-slate-200 bg-white px-2 py-1 text-sm leading-tight"
-                      />
-                    </label>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onChange(value.filter((_, i) => i !== index))}
+                    className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-rose-600 hover:bg-rose-50"
+                    aria-label={`Supprimer l’option ${index + 1}`}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => onChange(value.filter((_, i) => i !== index))}
-                  className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-rose-600 hover:bg-rose-50"
-                  aria-label={`Supprimer l’option ${index + 1}`}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            </li>
-          ))}
+              </li>
+            );
+          })}
         </ul>
       )}
       {error ? <p className="text-xs text-rose-600">{error}</p> : null}

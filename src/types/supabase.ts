@@ -2842,6 +2842,8 @@ export type Database = {
       stay_extra_options: {
         Row: {
           amount_cents: number
+          choice_group_label: string | null
+          choice_value: string | null
           created_at: string
           id: string
           label: string
@@ -2850,6 +2852,8 @@ export type Database = {
         }
         Insert: {
           amount_cents: number
+          choice_group_label?: string | null
+          choice_value?: string | null
           created_at?: string
           id?: string
           label: string
@@ -2858,6 +2862,8 @@ export type Database = {
         }
         Update: {
           amount_cents?: number
+          choice_group_label?: string | null
+          choice_value?: string | null
           created_at?: string
           id?: string
           label?: string

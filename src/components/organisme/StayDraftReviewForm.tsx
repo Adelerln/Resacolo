@@ -25,6 +25,7 @@ import GoogleMapsCityInput from '@/components/common/GoogleMapsCityInput';
 import SavedToast from '@/components/common/SavedToast';
 import AccommodationImportReviewFields from '@/components/organisme/AccommodationImportReviewFields';
 import AccommodationPicker from '@/components/organisme/AccommodationPicker';
+import { isPersistableDraftExtraOptionRow } from '@/lib/stay-extra-choice-groups';
 import {
   DraftExtraOptionsEditor,
   DraftInsuranceOptionsEditor,
@@ -1117,9 +1118,7 @@ export default function StayDraftReviewForm({
         (p != null && String(p).trim() !== '' && String(p).trim() !== 'null');
       return hasStart || hasEnd || hasLabel || hasPrice;
     });
-    const extraOptionsPayload = extraOptionsList.filter(
-      (row) => String(row.label ?? '').trim().length > 0
-    );
+    const extraOptionsPayload = extraOptionsList.filter(isPersistableDraftExtraOptionRow);
     const insuranceOptionsPayload = insuranceOptionsList.filter(
       (row) => String(row.label ?? '').trim().length > 0
     );
@@ -1266,9 +1265,7 @@ export default function StayDraftReviewForm({
         (p != null && String(p).trim() !== '' && String(p).trim() !== 'null');
       return hasStart || hasEnd || hasLabel || hasPrice;
     });
-    const extraOptionsPayload = extraOptionsList.filter(
-      (row) => String(row.label ?? '').trim().length > 0
-    );
+    const extraOptionsPayload = extraOptionsList.filter(isPersistableDraftExtraOptionRow);
     const insuranceOptionsPayload = insuranceOptionsList.filter(
       (row) => String(row.label ?? '').trim().length > 0
     );

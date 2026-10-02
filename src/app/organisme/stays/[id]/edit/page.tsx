@@ -88,7 +88,7 @@ export default async function OrganizerStayEditTunnelPage({ params: paramsPromis
     supabase.from('stay_accommodations').select('accommodation_id').eq('stay_id', stay.id),
     supabase
       .from('stay_extra_options')
-      .select('id,label,amount_cents,position')
+      .select('id,label,amount_cents,position,choice_group_label,choice_value')
       .eq('stay_id', stay.id)
       .order('position', { ascending: true }),
     supabase

@@ -638,9 +638,14 @@ async function buildDraftUpdateFromAi(
   }
   const recoveredPricedTransportCount = countPricedTransportOptions(recoveredImportedTransportOptions);
   const currentPricedTransportCount = countPricedTransportOptions(currentTransportOptions);
-  if (recoveredPricedTransportCount > currentPricedTransportCount) {
+  const transportOptionsUserEdited = Boolean(currentRawPayload.transport_options_user_edited);
+  if (
+    !transportOptionsUserEdited &&
+    recoveredPricedTransportCount > currentPricedTransportCount
+  ) {
     patch.transport_options_json = recoveredImportedTransportOptions as Json;
   } else if (
+    !transportOptionsUserEdited &&
     currentPricedTransportCount === 0 &&
     !hasJsonValue(draft.transport_options_json) &&
     extracted.transport_options_json.length > 0

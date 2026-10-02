@@ -449,10 +449,13 @@ export default async function StayDraftReviewPage({ params: paramsPromise, searc
     zigotoursExpectedSessions.length > 0 &&
     countDatedSessions(draftSessionsFromDb) === 0 &&
     buildSessionSignature(draftSessionsFromDb) !== buildSessionSignature(zigotoursExpectedSessions);
+  // Ne réinjecte les villes IA que si le brouillon n'en a encore aucune.
+  // Sinon une ville retirée manuellement revient dès le rechargement / la validation.
+  const transportOptionsUserEdited = Boolean(rawPayload.transport_options_user_edited);
   const shouldRepairTransportOptions =
-    recoveredTransportOptions.length > 0 &&
-    countPricedTransportOptions(recoveredTransportOptions) >
-      countPricedTransportOptions(draftTransportOptionsFromDb);
+    !transportOptionsUserEdited &&
+    draftTransportOptionsFromDb.length === 0 &&
+    recoveredTransportOptions.length > 0;
 
   if (shouldRepairCeslSessions) {
     await supabase

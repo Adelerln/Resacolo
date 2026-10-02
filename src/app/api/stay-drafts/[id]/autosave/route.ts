@@ -331,7 +331,13 @@ export async function PATCH(
       nextAccommodationVideoUrls.length > 0 ? nextAccommodationVideoUrls : null,
     partner_discount_percent: nextPartnerDiscount,
     is_caf_eligible: nextIsCafEligible,
-    autosave_updated_at: now
+    autosave_updated_at: now,
+    ...(hasOwn(payload, 'transport_options_json')
+      ? {
+          transport_options_user_edited: true,
+          transport_variants: asObjectArray(payload.transport_options_json)
+        }
+      : {})
   };
 
   let { data: savedDraft, error: updateError } = await supabase

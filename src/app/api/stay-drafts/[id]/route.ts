@@ -654,7 +654,12 @@ async function handleUpdate(req: Request, params: { id: string }, mode: 'save' |
           ? parsedBody.payload.accommodation_video_urls
           : null,
       partner_discount_percent: parsedBody.payload.partner_discount_percent,
-      is_caf_eligible: parsedBody.payload.is_caf_eligible !== false
+      is_caf_eligible: parsedBody.payload.is_caf_eligible !== false,
+      // Les variantes IA ne doivent plus écraser les villes éditées dans le tunnel.
+      transport_options_user_edited: true,
+      transport_variants: Array.isArray(parsedBody.payload.transport_options_json)
+        ? parsedBody.payload.transport_options_json
+        : null
   };
 
   let { data: updatedDraft, error } = await supabase

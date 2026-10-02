@@ -134,11 +134,14 @@ function normalizeTransportMode(
 
 function resolveTransportSource(draft: StayDraftRow, rawPayload: Record<string, unknown>): Json | null {
   const rawAiExtracted = toRecord(rawPayload.ai_extracted);
+  // Priorité au formulaire de relecture (villes ajoutées/retirées par l'organisateur).
+  if (Array.isArray(draft.transport_options_json)) {
+    return draft.transport_options_json as Json;
+  }
   return (
     (rawPayload.transport_variants as Json | undefined) ??
     (rawPayload.transport_price_debug as Json | undefined) ??
     (rawPayload.transport_matrix as Json | undefined) ??
-    draft.transport_options_json ??
     (rawAiExtracted.transport_options_json as Json | undefined) ??
     null
   );

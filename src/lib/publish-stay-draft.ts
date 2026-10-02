@@ -2368,11 +2368,17 @@ export async function publishStayDraftToLive(
     null;
   const sessions = parseSessions(sessionsSource);
   const { extraOptions, insuranceOptions } = parseExtraAndInsuranceOptions(draft, rawPayload);
+  // Priorité au formulaire de relecture : sinon les variantes IA réinjectent des villes retirées.
+  const draftTransportOptions = Array.isArray(draft.transport_options_json)
+    ? draft.transport_options_json
+    : null;
   const transportSource =
+    (draftTransportOptions != null
+      ? (draftTransportOptions as Json)
+      : null) ??
     (rawPayload.transport_variants as Json | undefined) ??
     (rawPayload.transport_price_debug as Json | undefined) ??
     (rawPayload.transport_matrix as Json | undefined) ??
-    draft.transport_options_json ??
     (rawAiExtracted?.transport_options_json as Json | undefined) ??
     null;
   const transportOptions = parseTransportOptionsFromJson(transportSource);

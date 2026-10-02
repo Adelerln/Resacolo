@@ -17,7 +17,7 @@ import {
   normalizeLocationMode
 } from '@/lib/stay-draft-accommodation-import';
 import { expandDraftAges } from '@/lib/stay-draft-content';
-import { liveSessionStableKey } from '@/lib/draft-session-keys';
+import { filterLiveSessionsForTransportOption } from '@/lib/draft-session-keys';
 import { readDraftDestinationFields } from '@/lib/stay-draft-destination';
 import {
   isVideoUrlCandidate,
@@ -811,15 +811,15 @@ export function parseTransportOptionsFromJson(value: Json | null): ParsedTranspo
     const confidenceRaw = normalizeWhitespace(String(row.confidence ?? '')) || null;
 
     const amountCents =
+      (typeof row.amount_cents === 'number' && Number.isFinite(row.amount_cents)
+        ? Math.round(row.amount_cents)
+        : null) ??
       parseAmountCents(row.price) ??
       parseAmountCents(row.amount) ??
       parseAmountCents(row.amount_euros) ??
       parseAmountCents(row.total_price_eur) ??
       parseAmountCents(row.total_price) ??
-      parseAmountCents(row.delta_price) ??
-      (typeof row.amount_cents === 'number' && Number.isFinite(row.amount_cents)
-        ? Math.round(row.amount_cents)
-        : null);
+      parseAmountCents(row.delta_price);
     const outboundAmountCents =
       parseAmountCents(row.outbound_price) ??
       parseAmountCents(row.departure_price) ??
@@ -1902,8 +1902,10 @@ export async function syncTransportOptions(
   const rows: TransportOptionInsert[] = [];
 
   for (const option of options) {
-    const excluded = new Set(option.excludedSessionKeys ?? []);
-    const includedSessions = sessions.filter((s, i) => !excluded.has(liveSessionStableKey(s, i)));
+    const includedSessions = filterLiveSessionsForTransportOption(
+      sessions,
+      option.excludedSessionKeys ?? []
+    );
 
     if (includedSessions.length === 0) {
       continue;

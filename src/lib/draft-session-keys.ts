@@ -26,10 +26,24 @@ export function liveSessionStableKey(
   row: { start_date: string | null; end_date: string | null },
   index: number
 ): string {
-  const start = row.start_date ? String(row.start_date).slice(0, 10) : '';
-  const end = row.end_date ? String(row.end_date).slice(0, 10) : '';
+  const start = normalizeDraftSessionDateKey(row.start_date);
+  const end = normalizeDraftSessionDateKey(row.end_date);
   if (start || end) return `${start}|${end}`;
   return `idx:${index}`;
+}
+
+/** Sessions live proposées pour une option transport (clés brouillon / live alignées). */
+export function filterLiveSessionsForTransportOption<
+  T extends { id: string; start_date: string | null; end_date: string | null }
+>(sessions: T[], excludedSessionKeys: string[]): T[] {
+  if (excludedSessionKeys.length === 0) return sessions;
+
+  const excluded = new Set(excludedSessionKeys);
+  const liveKeys = sessions.map((session, index) => liveSessionStableKey(session, index));
+  const overlaps = excludedSessionKeys.some((key) => liveKeys.includes(key));
+  if (!overlaps) return sessions;
+
+  return sessions.filter((session, index) => !excluded.has(liveSessionStableKey(session, index)));
 }
 
 /** Affiche une date ISO jour (YYYY-MM-DD) en libellé français, sans décalage fuseau. */

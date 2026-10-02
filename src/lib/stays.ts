@@ -13,6 +13,7 @@ import { deriveStayAudiences, formatStayAgeRange } from '@/lib/stay-ages';
 import { isVideoUrlCandidate } from '@/lib/stay-draft-url-extract';
 import { normalizeStayTitle } from '@/lib/stay-title';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
+import { filterTransportOptionsForSession } from '@/lib/stay-transport-session';
 import { slugify } from '@/lib/utils';
 import {
   extractGoogleMapsEmbedSrcFromInput,
@@ -919,6 +920,7 @@ async function fetchStaysFromSupabase(options: { stayIds?: string[] } = {}): Pro
       const visibleBookingSessionItems = sessionItems.filter(
         (sessionItem) => sessionItem.status !== 'COMPLETED' && sessionItem.status !== 'ARCHIVED'
       );
+      const liveSessionIds = sessionItems.map((sessionItem) => sessionItem.id);
       const bookingSessions: StaySessionOption[] = visibleBookingSessionItems
         .map((sessionItem) => {
           const sessionPrice = Array.isArray(sessionItem.session_prices)
@@ -926,8 +928,10 @@ async function fetchStaysFromSupabase(options: { stayIds?: string[] } = {}): Pro
             : sessionItem.session_prices;
           const effectiveStatus = getEffectiveSessionStatus(sessionItem);
 
-          const transportForSession = sharedTransportOptions.filter(
-            (opt) => opt.sessionId == null || opt.sessionId === sessionItem.id
+          const transportForSession = filterTransportOptionsForSession(
+            sharedTransportOptions,
+            sessionItem.id,
+            liveSessionIds
           );
 
           return {
@@ -1119,10 +1123,12 @@ async function fetchStaysFromSupabase(options: { stayIds?: string[] } = {}): Pro
   return stays;
 }
 
+export const STAYS_CATALOG_CACHE_TAG = 'stays-catalog-published-v1';
+
 const fetchPublishedStaysCached = unstable_cache(
   async () => fetchStaysFromSupabase(),
-  ['stays-catalog-published-v1'],
-  { revalidate: 60 }
+  [STAYS_CATALOG_CACHE_TAG],
+  { revalidate: 60, tags: [STAYS_CATALOG_CACHE_TAG] }
 );
 
 const loadStaysRequest = cache(async () => fetchPublishedStaysCached());

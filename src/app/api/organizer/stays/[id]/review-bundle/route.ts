@@ -1,4 +1,5 @@
-import { revalidatePath } from 'next/cache';
+import { revalidatePath, revalidateTag } from 'next/cache';
+import { STAYS_CATALOG_CACHE_TAG } from '@/lib/stays';
 import { NextResponse } from 'next/server';
 import { applyPublishedStayReviewPayload } from '@/lib/apply-published-stay-review-payload';
 import { requireOrganizerApiAccess } from '@/lib/organizer-backoffice-access.server';
@@ -40,12 +41,14 @@ export async function PATCH(
     return NextResponse.json({ error: result.message }, { status: 400 });
   }
 
+  revalidateTag(STAYS_CATALOG_CACHE_TAG);
   revalidatePath(`/organisme/sejours/${stayId}`);
   revalidatePath(`/organisme/stays/${stayId}`);
   revalidatePath(`/organisme/stays/${stayId}/edit`);
   revalidatePath('/organisme/sejours');
   revalidatePath('/organisme/stays');
   revalidatePath('/sejours');
+  revalidatePath('/sejours/[slug]', 'page');
 
   return NextResponse.json({ ok: true, saved: true });
 }

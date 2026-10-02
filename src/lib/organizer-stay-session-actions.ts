@@ -1,6 +1,7 @@
 'use server';
 
-import { revalidatePath } from 'next/cache';
+import { revalidatePath, revalidateTag } from 'next/cache';
+import { STAYS_CATALOG_CACHE_TAG } from '@/lib/stays';
 import { redirect } from 'next/navigation';
 import { withOrganizerQuery } from '@/lib/organizers.server';
 import { getReservedSessionCounts } from '@/lib/session-reservations';
@@ -31,11 +32,14 @@ async function verifyStayAccess(stayId: string, organizerId: string) {
 }
 
 function revalidateStayPaths(stayId: string) {
+  revalidateTag(STAYS_CATALOG_CACHE_TAG);
   revalidatePath(`/organisme/sejours/${stayId}`);
   revalidatePath(`/organisme/stays/${stayId}`);
   revalidatePath(`/organisme/stays/${stayId}/edit`);
   revalidatePath('/organisme/sejours');
   revalidatePath('/organisme/stays');
+  revalidatePath('/sejours');
+  revalidatePath('/sejours/[slug]', 'page');
 }
 
 export async function organizerStayAddSession(formData: FormData) {

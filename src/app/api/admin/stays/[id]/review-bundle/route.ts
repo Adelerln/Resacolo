@@ -1,4 +1,5 @@
-import { revalidatePath } from 'next/cache';
+import { revalidatePath, revalidateTag } from 'next/cache';
+import { STAYS_CATALOG_CACHE_TAG } from '@/lib/stays';
 import { NextResponse } from 'next/server';
 import { requireApiAdmin } from '@/lib/auth/api';
 import { applyPublishedStayReviewPayload } from '@/lib/apply-published-stay-review-payload';
@@ -45,6 +46,7 @@ export async function PATCH(
     return NextResponse.json({ error: result.message }, { status: 400 });
   }
 
+  revalidateTag(STAYS_CATALOG_CACHE_TAG);
   revalidatePath('/admin/sejours');
   revalidatePath(`/admin/sejours/${stayId}`);
   revalidatePath('/organisme/sejours');
@@ -52,6 +54,7 @@ export async function PATCH(
   revalidatePath(`/organisme/stays/${stayId}`);
   revalidatePath(`/organisme/stays/${stayId}/edit`);
   revalidatePath('/sejours');
+  revalidatePath('/sejours/[slug]', 'page');
 
   return NextResponse.json({ ok: true, saved: true });
 }

@@ -1,5 +1,7 @@
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
+import ErrorToast from '@/components/common/ErrorToast';
+import SavedToast from '@/components/common/SavedToast';
 import { requirePartner } from '@/lib/auth/require';
 import { canAccessPartnerSection, getPartnerAccessRoleFromSession } from '@/lib/partner-access';
 import PartnerHeroFieldsSection from '@/components/partner/PartnerHeroFieldsSection';
@@ -162,14 +164,8 @@ export default async function MarqueBlanchePage({ searchParams }: PageProps) {
         </p>
       </div>
 
-      {errorMessage ? (
-        <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{errorMessage}</p>
-      ) : null}
-      {isSaved ? (
-        <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-          Marque blanche enregistrée.
-        </p>
-      ) : null}
+      {errorMessage ? <ErrorToast message={errorMessage} /> : null}
+      {isSaved ? <SavedToast message="Marque blanche enregistrée." /> : null}
 
       <form id="partner-white-label-form" action={updateWhiteLabel} className="space-y-6">
         <section className="rounded-2xl border border-slate-200 bg-white p-6">

@@ -96,7 +96,11 @@ export function inferTransportLogisticsModeFromSignals(input: {
   ) {
     return 'Aller/Retour différencié';
   }
-  if (/(sans transport|sans acheminement|rdv sur place|rendez vous sur place)/i.test(combined)) {
+  // « RDV / sur place » est souvent une option parmi d’autres, pas le mode « Sans transport ».
+  if (
+    /(sans transport|sans acheminement)\b/i.test(combined) &&
+    !/(ville de d[eé]part|transport aller|d[eé]pose centre|plusieurs villes)/i.test(combined)
+  ) {
     return 'Sans transport';
   }
   return '';

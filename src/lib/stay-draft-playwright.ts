@@ -3,7 +3,9 @@ import {
   type DraftSessionItem,
   type DraftTransportPriceDebug,
   type DraftTransportVariant,
+  canonicalizeOnSiteTransportLabel,
   detectSessionAvailability,
+  isOnSiteTransportLabel,
   parseSessionLabelToItem,
   parseZigotoursDateDepartOption,
   type ThalieSessionBaseline
@@ -428,7 +430,7 @@ function normalizeDynamicTransportLabel(value: string | null | undefined): strin
       'ville de depart',
       'ville de retour',
       'aucun transport',
-      'sans transport',
+      // « Sans transport » = option sur place, pas un placeholder.
       'tous',
       'transport aller retour',
       'transport aerien',
@@ -444,6 +446,8 @@ function normalizeDynamicTransportLabel(value: string | null | undefined): strin
   if (key.includes('transport') && /\b(aerien|aerienne|aeroport|aller retour)\b/.test(key)) {
     return null;
   }
+  const onSite = canonicalizeOnSiteTransportLabel(normalized);
+  if (onSite) return onSite;
   return normalized;
 }
 
@@ -925,7 +929,37 @@ function deriveDepartureTableData(
     for (const row of group.rows) {
       const city = normalizeDynamicTransportLabel(row.city) ?? normalizeWhitespace(row.city);
       const cityKey = simplifyForMatch(city);
-      if (!cityKey || cityKey === 'sur place') continue;
+      if (!cityKey) continue;
+
+      if (cityKey === 'sur place' || isOnSiteTransportLabel(city)) {
+        const onSiteLabel = canonicalizeOnSiteTransportLabel(city) ?? 'Sur place';
+        const onSiteKey = simplifyForMatch(onSiteLabel);
+        const existing = transportByCity.get(onSiteKey) ?? {
+          city: onSiteLabel,
+          amountCounts: new Map<number, number>(),
+          includedSessionKeys: new Set<string>(),
+          sampleCount: 0,
+          rawLabel: row.cityLabelRaw || onSiteLabel
+        };
+        existing.includedSessionKeys.add(sessionKey);
+        existing.amountCounts.set(0, (existing.amountCounts.get(0) ?? 0) + 1);
+        existing.sampleCount += 1;
+        transportByCity.set(onSiteKey, existing);
+        transportPriceDebug.push({
+          variant_url: sourceUrl,
+          departure_city: onSiteLabel,
+          return_city: onSiteLabel,
+          page_price_cents: row.priceCents ?? baselineCents,
+          base_price_cents: baselineCents,
+          amount_cents: 0,
+          pricing_method: 'session_delta',
+          confidence: 'high',
+          reason: `datatable-on-site-option:${sessionKey}`,
+          departure_label_raw: row.cityLabelRaw || onSiteLabel,
+          return_label_raw: row.cityLabelRaw || onSiteLabel
+        });
+        continue;
+      }
 
       const existing = transportByCity.get(cityKey) ?? {
         city,

@@ -1,4 +1,6 @@
 import Link from 'next/link';
+import ErrorToast from '@/components/common/ErrorToast';
+import SavedToast from '@/components/common/SavedToast';
 import { requireRole } from '@/lib/auth/require';
 import { reviewCancellationAction } from '@/app/mnemos/cancellations/actions';
 import { isMissingPublicTableError } from '@/lib/mnemos/supabase-table-missing';
@@ -69,15 +71,9 @@ export default async function MnemosCancellationDetailPage({ params, searchParam
         </p>
       </div>
 
-      {sp.error ? (
-        <div className="rounded-lg border border-rose-800/50 bg-rose-950/30 px-4 py-3 text-sm text-rose-100">
-          {sp.error}
-        </div>
-      ) : null}
+      {sp.error ? <ErrorToast message={sp.error} /> : null}
       {sp.done === '1' ? (
-        <div className="rounded-lg border border-emerald-800/50 bg-emerald-950/30 px-4 py-3 text-sm text-emerald-100">
-          Décision enregistrée.
-        </div>
+        <SavedToast message="Décision enregistrée." clearParams={['done']} />
       ) : null}
 
       <section className="rounded-xl border border-slate-700 bg-slate-900/50 p-5 text-sm text-slate-200">

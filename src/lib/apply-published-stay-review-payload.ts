@@ -17,6 +17,7 @@ import {
 import { normalizeStayDestination } from '@/lib/stay-destination';
 import { isMissingRegionTextColumnError, normalizeStayRegion } from '@/lib/stay-regions';
 import { sanitizeSeoPrimaryKeyword, sanitizeSeoTags, sanitizeSeoText } from '@/lib/stay-seo';
+import { sanitizeStayRichText } from '@/lib/stay-rich-text';
 import { normalizeStayTitle } from '@/lib/stay-title';
 import { normalizeImportedVideoUrlList } from '@/lib/stay-draft-url-extract';
 import type { Json } from '@/types/supabase';
@@ -94,29 +95,38 @@ export async function applyPublishedStayReviewPayload(
 
   const requestedTransportMode =
     normalizeStayTransportLogisticsMode(payload.transport_mode) || stay.transport_mode || 'Sans transport';
+  const currentTransportMode = stay.transport_mode || 'Sans transport';
+  const payloadTransportCities = Array.isArray(payload.transport_options_json)
+    ? payload.transport_options_json.filter((row) => {
+        if (!row || typeof row !== 'object') return false;
+        const record = row as Record<string, unknown>;
+        const label = String(record.label ?? record.departure_city ?? record.city ?? '').trim();
+        return label.length > 0;
+      }).length
+    : 0;
 
-  const { data: existingTransportOptions } = await supabase
-    .from('transport_options')
-    .select('id')
-    .eq('stay_id', stayId);
-  const hasExistingTransportOptions = (existingTransportOptions ?? []).length > 0;
-
-  if (hasExistingTransportOptions && requestedTransportMode !== (stay.transport_mode || 'Sans transport')) {
+  // Similaire ↔ différencié : même saisie des villes, seul l’affichage front change.
+  // On bloque seulement le passage à « Sans transport » tant que des villes restent dans le formulaire.
+  if (
+    requestedTransportMode === 'Sans transport' &&
+    currentTransportMode !== 'Sans transport' &&
+    payloadTransportCities > 0
+  ) {
     return {
       ok: false,
       message:
-        'Impossible de modifier le type de transport tant que des villes de transport existent. Supprimez-les d’abord.'
+        'Impossible de passer en « Sans transport » tant que des villes de transport sont renseignées. Supprimez-les d’abord.'
     };
   }
 
   const basePayload: StayUpdate = {
     title: normalizeStayTitle(payload.title),
     summary: normalizeStaySummary(payload.summary) || null,
-    description: payload.description.trim() || null,
+    description: sanitizeStayRichText(payload.description) || null,
     activities_text: payload.activities_text.trim() || null,
-    program_text: payload.program_text.trim() || null,
-    supervision_text: payload.supervision_text.trim() || null,
-    required_documents_text: payload.required_documents_text.trim() || null,
+    program_text: sanitizeStayRichText(payload.program_text) || null,
+    supervision_text: sanitizeStayRichText(payload.supervision_text) || null,
+    required_documents_text: sanitizeStayRichText(payload.required_documents_text) || null,
     categories: categoryValues,
     ages,
     age_min: ageMin,
@@ -132,7 +142,7 @@ export async function applyPublishedStayReviewPayload(
     destination_countries:
       destination.destinationCountries.length > 0 ? destination.destinationCountries : null,
     transport_mode: requestedTransportMode,
-    transport_text: payload.transport_text.trim() || null,
+    transport_text: sanitizeStayRichText(payload.transport_text) || null,
     partner_discount_percent:
       payload.partner_discount_percent != null && Number.isFinite(payload.partner_discount_percent)
         ? payload.partner_discount_percent

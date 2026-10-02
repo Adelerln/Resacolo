@@ -32,6 +32,7 @@ import {
 import { mapToCanonicalStayRegion } from '@/lib/stay-regions';
 import { isPartnerTariffExtraOptionLabel } from '@/lib/stay-draft-extra-options-split';
 import { sanitizeSeoPrimaryKeyword } from '@/lib/stay-seo';
+import { sanitizeStayRichText } from '@/lib/stay-rich-text';
 import { tryCanonicalizeStaySourceUrl } from '@/lib/stay-source-url-canonical';
 import { normalizeStayTitle } from '@/lib/stay-title';
 import { resolveStayDestination } from '@/lib/stay-destination-resolver';
@@ -1383,12 +1384,12 @@ async function updateOrInsertStay(
 
   const basePayload: StayUpdate = {
     title: normalizedTitle,
-    description: toNullableText(draft.description),
+    description: toNullableText(sanitizeStayRichText(draft.description)),
     summary: toNullableText(draft.summary),
     activities_text: toNullableText(draft.activities_text),
-    program_text: toNullableText(draft.program_text),
-    supervision_text: toNullableText(draft.supervision_text),
-    required_documents_text: toNullableText(draft.required_documents_text),
+    program_text: toNullableText(sanitizeStayRichText(draft.program_text)),
+    supervision_text: toNullableText(sanitizeStayRichText(draft.supervision_text)),
+    required_documents_text: toNullableText(sanitizeStayRichText(draft.required_documents_text)),
     location_text: toNullableText(draft.location_text),
     region_text: normalizedRegion ?? null,
     destination_type: destination.destinationType,
@@ -1405,7 +1406,7 @@ async function updateOrInsertStay(
     ages,
     categories: mappedCategories,
     transport_mode: transportMode,
-    transport_text: toNullableText(draft.transport_text),
+    transport_text: toNullableText(sanitizeStayRichText(draft.transport_text)),
     partner_discount_percent: partnerDiscountPercent,
     is_caf_eligible: isCafEligible,
     seo_primary_keyword: toNullableText(sanitizeSeoPrimaryKeyword(draft.seo_primary_keyword)),

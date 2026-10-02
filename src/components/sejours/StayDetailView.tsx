@@ -22,6 +22,12 @@ import {
 } from '@/lib/transport-city-normalization';
 import StayLocationMap from '@/components/sejours/StayLocationMap';
 import { buildStayIntroText } from '@/lib/stay-seo';
+import {
+  convertPlainTextToStayRichTextHtml,
+  looksLikeStayRichTextHtml,
+  sanitizeStayRichText,
+  stripStayRichTextToPlain
+} from '@/lib/stay-rich-text';
 import { slugify } from '@/lib/utils';
 
 type TabId = 'sejour' | 'hebergement' | 'infos';
@@ -359,6 +365,10 @@ function ScrollablePhotoGallery({
 function getProgrammeBlocks(description: string): { title?: string; text: string }[] {
   const trimmed = description.trim();
   if (!trimmed) return [];
+  // Contenu HTML : on conserve tel quel (pas de découpage « Jour »).
+  if (looksLikeStayRichTextHtml(trimmed)) {
+    return [{ text: sanitizeStayRichText(trimmed) }];
+  }
   const byDay = trimmed.split(/(?=Jour \d+)/i).filter(Boolean);
   if (byDay.length > 1) {
     return byDay.map((block) => {
@@ -401,7 +411,12 @@ function cleanEditorialText(value: string) {
 }
 
 function normalizeEditorialText(value: unknown) {
-  return cleanEditorialText(normalizeRawText(value));
+  const raw = normalizeRawText(value);
+  if (!raw) return '';
+  if (looksLikeStayRichTextHtml(raw)) {
+    return sanitizeStayRichText(raw);
+  }
+  return cleanEditorialText(raw);
 }
 
 function getRawField(raw: Record<string, unknown> | undefined, keys: string[]) {
@@ -426,6 +441,7 @@ function pickFirstEditorialText(values: unknown[]) {
 function splitEditorialParagraphs(value: string): string[] {
   const normalized = normalizeEditorialText(value);
   if (!normalized) return [];
+  if (looksLikeStayRichTextHtml(normalized)) return [];
 
   const explicitParagraphs = normalized
     .split(/\n{2,}/)
@@ -475,6 +491,19 @@ function EditorialParagraphs({
   emptyText?: string;
   className?: string;
 }) {
+  if (looksLikeStayRichTextHtml(text)) {
+    const html = sanitizeStayRichText(text);
+    if (!stripStayRichTextToPlain(html)) {
+      return <p className={className}>{emptyText}</p>;
+    }
+    return (
+      <div
+        className={`${className} [&_b]:font-semibold [&_li]:my-1 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:mb-3 [&_p:last-child]:mb-0 [&_strong]:font-semibold [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5`}
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+    );
+  }
+
   const paragraphs = splitEditorialParagraphs(text);
 
   if (paragraphs.length === 0) {
@@ -996,17 +1025,27 @@ export function StayDetailView({
 
     return sentences.join(' ');
   }, [availableSessions, transportMode]);
-  const displayedTransportText = useMemo(
-    () => [transportSummaryText, cleanedTransportText].filter(Boolean).join('\n\n'),
-    [cleanedTransportText, transportSummaryText]
-  );
+  const displayedTransportText = useMemo(() => {
+    const parts = [transportSummaryText, cleanedTransportText].filter(Boolean);
+    if (parts.length === 0) return '';
+    if (parts.some((part) => looksLikeStayRichTextHtml(part))) {
+      return parts
+        .map((part) =>
+          looksLikeStayRichTextHtml(part)
+            ? sanitizeStayRichText(part)
+            : convertPlainTextToStayRichTextHtml(part)
+        )
+        .join('');
+    }
+    return parts.join('\n\n');
+  }, [cleanedTransportText, transportSummaryText]);
   const organizerHref = getOrganizerHref(stay);
   const seoInput = {
     title: stay.title,
     summary: stay.summary,
-    description: stay.description,
-    activitiesText,
-    programText: programmeText,
+    description: stripStayRichTextToPlain(stay.description),
+    activitiesText: stripStayRichTextToPlain(activitiesText),
+    programText: stripStayRichTextToPlain(programmeText),
     location: stay.location,
     region: stay.region,
     seasonName: stay.seasonName,

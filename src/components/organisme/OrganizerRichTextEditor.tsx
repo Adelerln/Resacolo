@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState, type ClipboardEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from 'react';
 import {
   sanitizeOrganizerRichText,
   sanitizeOrganizerRichTextFromPaste
@@ -13,11 +13,15 @@ type OrganizerRichTextEditorProps = {
 };
 
 const TOOLBAR_ACTIONS = [
-  { label: 'B', command: 'bold' as const },
-  { label: 'I', command: 'italic' as const },
-  { label: 'U', command: 'underline' as const },
-  { label: '•', command: 'insertUnorderedList' as const, title: 'Liste à puces' }
+  { label: 'G', command: 'bold' as const, title: 'Gras (Ctrl+G)', shortcutKey: 'g' },
+  { label: 'I', command: 'italic' as const, title: 'Italique (Ctrl+I)', shortcutKey: 'i' },
+  { label: 'S', command: 'underline' as const, title: 'Souligné (Ctrl+U)', shortcutKey: 'u' },
+  { label: '•', command: 'insertUnorderedList' as const, title: 'Liste à puces', shortcutKey: null }
 ];
+
+function isModKey(event: KeyboardEvent<HTMLDivElement>) {
+  return event.metaKey || event.ctrlKey;
+}
 
 export default function OrganizerRichTextEditor({
   name,
@@ -98,6 +102,15 @@ export default function OrganizerRichTextEditor({
     syncFromEditor();
   }
 
+  function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (!isModKey(event) || event.altKey) return;
+    const key = event.key.toLowerCase();
+    const action = TOOLBAR_ACTIONS.find((item) => item.shortcutKey === key);
+    if (!action) return;
+    event.preventDefault();
+    applyCommand(action.command);
+  }
+
   function handlePaste(event: ClipboardEvent<HTMLDivElement>) {
     event.preventDefault();
     const clipboard = event.clipboardData;
@@ -122,7 +135,8 @@ export default function OrganizerRichTextEditor({
             <button
               key={action.command}
               type="button"
-              title={'title' in action ? action.title : undefined}
+              title={action.title}
+              aria-label={action.title}
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => applyCommand(action.command)}
               className={`rounded-md border px-3 py-1 text-xs font-semibold transition ${
@@ -143,11 +157,12 @@ export default function OrganizerRichTextEditor({
           suppressHydrationWarning
           onInput={syncFromEditor}
           onBlur={syncFromEditor}
+          onKeyDown={handleKeyDown}
           onKeyUp={syncFromEditor}
           onMouseUp={syncFromEditor}
           onFocus={syncFromEditor}
           onPaste={handlePaste}
-          className="min-h-[220px] w-full rounded-b-lg bg-slate-100 px-3 py-3 text-sm font-normal leading-6 text-slate-700 outline-none [&_li]:my-0.5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:mb-3 [&_p:last-child]:mb-0 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5"
+          className="min-h-[220px] w-full rounded-b-lg bg-slate-100 px-3 py-3 text-sm font-normal leading-6 text-slate-700 outline-none [&_li]:my-0.5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:mb-3 [&_p:last-child]:mb-0 [&_strong]:font-semibold [&_b]:font-semibold [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5"
         />
       </div>
       <input

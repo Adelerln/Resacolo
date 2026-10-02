@@ -8,6 +8,10 @@ import {
   extractVideoUrlsFromArbitraryString,
   isVideoUrlCandidate
 } from '@/lib/stay-draft-url-extract';
+import {
+  canonicalizeOnSiteTransportLabel,
+  isOnSiteTransportLabel
+} from '@/lib/stay-draft-transport-display';
 
 const REQUEST_TIMEOUT_MS = 15_000;
 const READER_PROXY_TIMEOUT_MS = 30_000;
@@ -2872,7 +2876,42 @@ function buildZigotoursDepartureDataFromRows(
         : null;
 
     for (const row of entry.rows) {
-      if (row.isExplicitBase || !row.city) continue;
+      if (row.isExplicitBase) {
+        const onSiteLabel =
+          canonicalizeOnSiteTransportLabel(row.city) ??
+          (row.city && isOnSiteTransportLabel(row.city) ? row.city : null) ??
+          'Sur place';
+        const cityKey = simplifyForMatch(onSiteLabel);
+        const existing = transportByCity.get(cityKey) ?? {
+          city: onSiteLabel,
+          includedSessionKeys: new Set<string>(),
+          amountCounts: new Map<number, number>()
+        };
+        existing.includedSessionKeys.add(stableSessionKey);
+        existing.amountCounts.set(0, (existing.amountCounts.get(0) ?? 0) + 1);
+        transportByCity.set(cityKey, existing);
+        transportPriceDebug.push({
+          variant_url: sourceUrl,
+          departure_city: onSiteLabel,
+          return_city: onSiteLabel,
+          page_price_cents:
+            row.totalPriceEur != null && Number.isFinite(row.totalPriceEur)
+              ? Math.round(row.totalPriceEur * 100)
+              : null,
+          base_price_cents:
+            sessionBaseEur != null && Number.isFinite(sessionBaseEur)
+              ? Math.round(sessionBaseEur * 100)
+              : null,
+          amount_cents: 0,
+          pricing_method: 'session_delta',
+          confidence: 'high',
+          reason: `zigotours-on-site-base:${stableSessionKey}`,
+          departure_label_raw: row.city ?? onSiteLabel,
+          return_label_raw: row.city ?? onSiteLabel
+        });
+        continue;
+      }
+      if (!row.city) continue;
 
       const deltaEur =
         row.transportEur ??
@@ -3068,7 +3107,38 @@ function buildPaginatedDepartureTableDataFromRows(
       null;
 
     for (const row of entry.rows) {
-      if (simplifyForMatch(row.city) === 'sur place') continue;
+      if (isOnSiteTransportLabel(row.city) || simplifyForMatch(row.city) === 'sur place') {
+        const onSiteLabel = canonicalizeOnSiteTransportLabel(row.city) ?? 'Sur place';
+        const cityKey = simplifyForMatch(onSiteLabel);
+        const existing = transportByCity.get(cityKey) ?? {
+          city: onSiteLabel,
+          includedSessionKeys: new Set<string>(),
+          amountCounts: new Map<number, number>()
+        };
+        existing.includedSessionKeys.add(stableSessionKey);
+        existing.amountCounts.set(0, (existing.amountCounts.get(0) ?? 0) + 1);
+        transportByCity.set(cityKey, existing);
+        transportPriceDebug.push({
+          variant_url: sourceUrl,
+          departure_city: onSiteLabel,
+          return_city: onSiteLabel,
+          page_price_cents:
+            row.totalPriceEur != null && Number.isFinite(row.totalPriceEur)
+              ? Math.round(row.totalPriceEur * 100)
+              : null,
+          base_price_cents:
+            sessionBaseEur != null && Number.isFinite(sessionBaseEur)
+              ? Math.round(sessionBaseEur * 100)
+              : null,
+          amount_cents: 0,
+          pricing_method: 'session_delta',
+          confidence: 'high',
+          reason: `datatable-ajax-on-site:${stableSessionKey}`,
+          departure_label_raw: row.city,
+          return_label_raw: row.city
+        });
+        continue;
+      }
 
       const deltaEur =
         row.deltaPriceEur ??
@@ -3677,7 +3747,7 @@ const TRANSPORT_PLACEHOLDER_KEYS = [
   'transport aller',
   'transport retour',
   'aucun transport',
-  'sans transport',
+  // « Sans transport » est une option réservable (sur place), pas un placeholder.
   'none',
   'tous',
   'transport aller retour',
@@ -3685,23 +3755,6 @@ const TRANSPORT_PLACEHOLDER_KEYS = [
   'transport aerien aller retour',
   'transport aérien',
   'transport aérien aller retour'
-];
-
-const TRANSPORT_BASE_REFERENCE_KEYS = [
-  'depose centre',
-  'depose sur le centre',
-  'depose au centre',
-  'reprise centre',
-  'reprise sur le centre',
-  'reprise au centre',
-  'sans transport',
-  'sans acheminement',
-  'sans convoyage',
-  'rendez vous sur place',
-  'rdv sur place',
-  'sur place',
-  'depart centre',
-  'retour centre'
 ];
 
 function sanitizeTransportLabel(value: string | null | undefined): string {
@@ -3731,6 +3784,8 @@ function normalizeTransportCityLabel(value: string | null | undefined): string |
   if (key.includes('transport') && /\b(aerien|aerienne|aeroport|aller retour)\b/.test(key)) {
     return null;
   }
+  const onSite = canonicalizeOnSiteTransportLabel(normalized);
+  if (onSite) return onSite;
   return normalized.length > 80 ? normalized.slice(0, 80).trim() : normalized;
 }
 
@@ -4000,20 +4055,18 @@ function parseTransportPage(html: string, sourceUrl: string): ParsedTransportPag
   return parsed;
 }
 
-export function isTransportBaseReference(value: string | null | undefined): boolean {
-  const key = simplifyForMatch(value ?? '');
-  if (!key) return false;
-  return TRANSPORT_BASE_REFERENCE_KEYS.some((candidate) =>
-    key.includes(simplifyForMatch(candidate))
-  );
-}
-
 export {
   buildDraftTransportOptionsFromVariants,
+  canonicalizeOnSiteTransportLabel,
   collapseTransportDraftOptionsJson,
   collapseTransportVariantsForDraft,
+  isOnSiteTransportLabel,
   pickPrimaryTransportCityLabel
 } from './stay-draft-transport-display';
+
+export function isTransportBaseReference(value: string | null | undefined): boolean {
+  return isOnSiteTransportLabel(value);
+}
 
 function normalizeTransportPair(page: ParsedTransportPage): {
   departureCity: string | null;
@@ -4460,6 +4513,20 @@ export async function extractThalieOptionUrlPricing(
     const datePageGroups = parseThaliePbOptionGroups(datePage.html, datePage.finalUrl);
     const outboundOptions =
       datePageGroups.find((group) => group.role === 'outbound')?.options ?? [];
+    const returnOptions = datePageGroups.find((group) => group.role === 'return')?.options ?? [];
+    for (const option of [...outboundOptions, ...returnOptions]) {
+      const city = normalizeTransportCityLabel(option.label);
+      if (!city || !isTransportBaseReference(city)) continue;
+      const onSiteLabel = canonicalizeOnSiteTransportLabel(city) ?? city;
+      const existing = samplesByCity.get(simplifyForMatch(onSiteLabel)) ?? {
+        city: onSiteLabel,
+        amounts: [],
+        sampleSourceUrls: []
+      };
+      existing.amounts.push(0);
+      existing.sampleSourceUrls.push(option.url ?? datePage.finalUrl);
+      samplesByCity.set(simplifyForMatch(onSiteLabel), existing);
+    }
     const cityUrls = unique(outboundOptions.filter((option) => {
       const city = normalizeTransportCityLabel(option.label);
       return city && !isTransportBaseReference(city) && option.url;
@@ -4990,7 +5057,47 @@ export async function extractTransportVariants(
   const rawVariants = transportPriceDebug
     .map((row) => debugToTransportVariant(row))
     .filter((row): row is DraftTransportVariant => Boolean(row));
-  const transportVariants = dedupeTransportVariants(rawVariants);
+  let transportVariants = dedupeTransportVariants(rawVariants);
+
+  const hasOnSiteOption = transportVariants.some(
+    (variant) =>
+      isOnSiteTransportLabel(variant.departure_city) || isOnSiteTransportLabel(variant.return_city)
+  );
+  if (!hasOnSiteOption) {
+    const basePage =
+      pages.find((page) => page.sourceUrl === base.sourceUrl) ??
+      pages.find(
+        (page) =>
+          isOnSiteTransportLabel(page.selectedOutbound) || isOnSiteTransportLabel(page.selectedReturn)
+      );
+    if (basePage) {
+      const departure =
+        canonicalizeOnSiteTransportLabel(basePage.selectedOutbound) ??
+        canonicalizeOnSiteTransportLabel(basePage.selectedReturn) ??
+        'Sur place';
+      const returning =
+        canonicalizeOnSiteTransportLabel(basePage.selectedReturn) ??
+        canonicalizeOnSiteTransportLabel(basePage.selectedOutbound) ??
+        departure;
+      transportVariants = [
+        {
+          departure_city: departure,
+          return_city: returning,
+          amount_cents: 0,
+          currency: 'EUR',
+          source_url: basePage.sourceUrl || sourceUrl,
+          departure_label_raw: basePage.selectedOutbound,
+          return_label_raw: basePage.selectedReturn,
+          page_price_cents: basePage.currentPriceCents,
+          base_price_cents: base.basePriceCents,
+          pricing_method: 'delta_from_base',
+          confidence: 'high',
+          reason: 'ensured-on-site-base-option'
+        },
+        ...transportVariants
+      ];
+    }
+  }
 
   console.info('[transport-scraping] résumé', {
     sourceUrl,

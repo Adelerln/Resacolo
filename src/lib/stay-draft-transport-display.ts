@@ -66,7 +66,7 @@ const TRANSPORT_PLACEHOLDER_KEYS = [
   'transport aller',
   'transport retour',
   'aucun transport',
-  'sans transport',
+  // « Sans transport » n’est pas un placeholder : c’est une option réservable (sur place).
   'none',
   'tous',
   'transport aller retour',
@@ -93,12 +93,30 @@ const TRANSPORT_BASE_REFERENCE_KEYS = [
   'retour centre'
 ];
 
-function isBaseReference(value: string | null | undefined): boolean {
+/** Option « sur place / centre » utilisée comme référence tarifaire (supplément 0 €). */
+export function isOnSiteTransportLabel(value: string | null | undefined): boolean {
   const key = simplifyForMatch(value ?? '');
   if (!key) return false;
   return TRANSPORT_BASE_REFERENCE_KEYS.some((candidate) =>
     key.includes(simplifyForMatch(candidate))
   );
+}
+
+/**
+ * Libellé canonique pour l’option centre :
+ * - Dépose Centre / Reprise Centre (différencié)
+ * - Sur place (similaire, sans transport, RDV…)
+ */
+export function canonicalizeOnSiteTransportLabel(value: string | null | undefined): string | null {
+  if (!isOnSiteTransportLabel(value)) return null;
+  const key = simplifyForMatch(value ?? '');
+  if (key.includes('depose')) return 'Dépose Centre';
+  if (key.includes('reprise')) return 'Reprise Centre';
+  return 'Sur place';
+}
+
+function isBaseReference(value: string | null | undefined): boolean {
+  return isOnSiteTransportLabel(value);
 }
 
 function sanitizeTransportLabel(value: string | null | undefined): string {

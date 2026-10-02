@@ -648,6 +648,12 @@ export default async function OrganizerProfilePage({ searchParams }: PageProps) 
             }
           />
         </div>
+
+        <div className="flex justify-end">
+          <button type="submit" className="organizer-btn-primary">
+            Enregistrer la fiche
+          </button>
+        </div>
       </form>
       <OrganizerProfileFormEnhancer
         formId="organizer-profile-form"

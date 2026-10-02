@@ -49,6 +49,7 @@ export default function OrganizerProfileFormEnhancer({
   resetToken
 }: OrganizerProfileFormEnhancerProps) {
   const [isDirty, setIsDirty] = useState(false);
+  const [pending, setPending] = useState(false);
 
   useEffect(() => {
     const form = document.getElementById(formId);
@@ -97,28 +98,49 @@ export default function OrganizerProfileFormEnhancer({
       setIsDirty(serializeFormData(form) !== initialSnapshot);
     };
 
+    const handleSubmit = () => {
+      setPending(true);
+    };
+
+    const handleInvalid = (event: Event) => {
+      setPending(false);
+      const target = event.target;
+      if (target instanceof HTMLElement) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    };
+
     syncState();
     form.addEventListener('input', syncState);
     form.addEventListener('change', syncState);
     form.addEventListener('reset', syncState);
+    form.addEventListener('submit', handleSubmit);
+    form.addEventListener('invalid', handleInvalid, true);
 
     return () => {
       form.removeEventListener('input', syncState);
       form.removeEventListener('change', syncState);
       form.removeEventListener('reset', syncState);
+      form.removeEventListener('submit', handleSubmit);
+      form.removeEventListener('invalid', handleInvalid, true);
     };
   }, [formId, resetToken]);
 
-  if (!isDirty) return null;
+  useEffect(() => {
+    setPending(false);
+  }, [resetToken]);
+
+  if (!isDirty && !pending) return null;
 
   return (
-    <div className="pointer-events-none fixed right-4 bottom-4 z-40 flex justify-end sm:right-6 sm:bottom-6">
+    <div className="pointer-events-none fixed right-4 bottom-4 z-[190] flex justify-end sm:right-6 sm:bottom-6">
       <button
         type="submit"
         form={formId}
-        className="pointer-events-auto w-full max-w-xs rounded-full bg-emerald-600 px-5 py-3 text-sm font-semibold text-white shadow-lg sm:w-auto sm:max-w-none"
+        disabled={pending}
+        className="pointer-events-auto w-full max-w-xs rounded-full bg-emerald-600 px-5 py-3 text-sm font-semibold text-white shadow-lg transition disabled:cursor-wait disabled:opacity-70 sm:w-auto sm:max-w-none"
       >
-        Enregistrer
+        {pending ? 'Enregistrement…' : 'Enregistrer'}
       </button>
     </div>
   );

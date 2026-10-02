@@ -1,5 +1,7 @@
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
+import ErrorToast from '@/components/common/ErrorToast';
+import SavedToast from '@/components/common/SavedToast';
 import { requirePartner } from '@/lib/auth/require';
 import { canAccessPartnerSection, getPartnerAccessRoleFromSession } from '@/lib/partner-access';
 import { normalizePartnerFinanceMode } from '@/lib/partner-offers';
@@ -351,20 +353,13 @@ export default async function PartnerCatalogPage({ searchParams }: PageProps) {
         </div>
       </div>
 
-      {errorMessage ? (
-        <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-          {errorMessage}
-        </p>
-      ) : null}
-      {isSaved ? (
-        <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-          Enregistré.
-        </p>
-      ) : null}
+      {errorMessage ? <ErrorToast message={errorMessage} /> : null}
+      {isSaved ? <SavedToast message="Enregistré." /> : null}
       {draftValidationWarning ? (
-        <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-          Enregistré avec avertissement: {draftValidationWarning}
-        </p>
+        <SavedToast
+          message={`Enregistré avec avertissement : ${draftValidationWarning}`}
+          clearParams={['saved', 'warning']}
+        />
       ) : null}
 
       <form id="partner-catalog-form" action={saveDraft} className="space-y-4">

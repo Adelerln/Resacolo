@@ -6,6 +6,7 @@ import { expandDraftAges, normalizeStaySummary, normalizeStayTransportLogisticsM
 import { writeDraftDestinationFields } from '@/lib/stay-draft-destination';
 import { mapToCanonicalStayRegion } from '@/lib/stay-regions';
 import { sanitizeSeoPrimaryKeyword, sanitizeSeoTags, sanitizeSeoText } from '@/lib/stay-seo';
+import { sanitizeStayRichText } from '@/lib/stay-rich-text';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { normalizeStayTitle } from '@/lib/stay-title';
 import type { Json } from '@/types/supabase';
@@ -25,6 +26,10 @@ function normalizeString(value: unknown): string {
 function toNullableString(value: unknown): string | null {
   const normalized = normalizeString(value);
   return normalized.length > 0 ? normalized : null;
+}
+
+function toNullableStayRichText(value: unknown): string | null {
+  return toNullableString(sanitizeStayRichText(normalizeString(value)));
 }
 
 function asStringArray(value: unknown): string[] {
@@ -197,19 +202,23 @@ export async function PATCH(
     region_text: hasOwn(payload, 'region_text')
       ? toNullableString(mapToCanonicalStayRegion(String(payload.region_text ?? '')))
       : currentDraft.region_text,
-    description: hasOwn(payload, 'description') ? toNullableString(payload.description) : currentDraft.description,
+    description: hasOwn(payload, 'description')
+      ? toNullableStayRichText(payload.description)
+      : currentDraft.description,
     activities_text: hasOwn(payload, 'activities_text')
       ? toNullableString(payload.activities_text)
       : currentDraft.activities_text,
     required_documents_text: hasOwn(payload, 'required_documents_text')
-      ? toNullableString(payload.required_documents_text)
+      ? toNullableStayRichText(payload.required_documents_text)
       : currentDraft.required_documents_text,
-    program_text: hasOwn(payload, 'program_text') ? toNullableString(payload.program_text) : currentDraft.program_text,
+    program_text: hasOwn(payload, 'program_text')
+      ? toNullableStayRichText(payload.program_text)
+      : currentDraft.program_text,
     supervision_text: hasOwn(payload, 'supervision_text')
-      ? toNullableString(payload.supervision_text)
+      ? toNullableStayRichText(payload.supervision_text)
       : currentDraft.supervision_text,
     transport_text: hasOwn(payload, 'transport_text')
-      ? toNullableString(payload.transport_text)
+      ? toNullableStayRichText(payload.transport_text)
       : currentDraft.transport_text,
     transport_mode: hasOwn(payload, 'transport_mode')
       ? toNullableString(normalizeStayTransportLogisticsMode(String(payload.transport_mode ?? '')))

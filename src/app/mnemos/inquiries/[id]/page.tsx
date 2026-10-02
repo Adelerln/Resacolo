@@ -1,5 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import ErrorToast from '@/components/common/ErrorToast';
+import SavedToast from '@/components/common/SavedToast';
 import { requireRole } from '@/lib/auth/require';
 import { isMissingPublicTableError } from '@/lib/mnemos/supabase-table-missing';
 import { MnemosDt, MnemosFieldLabel } from '@/components/mnemos/MnemosFieldLabel';
@@ -59,21 +61,22 @@ export default async function MnemosInquiryDetailPage({ params, searchParams }: 
       </Link>
 
       {sp.saved === '1' && (
-        <div className="rounded-lg border border-emerald-800/50 bg-emerald-950/30 px-3 py-2 text-sm text-emerald-100">
-          Enregistré.
-          {sp.notify === 'mail-queued'
-            ? ' E-mail de notification en cours d’envoi à l’organisateur.'
-            : null}
-          {isMnemosTransferredInquiry(row.source) && row.organizer_id
-            ? ' Si un nouvel organisateur a été choisi, un e-mail lui a été envoyé (adresse contact de la fiche organisme).'
-            : null}
-        </div>
+        <SavedToast
+          message={[
+            'Enregistré.',
+            sp.notify === 'mail-queued'
+              ? 'E-mail de notification en cours d’envoi à l’organisateur.'
+              : null,
+            isMnemosTransferredInquiry(row.source) && row.organizer_id
+              ? 'Si un nouvel organisateur a été choisi, un e-mail lui a été envoyé (adresse contact de la fiche organisme).'
+              : null
+          ]
+            .filter(Boolean)
+            .join(' ')}
+          clearParams={['saved', 'notify']}
+        />
       )}
-      {sp.err && (
-        <div className="rounded-lg border border-rose-800/50 bg-rose-950/30 px-3 py-2 text-sm text-rose-100">
-          {decodeURIComponent(sp.err)}
-        </div>
-      )}
+      {sp.err && <ErrorToast message={decodeURIComponent(sp.err)} clearParams={['err']} />}
 
       <div>
         <h1 className="text-2xl font-semibold text-white">Demande</h1>

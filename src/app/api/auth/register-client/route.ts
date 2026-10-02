@@ -2,7 +2,7 @@ import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { after, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { isPasswordPolicyValid, PASSWORD_POLICY_MESSAGE } from '@/lib/auth/password-policy';
+import { isPasswordPolicyValid, PASSWORD_POLICY_MESSAGE, humanizeAuthPasswordError } from '@/lib/auth/password-policy';
 import { upsertFamilyProfileFromRegistration } from '@/lib/account-profile/server';
 import { getApiErrorMessage } from '@/lib/checkout/api';
 import { buildEmailConfirmRedirectUrl } from '@/lib/auth/urls';
@@ -36,6 +36,8 @@ function humanizeAuthError(error: unknown) {
   ) {
     return 'Impossible de créer le compte pour le moment. Réessayez dans quelques instants.';
   }
+  const passwordMessage = humanizeAuthPasswordError(normalized);
+  if (passwordMessage !== normalized) return passwordMessage;
   return normalized.slice(0, 300);
 }
 

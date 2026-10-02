@@ -1,5 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import ErrorToast from '@/components/common/ErrorToast';
+import SavedToast from '@/components/common/SavedToast';
 import { requireRole } from '@/lib/auth/require';
 import { isMissingPublicTableError } from '@/lib/mnemos/supabase-table-missing';
 import { MnemosFieldLabel } from '@/components/mnemos/MnemosFieldLabel';
@@ -59,16 +61,8 @@ export default async function MnemosSupportDetailPage({ params, searchParams }: 
         ← Demandes
       </Link>
 
-      {sp.saved === '1' && (
-        <div className="rounded-lg border border-emerald-800/50 bg-emerald-950/30 px-3 py-2 text-sm text-emerald-100">
-          Enregistré.
-        </div>
-      )}
-      {sp.err && (
-        <div className="rounded-lg border border-rose-800/50 bg-rose-950/30 px-3 py-2 text-sm text-rose-100">
-          {decodeURIComponent(sp.err)}
-        </div>
-      )}
+      {sp.saved === '1' && <SavedToast message="Enregistré." />}
+      {sp.err && <ErrorToast message={decodeURIComponent(sp.err)} clearParams={['err']} />}
 
       <div>
         <h1 className="text-2xl font-semibold text-white">{ticket.subject ?? 'Demande d’assistance'}</h1>

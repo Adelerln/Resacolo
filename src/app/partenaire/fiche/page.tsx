@@ -1,5 +1,7 @@
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
+import ErrorToast from '@/components/common/ErrorToast';
+import SavedToast from '@/components/common/SavedToast';
 import { requirePartner } from '@/lib/auth/require';
 import { canAccessPartnerSection, getPartnerAccessRoleFromSession } from '@/lib/partner-access';
 import PartnerPeopleSection from '@/components/partner/PartnerPeopleSection';
@@ -487,13 +489,9 @@ export default async function PartnerProfilePage({ searchParams }: PageProps) {
         </p>
       </div>
 
-      {errorMessage ? (
-        <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{errorMessage}</p>
-      ) : null}
+      {errorMessage ? <ErrorToast message={errorMessage} /> : null}
       {successMessage ? (
-        <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-          {successMessage}
-        </p>
+        <SavedToast message={successMessage} clearParams={['saved', 'success']} />
       ) : null}
 
       <form id="partner-profile-form" action={updatePartnerProfile} className="space-y-6">

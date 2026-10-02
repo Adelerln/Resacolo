@@ -1,5 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import ErrorToast from '@/components/common/ErrorToast';
+import SavedToast from '@/components/common/SavedToast';
 import { requireRole } from '@/lib/auth/require';
 import { canManageBackofficeAccess } from '@/lib/mnemos-backoffice-access-admins';
 import { createSignedMnemosInvoicePdfUrl } from '@/lib/mnemos/invoice-pdf.server';
@@ -219,14 +221,10 @@ export default async function MnemosOrganizerDetailPage({ params, searchParams }
         </p>
 
         {accessSaved && (
-          <div className="mt-4 rounded-lg border border-emerald-700/50 bg-emerald-950/30 px-3 py-2 text-sm text-emerald-200">
-            Accès mis à jour.
-          </div>
+          <SavedToast message="Accès mis à jour." clearParams={['access_saved']} />
         )}
         {accessError && (
-          <div className="mt-4 rounded-lg border border-rose-700/50 bg-rose-950/30 px-3 py-2 text-sm text-rose-200">
-            {decodeURIComponent(accessError)}
-          </div>
+          <ErrorToast message={decodeURIComponent(accessError)} clearParams={['access_error']} />
         )}
 
         {canManageAccess && (

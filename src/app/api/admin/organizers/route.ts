@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import { requireApiAdmin } from '@/lib/auth/api';
-import { isPasswordPolicyValid, PASSWORD_POLICY_MESSAGE } from '@/lib/auth/password-policy';
+import {
+  humanizeAuthPasswordError,
+  isPasswordPolicyValid,
+  PASSWORD_POLICY_MESSAGE
+} from '@/lib/auth/password-policy';
 import {
   ensurePrismaUserForOrganizerAccess,
   removePrismaUserIfExists,
@@ -12,6 +16,28 @@ import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { slugify } from '@/lib/utils';
 
 export const runtime = 'nodejs';
+
+function wantsJson(req: Request) {
+  return (req.headers.get('accept') ?? '').includes('application/json');
+}
+
+function fail(req: Request, message: string, status = 400) {
+  const safeMessage = humanizeAuthPasswordError(message) || message;
+  if (wantsJson(req)) {
+    return NextResponse.json({ error: safeMessage }, { status });
+  }
+  return NextResponse.redirect(
+    new URL(`/admin/organizers/new?error=${encodeURIComponent(safeMessage)}`, req.url),
+    303
+  );
+}
+
+function succeed(req: Request, redirectTo: string) {
+  if (wantsJson(req)) {
+    return NextResponse.json({ ok: true, redirectTo });
+  }
+  return NextResponse.redirect(new URL(redirectTo, req.url), 303);
+}
 
 export async function POST(req: Request) {
   const unauthorized = await requireApiAdmin(req);
@@ -33,16 +59,10 @@ export async function POST(req: Request) {
   const projectFile = formData.get('education_project');
 
   if (!name || !contactEmail || !userEmail || !tempPassword || !firstName || !lastName) {
-    return NextResponse.redirect(
-      new URL('/admin/organizers/new?error=Tous%20les%20champs%20sont%20requis', req.url),
-      303
-    );
+    return fail(req, 'Tous les champs sont requis');
   }
   if (!isPasswordPolicyValid(tempPassword)) {
-    return NextResponse.redirect(
-      new URL(`/admin/organizers/new?error=${encodeURIComponent(PASSWORD_POLICY_MESSAGE)}`, req.url),
-      303
-    );
+    return fail(req, PASSWORD_POLICY_MESSAGE);
   }
 
   const supabase = getServerSupabaseClient();
@@ -71,15 +91,7 @@ export async function POST(req: Request) {
     .single();
 
   if (organizerError || !organizer) {
-    return NextResponse.redirect(
-      new URL(
-        `/admin/organizers/new?error=${encodeURIComponent(
-          organizerError?.message ?? "Impossible de créer l'organisateur"
-        )}`,
-        req.url
-      ),
-      303
-    );
+    return fail(req, organizerError?.message ?? "Impossible de créer l'organisateur");
   }
 
   if (logoFile instanceof File && logoFile.size > 0) {
@@ -91,15 +103,7 @@ export async function POST(req: Request) {
       .upload(logoPath, logoBuffer, { upsert: true, contentType: logoFile.type });
     if (logoError) {
       await supabase.from('organizers').delete().eq('id', organizer.id);
-      return NextResponse.redirect(
-        new URL(
-          `/admin/organizers/new?error=${encodeURIComponent(
-            logoError.message ?? 'Impossible de téléverser le logo'
-          )}`,
-          req.url
-        ),
-        303
-      );
+      return fail(req, logoError.message ?? 'Impossible de téléverser le logo');
     }
     await supabase.from('organizers').update({ logo_path: logoPath }).eq('id', organizer.id);
   }
@@ -113,15 +117,7 @@ export async function POST(req: Request) {
       .upload(projectPath, projectBuffer, { upsert: true, contentType: projectFile.type });
     if (projectError) {
       await supabase.from('organizers').delete().eq('id', organizer.id);
-      return NextResponse.redirect(
-        new URL(
-          `/admin/organizers/new?error=${encodeURIComponent(
-            projectError.message ?? 'Impossible de téléverser le projet éducatif'
-          )}`,
-          req.url
-        ),
-        303
-      );
+      return fail(req, projectError.message ?? 'Impossible de téléverser le projet éducatif');
     }
     await supabase
       .from('organizers')
@@ -137,15 +133,7 @@ export async function POST(req: Request) {
 
   if (userError || !userData?.user) {
     await supabase.from('organizers').delete().eq('id', organizer.id);
-    return NextResponse.redirect(
-      new URL(
-        `/admin/organizers/new?error=${encodeURIComponent(
-          userError?.message ?? "Impossible de créer l'utilisateur"
-        )}`,
-        req.url
-      ),
-      303
-    );
+    return fail(req, userError?.message ?? "Impossible de créer l'utilisateur");
   }
   try {
     const prismaUser = await ensurePrismaUserForOrganizerAccess({
@@ -159,14 +147,9 @@ export async function POST(req: Request) {
   } catch (prismaError) {
     await supabase.auth.admin.deleteUser(userData.user.id);
     await supabase.from('organizers').delete().eq('id', organizer.id);
-    return NextResponse.redirect(
-      new URL(
-        `/admin/organizers/new?error=${encodeURIComponent(
-          prismaError instanceof Error ? prismaError.message : 'Impossible de créer le compte applicatif'
-        )}`,
-        req.url
-      ),
-      303
+    return fail(
+      req,
+      prismaError instanceof Error ? prismaError.message : 'Impossible de créer le compte applicatif'
     );
   }
 
@@ -182,15 +165,7 @@ export async function POST(req: Request) {
     await supabase.auth.admin.deleteUser(userData.user.id);
     await supabase.from('organizers').delete().eq('id', organizer.id);
     await removePrismaUserIfExists(createdPrismaUserId);
-    return NextResponse.redirect(
-      new URL(
-        `/admin/organizers/new?error=${encodeURIComponent(
-          memberError.message ?? "Impossible de lier l'utilisateur"
-        )}`,
-        req.url
-      ),
-      303
-    );
+    return fail(req, memberError.message ?? "Impossible de lier l'utilisateur");
   }
   try {
     await syncBackofficeAccessFromOrganizerMember({
@@ -208,25 +183,24 @@ export async function POST(req: Request) {
     await supabase.auth.admin.deleteUser(userData.user.id);
     await supabase.from('organizers').delete().eq('id', organizer.id);
     await removePrismaUserIfExists(createdPrismaUserId);
-    return NextResponse.redirect(
-      new URL(
-        `/admin/organizers/new?error=${encodeURIComponent(
-          syncError instanceof Error ? syncError.message : 'Impossible de synchroniser les accès back-office'
-        )}`,
-        req.url
-      ),
-      303
+    return fail(
+      req,
+      syncError instanceof Error ? syncError.message : 'Impossible de synchroniser les accès back-office'
     );
   }
 
   try {
-    await syncOrganizerBillingSettingsForOrganizer(supabase, {
-      id: organizer.id,
-      is_founding_member: false,
-      is_resacolo_member: false
-    }, {
-      source: 'ORG_CREATE'
-    });
+    await syncOrganizerBillingSettingsForOrganizer(
+      supabase,
+      {
+        id: organizer.id,
+        is_founding_member: false,
+        is_resacolo_member: false
+      },
+      {
+        source: 'ORG_CREATE'
+      }
+    );
   } catch (syncError) {
     await supabase
       .from('organizer_members')
@@ -236,21 +210,16 @@ export async function POST(req: Request) {
     await supabase.auth.admin.deleteUser(userData.user.id);
     await supabase.from('organizers').delete().eq('id', organizer.id);
     await removePrismaUserIfExists(createdPrismaUserId);
-    return NextResponse.redirect(
-      new URL(
-        `/admin/organizers/new?error=${encodeURIComponent(
-          syncError instanceof Error
-            ? syncError.message
-            : 'Impossible de synchroniser la commission organisateur.'
-        )}`,
-        req.url
-      ),
-      303
+    return fail(
+      req,
+      syncError instanceof Error
+        ? syncError.message
+        : 'Impossible de synchroniser la commission organisateur.'
     );
   }
 
   revalidatePath('/organisateurs');
   revalidatePath(`/organisateurs/${slug}`);
 
-  return NextResponse.redirect(new URL(`/admin/organizers/${slug}?success=1`, req.url), 303);
+  return succeed(req, `/admin/organizers/${slug}?success=1`);
 }

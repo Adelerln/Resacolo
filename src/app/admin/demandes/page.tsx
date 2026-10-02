@@ -1,4 +1,6 @@
 import { requireAdminSection } from '@/lib/auth/require';
+import ErrorToast from '@/components/common/ErrorToast';
+import SavedToast from '@/components/common/SavedToast';
 import {
   readAdminInboundRequestSettings,
   type AdminInboundRequestKind,
@@ -103,21 +105,15 @@ export default async function AdminDemandesPage({ searchParams }: PageProps) {
       ) : null}
 
       {getSingleParam(resolvedSearchParams, 'err') ? (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {getSingleParam(resolvedSearchParams, 'err')}
-        </div>
+        <ErrorToast message={getSingleParam(resolvedSearchParams, 'err')!} clearParams={['err']} />
       ) : null}
 
       {getSingleParam(resolvedSearchParams, 'saved') ? (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-          Destinataires enregistrés.
-        </div>
+        <SavedToast message="Destinataires enregistrés." />
       ) : null}
 
       {getSingleParam(resolvedSearchParams, 'resolved') ? (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-          Demande marquée comme traitée.
-        </div>
+        <SavedToast message="Demande marquée comme traitée." clearParams={['resolved']} />
       ) : null}
 
       <form

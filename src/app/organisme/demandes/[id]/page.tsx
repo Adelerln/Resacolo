@@ -1,5 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import ErrorToast from '@/components/common/ErrorToast';
+import SavedToast from '@/components/common/SavedToast';
 import OrganizerPageHeader from '@/components/organisme/OrganizerPageHeader';
 import { formatInquiryContact } from '@/lib/inquiries';
 import {
@@ -58,16 +60,8 @@ export default async function OrganizerInquiryDetailPage({ params, searchParams 
         ← Retour aux demandes
       </Link>
 
-      {sp.saved === '1' && (
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-          Demande marquée comme résolue.
-        </div>
-      )}
-      {sp.error && (
-        <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">
-          {decodeURIComponent(sp.error)}
-        </div>
-      )}
+      {sp.saved === '1' && <SavedToast message="Demande marquée comme résolue." />}
+      {sp.error && <ErrorToast message={decodeURIComponent(sp.error)} />}
 
       <OrganizerPageHeader
         title="Demande transférée"

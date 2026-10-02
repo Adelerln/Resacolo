@@ -1,3 +1,5 @@
+import ErrorToast from '@/components/common/ErrorToast';
+import SavedToast from '@/components/common/SavedToast';
 import { requireRole } from '@/lib/auth/require';
 import { PASSWORD_POLICY_HTML_PATTERN, PASSWORD_POLICY_MESSAGE } from '@/lib/auth/password-policy';
 import { MnemosFieldLabel } from '@/components/mnemos/MnemosFieldLabel';
@@ -71,16 +73,10 @@ export default async function MnemosAdminsPage({
         </p>
       </div>
 
-      {sp.error ? (
-        <div className="rounded-lg border border-rose-800/50 bg-rose-950/30 px-4 py-3 text-sm text-rose-100">
-          {decodeURIComponent(sp.error)}
-        </div>
-      ) : null}
+      {sp.error ? <ErrorToast message={decodeURIComponent(sp.error)} /> : null}
 
       {sp.success === 'staff-user-created' ? (
-        <div className="rounded-lg border border-emerald-800/50 bg-emerald-950/30 px-4 py-3 text-sm text-emerald-100">
-          Compte administrateur créé.
-        </div>
+        <SavedToast message="Compte administrateur créé." clearParams={['success']} />
       ) : null}
 
       <form

@@ -16,6 +16,7 @@ import {
 import { writeDraftDestinationFields } from '@/lib/stay-draft-destination';
 import { mapToCanonicalStayRegion } from '@/lib/stay-regions';
 import { sanitizeSeoPrimaryKeyword, sanitizeSeoTags, sanitizeSeoText } from '@/lib/stay-seo';
+import { sanitizeStayRichText } from '@/lib/stay-rich-text';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 import { normalizeStayTitle } from '@/lib/stay-title';
 import type { Database, Json } from '@/types/supabase';
@@ -379,12 +380,12 @@ async function parseBody(req: Request): Promise<{ payload: StayDraftReviewPayloa
     destination_countries: data.destination_countries.map((value) => normalizeString(value)).filter(Boolean),
     location_text: normalizeString(data.location_text),
     region_text: mapToCanonicalStayRegion(data.region_text) ?? '',
-    description: normalizeString(data.description),
+    description: sanitizeStayRichText(data.description),
     activities_text: normalizeString(data.activities_text),
-    required_documents_text: normalizeString(data.required_documents_text),
-    program_text: normalizeString(data.program_text),
-    supervision_text: normalizeString(data.supervision_text),
-    transport_text: normalizeString(data.transport_text),
+    required_documents_text: sanitizeStayRichText(data.required_documents_text),
+    program_text: sanitizeStayRichText(data.program_text),
+    supervision_text: sanitizeStayRichText(data.supervision_text),
+    transport_text: sanitizeStayRichText(data.transport_text),
     transport_mode: normalizeStayTransportLogisticsMode(data.transport_mode),
     categories,
     ages,

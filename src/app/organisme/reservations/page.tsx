@@ -1,4 +1,6 @@
 import Link from 'next/link';
+import ErrorToast from '@/components/common/ErrorToast';
+import SavedToast from '@/components/common/SavedToast';
 import OrganizerPageHeader from '@/components/organisme/OrganizerPageHeader';
 import OrganizerReservationDetailsModal from '@/components/organisme/OrganizerReservationDetailsModal';
 import { OrganizerCancellationForm } from '@/components/organisme/OrganizerCancellationForm';
@@ -951,19 +953,16 @@ export default async function OrganizerRequestsPage({ searchParams }: PageProps)
         subtitle="Suivez les réservations liées à votre organisme."
       />
       {typeof resolvedSearchParams?.error === 'string' && resolvedSearchParams.error ? (
-        <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
-          {resolvedSearchParams.error}
-        </div>
+        <ErrorToast message={resolvedSearchParams.error} />
       ) : null}
       {String(resolvedSearchParams?.cancelled ?? '') === '1' ? (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          Demande d&apos;annulation / remboursement enregistrée.
-        </div>
+        <SavedToast
+          message="Demande d'annulation / remboursement enregistrée."
+          clearParams={['cancelled']}
+        />
       ) : null}
       {String(resolvedSearchParams?.coverageSaved ?? '') === '1' ? (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          Prise en charge enregistrée.
-        </div>
+        <SavedToast message="Prise en charge enregistrée." clearParams={['coverageSaved']} />
       ) : null}
       <div className="organizer-table-shell overflow-hidden">
         <table className="organizer-table w-full">

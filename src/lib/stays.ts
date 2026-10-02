@@ -116,6 +116,35 @@ type StaySlugResolution = {
 const DAY_MS = 1000 * 60 * 60 * 24;
 const STAY_SLUG_SUFFIX_LENGTH = 8;
 const STAY_PATH_PREFIX = '/sejours';
+/** PostgREST / Supabase tronque à 1000 lignes par défaut : paginer les jointures catalogue. */
+const SUPABASE_PAGE_SIZE = 1000;
+
+async function fetchAllRowsByStayIds<T>(input: {
+  stayIds: string[];
+  fetchPage: (stayIds: string[], from: number, to: number) => PromiseLike<{
+    data: T[] | null;
+    error: { message: string } | null;
+  }>;
+  label: string;
+}): Promise<T[]> {
+  if (input.stayIds.length === 0) return [];
+
+  const rows: T[] = [];
+  let from = 0;
+  for (;;) {
+    const to = from + SUPABASE_PAGE_SIZE - 1;
+    const { data, error } = await input.fetchPage(input.stayIds, from, to);
+    if (error) {
+      console.error(`Erreur Supabase (${input.label})`, error.message);
+      break;
+    }
+    const page = data ?? [];
+    rows.push(...page);
+    if (page.length < SUPABASE_PAGE_SIZE) break;
+    from += SUPABASE_PAGE_SIZE;
+  }
+  return rows;
+}
 
 function getEffectiveSessionStatus(
   session: Pick<
@@ -621,54 +650,89 @@ async function fetchStaysFromSupabase(options: { stayIds?: string[] } = {}): Pro
       : [];
 
   const [
-    { data: seasonsRaw },
-    { data: mediaRaw },
-    { data: sessionsRaw },
-    { data: stayAccommodationRows },
-    { data: extraOptionsRaw },
-    { data: insuranceOptionsRaw },
-    { data: transportOptionsRaw }
+    seasonsRaw,
+    mediaRaw,
+    sessionsRaw,
+    stayAccommodationRows,
+    extraOptionsRaw,
+    insuranceOptionsRaw,
+    transportOptionsRaw
   ] = await Promise.all([
     seasonIds.length
-      ? supabase.from('seasons').select('id,name,start_date').in('id', seasonIds)
-      : Promise.resolve({ data: [] as SeasonRow[] | null }),
-    stayIds.length
       ? supabase
+          .from('seasons')
+          .select('id,name,start_date')
+          .in('id', seasonIds)
+          .then((result) => result.data as SeasonRow[] | null)
+      : Promise.resolve([] as SeasonRow[] | null),
+    fetchAllRowsByStayIds<StayMediaRow & { stay_id: string }>({
+      stayIds,
+      label: 'stay_media',
+      fetchPage: (ids, from, to) =>
+        supabase
           .from('stay_media')
           .select('stay_id,url,position,media_type')
-          .in('stay_id', stayIds)
-      : Promise.resolve({ data: [] as Array<StayMediaRow & { stay_id: string }> | null }),
-    stayIds.length
-      ? supabase
+          .in('stay_id', ids)
+          .order('id', { ascending: true })
+          .range(from, to)
+    }),
+    fetchAllRowsByStayIds<SessionWithOptionsRow>({
+      stayIds,
+      label: 'sessions',
+      fetchPage: (ids, from, to) =>
+        supabase
           .from('sessions')
-          .select('id,stay_id,start_date,end_date,status,capacity_total,capacity_reserved,session_prices(amount_cents,currency)')
-          .in('stay_id', stayIds)
-      : Promise.resolve({ data: [] as SessionWithOptionsRow[] | null }),
-    stayIds.length
-      ? supabase
+          .select(
+            'id,stay_id,start_date,end_date,status,capacity_total,capacity_reserved,session_prices(amount_cents,currency)'
+          )
+          .in('stay_id', ids)
+          .order('id', { ascending: true })
+          .range(from, to)
+    }),
+    fetchAllRowsByStayIds<StayAccommodationRow>({
+      stayIds,
+      label: 'stay_accommodations',
+      fetchPage: (ids, from, to) =>
+        supabase
           .from('stay_accommodations')
           .select('stay_id,accommodation_id')
-          .in('stay_id', stayIds)
-      : Promise.resolve({ data: [] as StayAccommodationRow[] | null }),
-    stayIds.length
-      ? supabase
+          .in('stay_id', ids)
+          .order('stay_id', { ascending: true })
+          .range(from, to)
+    }),
+    fetchAllRowsByStayIds<ExtraOptionRow>({
+      stayIds,
+      label: 'stay_extra_options',
+      fetchPage: (ids, from, to) =>
+        supabase
           .from('stay_extra_options')
           .select('id,stay_id,label,amount_cents,position')
-          .in('stay_id', stayIds)
-          .order('position', { ascending: true })
-      : Promise.resolve({ data: [] as ExtraOptionRow[] | null }),
-    stayIds.length
-      ? supabase
+          .in('stay_id', ids)
+          .order('id', { ascending: true })
+          .range(from, to)
+    }),
+    fetchAllRowsByStayIds<InsuranceOptionRow>({
+      stayIds,
+      label: 'insurance_options',
+      fetchPage: (ids, from, to) =>
+        supabase
           .from('insurance_options')
           .select('id,label,amount_cents,percent_value,pricing_mode,stay_id')
-          .in('stay_id', stayIds)
-      : Promise.resolve({ data: [] as InsuranceOptionRow[] | null }),
-    stayIds.length
-      ? supabase
+          .in('stay_id', ids)
+          .order('id', { ascending: true })
+          .range(from, to)
+    }),
+    fetchAllRowsByStayIds<TransportOptionRow>({
+      stayIds,
+      label: 'transport_options',
+      fetchPage: (ids, from, to) =>
+        supabase
           .from('transport_options')
           .select('id,departure_city,return_city,amount_cents,stay_id,session_id')
-          .in('stay_id', stayIds)
-      : Promise.resolve({ data: [] as TransportOptionRow[] | null })
+          .in('stay_id', ids)
+          .order('id', { ascending: true })
+          .range(from, to)
+    })
   ]);
 
   const accommodationIds = Array.from(new Set((stayAccommodationRows ?? []).map((item) => item.accommodation_id)));
@@ -921,6 +985,7 @@ async function fetchStaysFromSupabase(options: { stayIds?: string[] } = {}): Pro
         (sessionItem) => sessionItem.status !== 'COMPLETED' && sessionItem.status !== 'ARCHIVED'
       );
       const liveSessionIds = sessionItems.map((sessionItem) => sessionItem.id);
+      const bookableSessionIds = visibleBookingSessionItems.map((sessionItem) => sessionItem.id);
       const bookingSessions: StaySessionOption[] = visibleBookingSessionItems
         .map((sessionItem) => {
           const sessionPrice = Array.isArray(sessionItem.session_prices)
@@ -931,7 +996,8 @@ async function fetchStaysFromSupabase(options: { stayIds?: string[] } = {}): Pro
           const transportForSession = filterTransportOptionsForSession(
             sharedTransportOptions,
             sessionItem.id,
-            liveSessionIds
+            liveSessionIds,
+            bookableSessionIds
           );
 
           return {
@@ -1123,7 +1189,7 @@ async function fetchStaysFromSupabase(options: { stayIds?: string[] } = {}): Pro
   return stays;
 }
 
-export const STAYS_CATALOG_CACHE_TAG = 'stays-catalog-published-v1';
+export const STAYS_CATALOG_CACHE_TAG = 'stays-catalog-published-v2';
 
 const fetchPublishedStaysCached = unstable_cache(
   async () => fetchStaysFromSupabase(),

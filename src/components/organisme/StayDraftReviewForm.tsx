@@ -22,6 +22,7 @@ import {
   X
 } from 'lucide-react';
 import GoogleMapsCityInput from '@/components/common/GoogleMapsCityInput';
+import SavedToast from '@/components/common/SavedToast';
 import AccommodationImportReviewFields from '@/components/organisme/AccommodationImportReviewFields';
 import {
   DraftExtraOptionsEditor,
@@ -68,6 +69,8 @@ import {
   draftReviewFieldGroupClass,
   draftReviewSectionClass
 } from '@/lib/draft-review-field-styles';
+import StayRichTextEditor from '@/components/organisme/StayRichTextEditor';
+import { sanitizeStayRichText, stripStayRichTextToPlain } from '@/lib/stay-rich-text';
 import { buildStayDestinationLabel } from '@/lib/stay-destination';
 import { mapToCanonicalStayRegion, FRANCE_REGION_OPTIONS } from '@/lib/stay-regions';
 import type { StayDraftReviewFieldErrors, StayDraftReviewPayload } from '@/types/stay-draft-review';
@@ -593,9 +596,9 @@ export default function StayDraftReviewForm({
       return {
         title,
         summary,
-        description,
-        activitiesText: description,
-        programText,
+        description: stripStayRichTextToPlain(description),
+        activitiesText: stripStayRichTextToPlain(description),
+        programText: stripStayRichTextToPlain(programText),
         location: destinationLabel,
         region: destinationRegion || regionText,
       seasonName: selectedSeasonNames.join(', '),
@@ -1191,12 +1194,12 @@ export default function StayDraftReviewForm({
       destination_countries: destinationCountries,
       location_text: legacyDestination.locationText,
       region_text: legacyDestination.regionText,
-      description,
+      description: sanitizeStayRichText(description),
       activities_text: initialPayload.activities_text,
-      required_documents_text: requiredDocumentsText,
-      program_text: programText,
-      supervision_text: supervisionText,
-      transport_text: transportText,
+      required_documents_text: sanitizeStayRichText(requiredDocumentsText),
+      program_text: sanitizeStayRichText(programText),
+      supervision_text: sanitizeStayRichText(supervisionText),
+      transport_text: sanitizeStayRichText(transportText),
       transport_mode: transportMode,
       categories,
       ages,
@@ -1301,12 +1304,12 @@ export default function StayDraftReviewForm({
       destination_countries: destinationCountries,
       location_text: legacyDestination.locationText,
       region_text: legacyDestination.regionText,
-      description,
+      description: sanitizeStayRichText(description),
       activities_text: initialPayload.activities_text,
-      required_documents_text: requiredDocumentsText,
-      program_text: programText,
-      supervision_text: supervisionText,
-      transport_text: transportText,
+      required_documents_text: sanitizeStayRichText(requiredDocumentsText),
+      program_text: sanitizeStayRichText(programText),
+      supervision_text: sanitizeStayRichText(supervisionText),
+      transport_text: sanitizeStayRichText(transportText),
       transport_mode: transportMode,
       categories,
       ages,
@@ -1726,9 +1729,11 @@ export default function StayDraftReviewForm({
         </div>
       )}
       {successMessage && (
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-          {successMessage}
-        </div>
+        <SavedToast
+          key={successMessage}
+          message={successMessage}
+          clearParams={[]}
+        />
       )}
       {!isPublishedVariant && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs text-slate-600">
@@ -2326,73 +2331,41 @@ export default function StayDraftReviewForm({
           </span>
         </label>
 
-        <label className="block text-sm font-medium text-slate-700">
-          Description
-          <textarea
-            value={description}
-            onChange={(event) => setDescription(event.target.value)}
-            rows={6}
-            className={draftReviewControlClass({
-              required: false,
-              filled: Boolean(description.trim())
-            })}
-          />
-        </label>
+        <StayRichTextEditor
+          label="Description"
+          value={description}
+          onChange={setDescription}
+          rows={6}
+        />
 
-        <label className="block text-sm font-medium text-slate-700">
-          Programme
-          <textarea
-            value={programText}
-            onChange={(event) => setProgramText(event.target.value)}
-            rows={6}
-            className={draftReviewControlClass({
-              required: false,
-              filled: Boolean(programText.trim())
-            })}
-          />
-        </label>
+        <StayRichTextEditor
+          label="Programme"
+          value={programText}
+          onChange={setProgramText}
+          rows={6}
+        />
 
-        <label className="block text-sm font-medium text-slate-700">
-          Encadrement
-          <textarea
-            value={supervisionText}
-            onChange={(event) => setSupervisionText(event.target.value)}
-            rows={5}
-            className={draftReviewControlClass({
-              required: false,
-              filled: Boolean(supervisionText.trim())
-            })}
-          />
-        </label>
+        <StayRichTextEditor
+          label="Encadrement"
+          value={supervisionText}
+          onChange={setSupervisionText}
+          rows={5}
+        />
 
-        <label className="block text-sm font-medium text-slate-700">
-          Documents obligatoires
-          <textarea
-            value={requiredDocumentsText}
-            onChange={(event) => setRequiredDocumentsText(event.target.value)}
-            rows={5}
-            className={draftReviewControlClass({
-              required: false,
-              filled: Boolean(requiredDocumentsText.trim())
-            })}
-          />
-        </label>
+        <StayRichTextEditor
+          label="Documents obligatoires"
+          value={requiredDocumentsText}
+          onChange={setRequiredDocumentsText}
+          rows={5}
+        />
 
-        <label className="block text-sm font-medium text-slate-700">
-          Transport
-          <textarea
-            value={transportText}
-            onChange={(event) => setTransportText(event.target.value)}
-            rows={4}
-            className={draftReviewControlClass({
-              required: false,
-              filled: Boolean(transportText.trim())
-            })}
-          />
-          <span className="mt-1 block text-xs text-slate-500">
-            Préciser en phrases si le trajet se fait en train, en train puis en car, en car, en avion ou sur place.
-          </span>
-        </label>
+        <StayRichTextEditor
+          label="Transport"
+          value={transportText}
+          onChange={setTransportText}
+          rows={4}
+          hint="Préciser en phrases si le trajet se fait en train, en train puis en car, en car, en avion ou sur place."
+        />
 
         <div className="grid gap-4 md:grid-cols-2">
           <div className="block text-sm font-medium text-slate-700">

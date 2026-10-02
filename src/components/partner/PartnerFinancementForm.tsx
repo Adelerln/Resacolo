@@ -3,6 +3,8 @@
 import Link from 'next/link';
 import { useActionState, useEffect, useState } from 'react';
 import { useFormStatus } from 'react-dom';
+import ErrorToast from '@/components/common/ErrorToast';
+import SavedToast from '@/components/common/SavedToast';
 import PartnerProfileFormEnhancer from '@/components/partner/PartnerProfileFormEnhancer';
 import { PartnerFinancialRulesSection } from '@/components/partner/PartnerFinancialRulesSection';
 import {
@@ -75,15 +77,19 @@ export function PartnerFinancementForm({
   return (
     <>
       {banner?.message ? (
-        <p
-          className={`mb-4 rounded-xl border px-4 py-3 text-sm ${
-            banner.ok
-              ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-              : 'border-rose-200 bg-rose-50 text-rose-700'
-          }`}
-        >
-          {banner.message}
-        </p>
+        banner.ok ? (
+          <SavedToast
+            key={`ok-${clientResetToken}-${banner.message}`}
+            message={banner.message}
+            clearParams={[]}
+          />
+        ) : (
+          <ErrorToast
+            key={`err-${clientResetToken}-${banner.message}`}
+            message={banner.message}
+            clearParams={[]}
+          />
+        )
       ) : null}
 
       <form id={FINANCING_FORM_ID} action={formAction} className="space-y-4">

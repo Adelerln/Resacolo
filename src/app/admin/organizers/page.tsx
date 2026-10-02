@@ -1,4 +1,6 @@
 import Link from 'next/link';
+import ErrorToast from '@/components/common/ErrorToast';
+import SavedToast from '@/components/common/SavedToast';
 import { requireRole } from '@/lib/auth/require';
 import { AdminOrganizersTable } from '@/components/admin/AdminOrganizersTable';
 import {
@@ -68,20 +70,15 @@ export default async function AdminOrganizersPage({ searchParams }: PageProps) {
       </div>
 
       {settingsSaved && (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-          Paramètres globaux enregistrés et réappliqués à tous les organismes.
-        </div>
+        <SavedToast
+          message="Paramètres globaux enregistrés et réappliqués à tous les organismes."
+          clearParams={['settingsSaved']}
+        />
       )}
-      {settingsError && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {settingsError}
-        </div>
-      )}
+      {settingsError && <ErrorToast message={settingsError} clearParams={['settingsError']} />}
 
       {loadError && (
-        <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-          Erreur vue organizer_admin_overview : {loadError}
-        </div>
+        <ErrorToast message={`Erreur vue organizer_admin_overview : ${loadError}`} clearParams={[]} />
       )}
 
       <form
@@ -100,7 +97,7 @@ export default async function AdminOrganizersPage({ searchParams }: PageProps) {
         </div>
         <div className="grid gap-4 md:grid-cols-3">
           <label className="block text-sm font-medium text-slate-700">
-            Commission fondateur (%)
+            Commission fondateur ResaColo
             <input
               name="founding_member_commission_percent"
               type="number"
@@ -113,7 +110,7 @@ export default async function AdminOrganizersPage({ searchParams }: PageProps) {
             />
           </label>
           <label className="block text-sm font-medium text-slate-700">
-            Commission membre ResaColo (%)
+            Commission membre ResaColo
             <input
               name="resacolo_member_commission_percent"
               type="number"
@@ -126,7 +123,7 @@ export default async function AdminOrganizersPage({ searchParams }: PageProps) {
             />
           </label>
           <label className="block text-sm font-medium text-slate-700">
-            Commission externe (%)
+            Commission externe
             <input
               name="external_commission_percent"
               type="number"

@@ -1,4 +1,6 @@
 import OrganizerPageHeader from '@/components/organisme/OrganizerPageHeader';
+import ErrorToast from '@/components/common/ErrorToast';
+import SavedToast from '@/components/common/SavedToast';
 import { formatMnemosStatus } from '@/lib/mnemos-display';
 import { requireOrganizerPageAccess } from '@/lib/organizer-backoffice-access.server';
 import { withOrganizerQuery } from '@/lib/organizers.server';
@@ -49,20 +51,10 @@ export default async function OrganizerAssistancePage({ searchParams }: PageProp
       />
 
       {sp.saved === '1' ? (
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-          Demande envoyée. L’équipe Resacolo a été notifiée.
-        </div>
+        <SavedToast message="Demande envoyée. L’équipe Resacolo a été notifiée." />
       ) : null}
-      {sp.error ? (
-        <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">
-          {decodeURIComponent(sp.error)}
-        </div>
-      ) : null}
-      {error ? (
-        <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">
-          {error.message}
-        </div>
-      ) : null}
+      {sp.error ? <ErrorToast message={decodeURIComponent(sp.error)} /> : null}
+      {error ? <ErrorToast message={error.message} clearParams={[]} /> : null}
 
       <form
         action={createOrganizerSupportRequest}

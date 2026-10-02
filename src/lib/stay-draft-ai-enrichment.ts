@@ -921,7 +921,14 @@ Règles strictes pour "transport_mode" :
 - "Aller/Retour similaire" si les villes aller et retour sont identiques ou si rien ne montre qu'elles diffèrent.
 - "Aller/Retour différencié" si les villes ou modalités aller/retour diffèrent.
 - Si la source montre deux menus déroulants distincts pour l'aller et le retour, considère que c'est "Aller/Retour différencié".
-- "Sans transport" s'il n'y a pas d'acheminement organisé.
+- "Sans transport" UNIQUEMENT s'il n'y a vraiment aucun acheminement organisé ET aucune option de ville / sur place.
+- Attention : une option « Sur place », « Sans transport », « Dépose Centre » ou « Reprise Centre » (arrivée au centre) n'implique PAS le mode "Sans transport" s'il existe aussi des villes de départ.
+
+Règles strictes pour "transport_options_json" :
+- Si la source propose « Sur place », « Sans transport », « Dépose Centre », « Reprise Centre » ou « RDV sur place », inclus-le comme option à prix 0 (supplément transport nul).
+- En mode différencié, préfère « Dépose Centre » (aller) et « Reprise Centre » (retour) si ces libellés apparaissent.
+- Sinon utilise le libellé « Sur place ».
+- Ne confonds pas cette option avec le mode logistique "Sans transport".
 
 Règles strictes pour "ages" :
 - Si la source indique une tranche comme « 8 à 13 ans », renvoie [8,9,10,11,12,13] et non [8,13].

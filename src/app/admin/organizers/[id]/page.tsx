@@ -1,6 +1,8 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import ErrorToast from '@/components/common/ErrorToast';
+import SavedToast from '@/components/common/SavedToast';
 import { requireRole } from '@/lib/auth/require';
 import { AdminOrganizerMembersSection } from '@/components/admin/AdminOrganizerMembersSection';
 import { sanitizeOrganizerRichText } from '@/lib/organizer-rich-text';
@@ -142,28 +144,28 @@ export default async function AdminOrganizerDetailPage({ params: paramsPromise, 
         </div>
       </div>
 
-      {errorParam && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {errorParam}
-        </div>
-      )}
+      {errorParam && <ErrorToast message={errorParam} />}
       {(successParam || passwordUpdatedParam === '1') && (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-          {passwordUpdatedParam === '1'
-            ? 'Mot de passe mis à jour.'
-            : successParam === 'member-added'
-              ? 'Membre ajouté.'
-              : successParam === 'member-updated'
-                ? 'Membre mis à jour.'
-                : successParam === 'member-deleted'
-                  ? 'Membre supprimé.'
-                : 'Fiche organisme enregistrée.'}
-        </div>
+        <SavedToast
+          message={
+            passwordUpdatedParam === '1'
+              ? 'Mot de passe mis à jour.'
+              : successParam === 'member-added'
+                ? 'Membre ajouté.'
+                : successParam === 'member-updated'
+                  ? 'Membre mis à jour.'
+                  : successParam === 'member-deleted'
+                    ? 'Membre supprimé.'
+                    : 'Fiche organisme enregistrée.'
+          }
+          clearParams={['saved', 'success', 'password_updated']}
+        />
       )}
       {billingSuccessParam && (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-          Notes internes de facturation enregistrées.
-        </div>
+        <SavedToast
+          message="Notes internes de facturation enregistrées."
+          clearParams={['billingSuccess']}
+        />
       )}
 
       <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">

@@ -1,4 +1,6 @@
 import Link from 'next/link';
+import ErrorToast from '@/components/common/ErrorToast';
+import SavedToast from '@/components/common/SavedToast';
 import OrganizerPageHeader from '@/components/organisme/OrganizerPageHeader';
 import { formatInquiryContact } from '@/lib/inquiries';
 import { INQUIRY_SOURCE_MNEMOS_TRANSFER, formatInquiryStatusLabel, inquiryStatusBadgeClassName } from '@/lib/inquiry-options';
@@ -43,21 +45,9 @@ export default async function OrganizerInquiriesPage({ searchParams }: PageProps
         subtitle="Demandes de renseignements redirigées par Mnemos vers votre organisme. Visibles pour tous les comptes de l'équipe."
       />
 
-      {sp.saved === '1' && (
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-          Demande enregistrée.
-        </div>
-      )}
-      {sp.error && (
-        <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">
-          {decodeURIComponent(sp.error)}
-        </div>
-      )}
-      {error && (
-        <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">
-          {error.message}
-        </div>
-      )}
+      {sp.saved === '1' && <SavedToast message="Demande enregistrée." />}
+      {sp.error && <ErrorToast message={decodeURIComponent(sp.error)} />}
+      {error && <ErrorToast message={error.message} clearParams={[]} />}
 
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="overflow-x-auto">

@@ -1,3 +1,5 @@
+import ErrorToast from '@/components/common/ErrorToast';
+import SavedToast from '@/components/common/SavedToast';
 import { requireRole } from '@/lib/auth/require';
 import { MnemosFieldLabel } from '@/components/mnemos/MnemosFieldLabel';
 import { readContactFormNotificationSettings } from '@/lib/contact-form-notifications.server';
@@ -46,17 +48,9 @@ export default async function MnemosContactNotificationsPage({
         </div>
       ) : null}
 
-      {sp.err ? (
-        <div className="rounded-lg border border-rose-800/50 bg-rose-950/30 px-4 py-3 text-sm text-rose-100">
-          {decodeURIComponent(sp.err)}
-        </div>
-      ) : null}
+      {sp.err ? <ErrorToast message={decodeURIComponent(sp.err)} clearParams={['err']} /> : null}
 
-      {sp.saved ? (
-        <div className="rounded-lg border border-emerald-800/50 bg-emerald-950/30 px-4 py-3 text-sm text-emerald-100">
-          Destinataires enregistrés.
-        </div>
-      ) : null}
+      {sp.saved ? <SavedToast message="Destinataires enregistrés." /> : null}
 
       <form
         action={saveContactFormNotificationSettings}

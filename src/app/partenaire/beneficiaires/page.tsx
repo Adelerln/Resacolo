@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
+import ErrorToast from '@/components/common/ErrorToast';
+import SavedToast from '@/components/common/SavedToast';
 import { PartnerBeneficiariesTable } from '@/components/partner/PartnerBeneficiariesTable';
 import { requirePartner } from '@/lib/auth/require';
 import { canAccessPartnerSection, getPartnerAccessRoleFromSession } from '@/lib/partner-access';
@@ -151,15 +153,9 @@ export default async function BeneficiairesPage({
       </div>
 
       {errorMessage ? (
-        <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-          {errorMessage}
-        </p>
+        <ErrorToast message={errorMessage} />
       ) : null}
-      {isSaved ? (
-        <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-          QF enregistré.
-        </p>
-      ) : null}
+      {isSaved ? <SavedToast message="QF enregistré." /> : null}
       {showFamilyQuotientFields && !qfFieldsAvailable ? (
         <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           {buildFeatureActivationMessage('Le quotient familial (QF) des ayants-droit')}

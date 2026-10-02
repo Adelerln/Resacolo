@@ -114,15 +114,21 @@ function normalizeTransportMode(
   transportOptions: ParsedTransportOption[]
 ): string {
   const normalized = normalizeString(draftMode);
-  if (normalized && LIVE_TRANSPORT_MODES.has(normalized)) {
-    return normalized;
-  }
 
+  // Des villes renseignées priment sur un mode "Sans transport" (souvent laissé par défaut).
   if (transportOptions.length > 0) {
     const hasOneWayOption = transportOptions.some(
       (option) => !option.departureCity || !option.returnCity
     );
-    return hasOneWayOption ? 'Aller/Retour différencié' : 'Aller/Retour similaire';
+    const inferred = hasOneWayOption ? 'Aller/Retour différencié' : 'Aller/Retour similaire';
+    if (normalized === 'Aller/Retour différencié' || normalized === 'Aller/Retour similaire') {
+      return normalized;
+    }
+    return inferred;
+  }
+
+  if (normalized && LIVE_TRANSPORT_MODES.has(normalized)) {
+    return normalized;
   }
 
   if (hasTransportText) {
@@ -134,10 +140,17 @@ function normalizeTransportMode(
 
 function resolveTransportSource(draft: StayDraftRow, rawPayload: Record<string, unknown>): Json | null {
   const rawAiExtracted = toRecord(rawPayload.ai_extracted);
+  const draftOptions = Array.isArray(draft.transport_options_json)
+    ? (draft.transport_options_json as unknown[])
+    : null;
+  const userEdited = Boolean(rawPayload.transport_options_user_edited);
+
   // Priorité au formulaire de relecture (villes ajoutées/retirées par l'organisateur).
-  if (Array.isArray(draft.transport_options_json)) {
+  // Tableau vide = volontaire uniquement si l'utilisateur a déjà édité les transports.
+  if (draftOptions != null && (draftOptions.length > 0 || userEdited)) {
     return draft.transport_options_json as Json;
   }
+
   return (
     (rawPayload.transport_variants as Json | undefined) ??
     (rawPayload.transport_price_debug as Json | undefined) ??

@@ -540,15 +540,21 @@ function normalizeTransportMode(
   transportOptions: ParsedTransportOption[]
 ): string {
   const normalized = normalizeWhitespace(draftMode ?? '');
-  if (normalized && LIVE_TRANSPORT_MODES.has(normalized)) {
-    return normalized;
-  }
 
+  // Des villes renseignées priment sur un mode "Sans transport" (souvent laissé par défaut).
   if (transportOptions.length > 0) {
     const hasOneWayOption = transportOptions.some(
       (option) => !option.departureCity || !option.returnCity
     );
-    return hasOneWayOption ? 'Aller/Retour différencié' : 'Aller/Retour similaire';
+    const inferred = hasOneWayOption ? 'Aller/Retour différencié' : 'Aller/Retour similaire';
+    if (normalized === 'Aller/Retour différencié' || normalized === 'Aller/Retour similaire') {
+      return normalized;
+    }
+    return inferred;
+  }
+
+  if (normalized && LIVE_TRANSPORT_MODES.has(normalized)) {
+    return normalized;
   }
 
   if (hasTransportText) {
@@ -2372,8 +2378,12 @@ export async function publishStayDraftToLive(
   const draftTransportOptions = Array.isArray(draft.transport_options_json)
     ? draft.transport_options_json
     : null;
+  const transportOptionsUserEdited = Boolean(
+    isPlainObject(rawPayload) && rawPayload.transport_options_user_edited
+  );
   const transportSource =
-    (draftTransportOptions != null
+    (draftTransportOptions != null &&
+    (draftTransportOptions.length > 0 || transportOptionsUserEdited)
       ? (draftTransportOptions as Json)
       : null) ??
     (rawPayload.transport_variants as Json | undefined) ??

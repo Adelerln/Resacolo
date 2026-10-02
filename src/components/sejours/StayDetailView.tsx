@@ -574,7 +574,19 @@ export function StayDetailView({
 
   const bookingOptions = stay.bookingOptions;
   const availableSessions = useMemo(() => bookingOptions?.sessions ?? [], [bookingOptions]);
-  const transportMode = bookingOptions?.transportMode ?? 'Sans transport';
+  const sessionTransportOptionsAll = useMemo(
+    () => availableSessions.flatMap((sessionItem) => sessionItem.transportOptions ?? []),
+    [availableSessions]
+  );
+  const transportModeRaw = bookingOptions?.transportMode ?? 'Sans transport';
+  const transportMode =
+    transportModeRaw === 'Sans transport' && sessionTransportOptionsAll.length > 0
+      ? sessionTransportOptionsAll.some(
+          (option) => !option.departureCity.trim() || !option.returnCity.trim()
+        )
+        ? 'Aller/Retour différencié'
+        : 'Aller/Retour similaire'
+      : transportModeRaw;
   const insuranceOptions = useMemo(() => bookingOptions?.insuranceOptions ?? [], [bookingOptions]);
   const extraOptions = useMemo(() => bookingOptions?.extraOptions ?? [], [bookingOptions]);
   const hasSessions = availableSessions.length > 0;

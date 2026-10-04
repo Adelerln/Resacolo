@@ -179,7 +179,7 @@ export default async function AdminAccommodationsPage({ searchParams }: PageProp
                 <th className="px-4 py-3">Séjours liés</th>
                 <th className="px-4 py-3">Statut</th>
                 <th className="px-4 py-3">Mis à jour</th>
-                <th className="px-4 py-3">Actions</th>
+                <th className="whitespace-nowrap px-4 py-3">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -214,13 +214,13 @@ export default async function AdminAccommodationsPage({ searchParams }: PageProp
                       {accommodationStatusLabel(row.status)}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-slate-600">
+                  <td className="whitespace-nowrap px-4 py-3 text-slate-600">
                     {new Date(row.updated_at).toLocaleDateString('fr-FR')}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="w-[1%] whitespace-nowrap px-4 py-3">
                     <Link
                       href={`/admin/hebergements/${row.id}`}
-                      className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-white"
+                      className="inline-flex whitespace-nowrap rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-white"
                     >
                       Voir le détail
                     </Link>

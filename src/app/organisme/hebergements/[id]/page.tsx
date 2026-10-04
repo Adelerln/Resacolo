@@ -43,6 +43,7 @@ type PageProps = {
     saved?: string | string[];
     archived?: string | string[];
     unarchived?: string | string[];
+    published?: string | string[];
     error?: string | string[];
     iframe_warning?: string | string[];
   }>;
@@ -78,6 +79,9 @@ export default async function AccommodationDetailPage({ params: paramsPromise, s
   const unarchivedParam = Array.isArray(resolvedSearchParams?.unarchived)
     ? resolvedSearchParams?.unarchived[0]
     : resolvedSearchParams?.unarchived;
+  const publishedParam = Array.isArray(resolvedSearchParams?.published)
+    ? resolvedSearchParams?.published[0]
+    : resolvedSearchParams?.published;
   const errorParam = Array.isArray(resolvedSearchParams?.error)
     ? resolvedSearchParams?.error[0]
     : resolvedSearchParams?.error;
@@ -87,6 +91,7 @@ export default async function AccommodationDetailPage({ params: paramsPromise, s
   const showSavedBanner = savedParam === '1';
   const showArchivedBanner = archivedParam === '1';
   const showUnarchivedBanner = unarchivedParam === '1';
+  const showPublishedBanner = publishedParam === '1';
   const formDraft = await consumeAccommodationFormDraft();
 
   if (!selectedOrganizerId) {
@@ -338,6 +343,83 @@ export default async function AccommodationDetailPage({ params: paramsPromise, s
     );
   }
 
+  async function publishAccommodation() {
+    'use server';
+    const supabase = getServerSupabaseClient();
+    const { data: row } = await supabase
+      .from('accommodations')
+      .select('id,name,accommodation_type,status')
+      .eq('id', params.id)
+      .eq('organizer_id', selectedOrganizerId)
+      .maybeSingle();
+
+    if (!row) {
+      redirect(withOrganizerQuery('/organisme/hebergements', selectedOrganizerId));
+    }
+
+    if (row.status === 'VALIDATED') {
+      redirect(
+        withOrganizerQuery(`/organisme/hebergements/${params.id}?published=1`, selectedOrganizerId)
+      );
+    }
+
+    if (row.status === 'ARCHIVED') {
+      redirect(
+        withOrganizerQuery(
+          `/organisme/hebergements/${params.id}?error=${encodeURIComponent(
+            'Désarchivez la fiche avant de la publier.'
+          )}`,
+          selectedOrganizerId
+        )
+      );
+    }
+
+    const name = String(row.name ?? '').trim();
+    const parsedType = parseAccommodationType(String(row.accommodation_type ?? ''));
+    if (!name || !parsedType.baseType) {
+      redirect(
+        withOrganizerQuery(
+          `/organisme/hebergements/${params.id}?error=${encodeURIComponent(
+            'Renseignez au minimum le nom et le type avant de publier.'
+          )}`,
+          selectedOrganizerId
+        )
+      );
+    }
+
+    const now = new Date().toISOString();
+    const validatedByUserId = isUuid(session.userId) ? session.userId : null;
+    const { error } = await supabase
+      .from('accommodations')
+      .update({
+        status: 'VALIDATED',
+        validated_at: now,
+        validated_by_user_id: validatedByUserId,
+        updated_at: now
+      })
+      .eq('id', params.id)
+      .eq('organizer_id', selectedOrganizerId);
+
+    if (error) {
+      redirect(
+        withOrganizerQuery(
+          `/organisme/hebergements/${params.id}?error=${encodeURIComponent(error.message)}`,
+          selectedOrganizerId
+        )
+      );
+    }
+
+    revalidatePath('/organisme/hebergements');
+    revalidatePath('/organisme/sejours');
+    revalidatePath('/organisme/stays');
+    revalidatePath(`/organisme/hebergements/${params.id}`);
+    revalidatePath('/sejours');
+    revalidatePath('/sejours/[slug]', 'page');
+    redirect(
+      withOrganizerQuery(`/organisme/hebergements/${params.id}?published=1`, selectedOrganizerId)
+    );
+  }
+
   async function deleteAccommodation() {
     'use server';
     const { error } = await deleteAccommodationForOrganizer({
@@ -422,9 +504,16 @@ export default async function AccommodationDetailPage({ params: paramsPromise, s
       }
     : currentAccommodation;
 
+  const accommodationStatus = String(currentAccommodation.status ?? '').trim().toUpperCase();
+  const canPublishAccommodation =
+    accommodationStatus === 'DRAFT' || accommodationStatus === 'TO_VALIDATE';
+
   return (
     <div className="space-y-6">
       {showSavedBanner && <SavedToast message="La fiche hébergement a bien été enregistrée." />}
+      {showPublishedBanner && (
+        <SavedToast message="L&apos;hébergement a bien été publié." clearParams={['published']} />
+      )}
       {showArchivedBanner && <SavedToast message="La fiche hébergement a bien été archivée." />}
       {showUnarchivedBanner && <SavedToast message="La fiche hébergement a bien été désarchivée." />}
       {iframeWarningParam === '1' ? (
@@ -451,6 +540,13 @@ export default async function AccommodationDetailPage({ params: paramsPromise, s
             >
               {accommodationStatusLabel(currentAccommodation.status)}
             </span>
+            {canPublishAccommodation ? (
+              <form action={publishAccommodation}>
+                <button type="submit" className="organizer-btn-primary">
+                  Publier l&apos;hébergement
+                </button>
+              </form>
+            ) : null}
             <Link
               href={withOrganizerQuery('/organisme/hebergements', selectedOrganizerId)}
               className="organizer-btn-secondary"
@@ -460,6 +556,13 @@ export default async function AccommodationDetailPage({ params: paramsPromise, s
           </>
         )}
       />
+
+      {canPublishAccommodation ? (
+        <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950">
+          Cette fiche est encore en brouillon. Une fois les informations complètes, cliquez sur{' '}
+          <strong>Publier l&apos;hébergement</strong> pour la valider.
+        </div>
+      ) : null}
 
       {showImportRelectureBanner && (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
@@ -477,6 +580,13 @@ export default async function AccommodationDetailPage({ params: paramsPromise, s
       </form>
 
       <div className="flex flex-wrap justify-start gap-3 sm:justify-end">
+        {canPublishAccommodation ? (
+          <form action={publishAccommodation}>
+            <button type="submit" className="organizer-btn-primary">
+              Publier l&apos;hébergement
+            </button>
+          </form>
+        ) : null}
         <form action={toggleAccommodationArchive}>
           <button
             className={`organizer-btn ${

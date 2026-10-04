@@ -593,13 +593,13 @@ export function DraftExtraOptionsEditor({
                         <div>
                           <p className="text-xs font-medium text-slate-600">Choix possibles</p>
                           <p className="mt-0.5 text-[11px] text-slate-500">
-                            Saisissez un mot puis Entrée (puces retirables avec la croix).
+                            Tapez un choix, sélectionnez-le dans la liste, puis il apparaît en puce.
                           </p>
                           <ChipTextInput
                             className="mt-1.5"
                             values={choiceGroup.choices}
                             onChange={(choices) => updateChoiceGroupRow(index, { choices })}
-                            placeholder="Ex. Ski, puis Entrée"
+                            placeholder="Ex. Ski"
                           />
                         </div>
                       </>
@@ -627,6 +627,9 @@ export function DraftExtraOptionsEditor({
                           className="mt-0.5 w-full rounded border border-slate-200 px-2 py-1.5 text-sm leading-tight"
                           inputMode="decimal"
                         />
+                        <span className="mt-0.5 block text-[11px] font-normal text-slate-500">
+                          Si l&apos;option est gratuite, laissez vide.
+                        </span>
                       </label>
                       <label className="block text-xs font-medium text-slate-600">
                         Devise

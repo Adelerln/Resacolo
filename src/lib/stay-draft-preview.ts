@@ -591,7 +591,11 @@ export async function buildStayPreviewFromDraft(draft: StayDraftRow, organizerId
         amount: option.amountCents == null ? null : option.amountCents / 100, percentValue: option.percentValue
       })),
       extraOptions: parsedExtras.extraOptions.map((option, index) => ({
-        id: `draft-extra-${index + 1}`, label: option.label, amount: option.amountCents / 100
+        id: `draft-extra-${index + 1}`,
+        label: option.label,
+        amount: option.amountCents / 100,
+        choiceGroupLabel: option.choiceGroupLabel ?? null,
+        choiceValue: option.choiceValue ?? null
       }))
     },
     centerLocations: [],

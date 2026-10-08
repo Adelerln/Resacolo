@@ -22,6 +22,7 @@ import {
 } from '@/lib/transport-city-normalization';
 import StayLocationMap from '@/components/sejours/StayLocationMap';
 import { buildStayIntroText } from '@/lib/stay-seo';
+import { partitionStayExtraOptionsForBooking } from '@/lib/stay-extra-choice-groups';
 import {
   convertPlainTextToStayRichTextHtml,
   looksLikeStayRichTextHtml,
@@ -101,6 +102,7 @@ function formatLabel(group: keyof typeof FILTER_LABELS, value: string) {
 
 function formatPrice(price?: number | null) {
   if (price == null) return 'Sur demande';
+  if (price === 0) return 'Gratuit';
   return new Intl.NumberFormat('fr-FR', {
     style: 'currency',
     currency: 'EUR',
@@ -589,6 +591,10 @@ export function StayDetailView({
       : transportModeRaw;
   const insuranceOptions = useMemo(() => bookingOptions?.insuranceOptions ?? [], [bookingOptions]);
   const extraOptions = useMemo(() => bookingOptions?.extraOptions ?? [], [bookingOptions]);
+  const partitionedExtraOptions = useMemo(
+    () => partitionStayExtraOptionsForBooking(extraOptions),
+    [extraOptions]
+  );
   const hasSessions = availableSessions.length > 0;
   const hasAccommodationMyMaps = useMemo(
     () => (stay.accommodations ?? []).some((accommodation) => Boolean(accommodation.mapEmbedSrc)),
@@ -1793,19 +1799,53 @@ export function StayDetailView({
                     </select>
                   </div>
                 ) : null}
-                {extraOptions.length > 0 ? (
+                {partitionedExtraOptions.choiceGroups.map((group) => {
+                  const groupOptionIds = new Set(group.options.map((option) => option.id));
+                  const selectedInGroup = groupOptionIds.has(selectedExtraOptionId)
+                    ? selectedExtraOptionId
+                    : '';
+                  const fieldId = `extra-group-${slugify(group.groupLabel)}`;
+                  return (
+                    <div key={group.groupLabel}>
+                      <label htmlFor={fieldId} className="mb-1 block text-sm font-medium text-slate-700">
+                        {group.groupLabel}
+                      </label>
+                      <select
+                        id={fieldId}
+                        value={selectedInGroup}
+                        onChange={(event) => setSelectedExtraOptionId(event.target.value)}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700"
+                      >
+                        <option value="">Choisir…</option>
+                        {group.options.map((option) => (
+                          <option key={option.id} value={option.id}>
+                            {option.choiceValue || option.label}
+                            {option.amount > 0 ? ` · ${formatPrice(option.amount)}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  );
+                })}
+                {partitionedExtraOptions.simpleOptions.length > 0 ? (
                   <div>
                     <label htmlFor="extra-options" className="mb-1 block text-sm font-medium text-slate-700">
                       Options supplémentaires
                     </label>
                     <select
                       id="extra-options"
-                      value={selectedExtraOptionId}
+                      value={
+                        partitionedExtraOptions.simpleOptions.some(
+                          (option) => option.id === selectedExtraOptionId
+                        )
+                          ? selectedExtraOptionId
+                          : ''
+                      }
                       onChange={(event) => setSelectedExtraOptionId(event.target.value)}
                       className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700"
                     >
                       <option value="">Aucune option supplémentaire</option>
-                      {extraOptions.map((option) => (
+                      {partitionedExtraOptions.simpleOptions.map((option) => (
                         <option key={option.id} value={option.id}>
                           {option.label} · {formatPrice(option.amount)}
                         </option>

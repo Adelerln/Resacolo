@@ -654,10 +654,9 @@ export function parseMergedExtraOptionsRows(rowsInput: Array<Record<string, unkn
       if (isPartnerTariffExtraOptionLabel(group.groupLabel)) continue;
       if (!group.groupLabel || group.choices.length === 0) continue;
       const priceTrim = group.price.trim().replace(',', '.');
-      const priceNum = priceTrim === '' ? null : Number(priceTrim);
-      const amountCents =
-        priceNum !== null && Number.isFinite(priceNum) ? Math.max(0, Math.round(priceNum * 100)) : null;
-      if (amountCents === null) continue;
+      const priceNum = priceTrim === '' ? 0 : Number(priceTrim);
+      if (!Number.isFinite(priceNum) || priceNum < 0) continue;
+      const amountCents = Math.max(0, Math.round(priceNum * 100));
       for (const choice of group.choices) {
         extraOutput.push({
           label: choice,
@@ -681,7 +680,9 @@ export function parseMergedExtraOptionsRows(rowsInput: Array<Record<string, unkn
       parseAmountCents(row.amount_euros) ??
       (typeof row.amount_cents === 'number' && Number.isFinite(row.amount_cents)
         ? Math.max(0, Math.round(row.amount_cents))
-        : null);
+        : null) ??
+      // Prix vide = option gratuite (0 €), pas une option à ignorer.
+      (normalizeWhitespace(String(row.price ?? row.amount ?? '')) === '' ? 0 : null);
     const percentValue =
       parsePercentValue(row.percent_value) ??
       parsePercentValue(row.percent) ??

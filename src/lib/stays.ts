@@ -67,7 +67,7 @@ type InsuranceOptionRow = Pick<
 >;
 type ExtraOptionRow = Pick<
   Database['public']['Tables']['stay_extra_options']['Row'],
-  'id' | 'stay_id' | 'label' | 'amount_cents' | 'position'
+  'id' | 'stay_id' | 'label' | 'amount_cents' | 'position' | 'choice_group_label' | 'choice_value'
 >;
 type SessionWithOptionsRow = Pick<
   Database['public']['Tables']['sessions']['Row'],
@@ -144,6 +144,23 @@ async function fetchAllRowsByStayIds<T>(input: {
     from += SUPABASE_PAGE_SIZE;
   }
   return rows;
+}
+
+async function fetchStayExtraOptions(
+  supabase: ReturnType<typeof getServerSupabaseClient>,
+  stayIds: string[]
+): Promise<ExtraOptionRow[]> {
+  return fetchAllRowsByStayIds<ExtraOptionRow>({
+    stayIds,
+    label: 'stay_extra_options',
+    fetchPage: (ids, from, to) =>
+      supabase
+        .from('stay_extra_options')
+        .select('id,stay_id,label,amount_cents,position,choice_group_label,choice_value')
+        .in('stay_id', ids)
+        .order('id', { ascending: true })
+        .range(from, to)
+  });
 }
 
 function getEffectiveSessionStatus(
@@ -700,17 +717,7 @@ async function fetchStaysFromSupabase(options: { stayIds?: string[] } = {}): Pro
           .order('stay_id', { ascending: true })
           .range(from, to)
     }),
-    fetchAllRowsByStayIds<ExtraOptionRow>({
-      stayIds,
-      label: 'stay_extra_options',
-      fetchPage: (ids, from, to) =>
-        supabase
-          .from('stay_extra_options')
-          .select('id,stay_id,label,amount_cents,position')
-          .in('stay_id', ids)
-          .order('id', { ascending: true })
-          .range(from, to)
-    }),
+    fetchStayExtraOptions(supabase, stayIds),
     fetchAllRowsByStayIds<InsuranceOptionRow>({
       stayIds,
       label: 'insurance_options',
@@ -1038,7 +1045,9 @@ async function fetchStaysFromSupabase(options: { stayIds?: string[] } = {}): Pro
         .map((option) => ({
           id: option.id,
           label: option.label,
-          amount: option.amount_cents / 100
+          amount: option.amount_cents / 100,
+          choiceGroupLabel: option.choice_group_label,
+          choiceValue: option.choice_value
         }));
       const sessionPrices = bookingSessions
         .filter((sessionItem) => sessionItem.status === 'OPEN')

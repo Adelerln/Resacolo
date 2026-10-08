@@ -52,6 +52,8 @@ export interface StayExtraOption {
   id: string;
   label: string;
   amount: number;
+  choiceGroupLabel?: string | null;
+  choiceValue?: string | null;
 }
 
 export interface StaySessionOption {

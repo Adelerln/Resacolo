@@ -2,6 +2,7 @@ import { revalidatePath } from 'next/cache';
 import { NextResponse } from 'next/server';
 import { requireApiAdminMutateSection } from '@/lib/auth/api';
 import { normalizePartnerOffer } from '@/lib/partner-offers';
+import { setPartnerSubEntitiesEnabled } from '@/lib/partner-sub-entities.server';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
 
 function isCollectivityContactsTableMissingError(error: { message?: string; code?: string } | null | undefined) {
@@ -138,6 +139,22 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
     revalidatePath(`/admin/partenaires/${id}`);
     revalidatePath('/partenaire/fiche');
     return redirectUrl({ success: 'general-saved' });
+  }
+
+  if (intent === 'sub-entities') {
+    const enabled = String(formData.get('sub_entities_enabled') ?? '') === '1';
+    try {
+      await setPartnerSubEntitiesEnabled(id, enabled);
+    } catch (error) {
+      return redirectUrl({
+        error: error instanceof Error ? error.message : 'Impossible de mettre à jour les sous-entités'
+      });
+    }
+    revalidatePath('/admin/partenaires');
+    revalidatePath(`/admin/partenaires/${id}`);
+    revalidatePath('/partenaire/sous-entites');
+    revalidatePath('/partenaire');
+    return redirectUrl({ success: 'sub-entities-saved' });
   }
 
   return redirectUrl({ error: 'Action inconnue' });

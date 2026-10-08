@@ -61,13 +61,25 @@ export default async function AdminPartnerEditPage({ params, searchParams }: Pag
   const partnerId = id;
   const supabase = getServerSupabaseClient();
 
-  const { data: collectivity, error } = await supabase
+  let { data: collectivity, error } = await supabase
     .from('collectivities')
     .select(
-      'id,name,code,offer_mode,contact_name,contact_email,created_at,updated_at'
+      'id,name,code,offer_mode,contact_name,contact_email,created_at,updated_at,sub_entities_enabled'
     )
     .eq('id', id)
     .maybeSingle();
+
+  if (error && String(error.message ?? '').includes('sub_entities_enabled')) {
+    const legacy = await supabase
+      .from('collectivities')
+      .select('id,name,code,offer_mode,contact_name,contact_email,created_at,updated_at')
+      .eq('id', id)
+      .maybeSingle();
+    collectivity = legacy.data
+      ? ({ ...legacy.data, sub_entities_enabled: false } as typeof collectivity)
+      : null;
+    error = legacy.error;
+  }
 
   if (error) {
     return <p className="text-sm text-rose-700">Impossible de charger le partenaire : {error.message}</p>;
@@ -120,13 +132,19 @@ export default async function AdminPartnerEditPage({ params, searchParams }: Pag
   const successMessage =
     successParam === 'general-saved'
       ? 'Informations partenaire enregistrées.'
-      : successParam === 'member-added'
+      : successParam === 'sub-entities-saved'
+        ? 'Option sous-entités mise à jour.'
+        : successParam === 'member-added'
           ? 'Utilisateur partenaire ajouté.'
           : successParam === 'member-updated'
             ? 'Utilisateur partenaire mis à jour.'
             : successParam === 'member-deleted'
               ? 'Utilisateur partenaire supprimé.'
               : null;
+
+  const subEntitiesEnabled = Boolean(
+    (collectivity as { sub_entities_enabled?: boolean | null }).sub_entities_enabled
+  );
 
   return (
     <div className="space-y-6">
@@ -209,6 +227,42 @@ export default async function AdminPartnerEditPage({ params, searchParams }: Pag
             <div className="flex items-center justify-end">
               <button className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">
                 Enregistrer
+              </button>
+            </div>
+          </form>
+
+          <form
+            action={`/api/admin/partners/${partnerId}`}
+            method="post"
+            className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6"
+          >
+            <input type="hidden" name="_intent" value="sub-entities" />
+            <div>
+              <h2 className="admin-section-title">Sous-entités</h2>
+              <p className="admin-page-subtitle mt-1 text-xs">
+                Autorise ce partenaire à créer des sous-entités (comptes séparés, import QF, comparaison
+                dashboard). Les familles devront choisir leur sous-entité au rattachement.
+              </p>
+            </div>
+            <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                name="sub_entities_enabled"
+                value="1"
+                defaultChecked={subEntitiesEnabled}
+                className="mt-1 h-4 w-4 rounded border-slate-300"
+              />
+              <span>
+                <span className="font-semibold text-slate-900">Autoriser les sous-entités</span>
+                <span className="mt-0.5 block text-xs text-slate-500">
+                  Option désactivée par défaut. Sans cette case, le partenaire ne peut pas créer de
+                  sous-entités.
+                </span>
+              </span>
+            </label>
+            <div className="flex items-center justify-end">
+              <button className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">
+                Enregistrer l&apos;option
               </button>
             </div>
           </form>

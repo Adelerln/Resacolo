@@ -181,6 +181,18 @@ export async function GET(req: Request) {
 
   if (role === 'CLIENT') {
     await ensureClientRowForOauthUser(data.user);
+    try {
+      const { claimBeneficiaryRosterForUser } = await import('@/lib/partner-sub-entities.server');
+      await claimBeneficiaryRosterForUser({
+        userId: data.user.id,
+        email: data.user.email ?? ''
+      });
+    } catch (claimError) {
+      console.warn(
+        '[auth/callback] roster claim skipped',
+        claimError instanceof Error ? claimError.message : claimError
+      );
+    }
   }
 
   const defaultRedirect = getHomePathForRole(role);

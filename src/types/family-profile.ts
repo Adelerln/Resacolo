@@ -116,6 +116,8 @@ export type FamilyCseAffiliation = {
   heroCtaLabel: string | null;
   heroCtaUrl: string | null;
   isWhiteLabel: boolean;
+  subEntityId: string | null;
+  subEntityName: string | null;
 };
 
 export type FamilyProfileSnapshot = {

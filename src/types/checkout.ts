@@ -30,6 +30,7 @@ export type CheckoutContact = {
   billingCity: string;
   billingCountry: string;
   cseOrganization: string;
+  cseSubEntityId: string;
   vacafNumber: string;
   vacafDepartmentCode: string;
   ancvConnectMatricule: string;
@@ -126,6 +127,7 @@ export const EMPTY_CONTACT: CheckoutContact = {
   billingCity: '',
   billingCountry: 'France',
   cseOrganization: '',
+  cseSubEntityId: '',
   vacafNumber: '',
   vacafDepartmentCode: '',
   ancvConnectMatricule: '',

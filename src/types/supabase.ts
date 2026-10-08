@@ -316,6 +316,7 @@ export type Database = {
           family_quotient_expires_on: string | null
           full_name: string | null
           phone: string | null
+          sub_entity_id: string | null
           user_id: string
         }
         Insert: {
@@ -325,6 +326,7 @@ export type Database = {
           family_quotient_expires_on?: string | null
           full_name?: string | null
           phone?: string | null
+          sub_entity_id?: string | null
           user_id: string
         }
         Update: {
@@ -334,6 +336,7 @@ export type Database = {
           family_quotient_expires_on?: string | null
           full_name?: string | null
           phone?: string | null
+          sub_entity_id?: string | null
           user_id?: string
         }
         Relationships: [
@@ -342,6 +345,13 @@ export type Database = {
             columns: ["collectivity_id"]
             isOneToOne: false
             referencedRelation: "collectivities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "clients_sub_entity_id_fkey"
+            columns: ["sub_entity_id"]
+            isOneToOne: false
+            referencedRelation: "collectivity_sub_entities"
             referencedColumns: ["id"]
           },
         ]
@@ -640,6 +650,7 @@ export type Database = {
           offer_mode: string
           organizer_amounts_prefs: Json
           postal_code: string | null
+          sub_entities_enabled: boolean
           updated_at: string
           website_url: string | null
         }
@@ -679,6 +690,7 @@ export type Database = {
           offer_mode?: string
           organizer_amounts_prefs?: Json
           postal_code?: string | null
+          sub_entities_enabled?: boolean
           updated_at?: string
           website_url?: string | null
         }
@@ -718,10 +730,68 @@ export type Database = {
           offer_mode?: string
           organizer_amounts_prefs?: Json
           postal_code?: string | null
+          sub_entities_enabled?: boolean
           updated_at?: string
           website_url?: string | null
         }
         Relationships: []
+      }
+      collectivity_beneficiary_roster: {
+        Row: {
+          claimed_at: string | null
+          claimed_user_id: string | null
+          collectivity_id: string
+          created_at: string
+          email: string
+          family_quotient: number | null
+          family_quotient_expires_on: string | null
+          full_name: string | null
+          id: string
+          sub_entity_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          claimed_at?: string | null
+          claimed_user_id?: string | null
+          collectivity_id: string
+          created_at?: string
+          email: string
+          family_quotient?: number | null
+          family_quotient_expires_on?: string | null
+          full_name?: string | null
+          id?: string
+          sub_entity_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          claimed_at?: string | null
+          claimed_user_id?: string | null
+          collectivity_id?: string
+          created_at?: string
+          email?: string
+          family_quotient?: number | null
+          family_quotient_expires_on?: string | null
+          full_name?: string | null
+          id?: string
+          sub_entity_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "collectivity_beneficiary_roster_collectivity_id_fkey"
+            columns: ["collectivity_id"]
+            isOneToOne: false
+            referencedRelation: "collectivities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "collectivity_beneficiary_roster_sub_entity_id_fkey"
+            columns: ["sub_entity_id"]
+            isOneToOne: false
+            referencedRelation: "collectivity_sub_entities"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       collectivity_contributions: {
         Row: {
@@ -789,6 +859,7 @@ export type Database = {
           created_at: string
           id: string
           role: string
+          sub_entity_id: string | null
           user_id: string
         }
         Insert: {
@@ -796,6 +867,7 @@ export type Database = {
           created_at?: string
           id?: string
           role: string
+          sub_entity_id?: string | null
           user_id: string
         }
         Update: {
@@ -803,11 +875,51 @@ export type Database = {
           created_at?: string
           id?: string
           role?: string
+          sub_entity_id?: string | null
           user_id?: string
         }
         Relationships: [
           {
             foreignKeyName: "collectivity_members_collectivity_id_fkey"
+            columns: ["collectivity_id"]
+            isOneToOne: false
+            referencedRelation: "collectivities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "collectivity_members_sub_entity_id_fkey"
+            columns: ["sub_entity_id"]
+            isOneToOne: false
+            referencedRelation: "collectivity_sub_entities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      collectivity_sub_entities: {
+        Row: {
+          collectivity_id: string
+          created_at: string
+          id: string
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          collectivity_id: string
+          created_at?: string
+          id?: string
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          collectivity_id?: string
+          created_at?: string
+          id?: string
+          name?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "collectivity_sub_entities_collectivity_id_fkey"
             columns: ["collectivity_id"]
             isOneToOne: false
             referencedRelation: "collectivities"

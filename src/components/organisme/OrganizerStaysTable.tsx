@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { Fragment, useEffect, useRef, useState } from 'react';
-import { ChevronDown, Package, Pencil, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, Package, Pencil, Trash2 } from 'lucide-react';
 import RemainingPlacesEditor from '@/components/organisme/RemainingPlacesEditor';
 import { sessionStatusLabel, stayDraftStatusLabel, stayStatusBadgeClassName, stayStatusLabel } from '@/lib/ui/labels';
 import { withOrganizerQuery } from '@/lib/organizers';
@@ -24,6 +24,14 @@ type StayListItem = {
   locationText: string;
   availability: 'AVAILABLE' | 'PARTIALLY_AVAILABLE' | 'FULL';
   sessions: StaySessionListItem[];
+};
+
+type StaySortKey = 'title' | 'seasonName' | 'status' | 'availability' | 'locationText';
+
+const AVAILABILITY_SORT_ORDER: Record<StayListItem['availability'], number> = {
+  AVAILABLE: 0,
+  PARTIALLY_AVAILABLE: 1,
+  FULL: 2
 };
 
 type ImportDraftListItem = {
@@ -81,6 +89,20 @@ function availabilityClassName(availability: StayListItem['availability']) {
   }
 }
 
+function compareStays(left: StayListItem, right: StayListItem, key: StaySortKey) {
+  if (key === 'availability') {
+    return AVAILABILITY_SORT_ORDER[left.availability] - AVAILABILITY_SORT_ORDER[right.availability];
+  }
+  if (key === 'status') {
+    return stayStatusLabel(left.status).localeCompare(stayStatusLabel(right.status), 'fr', {
+      sensitivity: 'base'
+    });
+  }
+  const leftValue = (left[key] ?? '').trim();
+  const rightValue = (right[key] ?? '').trim();
+  return leftValue.localeCompare(rightValue, 'fr', { sensitivity: 'base' });
+}
+
 export default function OrganizerStaysTable({
   stays,
   organizerId,
@@ -98,7 +120,12 @@ export default function OrganizerStaysTable({
   const [statusFilter, setStatusFilter] = useState('all');
   const [editingStatusStayId, setEditingStatusStayId] = useState<string | null>(null);
   const [completionFilter, setCompletionFilter] = useState<'all' | 'full' | 'available'>('all');
+  const [seasonFilter, setSeasonFilter] = useState('all');
   const [locationFilter, setLocationFilter] = useState('all');
+  const [sortConfig, setSortConfig] = useState<{
+    key: StaySortKey;
+    direction: 'asc' | 'desc';
+  } | null>(null);
   const submittersRef = useRef<Record<string, ((nextEditSessionId?: string) => void) | undefined>>({});
 
   useEffect(() => {
@@ -117,6 +144,14 @@ export default function OrganizerStaysTable({
         .sort((a, b) => a.localeCompare(b, 'fr'))
     )
   );
+  const seasonOptions = Array.from(
+    new Set(
+      stays
+        .map((stay) => stay.seasonName.trim())
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b, 'fr'))
+    )
+  );
   const statusOptions = Array.from(
     new Set(
       stays
@@ -129,9 +164,46 @@ export default function OrganizerStaysTable({
     if (statusFilter !== 'all' && (stay.status ?? '') !== statusFilter) return false;
     if (completionFilter === 'full' && stay.availability !== 'FULL') return false;
     if (completionFilter === 'available' && stay.availability === 'FULL') return false;
+    if (seasonFilter !== 'all' && stay.seasonName.trim() !== seasonFilter) return false;
     if (locationFilter !== 'all' && stay.locationText.trim() !== locationFilter) return false;
     return true;
   });
+
+  const displayedStays = sortConfig
+    ? [...filteredStays].sort((left, right) => {
+        const result = compareStays(left, right, sortConfig.key);
+        return sortConfig.direction === 'asc' ? result : -result;
+      })
+    : filteredStays;
+
+  const toggleSort = (key: StaySortKey) => {
+    setSortConfig((current) => {
+      if (!current || current.key !== key) return { key, direction: 'asc' };
+      if (current.direction === 'asc') return { key, direction: 'desc' };
+      return null;
+    });
+  };
+
+  const renderSortIcon = (key: StaySortKey) => {
+    if (!sortConfig || sortConfig.key !== key) return null;
+    return sortConfig.direction === 'asc' ? (
+      <ChevronUp className="h-3.5 w-3.5" aria-hidden="true" />
+    ) : (
+      <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+    );
+  };
+
+  const renderSortableHeader = (label: string, key: StaySortKey) => (
+    <button
+      type="button"
+      onClick={() => toggleSort(key)}
+      className="inline-flex items-center gap-1 text-left uppercase tracking-wide text-slate-500 transition hover:text-slate-700"
+      aria-label={`Trier par ${label.toLowerCase()}`}
+    >
+      <span>{label}</span>
+      {renderSortIcon(key)}
+    </button>
+  );
 
   return (
     <div className="space-y-6">
@@ -197,7 +269,7 @@ export default function OrganizerStaysTable({
 
     <div className="organizer-table-shell">
       <div className="border-b border-slate-200 bg-slate-50/70 px-4 py-4">
-        <div className="grid gap-3 md:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <label className="block text-sm font-medium text-slate-700">
             Statut
             <select
@@ -225,6 +297,21 @@ export default function OrganizerStaysTable({
               <option value="all">Tous les séjours</option>
               <option value="full">Séjours complets</option>
               <option value="available">Séjours non complets</option>
+            </select>
+          </label>
+          <label className="block text-sm font-medium text-slate-700">
+            Saison
+            <select
+              value={seasonFilter}
+              onChange={(event) => setSeasonFilter(event.target.value)}
+              className="organizer-input"
+            >
+              <option value="all">Toutes les saisons</option>
+              {seasonOptions.map((season) => (
+                <option key={season} value={season}>
+                  {season}
+                </option>
+              ))}
             </select>
           </label>
           <label className="block text-sm font-medium text-slate-700">
@@ -258,16 +345,16 @@ export default function OrganizerStaysTable({
           <thead>
             <tr>
               <th className="px-4 py-3"></th>
-              <th className="px-4 py-3">Séjour</th>
-              <th className="px-4 py-3">Saison</th>
-              <th className="px-4 py-3">Statut</th>
-              <th className="px-4 py-3">Disponibilité</th>
-              <th className="px-4 py-3">Lieu</th>
+              <th className="px-4 py-3">{renderSortableHeader('Séjour', 'title')}</th>
+              <th className="px-4 py-3">{renderSortableHeader('Saison', 'seasonName')}</th>
+              <th className="px-4 py-3">{renderSortableHeader('Statut', 'status')}</th>
+              <th className="px-4 py-3">{renderSortableHeader('Disponibilité', 'availability')}</th>
+              <th className="px-4 py-3">{renderSortableHeader('Lieu', 'locationText')}</th>
               <th className="px-4 py-3"></th>
             </tr>
           </thead>
           <tbody>
-            {filteredStays.map((stay) => {
+            {displayedStays.map((stay) => {
               const isOpen = openStayIds.includes(stay.id);
 
               return (
@@ -522,7 +609,7 @@ export default function OrganizerStaysTable({
                 </Fragment>
               );
             })}
-            {filteredStays.length === 0 && (
+            {displayedStays.length === 0 && (
               <tr>
                 <td colSpan={7} className="px-4 py-8 text-sm text-slate-500">
                   {stays.length === 0

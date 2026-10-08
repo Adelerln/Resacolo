@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getServerSupabaseClient } from '@/lib/supabase/server';
+import { isMissingAnyColumnError } from '@/lib/supabase-schema-errors';
 import type { Database } from '@/types/supabase';
 
 export type AppRole =
@@ -19,6 +20,8 @@ export type ResolvedRoleContext = {
   collectivityIds: string[];
   organizerRolesById: Record<string, string>;
   collectivityRolesById: Record<string, string>;
+  /** Sous-entité du membre partenaire (null = vue globale du CSE). */
+  collectivitySubEntityId: string | null;
   isClient: boolean;
 };
 
@@ -80,29 +83,59 @@ export async function resolveRoleContextForUserId(
     throw new Error('Identifiant utilisateur Supabase invalide.');
   }
 
-  const [{ data: staffRows }, { data: organizerRows }, { data: collectivityRows }, { data: clientRow }] =
-    await Promise.all([
-      supabase.from('staff_users').select('role').eq('user_id', normalizedUserId),
-      supabase.from('organizer_members').select('organizer_id,role').eq('user_id', normalizedUserId),
-      supabase.from('collectivity_members').select('collectivity_id,role').eq('user_id', normalizedUserId),
-      supabase.from('clients').select('user_id').eq('user_id', normalizedUserId).maybeSingle()
-    ]);
+  const [
+    { data: staffRows },
+    { data: organizerRows },
+    { data: collectivityRows, error: collectivityError },
+    { data: clientRow }
+  ] = await Promise.all([
+    supabase.from('staff_users').select('role').eq('user_id', normalizedUserId),
+    supabase.from('organizer_members').select('organizer_id,role').eq('user_id', normalizedUserId),
+    supabase
+      .from('collectivity_members')
+      .select('collectivity_id,role,sub_entity_id')
+      .eq('user_id', normalizedUserId),
+    supabase.from('clients').select('user_id').eq('user_id', normalizedUserId).maybeSingle()
+  ]);
+
+  let membershipRows: Array<{
+    collectivity_id: string;
+    role: string;
+    sub_entity_id: string | null;
+  }> = (collectivityRows ?? []).map((row) => ({
+    collectivity_id: row.collectivity_id,
+    role: row.role,
+    sub_entity_id: row.sub_entity_id ?? null
+  }));
+
+  if (collectivityError && isMissingAnyColumnError(collectivityError, ['sub_entity_id'])) {
+    const { data: legacyMemberships } = await supabase
+      .from('collectivity_members')
+      .select('collectivity_id,role')
+      .eq('user_id', normalizedUserId);
+    membershipRows = (legacyMemberships ?? []).map((row) => ({
+      collectivity_id: row.collectivity_id,
+      role: row.role,
+      sub_entity_id: null
+    }));
+  }
 
   const staffRoles = (staffRows ?? []).map((row) => row.role).filter(Boolean);
   const organizerIds = Array.from(
     new Set((organizerRows ?? []).map((row) => row.organizer_id).filter(Boolean))
   );
+  const partnerMemberships = membershipRows.filter((row) =>
+    PARTNER_STAFF_ROLES.has(normalizeRoleValue(row.role))
+  );
   const partnerCollectivityIds = Array.from(
-    new Set(
-      (collectivityRows ?? [])
-        .filter((row) => PARTNER_STAFF_ROLES.has(normalizeRoleValue(row.role)))
-        .map((row) => row.collectivity_id)
-        .filter(Boolean)
-    )
+    new Set(partnerMemberships.map((row) => row.collectivity_id).filter(Boolean))
   );
-  const collectivityIds = Array.from(
-    new Set(partnerCollectivityIds)
-  );
+  const collectivityIds = Array.from(new Set(partnerCollectivityIds));
+  const primaryMembership = partnerMemberships[0] ?? null;
+  const collectivitySubEntityId =
+    typeof primaryMembership?.sub_entity_id === 'string' && primaryMembership.sub_entity_id.trim()
+      ? primaryMembership.sub_entity_id
+      : null;
 
   const staffRole = mapStaffRole(staffRoles);
   const role =
@@ -122,8 +155,9 @@ export async function resolveRoleContextForUserId(
       (organizerRows ?? []).map((row) => [row.organizer_id, row.role])
     ),
     collectivityRolesById: Object.fromEntries(
-      (collectivityRows ?? []).map((row) => [row.collectivity_id, row.role])
+      partnerMemberships.map((row) => [row.collectivity_id, row.role])
     ),
+    collectivitySubEntityId,
     isClient: Boolean(clientRow) || role === 'CLIENT'
   };
 }

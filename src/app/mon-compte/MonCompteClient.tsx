@@ -28,6 +28,7 @@ import {
   fetchFamilyProfileSnapshot,
   fetchPendingAccountDeletionRequest,
   inviteFamilyMember,
+  previewCseSubEntities,
   requestAccountDeletion,
   updateFamilyChild
 } from '@/lib/account-profile/client';
@@ -114,6 +115,9 @@ export default function MonCompteClient({
   const [cseAffiliation, setCseAffiliation] = useState<FamilyCseAffiliation | null>(initialCseAffiliation);
   const [isLoadingAccountData, setIsLoadingAccountData] = useState(deferAccountDataToClient);
   const [cseCodeInput, setCseCodeInput] = useState(initialCseAffiliation?.code ?? initialProfile.cseOrganization ?? '');
+  const [cseSubEntityId, setCseSubEntityId] = useState(initialCseAffiliation?.subEntityId ?? '');
+  const [cseSubEntities, setCseSubEntities] = useState<Array<{ id: string; name: string }>>([]);
+  const [cseSubEntitiesLoading, setCseSubEntitiesLoading] = useState(false);
   const [cseSubmitError, setCseSubmitError] = useState<string | null>(null);
   const [cseSubmitSuccess, setCseSubmitSuccess] = useState<string | null>(null);
   const [isSubmittingCse, setIsSubmittingCse] = useState(false);
@@ -214,17 +218,55 @@ export default function MonCompteClient({
   const reservationsScrollable = reservationList.length > ACCOUNT_PANEL_VISIBLE_ITEMS;
   const favoritesScrollable = visibleFavoriteStays.length > ACCOUNT_PANEL_VISIBLE_ITEMS;
 
+  async function loadCseSubEntitiesForCode(code: string) {
+    const normalized = code.trim().toUpperCase();
+    if (!normalized) {
+      setCseSubEntities([]);
+      setCseSubEntityId('');
+      return;
+    }
+    setCseSubEntitiesLoading(true);
+    setCseSubmitError(null);
+    try {
+      const preview = await previewCseSubEntities(normalized);
+      const nextEntities =
+        preview.subEntitiesEnabled && preview.subEntities.length > 0 ? preview.subEntities : [];
+      setCseSubEntities(nextEntities);
+      if (nextEntities.length === 0) {
+        setCseSubEntityId('');
+      } else if (!nextEntities.some((entity) => entity.id === cseSubEntityId)) {
+        setCseSubEntityId('');
+      }
+    } catch (error) {
+      setCseSubEntities([]);
+      setCseSubEntityId('');
+      setCseSubmitError(
+        error instanceof Error ? error.message : 'Impossible de vérifier ce code CSE.'
+      );
+    } finally {
+      setCseSubEntitiesLoading(false);
+    }
+  }
+
   async function handleAttachCse() {
     setCseSubmitError(null);
     setCseSubmitSuccess(null);
     setIsSubmittingCse(true);
 
     try {
-      const response = await attachFamilyCseAffiliation(cseCodeInput);
+      if (cseSubEntities.length > 0 && !cseSubEntityId) {
+        throw new Error('Veuillez indiquer la sous-entité à laquelle vous appartenez.');
+      }
+      const response = await attachFamilyCseAffiliation(
+        cseCodeInput,
+        cseSubEntities.length > 0 ? cseSubEntityId : null
+      );
       setProfile(response.profile);
       setReservationList(response.reservations);
       setCseAffiliation(response.cseAffiliation);
       setCseCodeInput(response.cseAffiliation?.code ?? response.profile.cseOrganization ?? '');
+      setCseSubEntityId(response.cseAffiliation?.subEntityId ?? '');
+      setCseSubEntities([]);
       setCseSubmitSuccess('Votre rattachement CSE a bien été enregistré.');
       router.refresh();
     } catch (error) {
@@ -245,6 +287,8 @@ export default function MonCompteClient({
       setReservationList(response.reservations);
       setCseAffiliation(response.cseAffiliation);
       setCseCodeInput('');
+      setCseSubEntityId('');
+      setCseSubEntities([]);
       setCseSubmitSuccess('Votre rattachement CSE a bien été supprimé.');
       router.refresh();
     } catch (error) {
@@ -921,6 +965,11 @@ export default function MonCompteClient({
                   <p className="text-sm text-emerald-700">
                     Code rattaché : <span className="font-semibold">{cseAffiliation.code}</span>
                   </p>
+                  {cseAffiliation.subEntityName ? (
+                    <p className="text-sm text-emerald-700">
+                      Sous-entité : <span className="font-semibold">{cseAffiliation.subEntityName}</span>
+                    </p>
+                  ) : null}
                   <p className="text-xs text-emerald-700/90">
                     Pour modifier ce rattachement, il faut d’abord se désaffilier du CSE.
                   </p>
@@ -938,27 +987,63 @@ export default function MonCompteClient({
             </div>
           ) : (
             <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50/70 p-4">
-              <div className="flex flex-col gap-3 md:flex-row md:items-end">
-                <label className="min-w-0 flex-1 text-sm font-medium text-slate-700">
-                  Code CSE
-                  <input
-                    type="text"
-                    value={cseCodeInput}
-                    onChange={(event) => setCseCodeInput(event.target.value.toUpperCase())}
-                    className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand-300 focus:ring-2 focus:ring-brand-100"
-                    placeholder="Ex : CSE2026"
-                    disabled={isSubmittingCse}
-                  />
-                </label>
-                <button
-                  type="button"
-                  onClick={handleAttachCse}
-                  disabled={isSubmittingCse || !cseCodeInput.trim()}
-                  className="btn btn-primary btn-sm shrink-0"
-                >
-                  <Link2 className="h-4 w-4" />
-                  Rattacher mon compte
-                </button>
+              <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-3 md:flex-row md:items-end">
+                  <label className="min-w-0 flex-1 text-sm font-medium text-slate-700">
+                    Code CSE
+                    <input
+                      type="text"
+                      value={cseCodeInput}
+                      onChange={(event) => {
+                        const next = event.target.value.toUpperCase();
+                        setCseCodeInput(next);
+                        setCseSubEntities([]);
+                        setCseSubEntityId('');
+                      }}
+                      onBlur={() => {
+                        void loadCseSubEntitiesForCode(cseCodeInput);
+                      }}
+                      className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand-300 focus:ring-2 focus:ring-brand-100"
+                      placeholder="Ex : CSE2026"
+                      disabled={isSubmittingCse}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleAttachCse}
+                    disabled={
+                      isSubmittingCse ||
+                      !cseCodeInput.trim() ||
+                      cseSubEntitiesLoading ||
+                      (cseSubEntities.length > 0 && !cseSubEntityId)
+                    }
+                    className="btn btn-primary btn-sm shrink-0"
+                  >
+                    <Link2 className="h-4 w-4" />
+                    Rattacher mon compte
+                  </button>
+                </div>
+                {cseSubEntitiesLoading ? (
+                  <p className="text-xs text-slate-500">Vérification des sous-entités…</p>
+                ) : null}
+                {cseSubEntities.length > 0 ? (
+                  <label className="block text-sm font-medium text-slate-700">
+                    Votre sous-entité
+                    <select
+                      value={cseSubEntityId}
+                      onChange={(event) => setCseSubEntityId(event.target.value)}
+                      className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand-300 focus:ring-2 focus:ring-brand-100"
+                      disabled={isSubmittingCse}
+                    >
+                      <option value="">Sélectionnez votre sous-entité</option>
+                      {cseSubEntities.map((entity) => (
+                        <option key={entity.id} value={entity.id}>
+                          {entity.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
               </div>
             </div>
           )}

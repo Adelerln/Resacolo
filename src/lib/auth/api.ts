@@ -31,6 +31,8 @@ function buildApiSessionPayload(
     collectivityIds: roleContext.collectivityIds,
     organizerRolesById: roleContext.organizerRolesById,
     collectivityRolesById: roleContext.collectivityRolesById,
+    collectivitySubEntityId:
+      roleContext.role === 'PARTENAIRE' ? roleContext.collectivitySubEntityId : null,
     staffRoles: roleContext.staffRoles,
     isClient: roleContext.isClient
   };

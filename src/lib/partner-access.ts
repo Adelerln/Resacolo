@@ -6,6 +6,7 @@ export const PARTNER_MEMBERSHIP_ROLE_CONSTRAINT_MESSAGE =
 export type PartnerWorkspaceSection =
   | 'dashboard'
   | 'partner-profile'
+  | 'sub-entities'
   | 'beneficiaries'
   | 'catalog'
   | 'financing'
@@ -28,6 +29,7 @@ const PARTNER_ACCESS_SECTIONS: Record<PartnerAccessRole, PartnerWorkspaceSection
   PARTNER_ADMIN: [
     'dashboard',
     'partner-profile',
+    'sub-entities',
     'beneficiaries',
     'catalog',
     'financing',
@@ -45,6 +47,7 @@ const PARTNER_NAV_LINKS: Array<{
 }> = [
   { href: '/partenaire', label: 'Dashboard', section: 'dashboard' },
   { href: '/partenaire/fiche', label: 'Fiche partenaire', section: 'partner-profile' },
+  { href: '/partenaire/sous-entites', label: 'Sous-entités', section: 'sub-entities' },
   { href: '/partenaire/beneficiaires', label: 'Bénéficiaires', section: 'beneficiaries' },
   { href: '/partenaire/catalogue', label: 'Catalogue', section: 'catalog' },
   { href: '/partenaire/financement', label: 'Financement', section: 'financing' },
@@ -85,6 +88,7 @@ export function getPartnerNavLinks(role: PartnerAccessRole) {
 export function getPartnerSectionFromPath(pathname: string): PartnerWorkspaceSection {
   if (pathname === '/partenaire' || pathname === '/partenaire/') return 'dashboard';
   if (pathname.startsWith('/partenaire/fiche')) return 'partner-profile';
+  if (pathname.startsWith('/partenaire/sous-entites')) return 'sub-entities';
   if (pathname.startsWith('/partenaire/beneficiaires')) return 'beneficiaries';
   if (pathname.startsWith('/partenaire/catalogue')) return 'catalog';
   if (pathname.startsWith('/partenaire/financement')) return 'financing';

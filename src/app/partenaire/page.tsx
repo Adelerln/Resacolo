@@ -38,7 +38,8 @@ export default async function PartnerHome() {
 
   const dashboard = await buildPartnerDashboardModel({
     collectivityId,
-    userId: session.userId
+    userId: session.userId,
+    subEntityId: session.collectivitySubEntityId
   });
 
   const maxDailyCount = Math.max(1, ...dashboard.dailyReservationsSeries.map((point) => point.count));
@@ -128,6 +129,48 @@ export default async function PartnerHome() {
           </div>
         </article>
       </section>
+
+      {dashboard.entityComparison && dashboard.entityComparison.length > 0 ? (
+        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+          <div className="border-b border-slate-100 px-5 py-4">
+            <h2 className="admin-section-title">Comparaison des entités (30j)</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Consommation comparée entre vos sous-entités sur la période {dashboard.periodLabel}.
+            </p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-[720px] w-full text-left text-sm">
+              <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+                <tr>
+                  <th className="px-4 py-3">Entité</th>
+                  <th className="px-4 py-3">Ayants-droit</th>
+                  <th className="px-4 py-3">Réservations</th>
+                  <th className="px-4 py-3">Montant total</th>
+                  <th className="px-4 py-3">Part partenaire</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dashboard.entityComparison.map((row) => (
+                  <tr
+                    key={row.subEntityId ?? 'unassigned'}
+                    className="border-t border-slate-100"
+                  >
+                    <td className="px-4 py-3 font-medium text-slate-900">{row.name}</td>
+                    <td className="px-4 py-3 text-slate-700">{row.beneficiariesCount}</td>
+                    <td className="px-4 py-3 text-slate-700">{row.reservations30d}</td>
+                    <td className="px-4 py-3 font-semibold text-slate-900">
+                      {formatCurrencyFromCents(row.totalCents30d)}
+                    </td>
+                    <td className="px-4 py-3 font-semibold text-slate-900">
+                      {formatCurrencyFromCents(row.partnerCents30d)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : null}
 
       <section className="grid gap-4 xl:grid-cols-2">
         <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white">

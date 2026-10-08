@@ -151,7 +151,7 @@ export async function patchFamilyProfilePreferences(input: {
   });
 }
 
-export async function attachFamilyCseAffiliation(code: string) {
+export async function attachFamilyCseAffiliation(code: string, subEntityId?: string | null) {
   return fetchJson<{
     profile: FamilyProfile;
     reservations: FamilyReservation[];
@@ -161,8 +161,19 @@ export async function attachFamilyCseAffiliation(code: string) {
     body: JSON.stringify({
       source: 'affiliation',
       action: 'attach',
-      code
+      code,
+      subEntityId: subEntityId ?? null
     })
+  });
+}
+
+export async function previewCseSubEntities(code: string) {
+  return fetchJson<{
+    collectivityName: string;
+    subEntitiesEnabled: boolean;
+    subEntities: Array<{ id: string; name: string }>;
+  }>(`/api/account/cse-sub-entities?code=${encodeURIComponent(code.trim())}`, {
+    method: 'GET'
   });
 }
 

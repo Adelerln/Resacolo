@@ -191,7 +191,7 @@ export default async function PartnerReservationsPage() {
 
   const [collectivity, reservations] = await Promise.all([
     readPartnerCollectivity(collectivityId),
-    listPartnerReservations(collectivityId, session.userId)
+    listPartnerReservations(collectivityId, session.userId, session.collectivitySubEntityId)
   ]);
   const financeMode = normalizePartnerFinanceMode(collectivity.finance_mode);
 

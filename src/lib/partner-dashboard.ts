@@ -16,6 +16,10 @@ import {
   listPartnerReservations,
   readPartnerCollectivity
 } from '@/lib/partner.server';
+import {
+  isPartnerSubEntitiesEnabled,
+  listPartnerSubEntities
+} from '@/lib/partner-sub-entities.server';
 import type { Database } from '@/types/supabase';
 
 const DASHBOARD_WINDOW_DAYS = 30;
@@ -128,6 +132,15 @@ function formatMoneyFromCents(value: number, currency = 'EUR') {
   }).format(value / 100);
 }
 
+export type PartnerDashboardEntityComparisonRow = {
+  subEntityId: string | null;
+  name: string;
+  beneficiariesCount: number;
+  reservations30d: number;
+  totalCents30d: number;
+  partnerCents30d: number;
+};
+
 export type PartnerDashboardViewModel = {
   partnerName: string;
   collectivityCode: string;
@@ -164,6 +177,7 @@ export type PartnerDashboardViewModel = {
     reservationsCount: number;
     totalLabel: string;
   }>;
+  entityComparison: PartnerDashboardEntityComparisonRow[] | null;
   quickActions: Array<{
     href: string;
     label: string;
@@ -179,17 +193,21 @@ export type PartnerDashboardViewModel = {
 export async function buildPartnerDashboardModel(input: {
   collectivityId: string;
   userId: string;
+  subEntityId?: string | null;
   now?: Date;
 }): Promise<PartnerDashboardViewModel> {
   const now = input.now ?? new Date();
   const minDate = startOfLocalDay(now);
   minDate.setDate(minDate.getDate() - (DASHBOARD_WINDOW_DAYS - 1));
   const maxDate = endOfLocalDay(now);
+  const scopedSubEntityId = input.subEntityId ?? null;
 
   const [collectivity, beneficiaries, reservations, siteCountries] = await Promise.all([
     readPartnerCollectivity(input.collectivityId),
-    listPartnerBeneficiaries(input.collectivityId, input.userId).then((result) => result.beneficiaries),
-    listPartnerReservations(input.collectivityId, input.userId),
+    listPartnerBeneficiaries(input.collectivityId, input.userId, scopedSubEntityId).then(
+      (result) => result.beneficiaries
+    ),
+    listPartnerReservations(input.collectivityId, input.userId, scopedSubEntityId),
     listSiteStayCountryLabels()
   ]);
 
@@ -272,6 +290,73 @@ export async function buildPartnerDashboardModel(input: {
 
   const periodLabel = `${formatDateLabelFR(minDate)} - ${formatDateLabelFR(now)} (30 jours)`;
 
+  let entityComparison: PartnerDashboardEntityComparisonRow[] | null = null;
+  if (!scopedSubEntityId && (await isPartnerSubEntitiesEnabled(input.collectivityId))) {
+    const subEntities = await listPartnerSubEntities(input.collectivityId);
+    if (subEntities.length > 0) {
+      const beneficiaryCountByEntity = new Map<string | null, number>();
+      for (const beneficiary of beneficiaries) {
+        const key = beneficiary.subEntityId ?? null;
+        beneficiaryCountByEntity.set(key, (beneficiaryCountByEntity.get(key) ?? 0) + 1);
+      }
+
+      const reservationStatsByEntity = new Map<
+        string | null,
+        { reservations30d: number; totalCents30d: number; partnerCents30d: number }
+      >();
+      for (const reservation of reservations30d) {
+        const key = reservation.clientSubEntityId ?? null;
+        const existing = reservationStatsByEntity.get(key) ?? {
+          reservations30d: 0,
+          totalCents30d: 0,
+          partnerCents30d: 0
+        };
+        existing.reservations30d += 1;
+        existing.totalCents30d += reservation.totalCents;
+        existing.partnerCents30d += reservation.partnerContributionCents;
+        reservationStatsByEntity.set(key, existing);
+      }
+
+      entityComparison = [
+        ...subEntities.map((entity) => {
+          const stats = reservationStatsByEntity.get(entity.id) ?? {
+            reservations30d: 0,
+            totalCents30d: 0,
+            partnerCents30d: 0
+          };
+          return {
+            subEntityId: entity.id,
+            name: entity.name,
+            beneficiariesCount: beneficiaryCountByEntity.get(entity.id) ?? 0,
+            reservations30d: stats.reservations30d,
+            totalCents30d: stats.totalCents30d,
+            partnerCents30d: stats.partnerCents30d
+          };
+        }),
+        (() => {
+          const stats = reservationStatsByEntity.get(null) ?? {
+            reservations30d: 0,
+            totalCents30d: 0,
+            partnerCents30d: 0
+          };
+          return {
+            subEntityId: null,
+            name: 'Non rattaché',
+            beneficiariesCount: beneficiaryCountByEntity.get(null) ?? 0,
+            reservations30d: stats.reservations30d,
+            totalCents30d: stats.totalCents30d,
+            partnerCents30d: stats.partnerCents30d
+          };
+        })()
+      ].filter(
+        (row) =>
+          row.subEntityId != null ||
+          row.beneficiariesCount > 0 ||
+          row.reservations30d > 0
+      );
+    }
+  }
+
   return {
     partnerName: collectivity.name,
     collectivityCode: collectivity.code,
@@ -304,6 +389,7 @@ export async function buildPartnerDashboardModel(input: {
       totalLabel: reservation.totalLabel
     })),
     topStays,
+    entityComparison,
     quickActions: [
       {
         href: '/partenaire/beneficiaires',

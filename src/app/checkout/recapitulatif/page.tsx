@@ -28,7 +28,7 @@ import {
 import { resolveOrderRequestKind } from '@/lib/order-workflow';
 import { isPartnerFullCoverageCheckout } from '@/lib/partner-offers';
 import { formatNoPaymentAsBeneficiaryMessage } from '@/lib/partner-beneficiary-copy';
-import { fetchFamilyProfileSnapshot } from '@/lib/account-profile/client';
+import { fetchFamilyProfileSnapshot, previewCseSubEntities } from '@/lib/account-profile/client';
 import {
   normalizeVacafNumberInput,
   validateVacafNumber,
@@ -148,6 +148,8 @@ export default function CheckoutRecapitulatifPage() {
   const [organizerHasCgv, setOrganizerHasCgv] = useState<Record<string, boolean>>({});
   const [organizerCheckoutSettingsById, setOrganizerCheckoutSettingsById] = useState<Record<string, OrganizerCheckoutSettings>>({});
   const [hasCseAffiliation, setHasCseAffiliation] = useState<boolean | null>(null);
+  const [cseSubEntities, setCseSubEntities] = useState<Array<{ id: string; name: string }>>([]);
+  const [cseSubEntitiesLoading, setCseSubEntitiesLoading] = useState(false);
   const [wantsVacafAidByOrganizer, setWantsVacafAidByOrganizer] = useState<Record<string, boolean>>({});
   const organizerIds = useMemo(() => Array.from(new Set(items.map((item) => item.organizerId).filter(Boolean))), [items]);
   const primaryOrganizerId = organizerIds[0] ?? '';
@@ -761,10 +763,62 @@ export default function CheckoutRecapitulatifPage() {
                     id="recap-cse-affiliation"
                     type="text"
                     value={contact.cseOrganization}
-                    onChange={(event) => patchContact({ cseOrganization: event.target.value })}
+                    onChange={(event) => {
+                      patchContact({
+                        cseOrganization: event.target.value,
+                        cseSubEntityId: ''
+                      });
+                      setCseSubEntities([]);
+                    }}
+                    onBlur={() => {
+                      const code = contact.cseOrganization.trim();
+                      if (!code) {
+                        setCseSubEntities([]);
+                        return;
+                      }
+                      setCseSubEntitiesLoading(true);
+                      void previewCseSubEntities(code)
+                        .then((preview) => {
+                          const next =
+                            preview.subEntitiesEnabled && preview.subEntities.length > 0
+                              ? preview.subEntities
+                              : [];
+                          setCseSubEntities(next);
+                          if (
+                            next.length > 0 &&
+                            !next.some((entity) => entity.id === contact.cseSubEntityId)
+                          ) {
+                            patchContact({ cseSubEntityId: '' });
+                          }
+                        })
+                        .catch(() => {
+                          setCseSubEntities([]);
+                        })
+                        .finally(() => setCseSubEntitiesLoading(false));
+                    }}
                     className={INPUT_CLASS}
                     aria-describedby="recap-cse-affiliation-hint"
                   />
+                  {cseSubEntitiesLoading ? (
+                    <p className="text-xs text-slate-500">Vérification des sous-entités…</p>
+                  ) : null}
+                  {cseSubEntities.length > 0 ? (
+                    <label className="block text-sm font-medium text-slate-700">
+                      Votre sous-entité
+                      <select
+                        value={contact.cseSubEntityId}
+                        onChange={(event) => patchContact({ cseSubEntityId: event.target.value })}
+                        className={`${INPUT_CLASS} mt-1`}
+                      >
+                        <option value="">Sélectionnez votre sous-entité</option>
+                        {cseSubEntities.map((entity) => (
+                          <option key={entity.id} value={entity.id}>
+                            {entity.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : null}
                 </div>
               ) : null}
 

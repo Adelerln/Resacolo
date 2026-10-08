@@ -802,7 +802,8 @@ export async function prepareCheckoutPayment(input: PrepareCheckoutPaymentInput)
   const organizerSettingsById = new Map(organizerSettingsEntries);
   const collectivity = await resolveCheckoutCollectivityForUser({
     userId: clientUserId,
-    requestedCode: input.contact.cseOrganization
+    requestedCode: input.contact.cseOrganization,
+    subEntityId: input.contact.cseSubEntityId || null
   });
 
   const { data: existingPaymentRows } = await supabase

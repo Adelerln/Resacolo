@@ -84,6 +84,7 @@ const checkoutProfileContactSchema = z
     billingCity: z.string().trim().optional().default(''),
     billingCountry: z.string().trim().optional().default('France'),
     cseOrganization: z.string().trim().optional().default(''),
+    cseSubEntityId: z.string().trim().optional().default(''),
     vacafNumber: z
       .string()
       .trim()
@@ -174,7 +175,8 @@ const patchSchema = z.discriminatedUnion('source', [
   z.object({
     source: z.literal('affiliation'),
     action: z.enum(['attach', 'detach']),
-    code: z.string().trim().optional().default('')
+    code: z.string().trim().optional().default(''),
+    subEntityId: z.string().trim().optional().nullable()
   }),
   z.object({
     source: z.literal('preferences'),
@@ -274,6 +276,7 @@ export async function PATCH(req: Request) {
         const cseAffiliation = await attachFamilyToCseByCode({
           userId: session.userId,
           code: body.code,
+          subEntityId: body.subEntityId,
           sessionName: session.name,
           sessionEmail: session.email
         });

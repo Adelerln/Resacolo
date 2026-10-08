@@ -412,6 +412,16 @@ export async function POST(req: Request) {
       console.error('[register-client] profile upsert failed', humanizeAuthError(profileError));
     }
 
+    try {
+      const { claimBeneficiaryRosterForUser } = await import('@/lib/partner-sub-entities.server');
+      await claimBeneficiaryRosterForUser({ userId: user.id, email });
+    } catch (claimError) {
+      console.warn(
+        '[register-client] roster claim skipped',
+        claimError instanceof Error ? claimError.message : claimError
+      );
+    }
+
     if (autoConfirm) {
       const { error: signInError } = await supabase.auth.signInWithPassword({
         email,

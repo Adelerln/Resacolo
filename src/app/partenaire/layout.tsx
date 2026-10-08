@@ -15,19 +15,37 @@ export default async function PartnerLayout({ children }: { children: React.Reac
   if (tenantId) {
     try {
       const supabase = getServerSupabaseClient();
-      const { data: collectivity } = await supabase
+      const collectivityResult = await supabase
         .from('collectivities')
-        .select('offer_mode')
+        .select('offer_mode,sub_entities_enabled')
         .eq('id', tenantId)
         .maybeSingle();
-      if (!partnerHasMarqueBlancheAccess(collectivity?.offer_mode)) {
+      let offerMode = collectivityResult.data?.offer_mode;
+      let subEntitiesEnabled = Boolean(collectivityResult.data?.sub_entities_enabled);
+      if (collectivityResult.error || !collectivityResult.data) {
+        const legacy = await supabase
+          .from('collectivities')
+          .select('offer_mode')
+          .eq('id', tenantId)
+          .maybeSingle();
+        offerMode = legacy.data?.offer_mode;
+        subEntitiesEnabled = false;
+      }
+      if (!partnerHasMarqueBlancheAccess(offerMode)) {
         partnerNavLinks = partnerNavLinks.filter((item) => item.href !== '/partenaire/marque-blanche');
       }
+      if (!subEntitiesEnabled) {
+        partnerNavLinks = partnerNavLinks.filter((item) => item.href !== '/partenaire/sous-entites');
+      }
     } catch {
-      partnerNavLinks = partnerNavLinks.filter((item) => item.href !== '/partenaire/marque-blanche');
+      partnerNavLinks = partnerNavLinks.filter(
+        (item) => item.href !== '/partenaire/marque-blanche' && item.href !== '/partenaire/sous-entites'
+      );
     }
   } else {
-    partnerNavLinks = partnerNavLinks.filter((item) => item.href !== '/partenaire/marque-blanche');
+    partnerNavLinks = partnerNavLinks.filter(
+      (item) => item.href !== '/partenaire/marque-blanche' && item.href !== '/partenaire/sous-entites'
+    );
   }
 
   return (

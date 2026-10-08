@@ -127,6 +127,7 @@ export const checkoutContactSchema = z.object({
   billingCity: trimmedStringFromJson,
   billingCountry: trimmedStringFromJson.transform((s) => s || 'France'),
   cseOrganization: trimmedStringFromJson,
+  cseSubEntityId: trimmedStringFromJson.optional().default(''),
   vacafNumber: trimmedStringFromJson.pipe(
     z.string().regex(VACAF_NUMBER_OPTIONAL_REGEX, VACAF_NUMBER_MESSAGE)
   ),

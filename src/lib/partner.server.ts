@@ -442,6 +442,7 @@ type PartnerBeneficiaryClientRow = {
   created_at: string;
   family_quotient?: number | null;
   family_quotient_expires_on?: string | null;
+  sub_entity_id?: string | null;
 };
 
 export type PartnerBeneficiary = {
@@ -456,6 +457,7 @@ export type PartnerBeneficiary = {
   role: 'BENEFICIARY';
   familyQuotient: number | null;
   familyQuotientExpiresOn: string | null;
+  subEntityId: string | null;
 };
 
 export type PartnerBeneficiariesListResult = {
@@ -483,19 +485,37 @@ export async function updatePartnerBeneficiaryFamilyQuotient(input: {
   beneficiaryUserId: string;
   familyQuotient: number | null;
   familyQuotientExpiresOn: string | null;
+  /** Si renseigné, n'autorise la MAJ que pour un ayant-droit de cette sous-entité. */
+  subEntityId?: string | null;
 }) {
   const supabase = getServerSupabaseClient();
   const { data: client, error: readError } = await supabase
     .from('clients')
-    .select('user_id,collectivity_id')
+    .select('user_id,collectivity_id,sub_entity_id')
     .eq('user_id', input.beneficiaryUserId)
     .maybeSingle();
 
   if (readError) {
-    throw new Error(`Impossible de vérifier l'ayant-droit : ${readError.message}`);
-  }
-  if (!client || client.collectivity_id !== input.collectivityId) {
-    throw new Error('Ayant-droit introuvable pour votre collectivité.');
+    if (isMissingAnyColumnError(readError, ['sub_entity_id'])) {
+      const legacy = await supabase
+        .from('clients')
+        .select('user_id,collectivity_id')
+        .eq('user_id', input.beneficiaryUserId)
+        .maybeSingle();
+      if (legacy.error) throw new Error(`Impossible de vérifier l'ayant-droit : ${legacy.error.message}`);
+      if (!legacy.data || legacy.data.collectivity_id !== input.collectivityId) {
+        throw new Error('Ayant-droit introuvable pour votre collectivité.');
+      }
+    } else {
+      throw new Error(`Impossible de vérifier l'ayant-droit : ${readError.message}`);
+    }
+  } else {
+    if (!client || client.collectivity_id !== input.collectivityId) {
+      throw new Error('Ayant-droit introuvable pour votre collectivité.');
+    }
+    if (input.subEntityId && client.sub_entity_id !== input.subEntityId) {
+      throw new Error('Ayant-droit introuvable pour votre sous-entité.');
+    }
   }
 
   const { error: updateError } = await supabase
@@ -525,14 +545,59 @@ export async function updatePartnerBeneficiaryFamilyQuotient(input: {
   });
 }
 
-export async function listPartnerBeneficiaryUserIds(collectivityId: string, excludedUserId?: string | null) {
+export async function updatePartnerBeneficiarySubEntity(input: {
+  collectivityId: string;
+  beneficiaryUserId: string;
+  subEntityId: string | null;
+}) {
   const supabase = getServerSupabaseClient();
-  const { data, error } = await supabase
+
+  if (input.subEntityId) {
+    const { data: subEntity, error } = await supabase
+      .from('collectivity_sub_entities')
+      .select('id')
+      .eq('id', input.subEntityId)
+      .eq('collectivity_id', input.collectivityId)
+      .maybeSingle();
+    if (error) {
+      if (isMissingAnyColumnError(error, ['id']) || error.code === 'PGRST205') {
+        throw new Error(buildFeatureActivationMessage('Les sous-entités partenaires'));
+      }
+      throw new Error(`Impossible de vérifier la sous-entité : ${error.message}`);
+    }
+    if (!subEntity) throw new Error('Sous-entité introuvable.');
+  }
+
+  const { error: updateError } = await supabase
     .from('clients')
-    .select('user_id')
-    .eq('collectivity_id', collectivityId);
+    .update({ sub_entity_id: input.subEntityId })
+    .eq('user_id', input.beneficiaryUserId)
+    .eq('collectivity_id', input.collectivityId);
+
+  if (updateError) {
+    if (isMissingAnyColumnError(updateError, ['sub_entity_id'])) {
+      throw new Error(buildFeatureActivationMessage('Les sous-entités partenaires'));
+    }
+    throw new Error(`Impossible d'assigner la sous-entité : ${updateError.message}`);
+  }
+}
+
+export async function listPartnerBeneficiaryUserIds(
+  collectivityId: string,
+  excludedUserId?: string | null,
+  subEntityId?: string | null
+) {
+  const supabase = getServerSupabaseClient();
+  let query = supabase.from('clients').select('user_id').eq('collectivity_id', collectivityId);
+  if (subEntityId) {
+    query = query.eq('sub_entity_id', subEntityId);
+  }
+  const { data, error } = await query;
 
   if (error) {
+    if (subEntityId && isMissingAnyColumnError(error, ['sub_entity_id'])) {
+      return [];
+    }
     throw new Error(`Impossible de charger les bénéficiaires rattachés : ${error.message}`);
   }
 
@@ -543,24 +608,49 @@ export async function listPartnerBeneficiaryUserIds(collectivityId: string, excl
 
 export async function listPartnerBeneficiaries(
   collectivityId: string,
-  excludedUserId?: string | null
+  excludedUserId?: string | null,
+  subEntityId?: string | null
 ): Promise<PartnerBeneficiariesListResult> {
   const supabase = getServerSupabaseClient();
   let qfFieldsAvailable = true;
-  const beneficiaryClientsWithQf = await supabase
+  let beneficiaryClientsQuery = supabase
     .from('clients')
-    .select('user_id,full_name,phone,created_at,family_quotient,family_quotient_expires_on')
+    .select('user_id,full_name,phone,created_at,family_quotient,family_quotient_expires_on,sub_entity_id')
     .eq('collectivity_id', collectivityId);
+  if (subEntityId) {
+    beneficiaryClientsQuery = beneficiaryClientsQuery.eq('sub_entity_id', subEntityId);
+  }
+  const beneficiaryClientsWithQf = await beneficiaryClientsQuery;
 
   let beneficiaryClients: PartnerBeneficiaryClientRow[] | null = beneficiaryClientsWithQf.data;
   let beneficiaryClientsError = beneficiaryClientsWithQf.error;
 
+  if (
+    beneficiaryClientsError &&
+    isMissingAnyColumnError(beneficiaryClientsError, ['sub_entity_id'])
+  ) {
+    let legacyWithQf = supabase
+      .from('clients')
+      .select('user_id,full_name,phone,created_at,family_quotient,family_quotient_expires_on')
+      .eq('collectivity_id', collectivityId);
+    const legacyResult = await legacyWithQf;
+    beneficiaryClients = (legacyResult.data ?? []) as PartnerBeneficiaryClientRow[];
+    beneficiaryClientsError = legacyResult.error;
+    if (subEntityId) {
+      beneficiaryClients = [];
+    }
+  }
+
   if (beneficiaryClientsError && isMissingAnyColumnError(beneficiaryClientsError, [...CLIENT_QF_COLUMNS])) {
     qfFieldsAvailable = false;
-    const legacyClients = await supabase
+    let legacyClientsQuery = supabase
       .from('clients')
       .select('user_id,full_name,phone,created_at')
       .eq('collectivity_id', collectivityId);
+    if (subEntityId) {
+      // column may be missing; empty list already handled above
+    }
+    const legacyClients = await legacyClientsQuery;
     beneficiaryClients = (legacyClients.data ?? []) as PartnerBeneficiaryClientRow[];
     beneficiaryClientsError = legacyClients.error;
   }
@@ -607,20 +697,31 @@ export async function listPartnerBeneficiaries(
       familyQuotient: qfFieldsAvailable ? parseStoredFamilyQuotient(clientRow.family_quotient) : null,
       familyQuotientExpiresOn: qfFieldsAvailable
         ? normalizeFamilyQuotientExpiresOn(clientRow.family_quotient_expires_on)
-        : null
+        : null,
+      subEntityId: clientRow.sub_entity_id ?? null
     };
   });
 
   return { beneficiaries, qfFieldsAvailable };
 }
 
-export async function listPartnerReservations(collectivityId: string, excludedUserId?: string | null) {
+export async function listPartnerReservations(
+  collectivityId: string,
+  excludedUserId?: string | null,
+  subEntityId?: string | null
+) {
   const supabase = getServerSupabaseClient();
   const collectivity = await readPartnerCollectivity(collectivityId);
 
+  let scopedClientUserIds: string[] | null = null;
+  if (subEntityId) {
+    scopedClientUserIds = await listPartnerBeneficiaryUserIds(collectivityId, excludedUserId, subEntityId);
+    if (scopedClientUserIds.length === 0) return [];
+  }
+
   // Ne pas sélectionner vacaf_number_snapshot / ancv_connect_* : absents sur certaines bases
   // et faisaient basculer vers un fallback qui perdait external_aid_cents.
-  let { data: orders, error: ordersError } = await supabase
+  let ordersQuery = supabase
     .from('orders')
     .select(
       'id,status,request_kind,external_aid_cents,external_paid_cents,created_at,requested_at,validated_at,booked_at,paid_at,cancellation_reason,client_user_id,collectivity_id'
@@ -628,6 +729,10 @@ export async function listPartnerReservations(collectivityId: string, excludedUs
     .eq('collectivity_id', collectivityId)
     .neq('status', 'CART')
     .order('created_at', { ascending: false });
+  if (scopedClientUserIds) {
+    ordersQuery = ordersQuery.in('client_user_id', scopedClientUserIds);
+  }
+  let { data: orders, error: ordersError } = await ordersQuery;
 
   if (
     ordersError &&
@@ -638,12 +743,16 @@ export async function listPartnerReservations(collectivityId: string, excludedUs
       'cancellation_reason'
     ])
   ) {
-    const legacyOrdersResult = await supabase
+    let legacyOrdersQuery = supabase
       .from('orders')
       .select('id,status,created_at,requested_at,validated_at,booked_at,paid_at,client_user_id,collectivity_id')
       .eq('collectivity_id', collectivityId)
       .neq('status', 'CART')
       .order('created_at', { ascending: false });
+    if (scopedClientUserIds) {
+      legacyOrdersQuery = legacyOrdersQuery.in('client_user_id', scopedClientUserIds);
+    }
+    const legacyOrdersResult = await legacyOrdersQuery;
 
     orders = (legacyOrdersResult.data ?? []).map((order) => ({
       ...order,
@@ -693,9 +802,21 @@ export async function listPartnerReservations(collectivityId: string, excludedUs
   const sessionsResponse = sessionIds.length
     ? await supabase.from('sessions').select('id,start_date,end_date,stay_id').in('id', sessionIds)
     : { data: [], error: null };
-  const clientsResponse = clientUserIds.length
-    ? await supabase.from('clients').select('user_id,full_name').in('user_id', clientUserIds)
+  let clientsResponse: {
+    data: Array<{ user_id: string; full_name: string | null; sub_entity_id?: string | null }> | null;
+    error: { message?: string; code?: string } | null;
+  } = clientUserIds.length
+    ? await supabase
+        .from('clients')
+        .select('user_id,full_name,sub_entity_id')
+        .in('user_id', clientUserIds)
     : { data: [], error: null };
+  if (clientsResponse.error && isMissingAnyColumnError(clientsResponse.error, ['sub_entity_id'])) {
+    clientsResponse = await supabase
+      .from('clients')
+      .select('user_id,full_name')
+      .in('user_id', clientUserIds);
+  }
   const profilesResponse = clientUserIds.length
     ? await supabase
         .from('client_profiles')
@@ -976,6 +1097,8 @@ export async function listPartnerReservations(collectivityId: string, excludedUs
         vacafCoverageLines,
         paymentLines,
         pendingActions,
+        clientUserId: order.client_user_id,
+        clientSubEntityId: client?.sub_entity_id ?? null,
         beneficiaryName,
         beneficiaryEmail,
         stayTitle: firstStay?.title ?? 'Séjour inconnu',

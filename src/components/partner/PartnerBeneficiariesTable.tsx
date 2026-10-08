@@ -14,9 +14,19 @@ export type PartnerBeneficiaryRow = {
   attachedAt: string;
   familyQuotient: number | null;
   familyQuotientExpiresOn: string | null;
+  subEntityId?: string | null;
+  subEntityName?: string | null;
 };
 
-type SortKey = 'name' | 'email' | 'phone' | 'city' | 'attachedAt' | 'familyQuotient' | 'familyQuotientExpiresOn';
+type SortKey =
+  | 'name'
+  | 'email'
+  | 'phone'
+  | 'city'
+  | 'attachedAt'
+  | 'familyQuotient'
+  | 'familyQuotientExpiresOn'
+  | 'subEntityName';
 
 function formatDate(value: string) {
   return new Date(value).toLocaleDateString('fr-FR');
@@ -49,22 +59,35 @@ function compareBeneficiaries(a: PartnerBeneficiaryRow, b: PartnerBeneficiaryRow
     if (familyCompare !== 0) return familyCompare;
     return a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' });
   }
+  if (key === 'subEntityName') {
+    return (a.subEntityName ?? '').localeCompare(b.subEntityName ?? '', 'fr', { sensitivity: 'base' });
+  }
   return (a[key] ?? '').localeCompare(b[key] ?? '', 'fr', { sensitivity: 'base' });
 }
 
 export function PartnerBeneficiariesTable({
   beneficiaries,
   qfFieldsAvailable,
-  saveFamilyQuotientAction
+  saveFamilyQuotientAction,
+  subEntities = [],
+  canAssignSubEntity = false,
+  saveSubEntityAction
 }: {
   beneficiaries: PartnerBeneficiaryRow[];
   qfFieldsAvailable: boolean;
   saveFamilyQuotientAction: (formData: FormData) => void | Promise<void>;
+  subEntities?: Array<{ id: string; name: string }>;
+  canAssignSubEntity?: boolean;
+  saveSubEntityAction?: (formData: FormData) => void | Promise<void>;
 }) {
   const [sortConfig, setSortConfig] = useState<{
     key: SortKey;
     direction: 'asc' | 'desc';
   } | null>(null);
+
+  const showSubEntityColumn = canAssignSubEntity || beneficiaries.some((row) => row.subEntityName);
+  const colSpan =
+    5 + (qfFieldsAvailable ? 2 : 0) + (showSubEntityColumn ? 1 : 0);
 
   const sortedBeneficiaries = useMemo(() => {
     if (!sortConfig) return beneficiaries;
@@ -116,6 +139,9 @@ export function PartnerBeneficiariesTable({
               <th className="px-4 py-3">{renderSortableHeader('Email', 'email')}</th>
               <th className="px-4 py-3">{renderSortableHeader('Téléphone', 'phone')}</th>
               <th className="px-4 py-3">{renderSortableHeader('Ville', 'city')}</th>
+              {showSubEntityColumn ? (
+                <th className="px-4 py-3">{renderSortableHeader('Sous-entité', 'subEntityName')}</th>
+              ) : null}
               {qfFieldsAvailable ? (
                 <>
                   <th className="px-4 py-3">{renderSortableHeader('QF', 'familyQuotient')}</th>
@@ -134,6 +160,30 @@ export function PartnerBeneficiariesTable({
                 <td className="px-4 py-3 text-slate-600">{beneficiary.email}</td>
                 <td className="px-4 py-3 text-slate-600">{beneficiary.phone}</td>
                 <td className="px-4 py-3 text-slate-600">{beneficiary.city}</td>
+                {showSubEntityColumn ? (
+                  <td className="px-4 py-3 text-slate-600">
+                    {canAssignSubEntity && saveSubEntityAction ? (
+                      <form action={saveSubEntityAction} className="flex items-center gap-2">
+                        <input type="hidden" name="beneficiary_user_id" value={beneficiary.id} />
+                        <select
+                          name="sub_entity_id"
+                          defaultValue={beneficiary.subEntityId ?? ''}
+                          onChange={(event) => event.currentTarget.form?.requestSubmit()}
+                          className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs"
+                        >
+                          <option value="">Non rattaché</option>
+                          {subEntities.map((entity) => (
+                            <option key={entity.id} value={entity.id}>
+                              {entity.name}
+                            </option>
+                          ))}
+                        </select>
+                      </form>
+                    ) : (
+                      beneficiary.subEntityName || '—'
+                    )}
+                  </td>
+                ) : null}
                 {qfFieldsAvailable ? (
                   <>
                     <td className="px-4 py-3 text-slate-600">
@@ -163,7 +213,7 @@ export function PartnerBeneficiariesTable({
             ))}
             {beneficiaries.length === 0 ? (
               <tr>
-                <td className="px-4 py-6 text-slate-500" colSpan={qfFieldsAvailable ? 7 : 5}>
+                <td className="px-4 py-6 text-slate-500" colSpan={colSpan}>
                   Aucun ayant-droit n&apos;est encore rattaché à votre collectivité.
                 </td>
               </tr>

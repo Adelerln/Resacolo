@@ -168,7 +168,10 @@ function shouldHideFailedCheckoutOrder(input: {
   return input.latestPaymentStatus === 'FAILED' && !input.hasSuccessfulPayment;
 }
 
-function buildFamilyCseAffiliation(collectivity: CollectivityRow): FamilyCseAffiliation {
+function buildFamilyCseAffiliation(
+  collectivity: CollectivityRow,
+  subEntity?: { id: string; name: string } | null
+): FamilyCseAffiliation {
   return {
     collectivityId: collectivity.id,
     name: collectivity.name,
@@ -185,7 +188,9 @@ function buildFamilyCseAffiliation(collectivity: CollectivityRow): FamilyCseAffi
     heroBody: collectivity.hero_body,
     heroCtaLabel: collectivity.hero_cta_label,
     heroCtaUrl: collectivity.hero_cta_url,
-    isWhiteLabel: partnerHasMarqueBlancheAccess(collectivity.offer_mode)
+    isWhiteLabel: partnerHasMarqueBlancheAccess(collectivity.offer_mode),
+    subEntityId: subEntity?.id ?? null,
+    subEntityName: subEntity?.name ?? null
   };
 }
 
@@ -925,6 +930,26 @@ async function readClientCollectivityId(userId: string) {
   return data?.collectivity_id ?? null;
 }
 
+async function readClientSubEntity(userId: string): Promise<{ id: string; name: string } | null> {
+  const supabase = getServerSupabaseClient();
+  const { data, error } = await supabase
+    .from('clients')
+    .select('sub_entity_id')
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (error || !data?.sub_entity_id) {
+    if (error && isMissingAnyColumnError(error, ['sub_entity_id'])) return null;
+    return null;
+  }
+  const { data: subEntity } = await supabase
+    .from('collectivity_sub_entities')
+    .select('id,name')
+    .eq('id', data.sub_entity_id)
+    .maybeSingle();
+  if (!subEntity) return null;
+  return { id: subEntity.id, name: subEntity.name };
+}
+
 async function readCollectivityById(collectivityId: string) {
   const supabase = getServerSupabaseClient();
   const collectivitySelect =
@@ -1091,8 +1116,11 @@ export async function readFamilyCseAffiliation(userId: string): Promise<FamilyCs
   const collectivityId = await readClientCollectivityId(userId);
   if (!collectivityId) return null;
 
-  const collectivity = await readCollectivityById(collectivityId);
-  return collectivity ? buildFamilyCseAffiliation(collectivity) : null;
+  const [collectivity, subEntity] = await Promise.all([
+    readCollectivityById(collectivityId),
+    readClientSubEntity(userId)
+  ]);
+  return collectivity ? buildFamilyCseAffiliation(collectivity, subEntity) : null;
 }
 
 export async function readPublicSitePartnerBranding(userId: string) {
@@ -1157,6 +1185,7 @@ async function clearFamilyCseCodeFromProfile(input: {
 export async function attachFamilyToCseByCode(input: {
   userId: string;
   code: string;
+  subEntityId?: string | null;
   sessionName?: string | null;
   sessionEmail?: string | null;
 }) {
@@ -1170,9 +1199,43 @@ export async function attachFamilyToCseByCode(input: {
     throw new Error('Code CSE invalide.');
   }
 
+  const { listSubEntitiesForCollectivityCode, readPartnerSubEntity } = await import(
+    '@/lib/partner-sub-entities.server'
+  );
+  const subEntitiesInfo = await listSubEntitiesForCollectivityCode(collectivity.code);
+  const requiresSubEntity =
+    Boolean(subEntitiesInfo?.subEntitiesEnabled) && (subEntitiesInfo?.subEntities.length ?? 0) > 0;
+
+  let resolvedSubEntity: { id: string; name: string } | null = null;
+  if (requiresSubEntity) {
+    const requestedSubEntityId = String(input.subEntityId ?? '').trim();
+    if (!requestedSubEntityId) {
+      throw new Error('Veuillez indiquer la sous-entité à laquelle vous appartenez.');
+    }
+    const subEntity = await readPartnerSubEntity({
+      collectivityId: collectivity.id,
+      subEntityId: requestedSubEntityId
+    });
+    if (!subEntity) {
+      throw new Error('Sous-entité invalide pour ce CSE.');
+    }
+    resolvedSubEntity = { id: subEntity.id, name: subEntity.name };
+  } else if (input.subEntityId) {
+    const subEntity = await readPartnerSubEntity({
+      collectivityId: collectivity.id,
+      subEntityId: String(input.subEntityId).trim()
+    });
+    if (subEntity) {
+      resolvedSubEntity = { id: subEntity.id, name: subEntity.name };
+    }
+  }
+
   const supabase = getServerSupabaseClient();
   const currentAffiliation = await readFamilyCseAffiliation(input.userId);
-  if (currentAffiliation?.collectivityId === collectivity.id) {
+  if (
+    currentAffiliation?.collectivityId === collectivity.id &&
+    (currentAffiliation.subEntityId ?? null) === (resolvedSubEntity?.id ?? null)
+  ) {
     await applyFamilyCseCodeToProfile({
       userId: input.userId,
       code: collectivity.code,
@@ -1182,15 +1245,35 @@ export async function attachFamilyToCseByCode(input: {
     return currentAffiliation;
   }
 
-  const { error: clientError } = await supabase
+  const upsertPayload: {
+    user_id: string;
+    collectivity_id: string;
+    sub_entity_id?: string | null;
+  } = {
+    user_id: input.userId,
+    collectivity_id: collectivity.id,
+    sub_entity_id: resolvedSubEntity?.id ?? null
+  };
+
+  let { error: clientError } = await supabase
     .from('clients')
-    .upsert(
+    .upsert(upsertPayload, { onConflict: 'user_id' });
+
+  if (clientError && isMissingAnyColumnError(clientError, ['sub_entity_id'])) {
+    const legacy = await supabase.from('clients').upsert(
       {
         user_id: input.userId,
         collectivity_id: collectivity.id
       },
       { onConflict: 'user_id' }
     );
+    clientError = legacy.error;
+    if (requiresSubEntity) {
+      throw new Error(
+        "Les sous-entités partenaires ne sont pas encore activées sur cette base. Contactez le support Resacolo."
+      );
+    }
+  }
 
   if (clientError) {
     throw new Error(`Impossible de rattacher le client à la collectivité : ${clientError.message}`);
@@ -1202,7 +1285,7 @@ export async function attachFamilyToCseByCode(input: {
     sessionEmail: input.sessionEmail
   });
 
-  return buildFamilyCseAffiliation(collectivity);
+  return buildFamilyCseAffiliation(collectivity, resolvedSubEntity);
 }
 
 export async function detachFamilyFromCse(input: {
@@ -1219,15 +1302,25 @@ export async function detachFamilyFromCse(input: {
     }
   }
 
-  const { error: clientError } = await supabase
-    .from('clients')
-    .upsert(
+  let { error: clientError } = await supabase.from('clients').upsert(
+    {
+      user_id: input.userId,
+      collectivity_id: null,
+      sub_entity_id: null
+    },
+    { onConflict: 'user_id' }
+  );
+
+  if (clientError && isMissingAnyColumnError(clientError, ['sub_entity_id'])) {
+    const legacy = await supabase.from('clients').upsert(
       {
         user_id: input.userId,
         collectivity_id: null
       },
       { onConflict: 'user_id' }
     );
+    clientError = legacy.error;
+  }
 
   if (clientError) {
     throw new Error(`Impossible de désaffilier le client du CSE : ${clientError.message}`);
@@ -1238,6 +1331,7 @@ export async function detachFamilyFromCse(input: {
 export async function resolveCheckoutCollectivityForUser(input: {
   userId: string;
   requestedCode?: string | null;
+  subEntityId?: string | null;
 }) {
   const currentAffiliation = await readFamilyCseAffiliation(input.userId);
   if (currentAffiliation) {
@@ -1252,9 +1346,20 @@ export async function resolveCheckoutCollectivityForUser(input: {
     throw new Error('Code CSE invalide.');
   }
 
+  const { listSubEntitiesForCollectivityCode } = await import('@/lib/partner-sub-entities.server');
+  const subEntitiesInfo = await listSubEntitiesForCollectivityCode(collectivity.code);
+  if (
+    subEntitiesInfo?.subEntitiesEnabled &&
+    subEntitiesInfo.subEntities.length > 0 &&
+    !String(input.subEntityId ?? '').trim()
+  ) {
+    throw new Error('Veuillez indiquer la sous-entité à laquelle vous appartenez.');
+  }
+
   return attachFamilyToCseByCode({
     userId: input.userId,
-    code: collectivity.code
+    code: collectivity.code,
+    subEntityId: input.subEntityId
   });
 }
 

@@ -20,6 +20,8 @@ export type SessionPayload = {
   collectivityIds: string[];
   organizerRolesById: Record<string, string>;
   collectivityRolesById: Record<string, string>;
+  /** Sous-entité CSE du membre partenaire (null = vue globale du partenaire). */
+  collectivitySubEntityId: string | null;
   staffRoles: string[];
   isClient: boolean;
 };
@@ -46,6 +48,8 @@ function buildSessionPayload(
     collectivityIds: roleContext.collectivityIds,
     organizerRolesById: roleContext.organizerRolesById,
     collectivityRolesById: roleContext.collectivityRolesById,
+    collectivitySubEntityId:
+      roleContext.role === 'PARTENAIRE' ? roleContext.collectivitySubEntityId : null,
     staffRoles: roleContext.staffRoles,
     isClient: roleContext.isClient
   };
